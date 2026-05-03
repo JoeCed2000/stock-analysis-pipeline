@@ -346,11 +346,12 @@ def _get_latest_10k_url(ticker: str) -> Optional[tuple]:
     return None
 
 
-def extract_10k_sections(ticker: str) -> Dict[str, str]:
+def extract_10k_sections(ticker: str, output_dir: Optional[str] = None) -> Dict[str, str]:
     """Download latest 10-K and extract MD&A + Risk Factors sections.
-    Returns {'mda': '...', 'risk_factors': '...', 'url': '...'}
+    If output_dir is provided, saves raw HTML to 02_sec_or_regulatory_filings/.
+    Returns {'mda': '...', 'risk_factors': '...', 'url': '...', 'local_path': '...'}
     """
-    result = {"mda": "", "risk_factors": "", "url": "", "error": ""}
+    result = {"mda": "", "risk_factors": "", "url": "", "error": "", "local_path": ""}
     import requests
 
     filing = _get_latest_10k_url(ticker)
@@ -373,7 +374,20 @@ def extract_10k_sections(ticker: str) -> Dict[str, str]:
 
         text = resp.text
 
-        # Try to extract text from HTML
+        # Save raw HTML to disk
+        if output_dir:
+            raw_dir = os.path.join(output_dir, "02_sec_or_regulatory_filings")
+            os.makedirs(raw_dir, exist_ok=True)
+            # Sanitize filename: 10-K_NVDA_2026-01-25.htm
+            filing_date = acc.replace("-", "")[:8] if "-" in acc else "unknown"
+            fname = f"10-K_{ticker}_{filing_date}.htm"
+            raw_path = os.path.join(raw_dir, fname)
+            with open(raw_path, "w", encoding="utf-8") as f:
+                f.write(text)
+            result["local_path"] = raw_path
+            logger.info(f"10-K saved: {raw_path} ({len(text)} bytes)")
+
+        # Extract text from HTML
         try:
             from html.parser import HTMLParser
 
@@ -401,7 +415,6 @@ def extract_10k_sections(ticker: str) -> Dict[str, str]:
             extractor.feed(text)
             clean_text = ' '.join(extractor.text)
         except Exception:
-            # Fallback: strip HTML tags with regex
             import re
             clean_text = re.sub(r'<[^>]+>', ' ', text)
             clean_text = re.sub(r'&nbsp;', ' ', clean_text)

@@ -44,11 +44,39 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
     yf_data = get_yahoo_data(ticker)
     price_native = yf_data.get("price")
     eur_rate = convert_to_eur(price_native) if price_native else None
+    company_name = yf_data.get("company_name", ticker)
+
+    # Compute output directory early
+    date_str = datetime.now(PARIS).strftime("%Y-%m-%d")
+    ticker_clean = ticker.replace(".", "_")
+    name_clean = company_name.replace(" ", "_").replace("/", "_")[:40]
+    output_dir = os.path.join(output_base, f"{date_str}_{ticker_clean}_{name_clean}")
+
+    # Create full source directory structure
+    for subdir in [
+        "01_official_company_sources",
+        "02_sec_or_regulatory_filings",
+        "03_financial_data_sources",
+        "04_transcripts_and_management",
+        "05_market_and_context",
+        "06_extracted_data",
+        "07_final_report",
+    ]:
+        os.makedirs(os.path.join(output_dir, subdir), exist_ok=True)
+
+    # Save Yahoo Finance snapshot
+    yf_local = os.path.join(output_dir, "03_financial_data_sources", f"yahoo_snapshot_{ticker}.json")
+    try:
+        with open(yf_local, "w") as f:
+            json.dump(yf_data, f, indent=2, default=str)
+    except Exception:
+        yf_local = ""
 
     s1 = next_src()
     sources.append(Source(
         id=s1, category="financial_data_sources", title=f"Yahoo Finance — {ticker} snapshot",
         url=f"https://finance.yahoo.com/quote/{ticker}/",
+        local_path=yf_local if yf_local else None,
         retrieved_at=retrieved_at, source_type="financial_aggregator",
         publisher="Yahoo Finance",
         used_for=["identification", "price", "market_cap", "sector"],
@@ -86,17 +114,19 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
     from backend.sources_collector import extract_10k_sections
     from backend.management_analyzer import analyze_management_tone
 
-    sec_10k = extract_10k_sections(ticker)
+    sec_10k = extract_10k_sections(ticker, output_dir=output_dir)
     mda_text = sec_10k.get("mda", "")
     risk_text = sec_10k.get("risk_factors", "")
     has_10k_text = len(mda_text) > 500
+    tenk_local = sec_10k.get("local_path", "")
 
     if has_10k_text:
         s4 = next_src()
         sources.append(Source(
             id=s4, category="sec_or_regulatory_filings",
             title=f"SEC EDGAR — {ticker} 10-K MD&A + Risk Factors",
-            url=sec_10k.get("url", f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={sec_10k.get('cik', '')}"),
+            url=sec_10k.get("url", ""),
+            local_path=tenk_local if tenk_local else None,
             retrieved_at=retrieved_at, source_type="sec_filing",
             publisher="SEC EDGAR",
             used_for=["management_discourse", "risk_factors"],
@@ -142,12 +172,20 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
 
     # Finnhub news for context
     fh = get_finnhub_data(ticker)
+    fh_local = ""
     if fh.get("news"):
         s5 = next_src()
+        fh_local = os.path.join(output_dir, "03_financial_data_sources", f"finnhub_{ticker}.json")
+        try:
+            with open(fh_local, "w") as f:
+                json.dump(fh, f, indent=2, default=str)
+        except Exception:
+            fh_local = ""
         sources.append(Source(
             id=s5, category="financial_data_sources",
             title=f"Finnhub — {ticker} recent news",
             url="https://finnhub.io/",
+            local_path=fh_local if fh_local else None,
             retrieved_at=retrieved_at, source_type="news_aggregator",
             publisher="Finnhub", used_for=["risk_context"], reliability="medium"
         ))
@@ -183,11 +221,7 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
     conviction = _conviction_text(scoring)
 
     # ── Step 9: Output ──
-    company_name = yf_data.get("company_name", ticker)
-    date_str = datetime.now(PARIS).strftime("%Y-%m-%d")
-    ticker_clean = ticker.replace(".", "_")
-    name_clean = company_name.replace(" ", "_").replace("/", "_")[:40]
-    output_dir = os.path.join(output_base, f"{date_str}_{ticker_clean}_{name_clean}")
+    # output_dir already computed in Step 1
 
     # Build result
     result = AnalysisResult(
