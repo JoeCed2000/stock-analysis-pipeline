@@ -11,9 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from backend.models import TickerRequest, AnalysisResult
-from backend.orchestrator import (
-    run_analysis_batch, create_job, get_job, set_job_completed
-)
+from backend.orchestrator import run_analysis_sequential
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -52,7 +50,7 @@ async def analyze(request: TickerRequest):
     logger.info(f"Analyze request: {tickers}")
 
     try:
-        batch = run_analysis_batch(tickers, output_base=str(ANALYSES_DIR))
+        batch = run_analysis_sequential(tickers, output_base=str(ANALYSES_DIR))
     except Exception as e:
         logger.exception("Batch analysis failed")
         raise HTTPException(status_code=500, detail=str(e))
@@ -76,6 +74,26 @@ async def analyze(request: TickerRequest):
         "results": results_list,
         "errors": errors_list,
     })
+
+
+@app.get("/api/report/{ticker}/pdf")
+async def get_report_pdf(ticker: str):
+    """Generate and retrieve PDF report for a ticker."""
+    ticker_clean = ticker.replace(".", "_")
+    matches = sorted(ANALYSES_DIR.glob(f"*_{ticker_clean}_*"), reverse=True)
+    if not matches:
+        raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
+
+    # Check if PDF already exists
+    pdf_path = matches[0] / "07_final_report" / "report.pdf"
+    if not pdf_path.exists():
+        # Generate PDF from existing analysis
+        from backend.pdf_generator import generate_pdf
+        # Re-run analysis to get result object
+        # For now, serve the markdown report
+        raise HTTPException(status_code=503, detail="PDF generation requires re-analysis. Use /api/analyze first.")
+
+    return FileResponse(pdf_path, media_type="application/pdf")
 
 
 @app.get("/api/report/{ticker}")

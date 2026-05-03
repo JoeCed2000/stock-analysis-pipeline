@@ -1,0 +1,51 @@
+[
+  {
+    "id": "SRC-001",
+    "category": "financial_data_sources",
+    "title": "Yahoo Finance \u2014 NVDA snapshot",
+    "url": "https://finance.yahoo.com/quote/NVDA/",
+    "local_path": null,
+    "retrieved_at": "2026-05-04T00:12:30.172931+02:00",
+    "source_type": "financial_aggregator",
+    "publisher": "Yahoo Finance",
+    "period": null,
+    "used_for": [
+      "identification",
+      "price",
+      "market_cap",
+      "sector"
+    ],
+    "reliability": "medium"
+  },
+  {
+    "id": "SRC-002",
+    "category": "sec_or_regulatory_filings",
+    "title": "SEC EDGAR \u2014 NVDA 10-K MD&A + Risk Factors",
+    "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+    "local_path": null,
+    "retrieved_at": "2026-05-04T00:12:30.172931+02:00",
+    "source_type": "sec_filing",
+    "publisher": "SEC EDGAR",
+    "period": null,
+    "used_for": [
+      "management_discourse",
+      "risk_factors"
+    ],
+    "reliability": "high"
+  },
+  {
+    "id": "SRC-003",
+    "category": "financial_data_sources",
+    "title": "Finnhub \u2014 NVDA recent news",
+    "url": "https://finnhub.io/",
+    "local_path": null,
+    "retrieved_at": "2026-05-04T00:12:30.172931+02:00",
+    "source_type": "news_aggregator",
+    "publisher": "Finnhub",
+    "period": null,
+    "used_for": [
+      "risk_context"
+    ],
+    "reliability": "medium"
+  }
+]

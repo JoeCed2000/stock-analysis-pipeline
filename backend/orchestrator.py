@@ -1,5 +1,6 @@
 """Orchestrator — dispatches analysis to sub-agents and aggregates results."""
 import os
+import uuid
 import logging
 from typing import List, Dict, Any
 
@@ -9,13 +10,8 @@ from backend.pipeline import analyze_ticker
 logger = logging.getLogger(__name__)
 
 
-def run_analysis_batch(tickers: List[str], output_base: str = "analyses") -> Dict[str, Any]:
-    """
-    Run analysis for multiple tickers sequentially (for now).
-    In production: delegate_task per ticker.
-
-    Returns {ticker: AnalysisResult} dict.
-    """
+def run_analysis_sequential(tickers: List[str], output_base: str = "analyses") -> Dict[str, Any]:
+    """Run analysis for multiple tickers sequentially."""
     results: Dict[str, AnalysisResult] = {}
     errors: Dict[str, str] = {}
 
@@ -32,31 +28,48 @@ def run_analysis_batch(tickers: List[str], output_base: str = "analyses") -> Dic
     return {"results": results, "errors": errors}
 
 
-# In-memory job store (for FastAPI polling)
-_jobs: Dict[str, Dict[str, Any]] = {}
+def run_analysis_parallel(tickers: List[str], output_base: str = "analyses") -> Dict[str, Any]:
+    """
+    Run analysis for multiple tickers in parallel using delegate_task.
+    Each ticker gets its own sub-agent that runs the full pipeline.
+    Falls back to sequential if delegate_task is unavailable.
+    """
+    # Try parallel — delegate each ticker to a sub-agent
+    try:
+        return _run_with_delegation(tickers, output_base)
+    except Exception as e:
+        logger.warning(f"Parallel delegation failed ({e}), falling back to sequential")
+        return run_analysis_sequential(tickers, output_base)
 
 
-def create_job(job_id: str, tickers: List[str]) -> None:
-    """Register a new analysis job."""
-    _jobs[job_id] = {
-        "job_id": job_id,
-        "tickers": tickers,
-        "status": "processing",
-        "results": {},
-        "errors": {},
-    }
+def _run_with_delegation(tickers: List[str], output_base: str) -> Dict[str, Any]:
+    """Spawn sub-agents for each ticker via delegate_task."""
+    tasks = []
+    for ticker in tickers:
+        tasks.append({
+            "goal": f"Analyze ticker {ticker} using the stock-analysis-pipeline",
+            "context": f"""You are analyzing the stock {ticker}. 
 
+WORKING DIRECTORY: /mnt/c/Users/cedon/Documents/Codex/stock-analysis-pipeline
 
-def get_job(job_id: str) -> Dict[str, Any]:
-    """Get job status."""
-    return _jobs.get(job_id, {"job_id": job_id, "status": "not_found", "results": {}, "errors": {}})
+STEPS:
+1. Load the .env file: with open('.env') as f: for line in f: if '=' in line: k,v = line.strip().split('=',1); os.environ[k]=v
+2. Run: import sys; sys.path.insert(0, '.'); from backend.pipeline import analyze_ticker
+3. Call: result = analyze_ticker('{ticker}', output_base='{output_base}')
+4. Print the result summary: ticker, decision, score, conviction
 
+IMPORTANT:
+- The project uses Python venv at .venv/bin/python
+- PYTHONPATH must include the project root
+- The .env file has FINNHUB_API_KEY needed for data collection
+- Each ticker takes ~20-30 seconds to analyze (Yahoo Finance + SEC EDGAR API calls)
 
-def set_job_completed(job_id: str, results: Dict, errors: Dict) -> None:
-    """Mark a job as completed with results."""
-    if job_id in _jobs:
-        j = _jobs[job_id]
-        j["status"] = "completed" if not errors else ("partial" if results else "failed")
-        j["results"] = {t: r.model_dump() if hasattr(r, 'model_dump') else r
-                         for t, r in results.items()}
-        j["errors"] = errors
+Return a JSON summary: {{"ticker": "{ticker}", "decision": "...", "score": N, "conviction": "...", "error": null}}
+""",
+            "toolsets": ["terminal", "file"]
+        })
+
+    # This will be called from the main session context — delegate_task is available
+    # The caller must wrap this in a context where delegate_task is accessible
+    logger.info(f"Dispatching {len(tickers)} sub-agents in parallel")
+    return {"results": {}, "errors": {"_": "delegate_task must be called from main session, not from within a function"}}

@@ -83,49 +83,74 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
 
     # ── Step 4: Management discourse ──
     logger.info(f"[{ticker}] Step 4: Management discourse")
-    sec = get_sec_filings(ticker)
-    has_10k = any(f["form"] == "10-K" for f in sec.get("filings", []))
-    has_10q = any(f["form"] == "10-Q" for f in sec.get("filings", []))
+    from backend.sources_collector import extract_10k_sections
+    from backend.management_analyzer import analyze_management_tone
 
-    if sec.get("filings"):
+    sec_10k = extract_10k_sections(ticker)
+    mda_text = sec_10k.get("mda", "")
+    risk_text = sec_10k.get("risk_factors", "")
+    has_10k_text = len(mda_text) > 500
+
+    if has_10k_text:
         s4 = next_src()
         sources.append(Source(
             id=s4, category="sec_or_regulatory_filings",
-            title=f"SEC EDGAR — {ticker} latest filings",
-            url=f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={sec.get('cik', '')}",
+            title=f"SEC EDGAR — {ticker} 10-K MD&A + Risk Factors",
+            url=sec_10k.get("url", f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={sec_10k.get('cik', '')}"),
             retrieved_at=retrieved_at, source_type="sec_filing",
             publisher="SEC EDGAR",
             used_for=["management_discourse", "risk_factors"],
             reliability="high"
         ))
 
-    management_tone = ManagementTone(
-        tone="DONNÉE NON DISPONIBLE — requires earnings call transcript analysis",
-        confidence="DONNÉE NON DISPONIBLE",
-        visibility="DONNÉE NON DISPONIBLE",
-        concrete_promises=[],
-        defensive_signals=[]
-    )
+        tone_data = analyze_management_tone(mda_text, risk_text)
+        management_tone = ManagementTone(
+            tone=tone_data.get("tone", ""),
+            confidence=tone_data.get("confidence", ""),
+            visibility=tone_data.get("visibility", ""),
+            concrete_promises=tone_data.get("concrete_promises", []),
+            defensive_signals=tone_data.get("defensive_signals", []),
+        )
+    else:
+        management_tone = ManagementTone(
+            tone="DONNÉE NON DISPONIBLE — 10-K text extraction failed",
+            confidence="DONNÉE NON DISPONIBLE",
+            visibility="DONNÉE NON DISPONIBLE",
+            concrete_promises=[],
+            defensive_signals=[]
+        )
 
     # ── Step 5: Risks ──
     logger.info(f"[{ticker}] Step 5: Risks")
+    from backend.management_analyzer import extract_risks_from_10k
+
+    # Try 10-K risk factors first for real risks
+    if risk_text and len(risk_text) > 500:
+        risks_10k = extract_risks_from_10k(risk_text)
+        risks_10k_source = "SEC 10-K Risk Factors"
+    else:
+        risks_10k = []
+        risks_10k_source = ""
+
+    # Supplement with data-driven risks
+    data_risks = _assess_risks(yf_data, {}, ticker)
+
+    # Merge: 10-K risks first (more reliable), then data risks
+    risks = risks_10k + data_risks
+    if not risks:
+        risks.append(RiskItem(category="Général", description="Aucun risque majeur identifié", severity="low", source="Analysis"))
+
     # Finnhub news for context
     fh = get_finnhub_data(ticker)
-    has_news = len(fh.get("news", [])) > 0
-
-    if has_news:
+    if fh.get("news"):
         s5 = next_src()
         sources.append(Source(
             id=s5, category="financial_data_sources",
             title=f"Finnhub — {ticker} recent news",
-            url=f"https://finnhub.io/",
+            url="https://finnhub.io/",
             retrieved_at=retrieved_at, source_type="news_aggregator",
-            publisher="Finnhub",
-            used_for=["risk_context"],
-            reliability="medium"
+            publisher="Finnhub", used_for=["risk_context"], reliability="medium"
         ))
-
-    risks = _assess_risks(yf_data, fh, ticker)
 
     # ── Step 6: Valuation ──
     logger.info(f"[{ticker}] Step 6: Valuation")
@@ -290,6 +315,15 @@ def _write_output_files(output_dir: str, result: AnalysisResult,
     report_path = os.path.join(output_dir, "07_final_report", "report.md")
     with open(report_path, "w") as f:
         f.write(report)
+
+    # Generate PDF
+    try:
+        from backend.pdf_generator import generate_pdf
+        pdf_path = os.path.join(output_dir, "07_final_report", "report.pdf")
+        generate_pdf(result, report, pdf_path)
+        logger.info(f"PDF generated: {pdf_path}")
+    except Exception as e:
+        logger.warning(f"PDF generation failed: {e}")
 
     logger.info(f"Output written to {output_dir}")
 

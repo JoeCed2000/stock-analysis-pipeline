@@ -284,3 +284,166 @@ def _days_ago(n: int) -> str:
 
 def _today_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+# ---------------------------------------------------------------------------
+# SEC EDGAR — text extraction from 10-K filings
+# ---------------------------------------------------------------------------
+
+def _resolve_cik(ticker: str) -> Optional[str]:
+    """Resolve ticker to CIK number."""
+    import requests
+    try:
+        resp = requests.get(
+            "https://www.sec.gov/files/company_tickers.json",
+            headers={"User-Agent": "StockAnalysisPipeline/1.0"},
+            timeout=10
+        )
+        if resp.status_code == 200:
+            companies = resp.json()
+            ticker_upper = ticker.upper()
+            for _, company in companies.items():
+                if company.get("ticker") == ticker_upper:
+                    return str(company["cik_str"]).zfill(10)
+    except Exception:
+        pass
+    return None
+
+
+def _get_latest_10k_url(ticker: str) -> Optional[tuple]:
+    """Get the URL and accession number of the latest 10-K filing."""
+    import requests
+    cik = _resolve_cik(ticker)
+    if not cik:
+        return None
+
+    try:
+        resp = requests.get(
+            f"https://data.sec.gov/submissions/CIK{cik}.json",
+            headers={"User-Agent": "StockAnalysisPipeline/1.0"},
+            timeout=10
+        )
+        if resp.status_code != 200:
+            return None
+
+        data = resp.json()
+        filings = data.get("filings", {}).get("recent", {})
+        forms = filings.get("form", [])
+        docs = filings.get("primaryDocument", [])
+        accessions = filings.get("accessionNumber", [])
+
+        for i in range(min(100, len(forms))):
+            if forms[i] == "10-K":
+                doc = docs[i] if i < len(docs) else ""
+                acc = accessions[i] if i < len(accessions) else ""
+                cik_int = int(cik)
+                # ACC format: 0001045810-25-000045 → strip dashes for URL
+                acc_clean = acc.replace("-", "")
+                url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc_clean}/{doc}"
+                return (url, doc, acc)
+    except Exception:
+        pass
+    return None
+
+
+def extract_10k_sections(ticker: str) -> Dict[str, str]:
+    """Download latest 10-K and extract MD&A + Risk Factors sections.
+    Returns {'mda': '...', 'risk_factors': '...', 'url': '...'}
+    """
+    result = {"mda": "", "risk_factors": "", "url": "", "error": ""}
+    import requests
+
+    filing = _get_latest_10k_url(ticker)
+    if not filing:
+        result["error"] = f"No 10-K found for {ticker}"
+        return result
+
+    url, doc, acc = filing
+    result["url"] = url
+
+    try:
+        resp = requests.get(
+            url,
+            headers={"User-Agent": "StockAnalysisPipeline/1.0 (contact@example.com)"},
+            timeout=30
+        )
+        if resp.status_code != 200:
+            result["error"] = f"HTTP {resp.status_code} fetching 10-K"
+            return result
+
+        text = resp.text
+
+        # Try to extract text from HTML
+        try:
+            from html.parser import HTMLParser
+
+            class TextExtractor(HTMLParser):
+                def __init__(self):
+                    super().__init__()
+                    self.text = []
+                    self.skip = False
+
+                def handle_starttag(self, tag, attrs):
+                    if tag in ('script', 'style'):
+                        self.skip = True
+
+                def handle_endtag(self, tag):
+                    if tag in ('script', 'style'):
+                        self.skip = False
+                    if tag in ('p', 'div', 'br', 'tr', 'h1', 'h2', 'h3', 'h4', 'h5'):
+                        self.text.append('\n')
+
+                def handle_data(self, data):
+                    if not self.skip:
+                        self.text.append(data)
+
+            extractor = TextExtractor()
+            extractor.feed(text)
+            clean_text = ' '.join(extractor.text)
+        except Exception:
+            # Fallback: strip HTML tags with regex
+            import re
+            clean_text = re.sub(r'<[^>]+>', ' ', text)
+            clean_text = re.sub(r'&nbsp;', ' ', clean_text)
+            clean_text = re.sub(r'\s+', ' ', clean_text)
+
+        # Extract MD&A (Item 7)
+        mda = _extract_section(clean_text, "ITEM 7", "ITEM 8")
+        result["mda"] = mda[:10000] if mda else ""
+
+        # Extract Risk Factors (Item 1A)
+        rf = _extract_section(clean_text, "ITEM 1A", "ITEM 1B")
+        if not rf:
+            rf = _extract_section(clean_text, "ITEM 1A", "ITEM 2")
+        result["risk_factors"] = rf[:5000] if rf else ""
+
+    except Exception as e:
+        result["error"] = str(e)
+
+    return result
+
+
+def _extract_section(text: str, start_marker: str, end_marker: str) -> str:
+    """Extract text between two markers, case-insensitive.
+    Skips first occurrence (TOC) and uses second (actual content).
+    Uses word-boundary matching to avoid ITEM 7A matching ITEM 7."""
+    import re
+    t = text.upper()
+    s = start_marker.upper()
+    e = end_marker.upper()
+
+    # Build regex with word boundary — ITEM 7 but not ITEM 7A
+    s_pat = re.compile(r'\b' + re.escape(s) + r'\b')
+    e_pat = re.compile(r'\b' + re.escape(e) + r'\b')
+
+    # Find second occurrence of start marker
+    matches = list(s_pat.finditer(t))
+    if len(matches) < 2:
+        return ""
+    start_idx = matches[1].start()
+
+    # Find end marker after start
+    end_match = e_pat.search(t, start_idx + len(s))
+    if not end_match:
+        return text[start_idx:start_idx + 8000]
+    return text[start_idx:end_match.start()]
