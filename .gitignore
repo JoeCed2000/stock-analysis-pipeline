@@ -28,6 +28,7 @@ Thumbs.db
 
 # Project
 analyses/
+analyses_test/
 logs/
 *.log
 
