@@ -66,6 +66,9 @@ async def analyze(request: TickerRequest):
         r.pop("management_tone", None)
         r.pop("segments", None)
         r.pop("valuation", None)
+        # Include computed total (Pydantic doesn't serialize @property)
+        if "scoring" in r and isinstance(r["scoring"], dict):
+            r["scoring"]["total"] = result.scoring.total
         results_list.append(r)
 
     return JSONResponse({
