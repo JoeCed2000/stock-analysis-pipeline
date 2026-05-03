@@ -1,10 +1,11 @@
 """Scoring engine — 8 criteria × 5 points = /40."""
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from backend.models import Scoring, FinancialData, ValuationData
 
 
-def score_ticker(data: Dict[str, Any]) -> Scoring:
-    """Compute the 8-criterion scoring from collected data."""
+def score_ticker(data: Dict[str, Any], tone_data: Optional[Dict] = None) -> Scoring:
+    """Compute the 8-criterion scoring from collected data.
+    If tone_data is provided from 10-K analysis, uses real management tone."""
     fin = data.get("financials", {})
     val = data.get("valuation", {})
 
@@ -20,10 +21,10 @@ def score_ticker(data: Dict[str, Any]) -> Scoring:
     # 4. Moat (0-5)
     moat = _score_moat(data.get("sector"), data.get("market_cap"), fin.get("gross_margin"))
 
-    # 5. Management (0-5) — based on guidance + consistency
-    management = _score_management(fin.get("guidance_official"), fin.get("revenue_yoy_growth"), fin.get("revenue_annual_growth"))
+    # 5. Management (0-5) — use tone data if available, else guidance
+    management = _score_management_realtime(tone_data) if tone_data else _score_management(fin.get("guidance_official"), fin.get("revenue_yoy_growth"), fin.get("revenue_annual_growth"))
 
-    # 6. Valuation risk (0-5) — higher = less risky (cheaper)
+    # 6. Valuation risk (0-5)
     valuation_risk = _score_valuation(val.get("pe_current"), val.get("pe_forward"), val.get("peg_ratio"))
 
     # 7. Geopolitical risk (0-5)
@@ -90,6 +91,35 @@ def _score_financial_strength(net_debt: Any, fcf: Any, net_income: Any) -> int:
             pass  # manageable debt, keep score
         elif fcf is not None and net_debt > 0:
             score -= 1  # heavy debt
+    return max(1, min(5, score))
+
+
+def _score_management_realtime(tone: Dict) -> int:
+    """Score management based on real 10-K tone analysis."""
+    if not tone:
+        return 3
+    score = 3
+    t = tone.get("tone", "").lower()
+    conf = tone.get("confidence", "").lower()
+    vis = tone.get("visibility", "").lower()
+    promises = tone.get("concrete_promises", [])
+    defensive = tone.get("defensive_signals", [])
+
+    if "optimiste" in t or "confiant" in t:
+        score += 1
+    if "élevée" in conf:
+        score += 1
+    elif "faible" in conf:
+        score -= 1
+    if "bonne" in vis:
+        score += 1
+    elif "faible" in vis:
+        score -= 1
+    if len(promises) >= 3:
+        score += 1
+    if len(defensive) >= 5:
+        score -= 1
+
     return max(1, min(5, score))
 
 

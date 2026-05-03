@@ -39,6 +39,12 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
         claim_id += 1
         return f"C-{claim_id:03d}"
 
+    def add_claim(text: str, src: str, file_path: str = "", section: str = ""):
+        claims.append(Claim(
+            claim_id=next_claim(), claim=text, source_id=src,
+            file_path=file_path, page_or_section=section, confidence="high"
+        ))
+
     # ── Step 1: Identification ──
     logger.info(f"[{ticker}] Step 1: Identification")
     yf_data = get_yahoo_data(ticker)
@@ -83,6 +89,15 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
         reliability="medium"
     ))
 
+    # ── Claims: Step 1 ──
+    add_claim(f"Company name: {company_name}", s1, yf_local if yf_local else "", "info.longName")
+    if price_native:
+        add_claim(f"Stock price: {price_native} {yf_data.get('currency', 'USD')}", s1, yf_local if yf_local else "", "info.currentPrice")
+    if yf_data.get("market_cap"):
+        add_claim(f"Market cap: {yf_data['market_cap']/1e12:.2f}T {yf_data.get('currency', 'USD')}", s1, yf_local if yf_local else "", "info.marketCap")
+    if yf_data.get("sector"):
+        add_claim(f"Sector: {yf_data['sector']}", s1, yf_local if yf_local else "", "info.sector")
+
     # ── Step 2: Financials ──
     logger.info(f"[{ticker}] Step 2: Financial figures")
     fin = yf_data.get("financials", {})
@@ -98,6 +113,22 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
         net_debt=fin.get("net_debt"),
         guidance_official=fin.get("guidance_official"),
     )
+
+    # ── Claims: Step 2 ──
+    if financials.revenue_quarterly:
+        add_claim(f"Revenue Q: {financials.revenue_quarterly/1e9:.1f}B {yf_data.get('currency', 'USD')}", s1, yf_local if yf_local else "", "quarterly_financials")
+    if financials.revenue_yoy_growth:
+        add_claim(f"Revenue YoY growth: {financials.revenue_yoy_growth*100:.1f}%", s1, yf_local if yf_local else "", "quarterly_financials")
+    if financials.revenue_annual:
+        add_claim(f"Revenue annual: {financials.revenue_annual/1e9:.1f}B", s1, yf_local if yf_local else "", "financials")
+    if financials.gross_margin:
+        add_claim(f"Gross margin: {financials.gross_margin*100:.1f}%", s1, yf_local if yf_local else "", "info.grossMargins")
+    if financials.operating_margin:
+        add_claim(f"Operating margin: {financials.operating_margin*100:.1f}%", s1, yf_local if yf_local else "", "info.operatingMargins")
+    if financials.net_income:
+        add_claim(f"Net income: {financials.net_income/1e9:.1f}B", s1, yf_local if yf_local else "", "financials.Net Income")
+    if financials.free_cash_flow:
+        add_claim(f"Free cash flow: {financials.free_cash_flow/1e9:.1f}B", s1, yf_local if yf_local else "", "cashflow.Free Cash Flow")
 
     # ── Step 3: Segments ──
     logger.info(f"[{ticker}] Step 3: Segments")
@@ -141,6 +172,24 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
             concrete_promises=tone_data.get("concrete_promises", []),
             defensive_signals=tone_data.get("defensive_signals", []),
         )
+        # ── Claims: Step 4 ──
+        add_claim(f"Management tone: {tone_data.get('tone', '')}", s4, tenk_local, "Item 7 MD&A")
+        add_claim(f"Management confidence: {tone_data.get('confidence', '')}", s4, tenk_local, "Item 7 MD&A")
+
+    # ── Transcript search ──
+    from backend.transcript_finder import find_transcripts
+    transcript_data = find_transcripts(ticker, output_dir=output_dir)
+    if transcript_data.get("found"):
+        s_trans = next_src()
+        sources.append(Source(
+            id=s_trans, category="transcripts_and_management",
+            title=f"Transcript sources — {ticker}",
+            url=transcript_data["sources"][0]["url"] if transcript_data["sources"] else "",
+            retrieved_at=retrieved_at, source_type="transcript_search",
+            publisher="Seeking Alpha / Motley Fool",
+            used_for=["management_discourse"],
+            reliability="medium"
+        ))
     else:
         management_tone = ManagementTone(
             tone="DONNÉE NON DISPONIBLE — 10-K text extraction failed",
@@ -169,6 +218,16 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
     risks = risks_10k + data_risks
     if not risks:
         risks.append(RiskItem(category="Général", description="Aucun risque majeur identifié", severity="low", source="Analysis"))
+
+    # ── Claims: Step 5 ──
+    for i, risk in enumerate(risks[:8]):
+        risk_source = risk.get("source", "") if isinstance(risk, dict) else risk.source
+        risk_desc = risk.get("description", "") if isinstance(risk, dict) else risk.description
+        risk_cat = risk.get("category", "") if isinstance(risk, dict) else risk.category
+        risk_sev = risk.get("severity", "") if isinstance(risk, dict) else risk.severity
+        risk_src = s4 if "10-K" in str(risk_source) else s1
+        risk_path = tenk_local if "10-K" in str(risk_source) else (yf_local if yf_local else "")
+        add_claim(f"Risk: {risk_cat} ({risk_sev}): {risk_desc[:100]}", risk_src, risk_path, "Item 1A Risk Factors")
 
     # Finnhub news for context
     fh = get_finnhub_data(ticker)
@@ -200,6 +259,14 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
         margin_of_safety=_margin_of_safety_text(yf_data.get("pe_current"), yf_data.get("pe_forward"))
     )
 
+    # ── Claims: Step 6 ──
+    if valuation.pe_current:
+        add_claim(f"P/E trailing: {valuation.pe_current:.1f}", s1, yf_local if yf_local else "", "info.trailingPE")
+    if valuation.pe_forward:
+        add_claim(f"P/E forward: {valuation.pe_forward:.1f}", s1, yf_local if yf_local else "", "info.forwardPE")
+    if valuation.peg_ratio:
+        add_claim(f"PEG ratio: {valuation.peg_ratio:.2f}", s1, yf_local if yf_local else "", "info.pegRatio")
+
     # ── Step 7: Scoring ──
     logger.info(f"[{ticker}] Step 7: Scoring")
     scoring = score_ticker({
@@ -214,11 +281,15 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
         "market_cap": yf_data.get("market_cap"),
         "price": yf_data.get("price"),
         "52w_high": yf_data.get("52w_high"),
-    })
+    }, tone_data=tone_data if has_10k_text else None)
 
     # ── Step 8: Decision ──
     decision = scoring.decision()
     conviction = _conviction_text(scoring)
+
+    # ── Claims: Step 7-8 ──
+    add_claim(f"Total score: {scoring.total}/40", s1, "", "Scoring model")
+    add_claim(f"Decision: {decision} (conviction: {conviction})", s1, "", "Scoring model")
 
     # ── Step 9: Output ──
     # output_dir already computed in Step 1
