@@ -386,6 +386,39 @@ async def health():
     return {"status": "ok", "service": "stock-analysis-pipeline", "commit": "83f33d0"}
 
 
+@app.get("/api/debug/yf-cache/{ticker}")
+async def debug_yf_cache(ticker: str):
+    """Debug: show yfinance cache status for a ticker."""
+    from backend.sources_collector import _cache_get_yf, _cache_get, _cache_path_yf, _cache_path
+    import glob
+    
+    result = {
+        "ticker": ticker.upper(),
+        "yf_cache_file": str(_cache_path_yf(ticker)),
+        "yf_cache_exists": _cache_path_yf(ticker).exists(),
+        "yf_cache_data": None,
+        "main_cache_file": str(_cache_path(ticker)),
+        "main_cache_exists": _cache_path(ticker).exists(),
+        "main_cache_data_pe": None,
+    }
+    
+    yf = _cache_get_yf(ticker)
+    if yf:
+        result["yf_cache_data"] = {
+            "pe_current": yf.get("pe_current"),
+            "pe_forward": yf.get("pe_forward"),
+            "revenue_annual": yf.get("financials", {}).get("revenue_annual"),
+            "net_income": yf.get("financials", {}).get("net_income"),
+        }
+    
+    main = _cache_get(ticker)
+    if main:
+        result["main_cache_data_pe"] = main.get("pe_current")
+        result["main_cache_fin_rev"] = main.get("financials", {}).get("revenue_annual")
+    
+    return result
+
+
 @app.get("/api/debug/sources")
 async def debug_sources():
     """Return which API sources are configured (masked keys).
