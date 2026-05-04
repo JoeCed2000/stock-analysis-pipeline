@@ -57,6 +57,17 @@ def _cache_set(ticker: str, data: Dict[str, Any]) -> None:
 # Unified stock data — Finnhub → Twelve Data → yfinance
 # ---------------------------------------------------------------------------
 
+def _pct_to_decimal(val) -> Optional[float]:
+    """Finnhub returns percentages as whole numbers (12.76 = 12.76%).
+    Convert to decimal (0.1276) for consistency with yfinance."""
+    if val is None:
+        return None
+    try:
+        return float(val) / 100.0
+    except (TypeError, ValueError):
+        return None
+
+
 def get_stock_data(ticker: str) -> Dict[str, Any]:
     """Fetch fundamental + price data. Multi-source chain:
     1. Finnhub (US equities, 60 calls/min, free)
@@ -147,11 +158,11 @@ def _get_stock_data_finnhub(ticker: str) -> Optional[Dict[str, Any]]:
         "currency": currency,
         "financials": {
             "revenue_quarterly": None,
-            "revenue_yoy_growth": metrics.get("revenueGrowthQuarterlyYoy"),
+            "revenue_yoy_growth": _pct_to_decimal(metrics.get("revenueGrowthQuarterlyYoy")),
             "revenue_annual": None,
-            "revenue_annual_growth": metrics.get("revenueGrowthTTMYoy"),
-            "gross_margin": metrics.get("grossMarginTTM"),
-            "operating_margin": metrics.get("operatingMarginTTM"),
+            "revenue_annual_growth": _pct_to_decimal(metrics.get("revenueGrowthTTMYoy")),
+            "gross_margin": _pct_to_decimal(metrics.get("grossMarginTTM")),
+            "operating_margin": _pct_to_decimal(metrics.get("operatingMarginTTM")),
             "net_income": None,
             "free_cash_flow": None,
             "net_debt": None,

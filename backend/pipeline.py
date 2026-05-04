@@ -12,6 +12,7 @@ from backend.models import (
 )
 from backend.sources_collector import get_stock_data, get_finnhub_data, get_sec_filings, convert_to_eur
 from backend.scorer import score_ticker
+from backend.excel_generator import generate_excel
 
 logger = logging.getLogger(__name__)
 
@@ -341,6 +342,15 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
 
     # Write output files
     _write_output_files(output_dir, result, yf_data, fin, sources, claims)
+
+    # Generate Excel financial report
+    try:
+        excel_path = os.path.join(output_dir, "03_financial_data_sources", f"financials_{ticker}.xlsx")
+        generate_excel(excel_path, ticker, company_name, yf_data, [
+            r.model_dump() if hasattr(r, 'model_dump') else r for r in result.risks
+        ])
+    except Exception as e:
+        logger.warning(f"Excel generation failed: {e}")
 
     return result
 
