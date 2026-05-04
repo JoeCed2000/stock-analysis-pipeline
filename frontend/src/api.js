@@ -65,3 +65,35 @@ export function getBatchDownloadUrl(jobId) {
 export function getTickerDownloadUrl(ticker) {
   return `${API_BASE}/dossier/${ticker}/download`;
 }
+
+export async function getDossierStatus(ticker) {
+  const res = await fetch(`${API_BASE}/dossier/${ticker}/status`);
+  if (!res.ok) return { ready: false, files: [], stage: 'error' };
+  return res.json();
+}
+
+const ALL_SECTIONS = [
+  '01_official_company_sources',
+  '02_sec_or_regulatory_filings',
+  '03_financial_data_sources',
+  '04_transcripts_and_management',
+  '05_market_and_context',
+  '06_extracted_data',
+  '07_final_report',
+];
+
+export function countDossierSections(files) {
+  // Count how many of the 7 sections have files (exclude .placeholder/.README)
+  const sectionsWithContent = new Set();
+  for (const f of files) {
+    const parts = f.split('/');
+    if (parts.length >= 2) {
+      const section = parts[0];
+      const filename = parts.slice(1).join('/');
+      // Skip placeholder files — only real content counts
+      if (filename === 'README.txt' || filename === '.placeholder.txt') continue;
+      sectionsWithContent.add(section);
+    }
+  }
+  return sectionsWithContent.size;
+}

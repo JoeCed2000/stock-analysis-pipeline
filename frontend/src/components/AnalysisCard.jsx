@@ -1,4 +1,5 @@
-import { getTickerDownloadUrl } from '../api.js';
+import { useState, useEffect, useRef } from 'react';
+import { getTickerDownloadUrl, getDossierStatus, countDossierSections } from '../api.js';
 import ScoringChart from './ScoringChart.jsx';
 
 const SCORE_COLORS = {
@@ -47,6 +48,31 @@ export default function AnalysisCard({ result, onViewReport }) {
   const level = getConvictionLevel(conviction);
   const convictionColor = CONVICTION_COLORS[level];
   const insight = getInsight(scoring);
+
+  // ── Dossier polling ──
+  const [dossierStatus, setDossierStatus] = useState(null);
+  const pollRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const status = await getDossierStatus(ticker);
+        if (!cancelled) {
+          const sectionCount = countDossierSections(status.files || []);
+          setDossierStatus({ ...status, sectionsReady: sectionCount });
+          // Stop polling when all 7 sections are ready
+          if (status.ready && sectionCount >= 7) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+        }
+      } catch { /* network error — will retry */ }
+    };
+    poll(); // immediate
+    pollRef.current = setInterval(poll, 5000); // every 5s
+    return () => { cancelled = true; clearInterval(pollRef.current); };
+  }, [ticker]);
 
   const scorePercent = (total / 40) * 100;
   const scoreBarColor = total >= 32 ? '#238636' : total >= 26 ? '#d29922' : '#da3633';
@@ -146,21 +172,31 @@ export default function AnalysisCard({ result, onViewReport }) {
         >
           📄 Full report
         </button>
-        <a
-          href={getTickerDownloadUrl(ticker)}
-          download
-          style={{
+        {dossierStatus?.ready ? (
+          <a
+            href={getTickerDownloadUrl(ticker)}
+            download
+            style={{
+              flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500,
+              background: '#21262d', border: '1px solid #30363d',
+              borderRadius: 5, color: '#8b949e', cursor: 'pointer',
+              textDecoration: 'none', textAlign: 'center',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => e.target.style.background = '#30363d'}
+            onMouseLeave={e => e.target.style.background = '#21262d'}
+          >
+            📥 Download
+          </a>
+        ) : (
+          <div style={{
             flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500,
-            background: '#21262d', border: '1px solid #30363d',
-            borderRadius: 5, color: '#8b949e', cursor: 'pointer',
-            textDecoration: 'none', textAlign: 'center',
-            transition: 'background 0.15s',
-          }}
-          onMouseEnter={e => e.target.style.background = '#30363d'}
-          onMouseLeave={e => e.target.style.background = '#21262d'}
-        >
-          📥 Download
-        </a>
+            background: '#161b22', border: '1px solid #30363d',
+            borderRadius: 5, color: '#8b949e', textAlign: 'center',
+          }}>
+            📊 Building dossier… {dossierStatus?.sectionsReady ?? '?'}/7
+          </div>
+        )}
       </div>
 
       {/* ── CONVICTION ── */}
