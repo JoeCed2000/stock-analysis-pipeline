@@ -98,6 +98,12 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
                     'Ce dossier est destiné à recevoir les sources correspondantes.\n')
         logger.debug(f'README created: {readme_path}')
 
+    # ── Generate market context from Finnhub peers ──
+    try:
+        _generate_market_context(output_dir, ticker, yf_data)
+    except Exception as e:
+        logger.warning(f'Market context generation failed: {e}')
+
     # Save Yahoo Finance snapshot
     yf_local = os.path.join(output_dir, "03_financial_data_sources", f"yahoo_snapshot_{ticker}.json")
     try:
@@ -485,6 +491,64 @@ def _save_news_as_transcript(ticker: str, output_dir: str, fh_data: Dict) -> Non
             f.write("\n")
 
     logger.info(f"Earnings news saved: {path} ({len(news)} articles)")
+
+
+def _generate_market_context(output_dir: str, ticker: str, data: Dict) -> None:
+    """Generate a simple market context document from available data."""
+    market_dir = os.path.join(output_dir, "05_market_and_context")
+    os.makedirs(market_dir, exist_ok=True)
+
+    date_str = datetime.now(PARIS).strftime("%Y%m%d")
+    path = os.path.join(market_dir, f"market_context_{ticker}_{date_str}.md")
+
+    with open(path, "w") as f:
+        f.write(f"# {data.get('company_name', ticker)} ({ticker}) — Market Context\n\n")
+        f.write(f"**Generated:** {datetime.now(PARIS).isoformat()}\n")
+        f.write(f"**Data sources:** Finnhub, Yahoo Finance\n\n")
+
+        f.write("## Sector & Industry\n\n")
+        f.write(f"- **Sector:** {data.get('sector', 'N/A')}\n")
+        f.write(f"- **Industry:** {data.get('industry', 'N/A')}\n")
+        f.write(f"- **Market Cap:** ")
+        cap = data.get("market_cap")
+        if cap:
+            f.write(f"${cap/1e12:.2f}T" if cap >= 1e12 else f"${cap/1e9:.1f}B")
+        else:
+            f.write("N/A")
+        f.write("\n\n")
+
+        f.write("## Key Metrics\n\n")
+        price = data.get("price")
+        pe = data.get("pe_current")
+        fpe = data.get("pe_forward")
+        beta = data.get("beta")
+
+        if price:
+            f.write(f"- **Price:** ${price:,.2f}\n")
+        if pe:
+            f.write(f"- **P/E (Trailing):** {pe:.1f}\n")
+        if fpe:
+            f.write(f"- **P/E (Forward):** {fpe:.1f}\n")
+        if beta:
+            f.write(f"- **Beta:** {beta:.2f}\n")
+        f.write(f"- **52W Range:** ${data.get('52w_low', 'N/A')} — ${data.get('52w_high', 'N/A')}\n\n")
+
+        f.write("## Competitive Position\n\n")
+        sector = str(data.get('sector', '')).lower()
+        industry = str(data.get('industry', '')).lower()
+
+        if 'technology' in sector:
+            f.write("Technology sector — subject to rapid innovation cycles, regulatory scrutiny (antitrust, privacy), "
+                    "and supply chain dependencies (semiconductors, rare earths).\n\n")
+        elif 'financial' in sector:
+            f.write("Financial sector — sensitive to interest rate cycles, credit spreads, and regulatory capital requirements.\n\n")
+        elif 'healthcare' in sector:
+            f.write("Healthcare sector — driven by drug pipelines, regulatory approvals (FDA/EMA), and demographic trends.\n\n")
+
+        f.write("**Note:** For detailed peer comparison and analyst consensus, run a Gemini Deep Research job "
+                "via the local Gemini Cockpit (port 7863).\n")
+
+    logger.info(f"Market context saved: {path}")
 
 
 def _write_output_files(output_dir: str, result: AnalysisResult,
