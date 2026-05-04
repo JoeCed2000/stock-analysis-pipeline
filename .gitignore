@@ -36,3 +36,4 @@ logs/
 *.lock
 
 token_github.txt
+token.txt
