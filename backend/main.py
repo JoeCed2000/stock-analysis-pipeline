@@ -592,7 +592,16 @@ async def analyze(request: TickerRequest):
 
     for ticker, result in batch["results"].items():
         r = result.model_dump()
-        r.pop("financials", None)
+        # Include financials summary for frontend display
+        fin = r.get("financials", {})
+        r["financial_summary"] = {
+            "revenue_annual": fin.get("revenue_annual"),
+            "net_income": fin.get("net_income"),
+            "free_cash_flow": fin.get("free_cash_flow"),
+            "gross_margin": fin.get("gross_margin"),
+            "operating_margin": fin.get("operating_margin"),
+        }
+        r.pop("financials", None)  # keep only summary to reduce payload
         r.pop("management_tone", None)
         r.pop("segments", None)
         r.pop("valuation", None)
