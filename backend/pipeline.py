@@ -82,6 +82,14 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
     try:
         profile_path = generate_company_profile(output_dir, ticker, yf_data)
         logger.info(f'Company profile generated: {profile_path}')
+        # Convert MD to PDF
+        try:
+            from backend.pdf_generator import md_to_pdf
+            profile_pdf = os.path.join(os.path.dirname(profile_path), f"company_profile_{ticker}.pdf")
+            md_to_pdf(profile_path, profile_pdf, title=f"{company_name} ({ticker}) — Company Profile")
+            logger.info(f'Company profile PDF: {profile_pdf}')
+        except Exception as e:
+            logger.warning(f'Company profile PDF conversion failed: {e}')
     except Exception as e:
         logger.warning(f'Company profile failed: {e}')
 

@@ -50,11 +50,14 @@ def get_dossier_status(ticker: str) -> dict:
     dossier_dir = matches[0]
     files = _list_dossier_files(dossier_dir)
     
-    # Dossier is "ready" if we have at least: report.md + financials Excel + company profile
-    required = {"07_final_report/report.md", "03_financial_data_sources", "01_official_company_sources"}
+    # Dossier is "ready" if we have: report.pdf + Excel + 10-K PDF (not just report.md)
+    required_files = {
+        "07_final_report/report.pdf",
+        "03_financial_data_sources",
+    }
     ready = all(
         any(r in str(f) for f in files)
-        for r in required
+        for r in required_files
     )
     
     status = {

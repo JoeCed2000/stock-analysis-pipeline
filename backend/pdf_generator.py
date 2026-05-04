@@ -219,3 +219,51 @@ def _pct(val):
 
 def _bar(score):
     return "█" * score + "░" * (5 - score)
+
+
+def md_to_pdf(md_path: str, pdf_path: str, title: str = "") -> str:
+    """Convert a markdown file to a simple PDF using reportlab.
+    No weasyprint needed — works on Render free tier."""
+    os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+    
+    # Read markdown content
+    with open(md_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    
+    doc = SimpleDocTemplate(
+        pdf_path, pagesize=A4,
+        leftMargin=20*mm, rightMargin=20*mm,
+        topMargin=15*mm, bottomMargin=15*mm,
+        title=title or os.path.basename(md_path)
+    )
+    
+    styles = getSampleStyleSheet()
+    story = []
+    
+    # Simple markdown → paragraphs
+    title_style = ParagraphStyle('MDTitle', parent=styles['Title'], fontSize=16, textColor='#e1e4e8', spaceAfter=8)
+    h2_style = ParagraphStyle('MDH2', parent=styles['Heading2'], fontSize=12, textColor='#58a6ff', spaceBefore=8, spaceAfter=4)
+    body_style = ParagraphStyle('MDBody', parent=styles['Normal'], fontSize=9, textColor='#c9d1d9', leading=13)
+    
+    in_table = False
+    for line in content.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            story.append(Spacer(1, 2))
+            continue
+        
+        if stripped.startswith("# ") and not stripped.startswith("## "):
+            story.append(Paragraph(stripped[2:], title_style))
+        elif stripped.startswith("## "):
+            story.append(Paragraph(stripped[3:], h2_style))
+        elif stripped.startswith("|"):
+            # Skip markdown tables for simplicity — they're in the main PDF
+            continue
+        elif stripped.startswith("**") and ":**" in stripped:
+            # Key-value line
+            story.append(Paragraph(f"<b>{stripped}</b>", body_style))
+        else:
+            story.append(Paragraph(stripped, body_style))
+    
+    doc.build(story)
+    return pdf_path
