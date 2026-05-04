@@ -9,6 +9,12 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [reportTicker, setReportTicker] = useState(null);
+  const [reportScoring, setReportScoring] = useState(null);
+
+  const handleViewReport = (ticker, scoring) => {
+    setReportTicker(ticker);
+    setReportScoring(scoring || null);
+  };
 
   const handleAnalyze = async (tickers) => {
     setLoading(true);
@@ -66,14 +72,14 @@ export default function App() {
             <AnalysisCard
               key={r.ticker}
               result={r}
-              onViewReport={setReportTicker}
+              onViewReport={handleViewReport}
             />
           ))}
         </div>
       )}
 
       {reportTicker && (
-        <ReportView ticker={reportTicker} onClose={() => setReportTicker(null)} />
+        <ReportView ticker={reportTicker} scoring={reportScoring} onClose={() => { setReportTicker(null); setReportScoring(null); }} />
       )}
     </div>
   );

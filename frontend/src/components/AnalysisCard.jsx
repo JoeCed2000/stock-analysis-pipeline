@@ -1,5 +1,6 @@
 import { getReport } from '../api.js';
 import { Fragment } from 'react';
+import ScoringChart from './ScoringChart.jsx';
 
 const SCORE_COLORS = {
   BUY: '#238636',
@@ -79,32 +80,14 @@ export default function AnalysisCard({ result, onViewReport }) {
         )}
       </div>
 
-      {/* Scoring mini-grid */}
+      {/* Scoring chart */}
       <div style={{ marginTop: 12, borderTop: '1px solid #30363d', paddingTop: 10 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px 8px', fontSize: 11 }}>
-          {scoring && [
-            ['Croissance', scoring.growth],
-            ['Rentabilité', scoring.profitability],
-            ['Solidité fin.', scoring.financial_strength],
-            ['Moat', scoring.moat],
-            ['Management', scoring.management],
-            ['Valorisation', scoring.valuation_risk],
-            ['Géopolitique', scoring.geopolitical_risk],
-            ['Momentum', scoring.business_momentum],
-          ].map(([label, score]) => (
-            <Fragment key={label}>
-              <span style={{ color: '#8b949e' }}>{label}</span>
-              <span style={{ color: '#e1e4e8', textAlign: 'right' }}>
-                {'★'.repeat(score)}{'☆'.repeat(5 - score)}
-              </span>
-            </Fragment>
-          ))}
-        </div>
+        <ScoringChart scoring={scoring} height={140} />
       </div>
 
       {/* View report button */}
       <button
-        onClick={() => onViewReport(ticker)}
+        onClick={() => onViewReport(ticker, scoring)}
         style={{
           marginTop: 12, width: '100%', padding: '6px 0',
           background: '#21262d', border: '1px solid #30363d',

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { getReport } from '../api.js';
+import ScoringChart from './ScoringChart.jsx';
 
-export default function ReportView({ ticker, onClose }) {
+export default function ReportView({ ticker, scoring, onClose }) {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -44,6 +45,13 @@ export default function ReportView({ ticker, onClose }) {
             ✕
           </button>
         </div>
+
+        {/* Scoring chart above the report */}
+        {scoring && (
+          <div style={{ padding: '8px 16px 0', borderBottom: '1px solid #30363d' }}>
+            <ScoringChart scoring={scoring} height={160} />
+          </div>
+        )}
 
         {/* Content */}
         <div style={{
