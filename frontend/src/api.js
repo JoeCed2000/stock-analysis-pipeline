@@ -59,9 +59,9 @@ export async function getBatchStatus(jobId) {
 }
 
 export function getBatchDownloadUrl(jobId) {
-  return `${API_BASE}/api/batch/${jobId}/download`;
+  return `${API_BASE}/batch/${jobId}/download`;
 }
 
 export function getTickerDownloadUrl(ticker) {
-  return `${API_BASE}/api/analyze/${ticker}/download`;
+  return `${API_BASE}/analyze/${ticker}/download`;
 }
