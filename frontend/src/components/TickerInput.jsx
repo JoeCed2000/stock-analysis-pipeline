@@ -1,4 +1,5 @@
 // v2 — all tickers pass format check, no valid/invalid display
+// Build SHA: fc050e6 — force cache bust
 import { useState, useEffect, useRef } from 'react';
 import { uploadTickerFile } from '../api.js';
 
@@ -87,7 +88,7 @@ export default function TickerInput({ onAnalyze, loading }) {
               display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
               borderTop: '1px solid #21262d', paddingTop: 10,
             }}>
-              <span style={{ fontSize: 11, color: '#484f58', marginRight: 2 }}>
+              <span style={{ fontSize: 11, color: '#57606a', marginRight: 2 }}>
                 {parsing ? '…' : `${items.length} ticker${items.length !== 1 ? 's' : ''}`}
               </span>
 
