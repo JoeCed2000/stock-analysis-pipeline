@@ -47,7 +47,12 @@ export default function ScoringChart({ scoring, height = 120 }) {
         Scoring Breakdown
       </div>
 
-      <svg width={chartW} height={chartH + labelH} style={{ display: 'block' }}>
+      <svg
+        viewBox={`0 0 ${chartW} ${chartH + labelH}`}
+        preserveAspectRatio="xMidYMid meet"
+        width="100%"
+        style={{ display: 'block' }}
+      >
         {/* Grid lines */}
         {[1, 2, 3, 4, 5].map(v => (
           <line

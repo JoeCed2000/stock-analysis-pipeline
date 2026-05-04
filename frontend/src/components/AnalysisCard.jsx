@@ -54,7 +54,7 @@ export default function AnalysisCard({ result, onViewReport }) {
   return (
     <div style={{
       background: '#0d1117', border: '1px solid #21262d',
-      borderRadius: 10, padding: 0, minWidth: 320, maxWidth: '100%',
+      borderRadius: 10, padding: 0, width: '100%',
       boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
       transition: 'box-shadow 0.2s, transform 0.15s',
       overflow: 'hidden',
