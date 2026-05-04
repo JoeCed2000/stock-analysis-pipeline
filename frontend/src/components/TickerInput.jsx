@@ -181,7 +181,7 @@ export default function TickerInput({ onAnalyze, loading }) {
             onMouseDown={e => { if (!loading) e.target.style.transform = 'scale(0.98)'; }}
             onMouseUp={e => { if (!loading) e.target.style.transform = 'scale(1)'; }}
           >
-            {loading ? '⏳ Running...' : `🔍 Analyze ${selected.size} ticker${selected.size > 1 ? 's' : ''}`}
+            {loading ? 'Analyzing…' : `🔍 Analyze ${selected.size} ticker${selected.size > 1 ? 's' : ''}`}
           </button>
         )}
 
@@ -204,36 +204,6 @@ export default function TickerInput({ onAnalyze, loading }) {
         }
       `}</style>
 
-      {/* Loading spinner — visible pendant l'analyse */}
-      {loading && (
-        <div style={{
-          textAlign: 'center', padding: '32px 0',
-          background: '#1a1d27', border: '1px solid #30363d',
-          borderRadius: 8, marginTop: 12,
-        }}>
-          <style>{`
-            @keyframes tispin {
-              0%   { transform: rotate(0deg); }
-              100% { transform: rotate(360deg); }
-            }
-          `}</style>
-          <div style={{
-            display: 'inline-block',
-            width: 36, height: 36,
-            border: '3px solid #30363d',
-            borderTop: '3px solid #58a6ff',
-            borderRadius: '50%',
-            animation: 'tispin 0.7s linear infinite',
-            marginBottom: 12,
-          }} />
-          <div style={{ color: '#e1e4e8', fontSize: 14, fontWeight: 600 }}>
-            ⏳ Analyzing — fetching financial data, scoring companies…
-          </div>
-          <div style={{ color: '#8b949e', fontSize: 12, marginTop: 4 }}>
-            Each ticker takes ~20–30 seconds
-          </div>
-        </div>
-      )}
     </div>
   );
 }
