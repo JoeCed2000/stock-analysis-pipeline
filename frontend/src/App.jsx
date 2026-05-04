@@ -3,6 +3,7 @@ import TickerInput from './components/TickerInput.jsx';
 import BatchAnalysis from './components/BatchAnalysis.jsx';
 import AnalysisCard from './components/AnalysisCard.jsx';
 import ReportView from './components/ReportView.jsx';
+import AboutSection from './components/AboutSection.jsx';
 import { analyzeTickers } from './api.js';
 
 export default function App() {
@@ -45,6 +46,8 @@ export default function App() {
         <p style={{ fontSize: 13, color: '#8b949e', marginBottom: 16 }}>
           Automated fundamental analysis — BUY / HOLD / SELL based on 8 criteria
         </p>
+
+        <AboutSection />
 
         {/* Mode tabs */}
         <div style={{ display: 'flex', gap: 2, background: '#1a1d27', border: '1px solid #30363d', borderRadius: 6, padding: 3, width: 'fit-content' }}>
