@@ -21,11 +21,11 @@ export default function AnalysisCard({ result, onViewReport }) {
   return (
     <div style={{
       background: '#1a1d27', border: '1px solid #30363d',
-      borderRadius: 8, padding: 16, minWidth: 280, minHeight: 550,
+      borderRadius: 8, padding: 16, minWidth: 280,
       display: 'flex', flexDirection: 'column',
     }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 700, color: '#e1e4e8' }}>{ticker}</div>
           <div style={{ fontSize: 12, color: '#8b949e', marginTop: 2 }}>{company_name}</div>
@@ -82,7 +82,7 @@ export default function AnalysisCard({ result, onViewReport }) {
       </div>
 
       {/* Scoring chart */}
-      <div style={{ marginTop: 12, borderTop: '1px solid #30363d', paddingTop: 10, marginBottom: 40 }}>
+      <div style={{ marginTop: 10, borderTop: '1px solid #30363d', paddingTop: 10, display: 'flex', justifyContent: 'center' }}>
         <ScoringChart scoring={scoring} height={140} />
       </div>
 
@@ -90,9 +90,9 @@ export default function AnalysisCard({ result, onViewReport }) {
       <button
         onClick={() => onViewReport(ticker, scoring)}
         style={{
-          marginTop: 'auto', width: '100%', padding: '6px 0',
+          marginTop: 12, width: '100%', padding: '8px 0',
           background: '#21262d', border: '1px solid #30363d',
-          borderRadius: 4, color: '#58a6ff', fontSize: 12,
+          borderRadius: 4, color: '#58a6ff', fontSize: 13,
           cursor: 'pointer',
         }}
       >
@@ -104,9 +104,9 @@ export default function AnalysisCard({ result, onViewReport }) {
         href={getTickerDownloadUrl(ticker)}
         download
         style={{
-          marginTop: 6, width: '100%', padding: '6px 0',
+          marginTop: 6, width: '100%', padding: '8px 0',
           background: '#21262d', border: '1px solid #30363d',
-          borderRadius: 4, color: '#8b949e', fontSize: 12,
+          borderRadius: 4, color: '#8b949e', fontSize: 13,
           cursor: 'pointer', textDecoration: 'none',
           display: 'inline-block', textAlign: 'center',
           boxSizing: 'border-box',
@@ -115,7 +115,7 @@ export default function AnalysisCard({ result, onViewReport }) {
         📥 Download documents
       </a>
 
-      <div style={{ marginTop: 4, fontSize: 11, color: '#484f58', textAlign: 'center' }}>
+      <div style={{ marginTop: 8, fontSize: 11, color: '#484f58', textAlign: 'center' }}>
         Conviction: {conviction}
       </div>
     </div>
