@@ -54,7 +54,7 @@ export default function AnalysisCard({ result, onViewReport }) {
   const [countdown, setCountdown] = useState(null);
   const pollRef = useRef(null);
   const countdownRef = useRef(null);
-  const ESTIMATED_SECS = 30; // always show 30s countdown even if it finishes earlier
+  const ESTIMATED_SECS = 5; // dossier is now synchronous — ready in <5s
 
   useEffect(() => {
     let cancelled = false;
