@@ -33,8 +33,8 @@ export default function ScoringChart({ scoring, height = 120 }) {
   if (!scoring) return null;
 
   const total = scoring.total || 0;
-  const barW = 26;
-  const gap = 8;
+  const barW = 22;
+  const gap = 6;
   const chartW = CRITERIA.length * (barW + gap);
   const maxVal = 5;
   const labelH = 18;
