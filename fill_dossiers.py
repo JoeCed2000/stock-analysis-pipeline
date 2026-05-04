@@ -93,6 +93,46 @@ def generate_10k_pdf(ticker: str, output_dir: Path) -> Optional[Path]:
         return None
 
 
+def sync_yfinance_financials(ticker: str) -> bool:
+    """Fetch yfinance data locally and push to Render cache.
+    
+    yfinance is often blocked on Render's shared IP but works from lapced.
+    This pre-fetches deep financial data (revenue, net income, FCF) and
+    pushes it to Render's file cache so the backend can merge it with Finnhub.
+    """
+    try:
+        sys.path.insert(0, str(PROJECT_DIR))
+        from backend.sources_collector import get_yahoo_data
+        
+        logger.info(f"  Fetching yfinance data for {ticker}...")
+        yf_data = get_yahoo_data(ticker)
+        
+        if not yf_data:
+            logger.warning(f"  yfinance returned no data for {ticker}")
+            return False
+        
+        # Push to Render cache endpoint
+        secret = get_upload_secret()
+        resp = requests.post(
+            f"{RENDER_BASE}/api/cache/financials/{ticker}",
+            json=yf_data,
+            headers={"X-Upload-Secret": secret},
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            fin = yf_data.get("financials", {})
+            rev = fin.get("revenue_annual")
+            ni = fin.get("net_income")
+            logger.info(f"  ✅ YF cached for {ticker} — Revenue: {rev}, Net Income: {ni}")
+            return True
+        else:
+            logger.warning(f"  ❌ Cache upload failed: {resp.status_code}")
+            return False
+    except Exception as e:
+        logger.error(f"  YF sync failed: {e}")
+        return False
+
+
 def generate_transcripts(ticker: str, output_dir: Path) -> Optional[Path]:
     """Generate earnings news/transcripts from Finnhub."""
     try:
@@ -149,6 +189,13 @@ def fill_dossier(ticker: str) -> bool:
     tmp_dir.mkdir(parents=True, exist_ok=True)
     
     any_uploaded = False
+    
+    # ── 0. YFinance financials (pre-fetch, works locally) ──
+    logger.info(f"  Step 0: YFinance financials...")
+    try:
+        sync_yfinance_financials(ticker)
+    except Exception as e:
+        logger.warning(f"  YF step failed: {e}")
     
     # ── 1. 10-K PDF ──
     logger.info(f"  Step 1: 10-K PDF...")

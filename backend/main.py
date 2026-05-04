@@ -11,9 +11,9 @@ import zipfile
 import re
 import hashlib
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile, Header, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile, Header, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -672,6 +672,46 @@ async def get_traceability(ticker: str):
         raise HTTPException(status_code=404, detail=f"Traceability matrix not found for {ticker}")
 
     return FileResponse(csv_path, media_type="text/csv")
+
+
+@app.post("/api/cache/financials/{ticker}")
+async def cache_financials(
+    ticker: str,
+    x_upload_secret: str = Header(None, alias="X-Upload-Secret"),
+):
+    """Upload yfinance financial data from local machine (lapced).
+    
+    The local cron fetches yfinance data (blocked on Render's shared IP)
+    and pushes it to this endpoint. The backend then merges it with Finnhub.
+    
+    Authenticated via X-Upload-Secret matching DOSSIER_UPLOAD_SECRET.
+    Body: JSON with the same structure as get_yahoo_data()'s output.
+    """
+    upload_secret = os.getenv("DOSSIER_UPLOAD_SECRET", "")
+    if not upload_secret:
+        raise HTTPException(status_code=501, detail="Upload endpoint not configured")
+    if not x_upload_secret or x_upload_secret != upload_secret:
+        raise HTTPException(status_code=403, detail="Invalid or missing upload secret")
+    
+    body = await request.json()
+    if not body or not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    # Write to file cache — same format as _cache_set in sources_collector.py
+    cache_dir = Path("backend/.cache")
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = cache_dir / f"{ticker.upper()}.json"
+    
+    entry = {
+        "version": 2,  # CACHE_VERSION from sources_collector.py
+        "timestamp": datetime.now(timezone.utc).timestamp(),
+        "data": body,
+    }
+    with open(cache_path, "w") as f:
+        json.dump(entry, f)
+    
+    logger.info(f"[{ticker}] Financials cached ({len(json.dumps(body))} bytes)")
+    return JSONResponse({"status": "cached", "ticker": ticker.upper()})
 
 
 @app.get("/api/analyses")
