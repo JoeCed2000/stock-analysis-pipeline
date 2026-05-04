@@ -94,17 +94,30 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
         logger.warning(f'Company profile failed: {e}')
 
     # ── Populate dossier 05 with README ──
-    for folder, description in [
-        ('05_market_and_context',
-         'Contexte de marché : données sectorielles, comparables, rapports d\'analystes, '
-         'indicateurs macroéconomiques, actualités du secteur, données de concurrence.'),
-    ]:
-        readme_path = os.path.join(output_dir, folder, 'README.txt')
-        with open(readme_path, 'w') as f:
-            f.write(f'=== {folder} ===\n\n{description}\n\n'
-                    f'Ticker: {ticker}\nDate: {date_str}\n'
-                    'Ce dossier est destiné à recevoir les sources correspondantes.\n')
-        logger.debug(f'README created: {readme_path}')
+    # Also create placeholders in ALL 7 directories so none are empty in the ZIP
+    dossier_descriptions = {
+        '01_official_company_sources': 'Company profile, investor presentations, official filings.',
+        '02_sec_or_regulatory_filings': '10-K annual report, 10-Q quarterly, 8-K current events.',
+        '03_financial_data_sources': 'Excel financial model, Yahoo Finance snapshot, Finnhub data.',
+        '04_transcripts_and_management': 'Earnings call transcripts, management interviews, news.',
+        '05_market_and_context': 'Sector data, peer comparison, macro indicators, competition.',
+        '06_extracted_data': 'Traceability matrix, extracted financials, claim verification.',
+        '07_final_report': 'Final analysis report (PDF + Markdown), executive summary.',
+    }
+    for folder, description in dossier_descriptions.items():
+        placeholder = os.path.join(output_dir, folder, 'README.txt')
+        try:
+            with open(placeholder, 'w') as f:
+                f.write(f'{folder}\n')
+                f.write(f'{"=" * len(folder)}\n\n')
+                f.write(f'{description}\n\n')
+                f.write(f'Ticker: {ticker}\n')
+                f.write(f'Date: {date_str}\n')
+                f.write(f'Note: If this is the only file, the data source for this section\n')
+                f.write(f'      was unavailable during analysis (API rate limit, network error,\n')
+                f.write(f'      or source does not cover this ticker).\n')
+        except Exception:
+            pass
 
     # ── Generate market context from Finnhub peers ──
     try:
