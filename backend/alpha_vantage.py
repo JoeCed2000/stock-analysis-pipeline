@@ -67,9 +67,16 @@ def fetch_transcript(ticker: str, quarter: Optional[str] = None) -> Optional[Dic
             logger.warning(f"Alpha Vantage error for {ticker}: {data['Error Message']}")
             return None
 
-        # The API returns a list of transcripts under "data" key for the
-        # EARNINGS_CALL_TRANSCRIPT endpoint (newer API format)
-        transcripts = data.get("data", [data] if "symbol" in data else [])
+        # The API returns different formats:
+        # - Newer format: {"data": [{"content": "...", ...}]}
+        # - Older format: {"symbol": "...", "quarter": "...", "transcript": [...]}
+        # - String format: {"symbol": "...", "content": "..."}
+        
+        transcripts = data.get("data", [])
+        
+        # Single-object format (no "data" wrapper)
+        if not transcripts and "symbol" in data:
+            transcripts = [data]
 
         if not transcripts:
             logger.info(f"No transcripts found for {ticker} on Alpha Vantage")
@@ -77,10 +84,29 @@ def fetch_transcript(ticker: str, quarter: Optional[str] = None) -> Optional[Dic
 
         # Take the latest transcript
         latest = transcripts[0]
-        content = latest.get("content", latest.get("transcript", ""))
+        
+        # Extract content from various possible fields
+        content = latest.get("content", "")
+        if not content:
+            transcript_val = latest.get("transcript", "")
+            if isinstance(transcript_val, list):
+                # Array of speaker segments — join them
+                parts = []
+                for seg in transcript_val:
+                    if isinstance(seg, dict):
+                        speaker = seg.get("speaker", "")
+                        text = seg.get("text", seg.get("content", ""))
+                        if text:
+                            parts.append(f"{speaker}: {text}" if speaker else text)
+                    elif isinstance(seg, str):
+                        parts.append(seg)
+                content = "\n".join(parts)
+            elif isinstance(transcript_val, str):
+                content = transcript_val
 
-        if not content or len(content) < 100:
-            logger.warning(f"Alpha Vantage transcript for {ticker} too short or empty")
+        if not content or len(content.strip()) < 100:
+            logger.warning(f"Alpha Vantage transcript for {ticker} too short or empty "
+                          f"(len={len(content)}, keys={list(latest.keys())})")
             return None
 
         return {
