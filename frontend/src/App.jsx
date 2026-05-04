@@ -103,8 +103,7 @@ export default function App() {
 
       {results.length > 0 && (
         <div style={{
-          display: 'flex', gap: 16, flexWrap: 'wrap',
-          justifyContent: 'center',
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16,
         }}>
           {results.map(r => (
             <AnalysisCard

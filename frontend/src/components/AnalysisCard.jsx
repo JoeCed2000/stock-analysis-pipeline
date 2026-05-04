@@ -21,7 +21,8 @@ export default function AnalysisCard({ result, onViewReport }) {
   return (
     <div style={{
       background: '#1a1d27', border: '1px solid #30363d',
-      borderRadius: 8, padding: 16, minWidth: 280, flex: 1,
+      borderRadius: 8, padding: 16, minWidth: 280, minHeight: 550,
+      display: 'flex', flexDirection: 'column',
     }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
@@ -89,7 +90,7 @@ export default function AnalysisCard({ result, onViewReport }) {
       <button
         onClick={() => onViewReport(ticker, scoring)}
         style={{
-          marginTop: 12, width: '100%', padding: '6px 0',
+          marginTop: 'auto', width: '100%', padding: '6px 0',
           background: '#21262d', border: '1px solid #30363d',
           borderRadius: 4, color: '#58a6ff', fontSize: 12,
           cursor: 'pointer',

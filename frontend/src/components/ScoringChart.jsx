@@ -29,7 +29,7 @@ export default function ScoringChart({ scoring, height = 200 }) {
       <div style={{ fontSize: 13, fontWeight: 700, color: '#e1e4e8', marginBottom: 8 }}>
         Detailed Scoring ({total}/40)
       </div>
-      <svg width={chartW} height={height + 30} style={{ display: 'block' }}>
+      <svg width={chartW} height={height + 65} style={{ display: 'block', overflow: 'visible' }}>
         {/* Grid lines */}
         {[1, 2, 3, 4, 5].map(v => (
           <line
@@ -58,9 +58,9 @@ export default function ScoringChart({ scoring, height = 200 }) {
                 {val}
               </text>
               <text
-                x={x + barW / 2} y={height + 16}
-                textAnchor="middle" fill="#8b949e" fontSize={10}
-                transform={`rotate(-30, ${x + barW / 2}, ${height + 16})`}
+                x={x} y={height + 14}
+                textAnchor="start" fill="#8b949e" fontSize={9}
+                transform={`rotate(-25, ${x}, ${height + 14})`}
               >
                 {c.label}
               </text>
