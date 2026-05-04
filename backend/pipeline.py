@@ -151,6 +151,16 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
     has_10k_text = len(mda_text) > 500
     tenk_local = sec_10k.get("local_path", "")
 
+    # Default fallback for management_tone (overridden below if data available)
+    management_tone = ManagementTone(
+        tone="DONNÉE NON DISPONIBLE — 10-K text extraction failed",
+        confidence="DONNÉE NON DISPONIBLE",
+        visibility="DONNÉE NON DISPONIBLE",
+        concrete_promises=[],
+        defensive_signals=[]
+    )
+    s4 = None  # Guard for risk claims loop when 10-K unavailable
+
     if has_10k_text:
         s4 = next_src()
         sources.append(Source(
@@ -190,14 +200,6 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
             used_for=["management_discourse"],
             reliability="medium"
         ))
-    else:
-        management_tone = ManagementTone(
-            tone="DONNÉE NON DISPONIBLE — 10-K text extraction failed",
-            confidence="DONNÉE NON DISPONIBLE",
-            visibility="DONNÉE NON DISPONIBLE",
-            concrete_promises=[],
-            defensive_signals=[]
-        )
 
     # ── Step 5: Risks ──
     logger.info(f"[{ticker}] Step 5: Risks")
@@ -225,7 +227,7 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
         risk_desc = risk.get("description", "") if isinstance(risk, dict) else risk.description
         risk_cat = risk.get("category", "") if isinstance(risk, dict) else risk.category
         risk_sev = risk.get("severity", "") if isinstance(risk, dict) else risk.severity
-        risk_src = s4 if "10-K" in str(risk_source) else s1
+        risk_src = s4 if (s4 and "10-K" in str(risk_source)) else s1
         risk_path = tenk_local if "10-K" in str(risk_source) else (yf_local if yf_local else "")
         add_claim(f"Risk: {risk_cat} ({risk_sev}): {risk_desc[:100]}", risk_src, risk_path, "Item 1A Risk Factors")
 

@@ -26,9 +26,22 @@ def generate_pdf(result, report_md: str, output_path: str) -> str:
     doc = SimpleDocTemplate(
         output_path, pagesize=A4,
         leftMargin=20*mm, rightMargin=20*mm,
-        topMargin=15*mm, bottomMargin=15*mm,
+        topMargin=15*mm, bottomMargin=25*mm,  # Increased bottom margin for footer
         title=f"{result.ticker} — Stock Analysis Report"
     )
+
+    # ── Footer callback ──
+    def add_footer(canvas, doc):
+        canvas.saveState()
+        canvas.setFont('Helvetica', 7)
+        canvas.setFillColor(HexColor('#8b949e'))
+        footer_text = (
+            "⚠️ Rapport généré automatiquement. Données marquées 'NON DISPONIBLE' = non sourcées. "
+            "Vérifier les sources avant toute décision. Ceci n'est pas un conseil en investissement."
+        )
+        canvas.drawString(20*mm, 12*mm, footer_text)
+        canvas.drawRightString(A4[0] - 20*mm, 12*mm, f"Page {doc.page}")
+        canvas.restoreState()
 
     styles = getSampleStyleSheet()
     story = []
@@ -165,6 +178,27 @@ def generate_pdf(result, report_md: str, output_path: str) -> str:
     story.append(Paragraph(f"Conditions pour renforcer: Amélioration du momentum, pullback de valorisation, guidance positive", small_style))
     story.append(Paragraph(f"Conditions pour vendre: Détérioration des fondamentaux, rupture de moat, risque géopolitique matérialisé", small_style))
 
+    # ── Disclaimer ──
+    story.append(Spacer(1, 20))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=MUTED))
+    story.append(Paragraph("Avertissement", h2_style))
+    story.append(Paragraph(
+        "Ce document est généré automatiquement par le Stock Analysis Pipeline. "
+        "Il ne constitue pas un conseil en investissement, une recommandation d'achat/vente, "
+        "ni une sollicitation. Les données proviennent de sources publiques (SEC EDGAR 10-K/10-Q, "
+        "Yahoo Finance, Finnhub, Seeking Alpha, The Motley Fool) et peuvent contenir des erreurs. "
+        "Toute décision d'investissement relève de votre seule responsabilité.",
+        small_style
+    ))
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(
+        f"Analyse générée le {result.retrieved_at} | Ticker: {result.ticker} | "
+        f"Score: {result.scoring.total}/40 | Décision: {result.decision}",
+        ParagraphStyle('MetaFooter', parent=small_style, fontSize=7)
+    ))
+
+    # Register footer callback
+    doc.onPage = add_footer
     doc.build(story)
     return output_path
 

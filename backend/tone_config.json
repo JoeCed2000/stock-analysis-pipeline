@@ -1,0 +1,221 @@
+{
+  "signals": {
+    "positive": [
+      "\\bgrow(?:th|ing)\\b",
+      "\\bstrong\\b",
+      "\\brecord\\b",
+      "\\bincreas\\w+\\b",
+      "\\bexpand\\w*\\b",
+      "\\bopportunit\\w+\\b",
+      "\\bmomentum\\b",
+      "\\bleader\\w*\\b",
+      "\\baccelerat\\w*\\b",
+      "\\bdemand\\b",
+      "\\boutperform\\w*\\b",
+      "\\bexceed\\w*\\b",
+      "\\bconfiden\\w*\\b",
+      "\\boptimis\\w*\\b",
+      "\\bpositive\\b",
+      "\\bimproving\\b",
+      "\\bfavorab\\w+\\b",
+      "\\bbest-in-class\\b",
+      "\\binnovation\\b",
+      "\\binvest(?:ing|ment)\\b"
+    ],
+    "negative": [
+      "\\bdeclin\\w*\\b",
+      "\\bdecreas\\w+\\b",
+      "\\bchalleng\\w*\\b",
+      "\\bheadwind\\b",
+      "\\buncertain\\w*\\b",
+      "\\bvolatil\\w*\\b",
+      "\\bweak\\b",
+      "\\bpressur\\w*\\b",
+      "\\brisk\\b",
+      "\\bslowdown\\b",
+      "\\bimpair\\w*\\b",
+      "\\bloss\\w*\\b",
+      "\\bdelay\\w*\\b",
+      "\\bdisrupt\\w*\\b",
+      "\\badverse\\b",
+      "\\bnegativ\\w+\\b"
+    ],
+    "defensive": [
+      "\\bcould\\b",
+      "\\bmay\\b",
+      "\\bmight\\b",
+      "\\bpotential\\w*\\b",
+      "\\bpossib\\w+\\b",
+      "\\bhowever\\b",
+      "\\balthough\\b",
+      "\\bwhile\\b",
+      "\\bsubject to\\b",
+      "\\bdepend\\w*\\b",
+      "\\bfluctuat\\w*\\b",
+      "\\bif\\b",
+      "\\bno assurance\\b",
+      "\\bcannot guarantee\\b",
+      "\\bunpredictab\\w+\\b",
+      "\\bunlikely\\b"
+    ],
+    "confidence": [
+      "\\bexpect\\w*\\b",
+      "\\banticipat\\w*\\b",
+      "\\bbelieve\\w*\\b",
+      "\\bconfiden\\w*\\b",
+      "\\bwill\\b",
+      "\\bcommit\\w*\\b",
+      "\\bguidance\\b",
+      "\\boutlook\\b",
+      "\\btarget\\b",
+      "\\bgoal\\b",
+      "\\bplan\\b",
+      "\\bstrateg\\w+\\b",
+      "\\bposition\\w*\\b",
+      "\\bdemonstrat\\w*\\b",
+      "\\btrack record\\b",
+      "\\bwell positioned\\b",
+      "\\bwell-positioned\\b"
+    ],
+    "hedging": [
+      "\\bmay\\b",
+      "\\bmight\\b",
+      "\\bcould\\b",
+      "\\bwould\\b",
+      "\\bpossible\\b",
+      "\\bpotential\\w*\\b",
+      "\\bif\\b",
+      "\\bassum\\w+\\b",
+      "\\bestimat\\w*\\b",
+      "\\bapproximat\\w+\\b",
+      "\\bsubject to\\b",
+      "\\bno assurance\\b",
+      "\\bcannot\\b",
+      "\\buncertain\\b",
+      "\\bunknown\\b",
+      "\\bunclear\\b",
+      "\\bdepend\\b"
+    ]
+  },
+  "thresholds": {
+    "confident_optimistic": "positive > negative * 2 AND confident > hedging",
+    "prudently_optimistic": "positive > negative AND confident >= hedging",
+    "defensive": "negative > positive",
+    "high_confidence": "confident > hedging * 2",
+    "moderate_confidence": "confident > hedging",
+    "low_confidence": "hedging >= confident",
+    "good_visibility": "confident > 3 AND defensive < 3",
+    "limited_visibility": "confident > 1",
+    "poor_visibility": "confident <= 1"
+  },
+  "risks": {
+    "categories": [
+      {
+        "name": "Competition",
+        "keywords": [
+          "competit",
+          "competitor",
+          "competitive pressure"
+        ]
+      },
+      {
+        "name": "Supply Chain",
+        "keywords": [
+          "supply chain",
+          "supplier",
+          "manufacturing",
+          "foundry"
+        ]
+      },
+      {
+        "name": "Customer Concentration",
+        "keywords": [
+          "concentrat",
+          "large customer",
+          "key customer",
+          "depend"
+        ]
+      },
+      {
+        "name": "Regulation",
+        "keywords": [
+          "regulat",
+          "compliance",
+          "government",
+          "legislation",
+          "export control"
+        ]
+      },
+      {
+        "name": "Geopolitical",
+        "keywords": [
+          "geopolit",
+          "china",
+          "trade restriction",
+          "sanction",
+          "tariff"
+        ]
+      },
+      {
+        "name": "Technology",
+        "keywords": [
+          "technolog",
+          "rapid change",
+          "disruption",
+          "innovation"
+        ]
+      },
+      {
+        "name": "Cybersecurity",
+        "keywords": [
+          "cyber",
+          "security breach",
+          "data",
+          "hack"
+        ]
+      },
+      {
+        "name": "Intellectual Property",
+        "keywords": [
+          "intellectual property",
+          "patent",
+          "proprietary"
+        ]
+      },
+      {
+        "name": "Currency/FX",
+        "keywords": [
+          "foreign exchange",
+          "currency",
+          "fx",
+          "exchange rate"
+        ]
+      },
+      {
+        "name": "Litigation",
+        "keywords": [
+          "litigation",
+          "lawsuit",
+          "legal",
+          "proceeding"
+        ]
+      }
+    ]
+  },
+  "risk_severity": {
+    "critical_words": [
+      "material",
+      "significant",
+      "substantial",
+      "critical",
+      "could materially"
+    ],
+    "moderate_words": [
+      "may",
+      "could",
+      "potential",
+      "might",
+      "possible"
+    ]
+  }
+}

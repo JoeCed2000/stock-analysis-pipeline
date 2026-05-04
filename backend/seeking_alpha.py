@@ -84,6 +84,79 @@ def search_earnings_transcript(ticker: str) -> Optional[Dict]:
     return None
 
 
+def fetch_fool_transcript(url: str) -> str:
+    """
+    Fetch and extract the actual transcript text from a Fool.com transcript page.
+    Returns the clean text content or empty string on failure.
+    """
+    import requests
+    try:
+        # Fetch the transcript page
+        resp = requests.get(
+            url,
+            headers={"User-Agent": "StockAnalysisPipeline/1.0"},
+            timeout=15
+        )
+        if resp.status_code != 200:
+            logger.warning(f"Failed to fetch Fool.com transcript: {resp.status_code}")
+            return ""
+
+        # Extract the article content using regex patterns
+        content = resp.text
+        
+        # Try to find the main article content
+        # Look for common article content patterns
+        patterns = [
+            r'<div[^>]*class="[^"]*article-content[^"]*"[^>]*>(.*?)</div>',
+            r'<div[^>]*id="[^"]*article-content[^"]*"[^>]*>(.*?)</div>',
+            r'<div[^>]*class="[^"]*content[^"]*"[^>]*>(.*?)</div>',
+            r'<div[^>]*class="[^"]*article-body[^"]*"[^>]*>(.*?)</div>',
+            r'<div[^>]*class="[^"]*transcript[^"]*"[^>]*>(.*?)</div>',
+            r'<article[^>]*>(.*?)</article>',
+        ]
+        
+        # Try each pattern to extract content
+        for pattern in patterns:
+            match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
+            if match:
+                content_text = match.group(1)
+                # Clean HTML tags
+                clean_text = re.sub(r'<[^>]+>', '', content_text)
+                # Remove extra whitespace
+                clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+                return clean_text
+        
+        # Fallback: if no specific content area found, try to get content from the full page
+        # First try to find the article content section
+        article_match = re.search(r'<article[^>]*>(.*?)</article>', content, re.DOTALL | re.IGNORECASE)
+        if article_match:
+            article_content = article_match.group(1)
+            # Clean HTML tags
+            clean_text = re.sub(r'<[^>]+>', '', article_content)
+            # Remove extra whitespace
+            clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+            return clean_text
+            
+        # If no article tag found, try to get body content
+        body_match = re.search(r'<body[^>]*>(.*?)</body>', content, re.DOTALL | re.IGNORECASE)
+        if body_match:
+            body_content = body_match.group(1)
+            # Clean HTML tags
+            clean_text = re.sub(r'<[^>]+>', '', body_content)
+            # Remove extra whitespace
+            clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+            return clean_text
+            
+        # Last resort: return cleaned version of full content
+        clean_text = re.sub(r'<[^>]+>', '', content)
+        clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+        return clean_text[:2000] if clean_text else ""
+            
+    except Exception as e:
+        logger.warning(f"Failed to fetch/parse Fool.com transcript from {url}: {e}")
+        return ""
+
+
 # Fallback: search for transcripts via web search
 def search_transcript_web(ticker: str) -> List[Dict]:
     """
@@ -100,14 +173,28 @@ def search_transcript_web(ticker: str) -> List[Dict]:
         if resp.status_code == 200 and "transcript" in resp.text.lower():
             # Find transcript links
             links = re.findall(r'href="(/earnings/call-transcripts/[^"]+)"', resp.text)
-            for link in links[:3]:
+            if links:
+                # Get the first link and fetch its transcript text
+                first_link = f"https://www.fool.com{links[0]}"
+                transcript_text = fetch_fool_transcript(first_link)
                 results.append({
                     "title": f"{ticker} Earnings Call Transcript",
-                    "url": f"https://www.fool.com{link}",
+                    "url": first_link,
                     "source": "The Motley Fool",
-                    "free": True
+                    "free": True,
+                    "text": transcript_text[:2000] if transcript_text else ""
                 })
-    except Exception:
+                # Add additional links without text to keep consistent with current behavior
+                for link in links[1:3]:  # Only process a few more links
+                    results.append({
+                        "title": f"{ticker} Earnings Call Transcript",
+                        "url": f"https://www.fool.com{link}",
+                        "source": "The Motley Fool",
+                        "free": True,
+                        "text": ""
+                    })
+    except Exception as e:
+        logger.warning(f"Failed to search Fool.com transcripts: {e}")
         pass
 
     return results

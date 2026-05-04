@@ -1,6 +1,30 @@
 """Management tone analyzer — NLP sentiment on MD&A and risk factor text."""
 import re
+import json
+import os
 from typing import Dict, List, Optional
+
+
+def load_tone_config() -> Dict:
+    """Load tone analysis configuration from tone_config.json, falling back to defaults."""
+    config_path = os.path.join(os.path.dirname(__file__), "tone_config.json")
+    try:
+        with open(config_path, "r") as f:
+            cfg = json.load(f)
+        if not isinstance(cfg, dict) or "signals" not in cfg:
+            raise ValueError("Invalid config structure")
+        return cfg
+    except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to load tone_config.json: {e}, using defaults")
+        return None
+
+
+def _get_signals(config: Dict, category: str, defaults: List[str]) -> List[str]:
+    """Get signal patterns from config or fallback to defaults."""
+    if config and "signals" in config and category in config["signals"]:
+        return config["signals"][category]
+    return defaults
 
 
 def analyze_management_tone(mda_text: str, risk_text: str) -> Dict:
@@ -18,12 +42,15 @@ def analyze_management_tone(mda_text: str, risk_text: str) -> Dict:
             "key_themes": [],
         }
 
+    # Load config (with fallback to hardcoded defaults)
+    cfg = load_tone_config()
+
     # Count sentiment signals
-    positive = _count_matches(mda_text, POSITIVE_SIGNALS)
-    negative = _count_matches(mda_text, NEGATIVE_SIGNALS)
-    defensive = _count_matches(mda_text, DEFENSIVE_SIGNALS)
-    confident = _count_matches(mda_text, CONFIDENCE_SIGNALS)
-    hedging = _count_matches(mda_text, HEDGING_SIGNALS)
+    positive = _count_matches(mda_text, _get_signals(cfg, "positive", POSITIVE_SIGNALS))
+    negative = _count_matches(mda_text, _get_signals(cfg, "negative", NEGATIVE_SIGNALS))
+    defensive = _count_matches(mda_text, _get_signals(cfg, "defensive", DEFENSIVE_SIGNALS))
+    confident = _count_matches(mda_text, _get_signals(cfg, "confidence", CONFIDENCE_SIGNALS))
+    hedging = _count_matches(mda_text, _get_signals(cfg, "hedging", HEDGING_SIGNALS))
 
     # Extract promises and themes
     promises = _extract_promises(mda_text)
