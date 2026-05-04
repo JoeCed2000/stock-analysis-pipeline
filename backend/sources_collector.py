@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 CACHE_DIR = Path(__file__).parent / ".cache"
 CACHE_TTL_SECONDS = 3600  # 1 hour
+CACHE_VERSION = 2  # bump to invalidate old cache entries (v1: Finnhub-only, v2: Finnhub+yfinance merged)
 
 
 def _cache_path(ticker: str) -> Path:
@@ -23,13 +24,17 @@ def _cache_path(ticker: str) -> Path:
 
 
 def _cache_get(ticker: str) -> Optional[Dict[str, Any]]:
-    """Read from cache if still valid."""
+    """Read from cache if still valid and version matches."""
     path = _cache_path(ticker)
     if not path.exists():
         return None
     try:
         with open(path) as f:
             entry = json.load(f)
+        # Version check — bump CACHE_VERSION to invalidate old entries
+        if entry.get("version") != CACHE_VERSION:
+            logger.info(f"Cache VERSION mismatch for {ticker}, ignoring")
+            return None
         age = datetime.now(timezone.utc).timestamp() - entry.get("timestamp", 0)
         if age < CACHE_TTL_SECONDS:
             logger.info(f"Cache HIT for {ticker} (age: {age:.0f}s)")
@@ -41,9 +46,10 @@ def _cache_get(ticker: str) -> Optional[Dict[str, Any]]:
 
 
 def _cache_set(ticker: str, data: Dict[str, Any]) -> None:
-    """Write data to cache."""
+    """Write data to cache with version stamp."""
     try:
         entry = {
+            "version": CACHE_VERSION,
             "timestamp": datetime.now(timezone.utc).timestamp(),
             "data": data,
         }
@@ -70,41 +76,63 @@ def _pct_to_decimal(val) -> Optional[float]:
 
 def get_stock_data(ticker: str) -> Dict[str, Any]:
     """Fetch fundamental + price data. Multi-source chain:
-    1. Finnhub (US equities, 60 calls/min, free)
+    1. Finnhub (US equities, 60 calls/min, free) — price, sector, market cap
     2. Twelve Data (international, 800 calls/day, free — needs TWELVEDATA_API_KEY)
-    3. yfinance (last resort, may fail on shared-IP hosting like Render)
+    3. yfinance — DEEP financials (revenue, net income, FCF) merged in
     Uses file-based cache (TTL 1h) to minimize API calls."""
     # Check cache first
     cached = _cache_get(ticker)
     if cached is not None:
         return cached
 
-    # Try Finnhub (US only)
+    result = None
+
+    # Try Finnhub (US only) — best for price/sector/name
     result = _get_stock_data_finnhub(ticker)
-    if result is not None:
-        _cache_set(ticker, result)
-        return result
+    
+    if result is None:
+        # Try Twelve Data (international)
+        result = _get_stock_data_twelvedata(ticker)
+    
+    if result is None:
+        # Last resort: pure yfinance
+        logger.info(f"Finnhub/Twelve Data unavailable for {ticker}, falling back to yfinance")
+        try:
+            result = get_yahoo_data(ticker)
+            _cache_set(ticker, result)
+            return result
+        except Exception as e:
+            logger.error(f"All sources failed for {ticker}: {e}")
+            raise RuntimeError(
+                f"No data source available for {ticker}. "
+                f"US stocks: set FINNHUB_API_KEY. "
+                f"International: set TWELVEDATA_API_KEY (free at twelvedata.com). "
+                f"Or run analysis locally where yfinance works."
+            )
 
-    # Try Twelve Data (international)
-    result = _get_stock_data_twelvedata(ticker)
-    if result is not None:
-        _cache_set(ticker, result)
-        return result
-
-    # Last resort: yfinance
-    logger.info(f"Finnhub/Twelve Data unavailable for {ticker}, falling back to yfinance")
+    # Merge yfinance deep financials into Finnhub/TwelveData result
+    # Finnhub free tier gives ratios (grossMarginTTM, etc.) but NOT absolute values
+    # yfinance has Income Statement, Balance Sheet, Cash Flow
     try:
-        result = get_yahoo_data(ticker)
-        _cache_set(ticker, result)
-        return result
+        yf_data = get_yahoo_data(ticker)
+        if yf_data:
+            yf_fin = yf_data.get("financials", {})
+            # Only overwrite if Finnhub returned None — preserve Finnhub's ratios
+            for key in ["revenue_quarterly", "revenue_annual", "revenue_annual_growth",
+                        "net_income", "free_cash_flow", "net_debt"]:
+                if result["financials"].get(key) is None:
+                    result["financials"][key] = yf_fin.get(key)
+            # Merge PE ratios if Finnhub didn't have them
+            for key in ["pe_current", "pe_forward", "peg_ratio", "expected_growth",
+                       "beta", "52w_high", "52w_low"]:
+                if result.get(key) is None and yf_data.get(key) is not None:
+                    result[key] = yf_data[key]
+            logger.info(f"YFinance financials merged for {ticker}")
     except Exception as e:
-        logger.error(f"All sources failed for {ticker}: {e}")
-        raise RuntimeError(
-            f"No data source available for {ticker}. "
-            f"US stocks: set FINNHUB_API_KEY. "
-            f"International: set TWELVEDATA_API_KEY (free at twelvedata.com). "
-            f"Or run analysis locally where yfinance works."
-        )
+        logger.warning(f"YFinance merge failed for {ticker} — using Finnhub-only data: {e}")
+
+    _cache_set(ticker, result)
+    return result
 
 
 def _get_stock_data_finnhub(ticker: str) -> Optional[Dict[str, Any]]:
