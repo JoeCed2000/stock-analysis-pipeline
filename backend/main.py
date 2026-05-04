@@ -52,7 +52,7 @@ _batch_jobs: dict = {}
 BATCH_DIR = Path(__file__).parent.parent / "batches"
 BATCH_DIR.mkdir(exist_ok=True)
 
-TICKER_RE = re.compile(r'^[A-Z]{1,5}(?:\.[A-Z]{2})?$')  # AAPL or MC.PA
+TICKER_RE = re.compile(r'^[A-Z]{1,5}(?:\.[A-Z]{1,2})?$')  # AAPL, MC.PA, BRK.B
 ISIN_RE = re.compile(r'^[A-Z]{2}[A-Z0-9]{10}$')  # US0378331005
 
 # Common ISIN → ticker mapping (extensible)
@@ -149,20 +149,14 @@ def _parse_tickers_from_text(text: str) -> List[dict]:
             })
             seen.add(token)
         else:
-            # Try as raw ticker (might be exotic like BRK.B, BF.B)
-            if 2 <= len(token) <= 10 and all(c.isalpha() or c == '.' for c in token):
-                items.append({
-                    "value": token, "type": "TICKER",
-                    "normalized": token, "status": "valid",
-                })
-            else:
-                # Invalid token
-                invalid_count += 1
-                items.append({
-                    "value": token, "type": "UNKNOWN",
-                    "normalized": token, "status": "invalid",
-                    "error": _classify_error(token),
-                })
+            # Strict validation — only exact ticker format accepted
+            # Tickers must be 1-5 uppercase letters (+ optional .X/.XX suffix)
+            invalid_count += 1
+            items.append({
+                "value": token, "type": "UNKNOWN",
+                "normalized": token, "status": "invalid",
+                "error": _classify_error(token),
+            })
             seen.add(token)
 
     return items
