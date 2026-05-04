@@ -112,6 +112,7 @@ class Claim(BaseModel):
     page_or_section: Optional[str] = None
     confidence: str = "high"
     used_in_report: bool = True
+    sha256: Optional[str] = None  # Cryptographic hash of claim+source for verification
 
 
 class AnalysisResult(BaseModel):

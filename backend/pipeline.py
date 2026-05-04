@@ -1,6 +1,7 @@
 """Main pipeline — executes the 9-step analysis for a single ticker."""
 import os
 import json
+import hashlib
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
@@ -40,9 +41,12 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
         return f"C-{claim_id:03d}"
 
     def add_claim(text: str, src: str, file_path: str = "", section: str = ""):
+        claim_id = next_claim()
+        sha = hashlib.sha256(f"{text}|{src}|{file_path}|{section}".encode()).hexdigest()[:16]
         claims.append(Claim(
-            claim_id=next_claim(), claim=text, source_id=src,
-            file_path=file_path, page_or_section=section, confidence="high"
+            claim_id=f"C-{claim_id:03d}", claim=text, source_id=src,
+            file_path=file_path, page_or_section=section, confidence="high",
+            sha256=sha
         ))
 
     # ── Step 1: Identification ──
@@ -69,6 +73,22 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
         "07_final_report",
     ]:
         os.makedirs(os.path.join(output_dir, subdir), exist_ok=True)
+
+    # ── Populate dossiers 01 and 05 with README ──
+    for folder, description in [
+        ("01_official_company_sources",
+         "Sources officielles de l'entreprise : rapports annuels, présentations investisseurs, "
+         "communiqués de presse, lettres aux actionnaires, enregistrements SEC hors 10-K (8-K, DEF 14A)."),
+        ("05_market_and_context",
+         "Contexte de marché : données sectorielles, comparables, rapports d'analystes, "
+         "indicateurs macroéconomiques, actualités du secteur, données de concurrence."),
+    ]:
+        readme_path = os.path.join(output_dir, folder, "README.txt")
+        with open(readme_path, "w") as f:
+            f.write(f"=== {folder} ===\n\n{description}\n\n"
+                    f"Ticker: {ticker}\nDate: {date_str}\n"
+                    "Ce dossier est destiné à recevoir les sources correspondantes.\n")
+        logger.debug(f"README created: {readme_path}")
 
     # Save Yahoo Finance snapshot
     yf_local = os.path.join(output_dir, "03_financial_data_sources", f"yahoo_snapshot_{ticker}.json")

@@ -430,6 +430,14 @@ def extract_10k_sections(ticker: str, output_dir: Optional[str] = None) -> Dict[
             rf = _extract_section(clean_text, "ITEM 1A", "ITEM 2")
         result["risk_factors"] = rf[:5000] if rf else ""
 
+        # Extract Market Risk (Item 7A)
+        mkt_risk = _extract_section(clean_text, "ITEM 7A", "ITEM 8")
+        result["market_risk"] = mkt_risk[:3000] if mkt_risk else ""
+
+        # Extract Financial Statements (Item 8 — raw, not parsed)
+        fin_stmts = _extract_section(clean_text, "ITEM 8", "ITEM 9")
+        result["financial_statements"] = fin_stmts[:8000] if fin_stmts else ""
+
     except Exception as e:
         result["error"] = str(e)
 
