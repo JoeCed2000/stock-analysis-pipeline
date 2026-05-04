@@ -13,7 +13,7 @@ import hashlib
 import time
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile, Header
+from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile, Header, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -434,7 +434,7 @@ async def dossier_download(ticker: str):
 @app.post("/api/dossier/{ticker}/upload")
 async def dossier_upload(
     ticker: str,
-    section: str = None,
+    section: str = Form(...),
     file: UploadFile = FastAPIFile(...),
     x_upload_secret: str = Header(None, alias="X-Upload-Secret"),
 ):

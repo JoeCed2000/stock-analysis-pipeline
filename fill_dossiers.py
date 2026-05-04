@@ -52,7 +52,7 @@ def upload_file(ticker: str, section: str, filepath: Path):
     with open(filepath, "rb") as f:
         resp = requests.post(
             f"{RENDER_BASE}/api/dossier/{ticker}/upload",
-            params={"section": section},
+            data={"section": section},
             files={"file": (filepath.name, f, "application/octet-stream")},
             headers={"X-Upload-Secret": UPLOAD_SECRET},
             timeout=30,
