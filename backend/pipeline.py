@@ -13,6 +13,7 @@ from backend.models import (
 from backend.sources_collector import get_stock_data, get_finnhub_data, get_sec_filings, convert_to_eur
 from backend.scorer import score_ticker
 from backend.excel_generator import generate_excel
+from backend.tenk_pdf import convert_10k_to_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +184,12 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
     s4 = None  # Guard for risk claims loop when 10-K unavailable
 
     if has_10k_text:
+        # Convert 10-K HTML to PDF
+        try:
+            convert_10k_to_pdf(tenk_local, output_dir, ticker)
+        except Exception as e:
+            logger.warning(f"10-K PDF conversion failed: {e}")
+
         s4 = next_src()
         sources.append(Source(
             id=s4, category="sec_or_regulatory_filings",
@@ -208,8 +215,8 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
         add_claim(f"Management confidence: {tone_data.get('confidence', '')}", s4, tenk_local, "Item 7 MD&A")
 
     # ── Transcript search ──
-    from backend.transcript_finder import find_transcripts
-    transcript_data = find_transcripts(ticker, output_dir=output_dir)
+    from backend.transcript_rich import find_transcripts_rich
+    transcript_data = find_transcripts_rich(ticker, output_dir=output_dir)
     if transcript_data.get("found"):
         s_trans = next_src()
         sources.append(Source(
@@ -252,7 +259,7 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
         risk_path = tenk_local if "10-K" in str(risk_source) else (yf_local if yf_local else "")
         add_claim(f"Risk: {risk_cat} ({risk_sev}): {risk_desc[:100]}", risk_src, risk_path, "Item 1A Risk Factors")
 
-    # Finnhub news for context
+    # Finnhub news for context (also saved as readable text in transcripts folder)
     fh = get_finnhub_data(ticker)
     fh_local = ""
     if fh.get("news"):
@@ -271,6 +278,9 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
             retrieved_at=retrieved_at, source_type="news_aggregator",
             publisher="Finnhub", used_for=["risk_context"], reliability="medium"
         ))
+
+        # Save Finnhub news as readable text in transcripts folder
+        _save_news_as_transcript(ticker, output_dir, fh)
 
     # ── Step 6: Valuation ──
     logger.info(f"[{ticker}] Step 6: Valuation")
@@ -421,6 +431,48 @@ def _key_phrase(decision: str, name: str, total: int) -> str:
     if "HOLD fragile" in decision:
         return f"{name} shows mixed signals (score {total}/40) — hold, do not add."
     return f"{name} carries too much risk (score {total}/40) — avoid or sell."
+
+
+def _save_news_as_transcript(ticker: str, output_dir: str, fh_data: Dict) -> None:
+    """Save Finnhub news articles as readable text in transcripts folder."""
+    news = fh_data.get("news", [])
+    if not news:
+        return
+
+    trans_dir = os.path.join(output_dir, "04_transcripts_and_management")
+    os.makedirs(trans_dir, exist_ok=True)
+
+    date_str = datetime.now(PARIS).strftime("%Y%m%d")
+    filename = f"earnings_news_{ticker}_{date_str}.txt"
+    path = os.path.join(trans_dir, filename)
+
+    with open(path, "w") as f:
+        f.write(f"=== {ticker} Recent News & Earnings Context ===\n")
+        f.write(f"Source: Finnhub (last 30 days)\n")
+        f.write(f"Generated: {datetime.now(PARIS).isoformat()}\n")
+        f.write(f"Articles found: {len(news)}\n")
+        f.write(f"{'='*60}\n\n")
+
+        for i, article in enumerate(news[:15], 1):
+            headline = article.get("headline", "No title")
+            summary = article.get("summary", "")
+            source = article.get("source", "Unknown")
+            url = article.get("url", "")
+            date_raw = article.get("datetime", 0)
+            if date_raw:
+                from datetime import datetime as dt
+                article_date = dt.fromtimestamp(date_raw).strftime("%Y-%m-%d %H:%M")
+            else:
+                article_date = "Unknown"
+
+            f.write(f"[{i}] {headline}\n")
+            f.write(f"    Source: {source} | Date: {article_date}\n")
+            f.write(f"    URL: {url}\n")
+            if summary:
+                f.write(f"    Summary: {summary[:500]}\n")
+            f.write("\n")
+
+    logger.info(f"Earnings news saved: {path} ({len(news)} articles)")
 
 
 def _write_output_files(output_dir: str, result: AnalysisResult,
