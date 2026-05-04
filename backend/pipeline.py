@@ -748,3 +748,201 @@ def _decision_rationale(sc: Scoring) -> str:
     if weak:
         parts.append(f"weaknesses: {', '.join(weak)}")
     return ". ".join(parts) if parts else "Balanced profile with no extreme strengths or weaknesses."
+
+
+def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisResult:
+    """
+    Fast-path analysis: returns result in <5s.
+    Skips heavy file I/O (PDF/Excel/10-K conversion) — those run in background.
+    
+    Does:
+      - Stock data (Yahoo Finance)
+      - 10-K text extraction for management + risk scoring
+      - Kimi K2.6 management analysis
+      - Scoring + decision
+      - Output directory creation (empty — filled by background dossier)
+    
+    Returns the AnalysisResult ready for API response.
+    """
+    import hashlib
+    from backend.models import (
+        AnalysisResult, FinancialData, SegmentInfo, ManagementTone,
+        RiskItem, ValuationData, Scoring, Source, Claim
+    )
+    from backend.sources_collector import get_stock_data
+    from backend.scorer import score_ticker
+    
+    retrieved_at = datetime.now(PARIS).isoformat()
+    
+    # ── Step 1: Identification ──
+    logger.info(f"[{ticker}] Fast: Step 1 — stock data")
+    yf_data = get_stock_data(ticker)
+    price_native = yf_data.get("price")
+    company_name = yf_data.get("company_name", ticker)
+    
+    # Compute output directory
+    date_str = datetime.now(PARIS).strftime("%Y-%m-%d")
+    ticker_clean = ticker.replace(".", "_")
+    name_clean = company_name.replace(" ", "_").replace("/", "_")[:40]
+    output_dir = os.path.join(output_base, f"{date_str}_{ticker_clean}_{name_clean}")
+    
+    # Create bare directory structure (files filled by background dossier)
+    for subdir in [
+        "01_official_company_sources",
+        "02_sec_or_regulatory_filings",
+        "03_financial_data_sources",
+        "04_transcripts_and_management",
+        "05_market_and_context",
+        "06_extracted_data",
+        "07_final_report",
+    ]:
+        os.makedirs(os.path.join(output_dir, subdir), exist_ok=True)
+    
+    # ── Financials ──
+    fin = yf_data.get("financials", {})
+    financials = FinancialData(
+        revenue_quarterly=fin.get("revenue_quarterly"),
+        revenue_yoy_growth=fin.get("revenue_yoy_growth"),
+        revenue_annual=fin.get("revenue_annual"),
+        revenue_annual_growth=fin.get("revenue_annual_growth"),
+        gross_margin=fin.get("gross_margin"),
+        operating_margin=fin.get("operating_margin"),
+        net_income=fin.get("net_income"),
+        free_cash_flow=fin.get("free_cash_flow"),
+        net_debt=fin.get("net_debt"),
+        guidance_official=fin.get("guidance_official"),
+    )
+    
+    # ── Segments ──
+    segments = SegmentInfo(
+        primary_segment=yf_data.get("industry") or yf_data.get("sector"),
+        revenue_share_pct=None,
+        segment_growth=None,
+        excessive_dependency="DONNÉE NON DISPONIBLE"
+    )
+    
+    # ── Management discourse (10-K text only, no PDF conversion) ──
+    logger.info(f"[{ticker}] Fast: Management analysis (Kimi K2.6)")
+    from backend.sources_collector import extract_10k_sections
+    from backend.kimi_provider import kimi_analyze_management
+    
+    try:
+        sec_10k = extract_10k_sections(ticker, output_dir=output_dir)
+        mda_text = sec_10k.get("mda", "")
+        risk_text = sec_10k.get("risk_factors", "")
+        has_10k = len(mda_text) > 500
+    except Exception as e:
+        logger.warning(f"[{ticker}] 10-K extraction failed: {e}")
+        mda_text, risk_text, has_10k = "", "", False
+    
+    if has_10k:
+        tone_data = kimi_analyze_management(mda_text, risk_text)
+        management_tone = ManagementTone(
+            tone=tone_data.get("tone", ""),
+            confidence=tone_data.get("confidence", ""),
+            visibility=tone_data.get("visibility", ""),
+            concrete_promises=tone_data.get("concrete_promises", []),
+            defensive_signals=tone_data.get("defensive_signals", []),
+        )
+    else:
+        management_tone = ManagementTone(
+            tone="DONNÉE NON DISPONIBLE",
+            confidence="DONNÉE NON DISPONIBLE",
+            visibility="DONNÉE NON DISPONIBLE",
+            concrete_promises=[], defensive_signals=[],
+        )
+    
+    # ── Risks ──
+    from backend.kimi_provider import kimi_extract_risks
+    if risk_text and len(risk_text) > 500:
+        try:
+            risks_10k = kimi_extract_risks(risk_text)
+        except Exception as e:
+            logger.warning(f"[{ticker}] Kimi risk extraction failed: {e}")
+            risks_10k = []
+    else:
+        risks_10k = []
+    
+    data_risks = _assess_risks(yf_data, {}, ticker)
+    risks = risks_10k + data_risks
+    if not risks:
+        risks = [RiskItem(category="Général", description="Aucun risque majeur identifié", severity="low", source="Analysis")]
+    
+    # ── Valuation ──
+    valuation = ValuationData(
+        pe_current=yf_data.get("pe_current"),
+        pe_forward=yf_data.get("pe_forward"),
+        peg_ratio=yf_data.get("peg_ratio"),
+        expected_growth=yf_data.get("expected_growth"),
+        margin_of_safety=_margin_of_safety_text(yf_data.get("pe_current"), yf_data.get("pe_forward"))
+    )
+    
+    # ── Scoring ──
+    scoring = score_ticker({
+        "financials": fin,
+        "valuation": {
+            "pe_current": yf_data.get("pe_current"),
+            "pe_forward": yf_data.get("pe_forward"),
+            "peg_ratio": yf_data.get("peg_ratio"),
+        },
+        "sector": yf_data.get("sector"),
+        "industry": yf_data.get("industry"),
+        "market_cap": yf_data.get("market_cap"),
+        "price": yf_data.get("price"),
+        "52w_high": yf_data.get("52w_high"),
+    }, tone_data=tone_data if has_10k else None)
+    
+    # ── Decision ──
+    decision = scoring.decision()
+    conviction = _conviction_text(scoring)
+    
+    # ── Build result ──
+    result = AnalysisResult(
+        ticker=ticker,
+        company_name=company_name,
+        retrieved_at=retrieved_at,
+        price_native=price_native,
+        price_eur=convert_to_eur(price_native) if price_native else None,
+        currency=yf_data.get("currency", "USD"),
+        market_cap=yf_data.get("market_cap"),
+        sector=yf_data.get("sector"),
+        financials=financials,
+        segments=segments,
+        management_tone=management_tone,
+        risks=risks,
+        valuation=valuation,
+        scoring=scoring,
+        decision=decision,
+        conviction=conviction,
+        key_phrase=_key_phrase(decision, company_name, scoring.total),
+        report_path=os.path.join(output_dir, "07_final_report", "report.md"),
+        sources_manifest_path=os.path.join(output_dir, "06_extracted_data", "sources_manifest.json"),
+    )
+    
+    # Save Yahoo Finance snapshot (lightweight)
+    try:
+        yf_local = os.path.join(output_dir, "03_financial_data_sources", f"yahoo_snapshot_{ticker}.json")
+        with open(yf_local, "w") as f:
+            json.dump(yf_data, f, indent=2, default=str)
+    except Exception:
+        pass
+    
+    # Save Finnhub news (lightweight)
+    try:
+        from backend.sources_collector import get_finnhub_data
+        fh = get_finnhub_data(ticker)
+        if fh.get("news"):
+            fh_local = os.path.join(output_dir, "03_financial_data_sources", f"finnhub_{ticker}.json")
+            with open(fh_local, "w") as f:
+                json.dump(fh, f, indent=2, default=str)
+    except Exception:
+        pass
+    
+    # ── Spawn background dossier generation ──
+    try:
+        from backend.async_dossier import generate_dossier_background
+        generate_dossier_background(ticker, company_name, yf_data, result, output_dir)
+    except Exception as e:
+        logger.warning(f"[{ticker}] Background dossier spawn failed: {e}")
+    
+    return result

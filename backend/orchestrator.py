@@ -5,7 +5,7 @@ import logging
 from typing import List, Dict, Any
 
 from backend.models import AnalysisResult
-from backend.pipeline import analyze_ticker
+from backend.pipeline import analyze_ticker, analyze_ticker_fast
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +17,8 @@ def run_analysis_sequential(tickers: List[str], output_base: str = "analyses") -
 
     for ticker in tickers:
         try:
-            logger.info(f"Analyzing {ticker}...")
-            result = analyze_ticker(ticker, output_base=output_base)
+            logger.info(f"Analyzing {ticker} (fast)...")
+            result = analyze_ticker_fast(ticker, output_base=output_base)
             results[ticker] = result
             logger.info(f"{ticker}: {result.decision} ({result.scoring.total}/40)")
         except Exception as e:

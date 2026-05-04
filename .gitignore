@@ -37,6 +37,7 @@ logs/
 
 token_github.txt
 token.txt
+NVIDIA.txt
 COMMANDS.md
 .cache/
 *.srt

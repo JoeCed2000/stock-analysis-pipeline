@@ -381,6 +381,47 @@ async def debug_sources():
     }
 
 
+@app.get("/api/dossier/{ticker}/status")
+async def dossier_status(ticker: str):
+    """Check if the full dossier (PDF, Excel, 10-K) is ready for a ticker.
+    Returns {ready: bool, files: [...], stage: str}."""
+    from backend.async_dossier import get_dossier_status
+    status = get_dossier_status(ticker)
+    return JSONResponse(status)
+
+
+@app.get("/api/dossier/{ticker}/download")
+async def dossier_download(ticker: str):
+    """Download the complete dossier as ZIP. Returns 503 if not ready."""
+    from backend.async_dossier import get_dossier_status
+    status = get_dossier_status(ticker)
+    if not status.get("ready"):
+        raise HTTPException(
+            status_code=503,
+            detail=f"Dossier not ready — stage: {status.get('stage', 'unknown')}"
+        )
+    
+    ticker_clean = ticker.replace(".", "_")
+    matches = sorted(ANALYSES_DIR.glob(f"*_{ticker_clean}_*"), reverse=True)
+    if not matches:
+        raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
+    
+    analysis_dir = matches[0]
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for fpath in sorted(analysis_dir.rglob("*")):
+            if fpath.is_file():
+                arcname = fpath.relative_to(analysis_dir)
+                zf.write(fpath, arcname)
+    
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={ticker}_dossier.zip"},
+    )
+
+
 @app.post("/api/analyze")
 async def analyze(request: TickerRequest):
     """Submit tickers for analysis. Runs sequentially, returns results immediately."""
