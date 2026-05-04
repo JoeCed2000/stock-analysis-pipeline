@@ -104,7 +104,6 @@ export default function AnalysisCard({ result, onViewReport }) {
         <div style={{
           padding: '3px 8px', borderRadius: 5, fontSize: 10, fontWeight: 800,
           background: color, color: '#fff',
-          boxShadow: `0 0 10px ${color}40`,
           letterSpacing: 0.5,
         }}>
           {decision}
@@ -160,7 +159,7 @@ export default function AnalysisCard({ result, onViewReport }) {
       {/* ── ACTIONS ── */}
       <div style={{ padding: '8px 14px 6px', display: 'flex', gap: 6 }}>
         <button
-          onClick={() => onViewReport(ticker, scoring)}
+          onClick={() => onViewReport(result)}
           style={{
             flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500,
             background: '#21262d', border: '1px solid #30363d',

@@ -15,14 +15,12 @@ export default function App() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [reportTicker, setReportTicker] = useState(null);
-  const [reportScoring, setReportScoring] = useState(null);
+  const [reportResult, setReportResult] = useState(null);
   const [progress, setProgress] = useState({ current: 0, total: 0, ticker: '' });
   const progressRef = useRef(null);
 
-  const handleViewReport = (ticker, scoring) => {
-    setReportTicker(ticker);
-    setReportScoring(scoring || null);
+  const handleViewReport = (result) => {
+    setReportResult(result);
   };
 
   const handleAnalyze = async (tickers) => {
@@ -170,8 +168,8 @@ export default function App() {
         </div>
       )}
 
-      {reportTicker && (
-        <ReportView ticker={reportTicker} scoring={reportScoring} onClose={() => { setReportTicker(null); setReportScoring(null); }} />
+      {reportResult && (
+        <ReportView ticker={reportResult.ticker} result={reportResult} onClose={() => setReportResult(null)} />
       )}
 
       <style>{`
