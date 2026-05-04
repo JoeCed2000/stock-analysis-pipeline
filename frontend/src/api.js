@@ -63,5 +63,5 @@ export function getBatchDownloadUrl(jobId) {
 }
 
 export function getTickerDownloadUrl(ticker) {
-  return `${API_BASE}/analyze/${ticker}/download`;
+  return `${API_BASE}/dossier/${ticker}/download`;
 }
