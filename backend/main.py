@@ -13,7 +13,7 @@ import hashlib
 import time
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile, Header, Form, Request
+from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile, Header, Form, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -677,6 +677,7 @@ async def get_traceability(ticker: str):
 @app.post("/api/cache/financials/{ticker}")
 async def cache_financials(
     ticker: str,
+    body: dict = Body(...),
     x_upload_secret: str = Header(None, alias="X-Upload-Secret"),
 ):
     """Upload yfinance financial data from local machine (lapced).
@@ -693,7 +694,6 @@ async def cache_financials(
     if not x_upload_secret or x_upload_secret != upload_secret:
         raise HTTPException(status_code=403, detail="Invalid or missing upload secret")
     
-    body = await request.json()
     if not body or not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="Invalid JSON body")
     
