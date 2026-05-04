@@ -320,6 +320,30 @@ async def batch_download(job_id: str):
     )
 
 
+@app.get("/api/analyze/{ticker}/download")
+async def ticker_download(ticker: str):
+    """Download all documents for a single ticker as a ZIP file."""
+    ticker_clean = ticker.replace(".", "_")
+    matches = sorted(ANALYSES_DIR.glob(f"*_{ticker_clean}_*"), reverse=True)
+    if not matches:
+        raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
+
+    analysis_dir = matches[0]
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for fpath in sorted(analysis_dir.rglob("*")):
+            if fpath.is_file():
+                arcname = fpath.relative_to(analysis_dir)
+                zf.write(fpath, arcname)
+
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={ticker}_analysis.zip"},
+    )
+
+
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "service": "stock-analysis-pipeline"}

@@ -1,4 +1,4 @@
-import { getReport } from '../api.js';
+import { getReport, getTickerDownloadUrl } from '../api.js';
 import { Fragment } from 'react';
 import ScoringChart from './ScoringChart.jsx';
 
@@ -82,7 +82,7 @@ export default function AnalysisCard({ result, onViewReport }) {
       </div>
 
       {/* Scoring chart */}
-      <div style={{ marginTop: 12, borderTop: '1px solid #30363d', paddingTop: 10 }}>
+      <div style={{ marginTop: 12, borderTop: '1px solid #30363d', paddingTop: 10, marginBottom: 40 }}>
         <ScoringChart scoring={scoring} height={140} />
       </div>
 
@@ -98,6 +98,22 @@ export default function AnalysisCard({ result, onViewReport }) {
       >
         📄 View full report
       </button>
+
+      {/* Download documents button */}
+      <a
+        href={getTickerDownloadUrl(ticker)}
+        download
+        style={{
+          marginTop: 6, width: '100%', padding: '6px 0',
+          background: '#21262d', border: '1px solid #30363d',
+          borderRadius: 4, color: '#8b949e', fontSize: 12,
+          cursor: 'pointer', textDecoration: 'none',
+          display: 'inline-block', textAlign: 'center',
+          boxSizing: 'border-box',
+        }}
+      >
+        📥 Download documents
+      </a>
 
       <div style={{ marginTop: 4, fontSize: 11, color: '#484f58', textAlign: 'center' }}>
         Conviction: {conviction}
