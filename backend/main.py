@@ -70,26 +70,12 @@ def _get_yf():
 
 
 def _ticker_exists(ticker: str) -> bool:
-    """Check if ticker exists on Yahoo Finance.
-    Returns True if ticker exists OR if we can't validate (rate-limited).
-    Returns False ONLY if yfinance explicitly returns empty/error for a ticker
-    that should have data — but this is rare; almost always returns True on Render.
+    """Check if ticker format is valid.
+    Network validation (yfinance) is DISABLED — too slow (1-3s per ticker).
+    Invalid tickers are caught during analysis when Yahoo Finance returns no data.
+    For batch validation speed, see fill_dossiers.py --scrape-tickers option.
     """
-    yf = _get_yf()
-    if not yf:
-        return True  # Can't validate — don't block
-    try:
-        info = yf.Ticker(ticker).info
-        # Count non-None fields as a proxy for data richness
-        meaningful = sum(1 for v in info.values() if v is not None)
-        if meaningful <= 3:
-            # Too sparse to validate — likely rate-limited. Allow the ticker.
-            return True
-        # Has rich data — check for actual company name
-        has_name = bool(info.get('shortName') or info.get('longName'))
-        return has_name
-    except Exception:
-        return True  # Can't validate — don't block
+    return True  # Always pass format check — analysis catches real invalid tickers
 
 # Common ISIN → ticker mapping (extensible)
 ISIN_TO_TICKER = {
