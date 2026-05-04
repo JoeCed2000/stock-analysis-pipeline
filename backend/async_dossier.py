@@ -33,10 +33,15 @@ def get_dossier_status(ticker: str) -> dict:
     """Check if dossier is ready for a ticker. Returns {ready, files, error}."""
     ticker_clean = ticker.replace(".", "_").upper()
     
-    # Check in-memory registry first
+    # Check in-memory registry first — but only if complete or failed
+    # NEVER return "generating" from cache — the thread might have crashed
+    # and files may already exist on disk (written by analyze_ticker_fast)
     with _registry_lock:
         if ticker_clean in _dossier_registry:
-            return _dossier_registry[ticker_clean]
+            cached = _dossier_registry[ticker_clean]
+            if cached.get("stage") in ("complete", "failed"):
+                return cached
+            # If "generating", fall through to disk check
     
     # Check on disk
     analyses_dir = Path("analyses")
