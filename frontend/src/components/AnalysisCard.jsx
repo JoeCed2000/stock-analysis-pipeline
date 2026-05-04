@@ -55,14 +55,16 @@ export default function AnalysisCard({ result, onViewReport }) {
 
   useEffect(() => {
     let cancelled = false;
+    let poles = 0;
     const poll = async () => {
       try {
         const status = await getDossierStatus(ticker);
         if (!cancelled) {
+          poles++;
           const sectionCount = countDossierSections(status.files || []);
-          setDossierStatus({ ...status, sectionsReady: sectionCount });
-          // Stop polling when all 7 sections are ready
-          if (status.ready && sectionCount >= 7) {
+          setDossierStatus({ ...status, sectionsReady: sectionCount, poles });
+          // Stop polling when dossier is ready OR after 30 poles (150s timeout)
+          if (status.ready || poles >= 30) {
             clearInterval(pollRef.current);
             pollRef.current = null;
           }
@@ -185,7 +187,7 @@ export default function AnalysisCard({ result, onViewReport }) {
             onMouseEnter={e => e.target.style.background = '#30363d'}
             onMouseLeave={e => e.target.style.background = '#21262d'}
           >
-            📥 Download
+            📥 Download ({dossierStatus?.sectionsReady ?? '?'}/7)
           </a>
         ) : (
           <div style={{
@@ -193,7 +195,7 @@ export default function AnalysisCard({ result, onViewReport }) {
             background: '#161b22', border: '1px solid #30363d',
             borderRadius: 5, color: '#8b949e', textAlign: 'center',
           }}>
-            📊 Building dossier… {dossierStatus?.sectionsReady ?? '?'}/7
+            📊 Building dossier… {dossierStatus?.sectionsReady ?? '?'}/7 · ~20s
           </div>
         )}
       </div>
