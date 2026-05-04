@@ -706,13 +706,14 @@ async def cache_financials(
     if not body or not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="Invalid JSON body")
     
-    # Write to file cache — same format as _cache_set in sources_collector.py
+    # Write to yfinance cache — separate from main stock cache
+    # Main cache (get_stock_data) is Finnhub+yfinance merged
+    # This cache is yfinance-only, used as merge fallback when get_yahoo_data() is blocked
     cache_dir = Path("backend/.cache")
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_path = cache_dir / f"{ticker.upper()}.json"
+    cache_path = cache_dir / f"{ticker.upper()}_yf.json"
     
     entry = {
-        "version": 2,  # CACHE_VERSION from sources_collector.py
         "timestamp": datetime.now(timezone.utc).timestamp(),
         "data": body,
     }

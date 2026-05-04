@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 CACHE_DIR = Path(__file__).parent / ".cache"
 CACHE_TTL_SECONDS = 3600  # 1 hour
 CACHE_VERSION = 2  # bump to invalidate old cache entries (v1: Finnhub-only, v2: Finnhub+yfinance merged)
+YF_CACHE_TTL = 600  # 10 min — yfinance data pushed by cron (refreshed every 2 min)
 
 
 def _cache_path(ticker: str) -> Path:
@@ -58,6 +59,33 @@ def _cache_set(ticker: str, data: Dict[str, Any]) -> None:
         logger.info(f"Cache SET for {ticker}")
     except Exception:
         pass
+
+# ---------------------------------------------------------------------------
+# YFinance cache — populated by cron (fill_dossiers.py) every 2 min
+# Separate from main stock cache to avoid overwriting Finnhub-merged data
+# ---------------------------------------------------------------------------
+
+def _cache_path_yf(ticker: str) -> Path:
+    """Get yfinance-only cache file path for a ticker."""
+    CACHE_DIR.mkdir(exist_ok=True)
+    return CACHE_DIR / f"{ticker.upper()}_yf.json"
+
+def _cache_get_yf(ticker: str) -> Optional[Dict[str, Any]]:
+    """Read yfinance-only data pushed by cron. Short TTL (10 min)."""
+    path = _cache_path_yf(ticker)
+    if not path.exists():
+        return None
+    try:
+        with open(path) as f:
+            entry = json.load(f)
+        age = datetime.now(timezone.utc).timestamp() - entry.get("timestamp", 0)
+        if age < YF_CACHE_TTL:
+            logger.info(f"YF Cache HIT for {ticker} (age: {age:.0f}s)")
+            return entry.get("data") if "data" in entry else entry
+        logger.info(f"YF Cache EXPIRED for {ticker} (age: {age:.0f}s)")
+    except Exception as e:
+        logger.warning(f"YF Cache read error for {ticker}: {e}")
+    return None
 
 # ---------------------------------------------------------------------------
 # Unified stock data — Finnhub → Twelve Data → yfinance
@@ -112,9 +140,14 @@ def get_stock_data(ticker: str) -> Dict[str, Any]:
 
     # Merge yfinance deep financials into Finnhub/TwelveData result
     # Finnhub free tier gives ratios (grossMarginTTM, etc.) but NOT absolute values
-    # yfinance has Income Statement, Balance Sheet, Cash Flow
+    # yfinance has Income Statement, Balance Sheet, Cash Flow — blocked on Render IP
+    # Fallback: check cron-pushed yfinance cache (fill_dossiers.py every 2 min)
     try:
         yf_data = get_yahoo_data(ticker)
+        if not yf_data:
+            yf_data = _cache_get_yf(ticker)
+            if yf_data:
+                logger.info(f"Using cron-pushed yfinance data for {ticker}")
         if yf_data:
             yf_fin = yf_data.get("financials", {})
             # Only overwrite if Finnhub returned None — preserve Finnhub's ratios
