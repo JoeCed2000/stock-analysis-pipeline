@@ -33,7 +33,7 @@ export default function ReportView({ ticker, scoring, onClose }) {
           padding: '12px 16px', borderBottom: '1px solid #30363d',
         }}>
           <span style={{ fontSize: 16, fontWeight: 700, color: '#e1e4e8' }}>
-            📊 {ticker} — Rapport d'analyse
+            📊 {ticker} — Analysis Report
           </span>
           <button
             onClick={onClose}
@@ -59,7 +59,7 @@ export default function ReportView({ ticker, scoring, onClose }) {
           fontFamily: 'monospace', fontSize: 13, lineHeight: 1.6,
           color: '#e1e4e8', whiteSpace: 'pre-wrap',
         }}>
-          {loading ? '⏳ Chargement du rapport...' : (report || 'Rapport non disponible')}
+          {loading ? '⏳ Loading report...' : (report || 'Report not available')}
         </div>
       </div>
     </div>

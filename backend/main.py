@@ -78,10 +78,36 @@ ISIN_TO_TICKER = {
 }
 
 
+def _isin_checksum(isin: str) -> bool:
+    """Validate ISIN checksum (ISO 6166)."""
+    if not ISIN_RE.match(isin):
+        return False
+    # Convert letters to numbers: A=10, B=11, ..., Z=35
+    digits = []
+    for c in isin:
+        if c.isdigit():
+            digits.append(int(c))
+        elif c.isalpha():
+            n = ord(c) - 55  # A=10, B=11, ...
+            digits.extend([n // 10, n % 10])
+        else:
+            return False
+    # Double every second digit from the right
+    for i in range(len(digits) - 2, -1, -2):
+        d = digits[i] * 2
+        if d > 9:
+            d -= 9
+        digits[i] = d
+    return sum(digits) % 10 == 0
+
+
 def _parse_tickers_from_text(text: str) -> List[dict]:
-    """Parse text into list of {value, type, normalized} items."""
+    """Parse text into list of {value, type, normalized, status, error} items.
+    Invalid tokens are flagged with status='invalid' and an error message.
+    """
     items = []
     seen = set()
+    invalid_count = 0
 
     # Split by newlines, commas, semicolons, spaces
     tokens = re.split(r'[\n,;\s]+', text.strip())
@@ -93,32 +119,65 @@ def _parse_tickers_from_text(text: str) -> List[dict]:
         if token in seen:
             continue
 
+        # ISIN with checksum validation
         if ISIN_RE.match(token):
-            ticker = ISIN_TO_TICKER.get(token, token)
-            items.append({
-                "value": token,
-                "type": "ISIN",
-                "normalized": ticker,
-            })
+            if _isin_checksum(token):
+                ticker = ISIN_TO_TICKER.get(token, None)
+                if ticker:
+                    items.append({
+                        "value": token, "type": "ISIN",
+                        "normalized": ticker, "status": "valid",
+                    })
+                else:
+                    items.append({
+                        "value": token, "type": "ISIN",
+                        "normalized": token, "status": "valid",
+                    })
+            else:
+                items.append({
+                    "value": token, "type": "ISIN",
+                    "normalized": token, "status": "invalid",
+                    "error": "Invalid ISIN checksum",
+                })
             seen.add(token)
         elif TICKER_RE.match(token):
             items.append({
-                "value": token,
-                "type": "TICKER",
-                "normalized": token,
+                "value": token, "type": "TICKER",
+                "normalized": token, "status": "valid",
             })
             seen.add(token)
         else:
-            # Try as raw ticker anyway (might be exotic)
-            if 1 <= len(token) <= 10 and token.replace('.', '').isalpha():
+            # Try as raw ticker (might be exotic like BRK.B, BF.B)
+            if 2 <= len(token) <= 10 and all(c.isalpha() or c == '.' for c in token):
                 items.append({
-                    "value": token,
-                    "type": "TICKER",
-                    "normalized": token,
+                    "value": token, "type": "TICKER",
+                    "normalized": token, "status": "valid",
                 })
-                seen.add(token)
+            else:
+                # Invalid token
+                invalid_count += 1
+                items.append({
+                    "value": token, "type": "UNKNOWN",
+                    "normalized": token, "status": "invalid",
+                    "error": _classify_error(token),
+                })
+            seen.add(token)
 
     return items
+
+
+def _classify_error(token: str) -> str:
+    """Classify why a token is invalid."""
+    if len(token) < 2:
+        return "Too short — minimum 2 characters"
+    if len(token) > 10:
+        return "Too long — maximum 10 characters"
+    digits = sum(1 for c in token if c.isdigit())
+    if digits > 0 and digits < len(token):
+        return "Mixed letters/numbers — not a valid ticker or ISIN"
+    if any(not c.isalnum() and c != '.' for c in token):
+        return "Contains special characters"
+    return "Not a recognized format"
 
 
 @app.post("/api/batch/upload")

@@ -4,7 +4,7 @@ const PRESETS = [
   { label: 'NVDA', tickers: 'NVDA' },
   { label: 'NVDA+MSFT', tickers: 'NVDA,MSFT' },
   { label: 'FAANG', tickers: 'AAPL,MSFT,NVDA,GOOGL,META' },
-  { label: '5 test', tickers: 'NVDA,MSFT,ASML,MC.PA,AAPL' },
+  { label: '5 tickers', tickers: 'NVDA,MSFT,ASML,MC.PA,AAPL' },
 ];
 
 export default function TickerInput({ onAnalyze, loading }) {
@@ -29,7 +29,7 @@ export default function TickerInput({ onAnalyze, loading }) {
           type="text"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="Tickers (ex: NVDA,MSFT,AAPL)"
+          placeholder="Tickers (e.g. NVDA,MSFT,AAPL)"
           disabled={loading}
           style={{
             flex: 1, padding: '10px 14px', fontSize: 15,
@@ -47,7 +47,7 @@ export default function TickerInput({ onAnalyze, loading }) {
             cursor: loading ? 'not-allowed' : 'pointer',
           }}
         >
-          {loading ? '⏳ Analyse...' : '🔍 Analyser'}
+          {loading ? '⏳ Running...' : '🔍 Analyze'}
         </button>
       </form>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

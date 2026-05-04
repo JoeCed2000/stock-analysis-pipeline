@@ -56,7 +56,7 @@ export default function AnalysisCard({ result, onViewReport }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: 13 }}>
         {price_native && (
           <>
-            <span style={{ color: '#8b949e' }}>Prix</span>
+            <span style={{ color: '#8b949e' }}>Price</span>
             <span style={{ color: '#e1e4e8', textAlign: 'right' }}>{price_native.toFixed(2)} {currency}</span>
           </>
         )}
@@ -68,13 +68,13 @@ export default function AnalysisCard({ result, onViewReport }) {
         )}
         {market_cap && (
           <>
-            <span style={{ color: '#8b949e' }}>Capi</span>
+            <span style={{ color: '#8b949e' }}>Mkt Cap</span>
             <span style={{ color: '#e1e4e8', textAlign: 'right' }}>{(market_cap / 1e12).toFixed(2)}T</span>
           </>
         )}
         {sector && (
           <>
-            <span style={{ color: '#8b949e' }}>Secteur</span>
+            <span style={{ color: '#8b949e' }}>Sector</span>
             <span style={{ color: '#e1e4e8', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sector}</span>
           </>
         )}
@@ -95,7 +95,7 @@ export default function AnalysisCard({ result, onViewReport }) {
           cursor: 'pointer',
         }}
       >
-        📄 Voir le rapport complet
+        📄 View full report
       </button>
 
       <div style={{ marginTop: 4, fontSize: 11, color: '#484f58', textAlign: 'center' }}>

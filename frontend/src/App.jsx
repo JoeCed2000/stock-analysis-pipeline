@@ -6,7 +6,7 @@ import ReportView from './components/ReportView.jsx';
 import { analyzeTickers } from './api.js';
 
 export default function App() {
-  const [mode, setMode] = useState('single'); // 'single' | 'batch'
+  const [mode, setMode] = useState('single');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -25,7 +25,7 @@ export default function App() {
     try {
       const data = await analyzeTickers(tickers);
       if (data.errors?.length > 0) {
-        setError(`Erreurs: ${data.errors.join(', ')}`);
+        setError(`Errors: ${data.errors.join(', ')}`);
       }
       setResults(data.results || []);
     } catch (e) {
@@ -43,7 +43,7 @@ export default function App() {
           📈 Stock Analysis Pipeline
         </h1>
         <p style={{ fontSize: 13, color: '#8b949e', marginBottom: 16 }}>
-          Analyse fondamentale automatisée — BUY / HOLD / SELL basé sur 8 critères
+          Automated fundamental analysis — BUY / HOLD / SELL based on 8 criteria
         </p>
 
         {/* Mode tabs */}
@@ -58,7 +58,7 @@ export default function App() {
               transition: 'all 0.15s',
             }}
           >
-            🔍 Analyse rapide
+            🔍 Quick Analysis
           </button>
           <button
             onClick={() => { setMode('batch'); setResults([]); setError(null); }}
@@ -97,7 +97,7 @@ export default function App() {
 
       {loading && mode === 'single' && (
         <div style={{ textAlign: 'center', padding: 40, color: '#8b949e' }}>
-          ⏳ Analyse en cours... (peut prendre 30-60s par ticker)
+          ⏳ Running analysis... (~30-60s per ticker)
         </div>
       )}
 
