@@ -640,17 +640,20 @@ async def analyze(request: TickerRequest):
         r = result.model_dump()
         # Include financials summary for frontend display
         fin = r.get("financials", {})
+        val = r.get("valuation", {})
         r["financial_summary"] = {
             "revenue_annual": fin.get("revenue_annual"),
             "net_income": fin.get("net_income"),
             "free_cash_flow": fin.get("free_cash_flow"),
             "gross_margin": fin.get("gross_margin"),
             "operating_margin": fin.get("operating_margin"),
+            "pe_current": val.get("pe_current"),
+            "pe_forward": val.get("pe_forward"),
         }
         r.pop("financials", None)  # keep only summary to reduce payload
         r.pop("management_tone", None)
         r.pop("segments", None)
-        r.pop("valuation", None)
+        r.pop("valuation", None)  # PE ratios now in financial_summary
         # Include computed total (Pydantic doesn't serialize @property)
         if "scoring" in r and isinstance(r["scoring"], dict):
             r["scoring"]["total"] = result.scoring.total
