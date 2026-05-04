@@ -23,7 +23,7 @@ def fetch_transcript(ticker: str, quarter: Optional[str] = None) -> Optional[Dic
     
     Args:
         ticker: Stock symbol (e.g., NVDA, MSFT, AAPL)
-        quarter: Optional quarter filter (e.g., '2025Q4'). If None, returns latest.
+        quarter: Optional quarter filter (e.g., '2025Q4'). If None, tries current + previous.
     
     Returns:
         {
@@ -50,81 +50,105 @@ def fetch_transcript(ticker: str, quarter: Optional[str] = None) -> Optional[Dic
     }
     if quarter:
         params["quarter"] = quarter
-
-    try:
-        resp = requests.get(AV_BASE, params=params, timeout=15)
-        if resp.status_code != 200:
-            logger.warning(f"Alpha Vantage HTTP {resp.status_code} for {ticker}")
+    
+    def _do_call(p: dict) -> Optional[Dict]:
+        try:
+            resp = requests.get(AV_BASE, params=p, timeout=15)
+            if resp.status_code != 200:
+                return None
+            return resp.json()
+        except requests.RequestException:
             return None
 
-        data = resp.json()
+    data = _do_call(params)
+    
+    # If no quarter specified and response is empty, try recent quarters
+    if not quarter and data:
+        transcript_val = data.get("transcript", data.get("content", ""))
+        is_empty = (isinstance(transcript_val, list) and len(transcript_val) == 0) or \
+                   (isinstance(transcript_val, str) and len(transcript_val.strip()) < 100)
+        if is_empty:
+            from datetime import datetime
+            now = datetime.now()
+            current_q = f"{now.year}Q{(now.month - 1) // 3 + 1}"
+            prev_q = f"{now.year - 1}Q4" if now.month <= 3 else f"{now.year}Q{(now.month - 4) // 3 + 1}"
+            for q in [current_q, prev_q]:
+                params["quarter"] = q
+                data = _do_call(params)
+                if data:
+                    t = data.get("transcript", data.get("content", ""))
+                    if isinstance(t, list) and len(t) > 0:
+                        break
+                    if isinstance(t, str) and len(t.strip()) >= 100:
+                        break
 
-        # Check for rate limit or error messages
-        if "Information" in data:
-            logger.warning(f"Alpha Vantage rate limit: {data['Information'][:100]}")
-            return None
-        if "Error Message" in data:
-            logger.warning(f"Alpha Vantage error for {ticker}: {data['Error Message']}")
-            return None
+    if not data:
+        return None
 
-        # The API returns different formats:
-        # - Newer format: {"data": [{"content": "...", ...}]}
-        # - Older format: {"symbol": "...", "quarter": "...", "transcript": [...]}
-        # - String format: {"symbol": "...", "content": "..."}
-        
-        transcripts = data.get("data", [])
-        
-        # Single-object format (no "data" wrapper)
-        if not transcripts and "symbol" in data:
-            transcripts = [data]
+    # Check for rate limit or error messages
+    if "Information" in data:
+        logger.warning(f"Alpha Vantage rate limit: {data['Information'][:100]}")
+        return None
+    if "Error Message" in data:
+        logger.warning(f"Alpha Vantage error for {ticker}: {data['Error Message']}")
+        return None
 
-        if not transcripts:
-            logger.info(f"No transcripts found for {ticker} on Alpha Vantage")
-            return None
+    # The API returns different formats:
+    # - Newer format: {"data": [{"content": "...", ...}]}
+    # - Older format: {"symbol": "...", "quarter": "...", "transcript": [...]}
+    # - String format: {"symbol": "...", "content": "..."}
+    
+    transcripts = data.get("data", [])
+    
+    # Single-object format (no "data" wrapper)
+    if not transcripts and "symbol" in data:
+        transcripts = [data]
 
-        # Take the latest transcript
-        latest = transcripts[0]
-        
-        # Extract content from various possible fields
-        content = latest.get("content", "")
-        if not content:
-            transcript_val = latest.get("transcript", "")
-            if isinstance(transcript_val, list):
-                # Array of speaker segments — join them
-                parts = []
-                for seg in transcript_val:
-                    if isinstance(seg, dict):
-                        speaker = seg.get("speaker", "")
-                        text = seg.get("text", seg.get("content", ""))
-                        if text:
-                            parts.append(f"{speaker}: {text}" if speaker else text)
-                    elif isinstance(seg, str):
-                        parts.append(seg)
-                content = "\n".join(parts)
-            elif isinstance(transcript_val, str):
-                content = transcript_val
+    if not transcripts:
+        logger.info(f"No transcripts found for {ticker} on Alpha Vantage")
+        return None
 
-        if not content or len(content.strip()) < 100:
-            logger.warning(f"Alpha Vantage transcript for {ticker} too short or empty "
-                          f"(len={len(content)}, keys={list(latest.keys())})")
-            return None
+    # Take the latest transcript
+    latest = transcripts[0]
+    
+    # Extract content from various possible fields
+    content = latest.get("content", "")
+    if not content:
+        transcript_val = latest.get("transcript", "")
+        if isinstance(transcript_val, list):
+            # Array of speaker segments — join them
+            parts = []
+            for seg in transcript_val:
+                if isinstance(seg, dict):
+                    speaker = seg.get("speaker", "")
+                    title = seg.get("title", "")
+                    text = seg.get("content", seg.get("text", ""))
+                    if text:
+                        prefix = f"[{speaker}"
+                        if title:
+                            prefix += f", {title}"
+                        prefix += "] "
+                        parts.append(f"{prefix}{text}")
+                elif isinstance(seg, str):
+                    parts.append(seg)
+            content = "\n".join(parts)
+        elif isinstance(transcript_val, str):
+            content = transcript_val
 
-        return {
-            "symbol": latest.get("symbol", ticker),
-            "quarter": latest.get("quarter", latest.get("fiscalQuarter", "")),
-            "year": latest.get("year", 0),
-            "date": latest.get("date", ""),
-            "content": content,
-            "source": "alpha_vantage",
-            "error": None,
-        }
+    if not content or len(content.strip()) < 100:
+        logger.warning(f"Alpha Vantage transcript for {ticker} too short or empty "
+                      f"(len={len(content)}, keys={list(latest.keys())})")
+        return None
 
-    except requests.RequestException as e:
-        logger.warning(f"Alpha Vantage network error for {ticker}: {e}")
-    except (json.JSONDecodeError, KeyError, TypeError) as e:
-        logger.warning(f"Alpha Vantage parse error for {ticker}: {e}")
-
-    return None
+    return {
+        "symbol": latest.get("symbol", ticker),
+        "quarter": latest.get("quarter", latest.get("fiscalQuarter", "")),
+        "year": latest.get("year", 0),
+        "date": latest.get("date", ""),
+        "content": content,
+        "source": "alpha_vantage",
+        "error": None,
+    }
 
 
 def fetch_latest_transcripts(tickers: List[str]) -> Dict[str, Optional[Dict]]:
