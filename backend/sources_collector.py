@@ -111,6 +111,27 @@ def get_stock_data(ticker: str) -> Dict[str, Any]:
     # Check cache first
     cached = _cache_get(ticker)
     if cached is not None:
+        # Even with cache hit, enrich with any yfinance data pushed by cron
+        # (e.g., PE ratio, revenue, net income that Finnhub didn't provide,
+        #  and which yfinance live fetch can't get because Render IP is blocked)
+        yf_cached = _cache_get_yf(ticker)
+        if yf_cached:
+            yf_fin = yf_cached.get("financials", {})
+            fin_cached = cached.get("financials", {})
+            enriched = False
+            for key in ["revenue_quarterly", "revenue_annual", "net_income",
+                       "free_cash_flow", "net_debt"]:
+                if fin_cached.get(key) is None and yf_fin.get(key) is not None:
+                    fin_cached[key] = yf_fin[key]
+                    enriched = True
+            for key in ["pe_current", "pe_forward", "peg_ratio", "beta",
+                       "52w_high", "52w_low"]:
+                if cached.get(key) is None and yf_cached.get(key) is not None:
+                    cached[key] = yf_cached[key]
+                    enriched = True
+            if enriched:
+                logger.info(f"Cache enriched from yfinance cron data for {ticker}")
+                _cache_set(ticker, cached)  # persist enrichment
         return cached
 
     result = None

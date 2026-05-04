@@ -17,6 +17,19 @@ from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile, Hea
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
+import math
+
+def _sanitize_json(obj):
+    """Recursively replace NaN/inf with None for JSON compliance."""
+    if isinstance(obj, dict):
+        return {k: _sanitize_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_sanitize_json(v) for v in obj]
+    elif isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    return obj
 
 from backend.models import TickerRequest, AnalysisResult
 from backend.orchestrator import run_analysis_sequential
@@ -705,6 +718,9 @@ async def cache_financials(
     
     if not body or not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="Invalid JSON body")
+    
+    # Sanitize NaN/inf values (yfinance can return numpy NaN for some fields)
+    body = _sanitize_json(body)
     
     # Write to yfinance cache — separate from main stock cache
     # Main cache (get_stock_data) is Finnhub+yfinance merged
