@@ -51,7 +51,10 @@ export default function AnalysisCard({ result, onViewReport }) {
 
   // ── Dossier polling ──
   const [dossierStatus, setDossierStatus] = useState(null);
+  const [countdown, setCountdown] = useState(null);
   const pollRef = useRef(null);
+  const countdownRef = useRef(null);
+  const ESTIMATED_SECS = 30; // always show 30s countdown even if it finishes earlier
 
   useEffect(() => {
     let cancelled = false;
@@ -63,8 +66,8 @@ export default function AnalysisCard({ result, onViewReport }) {
           poles++;
           const sectionCount = countDossierSections(status.files || []);
           setDossierStatus({ ...status, sectionsReady: sectionCount, poles });
-          // Stop polling when dossier is ready OR after 30 poles (150s timeout)
-          if (status.ready || poles >= 30) {
+          // Stop polling when (ready AND countdown elapsed) OR after 30 poles timeout
+          if ((status.ready && countdownRef.current <= 0) || poles >= 30) {
             clearInterval(pollRef.current);
             pollRef.current = null;
           }
@@ -75,6 +78,20 @@ export default function AnalysisCard({ result, onViewReport }) {
     pollRef.current = setInterval(poll, 5000); // every 5s
     return () => { cancelled = true; clearInterval(pollRef.current); };
   }, [ticker]);
+
+  // Countdown timer — starts on first non-empty status, counts down from ESTIMATED_SECS
+  useEffect(() => {
+    if (dossierStatus && dossierStatus.sectionsReady > 0 && countdown === null) {
+      setCountdown(ESTIMATED_SECS);
+    }
+  }, [dossierStatus, countdown]);
+
+  useEffect(() => {
+    if (countdown === null || countdown <= 0) return;
+    countdownRef.current = countdown;
+    const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown]);
 
   const scorePercent = (total / 40) * 100;
   const scoreBarColor = total >= 32 ? '#238636' : total >= 26 ? '#d29922' : '#da3633';
@@ -173,19 +190,19 @@ export default function AnalysisCard({ result, onViewReport }) {
         >
           📄 Full report
         </button>
-        {dossierStatus?.ready ? (
+        {dossierStatus?.ready && countdown <= 0 ? (
           <a
             href={getTickerDownloadUrl(ticker)}
             download
             style={{
               flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500,
-              background: '#21262d', border: '1px solid #30363d',
-              borderRadius: 5, color: '#8b949e', cursor: 'pointer',
+              background: '#238636', border: '1px solid #2ea043',
+              borderRadius: 5, color: '#fff', cursor: 'pointer',
               textDecoration: 'none', textAlign: 'center',
               transition: 'background 0.15s',
             }}
-            onMouseEnter={e => e.target.style.background = '#30363d'}
-            onMouseLeave={e => e.target.style.background = '#21262d'}
+            onMouseEnter={e => e.target.style.background = '#2ea043'}
+            onMouseLeave={e => e.target.style.background = '#238636'}
           >
             📥 Download ({dossierStatus?.sectionsReady ?? '?'}/7)
           </a>
@@ -195,7 +212,9 @@ export default function AnalysisCard({ result, onViewReport }) {
             background: '#161b22', border: '1px solid #30363d',
             borderRadius: 5, color: '#8b949e', textAlign: 'center',
           }}>
-            📊 Building dossier… {dossierStatus?.sectionsReady ?? '?'}/7 · ~20s
+            {countdown > 0
+              ? `⏳ ${countdown}s · ${dossierStatus?.sectionsReady ?? '?'}/7`
+              : `📊 Finalizing… ${dossierStatus?.sectionsReady ?? '?'}/7`}
           </div>
         )}
       </div>
