@@ -65,18 +65,18 @@ export default function AnalysisCard({ result, onViewReport }) {
       {/* ── HEADER ── */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '14px 16px 10px', borderBottom: '1px solid #21262d',
+        padding: '10px 14px 8px', borderBottom: '1px solid #21262d',
       }}>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#e1e4e8', letterSpacing: 0.5 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#e1e4e8', letterSpacing: 0.5 }}>
             {ticker}
           </div>
-          <div style={{ fontSize: 10, color: '#8b949e', marginTop: 1 }}>
+          <div style={{ fontSize: 9, color: '#8b949e', marginTop: 1 }}>
             {company_name}
           </div>
         </div>
         <div style={{
-          padding: '4px 10px', borderRadius: 5, fontSize: 11, fontWeight: 800,
+          padding: '3px 8px', borderRadius: 5, fontSize: 10, fontWeight: 800,
           background: color, color: '#fff',
           boxShadow: `0 0 10px ${color}40`,
           letterSpacing: 0.5,
@@ -85,21 +85,21 @@ export default function AnalysisCard({ result, onViewReport }) {
         </div>
       </div>
 
-      {/* ── SCORE (dominant) ── */}
-      <div style={{ padding: '16px 16px 12px', textAlign: 'center' }}>
-        <div style={{ fontSize: 32, fontWeight: 800, color: scoreBarColor, lineHeight: 1 }}>
-          {total}<span style={{ fontSize: 16, fontWeight: 400, color: '#8b949e' }}>/40</span>
+      {/* ── SCORE (compact) ── */}
+      <div style={{ padding: '10px 14px 8px', textAlign: 'center' }}>
+        <div style={{ fontSize: 24, fontWeight: 800, color: scoreBarColor, lineHeight: 1 }}>
+          {total}<span style={{ fontSize: 12, fontWeight: 400, color: '#8b949e' }}>/40</span>
         </div>
-        <div style={{ fontSize: 10, color: '#484f58', marginTop: 4, textTransform: 'uppercase', letterSpacing: 1 }}>
+        <div style={{ fontSize: 8, color: '#484f58', marginTop: 2, textTransform: 'uppercase', letterSpacing: 1 }}>
           Composite Score
         </div>
         {/* Score bar */}
         <div style={{
-          marginTop: 10, background: '#161b22', borderRadius: 4, height: 5, overflow: 'hidden',
+          marginTop: 6, background: '#161b22', borderRadius: 3, height: 4, overflow: 'hidden',
         }}>
           <div style={{
             width: `${scorePercent}%`, height: '100%',
-            background: scoreBarColor, borderRadius: 4,
+            background: scoreBarColor, borderRadius: 3,
             transition: 'width 0.6s ease',
           }} />
         </div>
@@ -118,7 +118,7 @@ export default function AnalysisCard({ result, onViewReport }) {
       {/* ── AI INSIGHT ── */}
       {insight && (
         <div style={{
-          padding: '8px 16px', fontSize: 11, color: '#8b949e',
+          padding: '6px 14px', fontSize: 10, color: '#8b949e',
           background: '#161b22', borderBottom: '1px solid #21262d',
           fontStyle: 'italic',
         }}>
@@ -127,16 +127,16 @@ export default function AnalysisCard({ result, onViewReport }) {
       )}
 
       {/* ── CHART ── */}
-      <div style={{ padding: '12px 16px 4px' }}>
-        <ScoringChart scoring={scoring} height={120} />
+      <div style={{ padding: '8px 14px 4px' }}>
+        <ScoringChart scoring={scoring} height={90} />
       </div>
 
       {/* ── ACTIONS ── */}
-      <div style={{ padding: '10px 16px 8px', display: 'flex', gap: 8 }}>
+      <div style={{ padding: '8px 14px 6px', display: 'flex', gap: 6 }}>
         <button
           onClick={() => onViewReport(ticker, scoring)}
           style={{
-            flex: 1, padding: '6px 0', fontSize: 11, fontWeight: 500,
+            flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500,
             background: '#21262d', border: '1px solid #30363d',
             borderRadius: 5, color: '#58a6ff', cursor: 'pointer',
             transition: 'background 0.15s',
@@ -150,7 +150,7 @@ export default function AnalysisCard({ result, onViewReport }) {
           href={getTickerDownloadUrl(ticker)}
           download
           style={{
-            flex: 1, padding: '6px 0', fontSize: 11, fontWeight: 500,
+            flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500,
             background: '#21262d', border: '1px solid #30363d',
             borderRadius: 5, color: '#8b949e', cursor: 'pointer',
             textDecoration: 'none', textAlign: 'center',
@@ -165,11 +165,11 @@ export default function AnalysisCard({ result, onViewReport }) {
 
       {/* ── CONVICTION ── */}
       <div style={{
-        padding: '6px 16px 12px', textAlign: 'center',
+        padding: '4px 14px 10px', textAlign: 'center',
       }}>
         <span style={{
-          display: 'inline-block', padding: '3px 10px', borderRadius: 3,
-          fontSize: 9, fontWeight: 700,
+          display: 'inline-block', padding: '2px 8px', borderRadius: 3,
+          fontSize: 8, fontWeight: 700,
           background: `${convictionColor}20`, color: convictionColor,
           border: `1px solid ${convictionColor}40`,
           textTransform: 'uppercase', letterSpacing: 0.5,
@@ -184,14 +184,14 @@ export default function AnalysisCard({ result, onViewReport }) {
 function MetricBox({ label, value, border }) {
   return (
     <div style={{
-      textAlign: 'center', padding: '8px 4px',
+      textAlign: 'center', padding: '5px 4px',
       borderLeft: border ? '1px solid #21262d' : 'none',
       borderRight: border ? '1px solid #21262d' : 'none',
     }}>
-      <div style={{ fontSize: 9, color: '#484f58', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>
+      <div style={{ fontSize: 8, color: '#484f58', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 1 }}>
         {label}
       </div>
-      <div style={{ fontSize: 12, fontWeight: 600, color: '#e1e4e8' }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#e1e4e8' }}>
         {value}
       </div>
     </div>

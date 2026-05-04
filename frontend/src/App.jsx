@@ -129,8 +129,8 @@ export default function App() {
           {/* Skeleton cards */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
-            gap: 24, marginTop: 24,
+            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 400px))',
+            gap: 20, marginTop: 24, justifyContent: 'center',
           }}>
             {Array.from({ length: progress.total }).map((_, i) => (
               <SkeletonCard key={i} />
@@ -151,8 +151,8 @@ export default function App() {
 
       {results.length > 0 && (
         <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 24,
-          marginTop: 16,
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 400px))', gap: 20,
+          marginTop: 16, justifyContent: 'center',
           animation: 'fadeInUp 0.4s ease',
         }}>
           {results.map(r => (
