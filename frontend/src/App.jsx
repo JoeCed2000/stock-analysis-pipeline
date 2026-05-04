@@ -125,7 +125,7 @@ export default function App() {
 
       {results.length > 0 && (
         <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16,
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 24,
         }}>
           {results.map(r => (
             <AnalysisCard
