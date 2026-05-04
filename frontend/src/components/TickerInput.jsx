@@ -11,14 +11,13 @@ export default function TickerInput({ onAnalyze, loading }) {
 
   const handleParse = async () => {
     if (!value.trim()) return;
-    const blob = new Blob([value], { type: 'text/plain' });
-    blob.name = 'input.txt';
+    const file = new File([value], 'input.txt', { type: 'text/plain' });
     try {
-      const data = await uploadTickerFile(blob);
+      const data = await uploadTickerFile(file);
       setItems(data.items || []);
       setSelected(new Set((data.items || []).filter(it => it.status === 'valid').map(it => it.normalized)));
     } catch (e) {
-      // silently ignore parse errors
+      console.error('Parse error:', e);
     }
   };
 
