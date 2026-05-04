@@ -9,14 +9,14 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 )
 
-# Colors
-GREEN = HexColor('#238636')
-YELLOW = HexColor('#d29922')
-RED = HexColor('#da3633')
-DARK = HexColor('#0f1117')
-LIGHT = HexColor('#e1e4e8')
-MUTED = HexColor('#8b949e')
-CARD_BG = HexColor('#1a1d27')
+# Colors — dark-on-white palette for print/PDF readability
+GREEN = HexColor('#1a7f37')
+YELLOW = HexColor('#9a6700')
+RED = HexColor('#cf222e')
+DARK = HexColor('#0d1117')
+LIGHT = HexColor('#1f2328')
+MUTED = HexColor('#57606a')
+CARD_BG = HexColor('#f6f8fa')
 
 
 def generate_pdf(result, report_md: str, output_path: str) -> str:
@@ -34,7 +34,7 @@ def generate_pdf(result, report_md: str, output_path: str) -> str:
     def add_footer(canvas, doc):
         canvas.saveState()
         canvas.setFont('Helvetica', 7)
-        canvas.setFillColor(HexColor('#8b949e'))
+        canvas.setFillColor(HexColor('#57606a'))
         footer_text = (
             "⚠️ Auto-generated report. Data marked 'NOT AVAILABLE' = unsourced. "
             "Verify sources before making decisions. This is not investment advice."
@@ -47,10 +47,10 @@ def generate_pdf(result, report_md: str, output_path: str) -> str:
     story = []
 
     # Custom styles
-    title_style = ParagraphStyle('Title2', parent=styles['Title'], fontSize=18, textColor='#e1e4e8', spaceAfter=4)
-    h2_style = ParagraphStyle('H2', parent=styles['Heading2'], fontSize=14, textColor='#58a6ff', spaceBefore=12, spaceAfter=4)
-    body_style = ParagraphStyle('Body2', parent=styles['Normal'], fontSize=9, textColor='#c9d1d9', leading=13)
-    small_style = ParagraphStyle('Small', parent=styles['Normal'], fontSize=8, textColor='#8b949e')
+    title_style = ParagraphStyle('Title2', parent=styles['Title'], fontSize=18, textColor='#0d1117', spaceAfter=4)
+    h2_style = ParagraphStyle('H2', parent=styles['Heading2'], fontSize=14, textColor='#0969da', spaceBefore=12, spaceAfter=4)
+    body_style = ParagraphStyle('Body2', parent=styles['Normal'], fontSize=9, textColor='#1f2328', leading=13)
+    small_style = ParagraphStyle('Small', parent=styles['Normal'], fontSize=8, textColor='#57606a')
 
     # Decision color
     decision_color = GREEN if "BUY" in result.decision and "PULLBACK" not in result.decision else \
@@ -71,7 +71,7 @@ def generate_pdf(result, report_md: str, output_path: str) -> str:
     # Decision badge
     story.append(Paragraph(
         f'<font color="{decision_color}"><b>{result.decision}</b></font> — Score: {result.scoring.total}/40 — Conviction: {result.conviction}',
-        ParagraphStyle('Decision', parent=body_style, fontSize=12, textColor='#e1e4e8')
+        ParagraphStyle('Decision', parent=body_style, fontSize=12, textColor='#0d1117')
     ))
     story.append(Spacer(1, 8))
 
@@ -241,9 +241,9 @@ def md_to_pdf(md_path: str, pdf_path: str, title: str = "") -> str:
     story = []
     
     # Simple markdown → paragraphs
-    title_style = ParagraphStyle('MDTitle', parent=styles['Title'], fontSize=16, textColor='#e1e4e8', spaceAfter=8)
-    h2_style = ParagraphStyle('MDH2', parent=styles['Heading2'], fontSize=12, textColor='#58a6ff', spaceBefore=8, spaceAfter=4)
-    body_style = ParagraphStyle('MDBody', parent=styles['Normal'], fontSize=9, textColor='#c9d1d9', leading=13)
+    title_style = ParagraphStyle('MDTitle', parent=styles['Title'], fontSize=16, textColor='#0d1117', spaceAfter=8)
+    h2_style = ParagraphStyle('MDH2', parent=styles['Heading2'], fontSize=12, textColor='#0969da', spaceBefore=8, spaceAfter=4)
+    body_style = ParagraphStyle('MDBody', parent=styles['Normal'], fontSize=9, textColor='#1f2328', leading=13)
     
     in_table = False
     for line in content.split("\n"):
