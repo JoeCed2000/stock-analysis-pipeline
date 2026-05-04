@@ -329,8 +329,8 @@ async def ticker_download(ticker: str):
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
         for fpath in sorted(analysis_dir.rglob("*")):
             if fpath.is_file():
-                # Skip raw source files — only PDF and Excel are deliverables
-                if fpath.suffix in ('.json', '.md', '.txt', '.html', '.csv'):
+                # Skip raw JSON/CSV data files — keep MD/TXT (readable) + PDF + Excel
+                if fpath.suffix in ('.json', '.csv'):
                     continue
                 arcname = fpath.relative_to(analysis_dir)
                 zf.write(fpath, arcname)
@@ -417,8 +417,8 @@ async def dossier_download(ticker: str):
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
         for fpath in sorted(analysis_dir.rglob("*")):
             if fpath.is_file():
-                # Skip raw source files — only PDF and Excel are deliverables
-                if fpath.suffix in ('.json', '.md', '.txt', '.html', '.csv'):
+                # Skip raw JSON/CSV data files — keep MD/TXT (readable) + PDF + Excel
+                if fpath.suffix in ('.json', '.csv'):
                     continue
                 arcname = fpath.relative_to(analysis_dir)
                 zf.write(fpath, arcname)
