@@ -70,16 +70,26 @@ def _get_yf():
 
 
 def _ticker_exists(ticker: str) -> bool:
-    """Check if ticker exists on Yahoo Finance. Caches negative results for session."""
+    """Check if ticker exists on Yahoo Finance.
+    Returns True if ticker exists OR if we can't validate (rate-limited).
+    Returns False ONLY if yfinance explicitly returns empty/error for a ticker
+    that should have data — but this is rare; almost always returns True on Render.
+    """
     yf = _get_yf()
     if not yf:
         return True  # Can't validate — don't block
     try:
         info = yf.Ticker(ticker).info
-        # Valid tickers have at least symbol and shortName or longName
-        return bool(info.get('symbol') and (info.get('shortName') or info.get('longName')))
+        # Count non-None fields as a proxy for data richness
+        meaningful = sum(1 for v in info.values() if v is not None)
+        if meaningful <= 3:
+            # Too sparse to validate — likely rate-limited. Allow the ticker.
+            return True
+        # Has rich data — check for actual company name
+        has_name = bool(info.get('shortName') or info.get('longName'))
+        return has_name
     except Exception:
-        return False
+        return True  # Can't validate — don't block
 
 # Common ISIN → ticker mapping (extensible)
 ISIN_TO_TICKER = {
