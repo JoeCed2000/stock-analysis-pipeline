@@ -52,7 +52,19 @@ def get_dossier_status(ticker: str) -> dict:
     if not matches:
         return {"ready": False, "files": [], "stage": "not_started"}
     
-    dossier_dir = matches[0]
+    # Prefer directories that have actual analysis content (report.md/report.pdf)
+    # over dummy UPLOADED directories created by the upload endpoint
+    best_match = None
+    for m in matches:
+        has_report = (m / "07_final_report" / "report.md").exists() or \
+                     (m / "07_final_report" / "report.pdf").exists()
+        if has_report:
+            best_match = m
+            break
+    if not best_match:
+        best_match = matches[0]  # fallback
+    
+    dossier_dir = best_match
     files = _list_dossier_files(dossier_dir)
     
     # Dossier is "ready" ONLY if we have the 4 key deliverables

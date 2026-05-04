@@ -25,8 +25,11 @@ from typing import Optional
 
 # ── Config ──
 RENDER_BASE = os.getenv("RENDER_API_URL", "https://stock-analysis-api-tdtj.onrender.com")
-UPLOAD_SECRET = os.getenv("DOSSIER_UPLOAD_SECRET", "")
 PROJECT_DIR = Path("/mnt/c/Users/cedon/Documents/Codex/stock-analysis-pipeline")
+
+def get_upload_secret():
+    """Read DOSSIER_UPLOAD_SECRET — called after .env is loaded in main()."""
+    return os.getenv("DOSSIER_UPLOAD_SECRET", "")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,7 +48,8 @@ def check_dossier(ticker: str) -> dict:
 
 def upload_file(ticker: str, section: str, filepath: Path):
     """Upload a file to Render's dossier endpoint."""
-    if not UPLOAD_SECRET:
+    secret = get_upload_secret()
+    if not secret:
         logger.error("DOSSIER_UPLOAD_SECRET not set — cannot upload")
         return False
     
@@ -54,7 +58,7 @@ def upload_file(ticker: str, section: str, filepath: Path):
             f"{RENDER_BASE}/api/dossier/{ticker}/upload",
             data={"section": section},
             files={"file": (filepath.name, f, "application/octet-stream")},
-            headers={"X-Upload-Secret": UPLOAD_SECRET},
+            headers={"X-Upload-Secret": secret},
             timeout=30,
         )
     
@@ -207,9 +211,9 @@ def main():
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
                     k, v = line.split("=", 1)
-                    os.environ.setdefault(k.strip(), v.strip())
+                    os.environ[k.strip()] = v.strip()  # force override (setdefault ignores existing env vars)
     
-    if not UPLOAD_SECRET:
+    if not get_upload_secret():
         logger.error("DOSSIER_UPLOAD_SECRET must be set in .env")
         sys.exit(1)
     

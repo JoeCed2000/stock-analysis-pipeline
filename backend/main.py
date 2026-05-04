@@ -541,17 +541,21 @@ async def dossier_upload(
     if not safe_name or safe_name.startswith('.'):
         raise HTTPException(status_code=400, detail="Invalid filename")
     
-    # Find or create analysis directory
+    # Find analysis directory — only upload to existing analyses (never create dummy dirs)
     ticker_clean = ticker.replace(".", "_").upper()
     matches = sorted(ANALYSES_DIR.glob(f"*_{ticker_clean}_*"), reverse=True)
     if not matches:
-        # No analysis exists — create a minimal directory
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        analysis_dir = ANALYSES_DIR / f"{date_str}_{ticker_clean}_UPLOADED"
-        analysis_dir.mkdir(parents=True, exist_ok=True)
-        for s in ALLOWED_SECTIONS:
-            (analysis_dir / s).mkdir(parents=True, exist_ok=True)
-    else:
+        raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}. Run an analysis first.")
+    
+    # Prefer real analysis dirs over dummy UPLOADED dirs
+    analysis_dir = None
+    for m in matches:
+        has_report = (m / "07_final_report" / "report.md").exists() or \
+                     (m / "07_final_report" / "report.pdf").exists()
+        if has_report or "UPLOADED" not in str(m):
+            analysis_dir = m
+            break
+    if not analysis_dir:
         analysis_dir = matches[0]
     
     # Save file
