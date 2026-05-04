@@ -54,7 +54,105 @@ def _cache_set(ticker: str, data: Dict[str, Any]) -> None:
         pass
 
 # ---------------------------------------------------------------------------
-# YFinance wrapper
+# Unified stock data — Finnhub primary, yfinance fallback
+# ---------------------------------------------------------------------------
+
+def get_stock_data(ticker: str) -> Dict[str, Any]:
+    """Fetch fundamental + price data. Uses Finnhub (API key) first, yfinance fallback.
+    Finnhub free tier covers US equities only; non-US tickers fall back to yfinance.
+    Uses file-based cache (TTL 1h) to minimize API calls."""
+    # Check cache first
+    cached = _cache_get(ticker)
+    if cached is not None:
+        return cached
+
+    # Try Finnhub first
+    result = _get_stock_data_finnhub(ticker)
+    if result is not None:
+        _cache_set(ticker, result)
+        return result
+
+    # Fallback to yfinance
+    logger.info(f"Finnhub unavailable for {ticker}, falling back to yfinance")
+    return get_yahoo_data(ticker)
+
+
+def _get_stock_data_finnhub(ticker: str) -> Optional[Dict[str, Any]]:
+    """Fetch stock data from Finnhub. Returns None if unavailable."""
+    api_key = os.getenv("FINNHUB_API_KEY", "")
+    if not api_key:
+        return None
+
+    import requests
+
+    def _fh(path: str) -> Optional[Dict]:
+        try:
+            resp = requests.get(
+                f"https://finnhub.io/api/v1{path}&token={api_key}",
+                timeout=10
+            )
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            if "error" in data:
+                return None
+            return data
+        except Exception:
+            return None
+
+    # Profile
+    profile = _fh(f"/stock/profile2?symbol={ticker}")
+    if not profile:
+        return None
+
+    # Quote
+    quote = _fh(f"/quote?symbol={ticker}") or {}
+    # Metrics
+    metrics_raw = _fh(f"/stock/metric?symbol={ticker}&metric=all")
+    metrics = metrics_raw.get("metric", {}) if metrics_raw else {}
+
+    # Build result with same structure as get_yahoo_data()
+    price = quote.get("c")
+    prev_close = quote.get("pc")
+    currency = profile.get("currency", "USD")
+
+    result = {
+        "ticker": ticker,
+        "company_name": profile.get("name") or ticker,
+        "sector": profile.get("finnhubIndustry"),
+        "industry": profile.get("finnhubIndustry"),  # Finnhub has finnhubIndustry only
+        "market_cap": (profile.get("marketCapitalization") or 0) * 1e6,  # Finnhub gives in millions
+        "price": price,
+        "prev_close": prev_close,
+        "currency": currency,
+        "financials": {
+            "revenue_quarterly": None,
+            "revenue_yoy_growth": metrics.get("revenueGrowthQuarterlyYoy"),
+            "revenue_annual": None,
+            "revenue_annual_growth": metrics.get("revenueGrowthTTMYoy"),
+            "gross_margin": metrics.get("grossMarginTTM"),
+            "operating_margin": metrics.get("operatingMarginTTM"),
+            "net_income": None,
+            "free_cash_flow": None,
+            "net_debt": None,
+            "guidance_official": metrics.get("revenueGrowthTTMYoy"),
+        },
+        "pe_current": metrics.get("peTTM") or metrics.get("peBasicExclExtraTTM"),
+        "pe_forward": metrics.get("forwardPE"),
+        "peg_ratio": metrics.get("pegTTM") or metrics.get("forwardPEG"),
+        "expected_growth": metrics.get("epsGrowthTTMYoy"),
+        "beta": metrics.get("beta"),
+        "52w_high": metrics.get("52WeekHigh"),
+        "52w_low": metrics.get("52WeekLow"),
+        "description": "",  # Finnhub free tier doesn't provide business summary
+    }
+
+    logger.info(f"Finnhub OK for {ticker}: {profile.get('name')} — ${price}")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# YFinance wrapper (fallback)
 # ---------------------------------------------------------------------------
 
 def _load_yfinance():

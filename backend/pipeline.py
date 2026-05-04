@@ -10,7 +10,7 @@ from backend.models import (
     AnalysisResult, FinancialData, SegmentInfo, ManagementTone,
     RiskItem, ValuationData, Scoring, Source, Claim
 )
-from backend.sources_collector import get_yahoo_data, get_finnhub_data, get_sec_filings, convert_to_eur
+from backend.sources_collector import get_stock_data, get_finnhub_data, get_sec_filings, convert_to_eur
 from backend.scorer import score_ticker
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
 
     # ── Step 1: Identification ──
     logger.info(f"[{ticker}] Step 1: Identification")
-    yf_data = get_yahoo_data(ticker)
+    yf_data = get_stock_data(ticker)
     price_native = yf_data.get("price")
     eur_rate = convert_to_eur(price_native) if price_native else None
     company_name = yf_data.get("company_name", ticker)
