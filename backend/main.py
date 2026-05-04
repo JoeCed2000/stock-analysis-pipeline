@@ -428,7 +428,8 @@ async def dossier_status(ticker: str):
 
 @app.get("/api/dossier/{ticker}/download")
 async def dossier_download(ticker: str):
-    """Download the complete dossier as ZIP. Generates files synchronously if not ready."""
+    """Download the complete dossier as ZIP. Generates files synchronously if not ready.
+    Converts MD/TXT → PDF on-the-fly. ZIP contains ONLY PDF + XLSX + README.txt."""
     from backend.async_dossier import get_dossier_status
     status = get_dossier_status(ticker)
     
@@ -452,15 +453,54 @@ async def dossier_download(ticker: str):
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
     
     analysis_dir = matches[0]
+    
+    # Pre-convert MD/TXT files to PDF on-the-fly 
+    try:
+        from backend.pdf_generator import md_to_pdf
+        for fpath in sorted(analysis_dir.rglob("*.md")):
+            if fpath.name == "README.md":
+                continue
+            pdf_path = fpath.with_suffix(".pdf")
+            if not pdf_path.exists():
+                try:
+                    md_to_pdf(str(fpath), str(pdf_path), title=f"{ticker} — {fpath.stem.replace('_', ' ').title()}")
+                    logger.info(f"[{ticker}] Converted {fpath.name} → PDF")
+                except Exception as e:
+                    logger.warning(f"[{ticker}] MD→PDF failed for {fpath.name}: {e}")
+        for fpath in sorted(analysis_dir.rglob("*.txt")):
+            if fpath.name == "README.txt":
+                continue
+            pdf_path = fpath.with_suffix(".pdf")
+            if not pdf_path.exists():
+                try:
+                    md_to_pdf(str(fpath), str(pdf_path), title=f"{ticker} — {fpath.stem.replace('_', ' ').title()}")
+                    logger.info(f"[{ticker}] Converted {fpath.name} → PDF")
+                except Exception as e:
+                    logger.warning(f"[{ticker}] TXT→PDF failed for {fpath.name}: {e}")
+    except Exception as e:
+        logger.warning(f"[{ticker}] On-the-fly PDF conversion error: {e}")
+    
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        included_dirs = set()
         for fpath in sorted(analysis_dir.rglob("*")):
             if fpath.is_file():
-                # Skip raw JSON/CSV data files — keep MD/TXT (readable) + PDF + Excel
-                if fpath.suffix in ('.json', '.csv'):
+                # Only PDF + XLSX + README.txt in the deliverable ZIP
+                if fpath.suffix in ('.json', '.csv', '.md'):
+                    continue
+                if fpath.suffix == '.txt' and fpath.name != 'README.txt':
                     continue
                 arcname = fpath.relative_to(analysis_dir)
                 zf.write(fpath, arcname)
+                included_dirs.add(str(arcname.parent))
+        
+        # Ensure ALL 7 directories are represented
+        for folder in ["01_official_company_sources", "02_sec_or_regulatory_filings",
+                       "03_financial_data_sources", "04_transcripts_and_management",
+                       "05_market_and_context", "06_extracted_data", "07_final_report"]:
+            if folder not in included_dirs:
+                zf.writestr(f"{folder}/README.txt",
+                           f"{folder}\n{'='*len(folder)}\n\nDossier section — see full report for details.\n")
     
     buf.seek(0)
     return StreamingResponse(
