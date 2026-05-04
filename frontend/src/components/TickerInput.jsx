@@ -1,3 +1,4 @@
+// v2 — all tickers pass format check, no valid/invalid display
 import { useState, useEffect, useRef } from 'react';
 import { uploadTickerFile } from '../api.js';
 
