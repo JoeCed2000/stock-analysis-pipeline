@@ -500,6 +500,18 @@ async def analyze(request: TickerRequest):
     tickers = request.tickers
     logger.info(f"Analyze request: {tickers}")
 
+    # Validate all tickers before processing
+    invalid_tickers = [t for t in tickers if not TICKER_RE.match(t.upper().strip())]
+    if invalid_tickers:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "Invalid ticker format",
+                "invalid": invalid_tickers,
+                "message": f"Tickers must be 1-5 uppercase letters (e.g. AAPL, NVDA, BRK.B). Invalid: {', '.join(invalid_tickers)}"
+            }
+        )
+
     try:
         batch = run_analysis_sequential(tickers, output_base=str(ANALYSES_DIR))
     except Exception as e:

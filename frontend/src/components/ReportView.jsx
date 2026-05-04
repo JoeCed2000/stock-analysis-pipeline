@@ -24,22 +24,24 @@ export default function ReportView({ ticker, scoring, onClose }) {
     }}>
       <div style={{
         background: '#1a1d27', border: '1px solid #30363d',
-        borderRadius: 8, width: '90%', maxWidth: 800, maxHeight: '85vh',
+        borderRadius: 8, width: '90%', maxWidth: 700, maxHeight: '90vh',
         display: 'flex', flexDirection: 'column',
+        overflow: 'hidden',
       }}>
         {/* Header */}
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          padding: '12px 16px', borderBottom: '1px solid #30363d',
+          padding: '10px 14px', borderBottom: '1px solid #30363d',
+          flexShrink: 0,
         }}>
-          <span style={{ fontSize: 16, fontWeight: 700, color: '#e1e4e8' }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#e1e4e8' }}>
             📊 {ticker} — Analysis Report
           </span>
           <button
             onClick={onClose}
             style={{
               background: 'none', border: 'none', color: '#8b949e',
-              fontSize: 20, cursor: 'pointer', padding: '0 4px',
+              fontSize: 18, cursor: 'pointer', padding: '0 4px',
             }}
           >
             ✕
@@ -48,15 +50,15 @@ export default function ReportView({ ticker, scoring, onClose }) {
 
         {/* Scoring chart above the report */}
         {scoring && (
-          <div style={{ padding: '8px 16px 0', borderBottom: '1px solid #30363d' }}>
-            <ScoringChart scoring={scoring} height={160} />
+          <div style={{ padding: '6px 14px 0', borderBottom: '1px solid #30363d', flexShrink: 0 }}>
+            <ScoringChart scoring={scoring} height={100} />
           </div>
         )}
 
-        {/* Content */}
+        {/* Content — scrollable */}
         <div style={{
-          padding: 16, overflow: 'auto', flex: 1,
-          fontFamily: 'monospace', fontSize: 13, lineHeight: 1.6,
+          padding: '10px 14px', flex: 1, overflowY: 'auto',
+          fontFamily: 'monospace', fontSize: 12, lineHeight: 1.6,
           color: '#e1e4e8', whiteSpace: 'pre-wrap',
         }}>
           {loading ? '⏳ Loading report...' : (report || 'Report not available')}

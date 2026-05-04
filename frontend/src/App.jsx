@@ -48,7 +48,12 @@ export default function App() {
       }
       setResults(data.results || []);
     } catch (e) {
-      setError(e.message);
+      // Handle 422 validation errors (invalid tickers)
+      if (e.status === 422 && e.body) {
+        setError(e.body?.detail?.message || e.message);
+      } else {
+        setError(e.message);
+      }
     } finally {
       clearInterval(progressRef.current);
       setLoading(false);

@@ -7,7 +7,13 @@ export async function analyzeTickers(tickers) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tickers }),
   });
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body?.detail?.message || `Validation error: ${res.status}`);
+    err.status = res.status;
+    err.body = body;
+    throw err;
+  }
   return res.json();
 }
 
