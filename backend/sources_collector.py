@@ -54,27 +54,46 @@ def _cache_set(ticker: str, data: Dict[str, Any]) -> None:
         pass
 
 # ---------------------------------------------------------------------------
-# Unified stock data — Finnhub primary, yfinance fallback
+# Unified stock data — Finnhub → Twelve Data → yfinance
 # ---------------------------------------------------------------------------
 
 def get_stock_data(ticker: str) -> Dict[str, Any]:
-    """Fetch fundamental + price data. Uses Finnhub (API key) first, yfinance fallback.
-    Finnhub free tier covers US equities only; non-US tickers fall back to yfinance.
+    """Fetch fundamental + price data. Multi-source chain:
+    1. Finnhub (US equities, 60 calls/min, free)
+    2. Twelve Data (international, 800 calls/day, free — needs TWELVEDATA_API_KEY)
+    3. yfinance (last resort, may fail on shared-IP hosting like Render)
     Uses file-based cache (TTL 1h) to minimize API calls."""
     # Check cache first
     cached = _cache_get(ticker)
     if cached is not None:
         return cached
 
-    # Try Finnhub first
+    # Try Finnhub (US only)
     result = _get_stock_data_finnhub(ticker)
     if result is not None:
         _cache_set(ticker, result)
         return result
 
-    # Fallback to yfinance
-    logger.info(f"Finnhub unavailable for {ticker}, falling back to yfinance")
-    return get_yahoo_data(ticker)
+    # Try Twelve Data (international)
+    result = _get_stock_data_twelvedata(ticker)
+    if result is not None:
+        _cache_set(ticker, result)
+        return result
+
+    # Last resort: yfinance
+    logger.info(f"Finnhub/Twelve Data unavailable for {ticker}, falling back to yfinance")
+    try:
+        result = get_yahoo_data(ticker)
+        _cache_set(ticker, result)
+        return result
+    except Exception as e:
+        logger.error(f"All sources failed for {ticker}: {e}")
+        raise RuntimeError(
+            f"No data source available for {ticker}. "
+            f"US stocks: set FINNHUB_API_KEY. "
+            f"International: set TWELVEDATA_API_KEY (free at twelvedata.com). "
+            f"Or run analysis locally where yfinance works."
+        )
 
 
 def _get_stock_data_finnhub(ticker: str) -> Optional[Dict[str, Any]]:
@@ -149,6 +168,80 @@ def _get_stock_data_finnhub(ticker: str) -> Optional[Dict[str, Any]]:
 
     logger.info(f"Finnhub OK for {ticker}: {profile.get('name')} — ${price}")
     return result
+
+
+# ---------------------------------------------------------------------------
+# Twelve Data wrapper (international fallback)
+# ---------------------------------------------------------------------------
+
+def _get_stock_data_twelvedata(ticker: str) -> Optional[Dict[str, Any]]:
+    """Fetch stock data from Twelve Data. Returns None if unavailable.
+    Free tier: 800 calls/day, global coverage including EU exchanges (MC.PA, ASML, etc.)."""
+    api_key = os.getenv("TWELVEDATA_API_KEY", "")
+    if not api_key:
+        return None
+
+    import requests
+
+    try:
+        # Quote endpoint (real-time price)
+        resp = requests.get(
+            "https://api.twelvedata.com/quote",
+            params={"symbol": ticker, "apikey": api_key},
+            timeout=10
+        )
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        if "code" in data and data.get("code") != 200:  # Twelve Data error codes
+            logger.warning(f"Twelve Data error for {ticker}: {data.get('message', 'unknown')}")
+            return None
+
+        price = float(data.get("close")) if data.get("close") else None
+        prev_close = float(data.get("previous_close")) if data.get("previous_close") else None
+        currency = data.get("currency", "EUR" if "." in ticker else "USD")
+        name = data.get("name") or ticker
+        change_pct = float(data.get("percent_change")) if data.get("percent_change") else None
+        high_52w = float(data.get("fifty_two_week", {}).get("high")) if isinstance(data.get("fifty_two_week"), dict) else None
+        low_52w = float(data.get("fifty_two_week", {}).get("low")) if isinstance(data.get("fifty_two_week"), dict) else None
+
+        result = {
+            "ticker": ticker,
+            "company_name": name,
+            "sector": None,  # Twelve Data basic plan doesn't include sector
+            "industry": None,
+            "market_cap": None,  # Requires upgrade
+            "price": price,
+            "prev_close": prev_close,
+            "currency": currency,
+            "financials": {
+                "revenue_quarterly": None,
+                "revenue_yoy_growth": change_pct,  # Not ideal but better than nothing
+                "revenue_annual": None,
+                "revenue_annual_growth": None,
+                "gross_margin": None,
+                "operating_margin": None,
+                "net_income": None,
+                "free_cash_flow": None,
+                "net_debt": None,
+                "guidance_official": None,
+            },
+            "pe_current": None,
+            "pe_forward": None,
+            "peg_ratio": None,
+            "expected_growth": None,
+            "beta": None,
+            "52w_high": high_52w,
+            "52w_low": low_52w,
+            "description": "",
+        }
+
+        logger.info(f"Twelve Data OK for {ticker}: {name} — {price} {currency}")
+        return result
+
+    except Exception as e:
+        logger.warning(f"Twelve Data failed for {ticker}: {e}")
+        return None
 
 
 # ---------------------------------------------------------------------------
