@@ -13,7 +13,7 @@ import hashlib
 import time
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile
+from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -429,6 +429,69 @@ async def dossier_download(ticker: str):
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename={ticker}_dossier.zip"},
     )
+
+
+@app.post("/api/dossier/{ticker}/upload")
+async def dossier_upload(
+    ticker: str,
+    section: str = None,
+    file: UploadFile = FastAPIFile(...),
+    x_upload_secret: str = Header(None, alias="X-Upload-Secret"),
+):
+    """Upload a file to a dossier section. Used by local machine (lapced) to fill gaps.
+    
+    Authenticated via X-Upload-Secret header matching DOSSIER_UPLOAD_SECRET env var.
+    """
+    upload_secret = os.getenv("DOSSIER_UPLOAD_SECRET", "")
+    if not upload_secret:
+        raise HTTPException(status_code=501, detail="Upload endpoint not configured")
+    if not x_upload_secret or x_upload_secret != upload_secret:
+        raise HTTPException(status_code=403, detail="Invalid or missing upload secret")
+    
+    # Section validation
+    ALLOWED_SECTIONS = {
+        "01_official_company_sources", "02_sec_or_regulatory_filings",
+        "03_financial_data_sources", "04_transcripts_and_management",
+        "05_market_and_context", "06_extracted_data", "07_final_report",
+    }
+    if section not in ALLOWED_SECTIONS:
+        raise HTTPException(status_code=400, detail=f"Invalid section: {section}")
+    
+    # Sanitize filename
+    safe_name = os.path.basename(file.filename)
+    if not safe_name or safe_name.startswith('.'):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    # Find or create analysis directory
+    ticker_clean = ticker.replace(".", "_").upper()
+    matches = sorted(ANALYSES_DIR.glob(f"*_{ticker_clean}_*"), reverse=True)
+    if not matches:
+        # No analysis exists — create a minimal directory
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        analysis_dir = ANALYSES_DIR / f"{date_str}_{ticker_clean}_UPLOADED"
+        analysis_dir.mkdir(parents=True, exist_ok=True)
+        for s in ALLOWED_SECTIONS:
+            (analysis_dir / s).mkdir(parents=True, exist_ok=True)
+    else:
+        analysis_dir = matches[0]
+    
+    # Save file
+    target_dir = analysis_dir / section
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_path = target_dir / safe_name
+    
+    content = await file.read()
+    with open(target_path, "wb") as f:
+        f.write(content)
+    
+    logger.info(f"[{ticker}] Uploaded {safe_name} → {section} ({len(content)} bytes)")
+    
+    return JSONResponse({
+        "status": "uploaded",
+        "section": section,
+        "filename": safe_name,
+        "size": len(content),
+    })
 
 
 @app.post("/api/analyze")
