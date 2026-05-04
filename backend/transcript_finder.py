@@ -39,15 +39,27 @@ def find_transcripts(ticker: str, output_dir: str = "") -> Dict[str, any]:
         })
 
     # 3. Motley Fool transcripts
-    from backend.seeking_alpha import search_transcript_web
+    from backend.seeking_alpha import search_transcript_web, fetch_fool_transcript
     fool_results = search_transcript_web(ticker)
     for r in fool_results:
+        url = r.get("url", "")
+        # Attempt to fetch and extract full transcript text
+        transcript_text = ""
+        if url:
+            try:
+                transcript_text = fetch_fool_transcript(url)
+                if transcript_text:
+                    logger.info(f"Fool.com transcript extracted: {len(transcript_text)} chars for {ticker}")
+            except Exception as e:
+                logger.warning(f"Failed to fetch transcript text from {url}: {e}")
         results.append({
             "source": r.get("source", "Motley Fool"),
             "type": "earnings_transcript",
             "title": r.get("title", ""),
-            "url": r.get("url", ""),
+            "url": url,
             "free": r.get("free", True),
+            "text": transcript_text[:5000] if transcript_text else "",
+            "text_length": len(transcript_text) if transcript_text else 0,
         })
 
     # Save to disk if output_dir provided

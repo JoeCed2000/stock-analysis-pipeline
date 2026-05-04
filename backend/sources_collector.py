@@ -438,6 +438,12 @@ def extract_10k_sections(ticker: str, output_dir: Optional[str] = None) -> Dict[
         fin_stmts = _extract_section(clean_text, "ITEM 8", "ITEM 9")
         result["financial_statements"] = fin_stmts[:8000] if fin_stmts else ""
 
+        # Extract Business description (Item 1)
+        bus = _extract_section(clean_text, "ITEM 1", "ITEM 1A")
+        if not bus:
+            bus = _extract_section(clean_text, "ITEM 1", "ITEM 2")
+        result["business"] = bus[:8000] if bus else ""
+
     except Exception as e:
         result["error"] = str(e)
 
