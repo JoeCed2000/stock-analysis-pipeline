@@ -33,8 +33,8 @@ export default function ScoringChart({ scoring, height = 120 }) {
   if (!scoring) return null;
 
   const total = scoring.total || 0;
-  const barW = 22;
-  const gap = 6;
+  const barW = 20;
+  const gap = 5;
   const chartW = CRITERIA.length * (barW + gap);
   const maxVal = 5;
   const labelH = 18;
@@ -94,14 +94,14 @@ export default function ScoringChart({ scoring, height = 120 }) {
               {/* Score on top of bar */}
               <text
                 x={x + barW / 2} y={y - 5}
-                textAnchor="middle" fill="#e1e4e8" fontSize={10} fontWeight={600}
+                textAnchor="middle" fill="#e1e4e8" fontSize={9} fontWeight={600}
               >
                 {val}
               </text>
               {/* Label below */}
               <text
                 x={x + barW / 2} y={chartH + 14}
-                textAnchor="middle" fill="#8b949e" fontSize={9}
+                textAnchor="middle" fill="#8b949e" fontSize={8}
               >
                 {c.label}
               </text>

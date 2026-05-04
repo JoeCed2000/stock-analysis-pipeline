@@ -68,15 +68,15 @@ export default function AnalysisCard({ result, onViewReport }) {
         padding: '14px 16px 10px', borderBottom: '1px solid #21262d',
       }}>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#e1e4e8', letterSpacing: 0.5 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#e1e4e8', letterSpacing: 0.5 }}>
             {ticker}
           </div>
-          <div style={{ fontSize: 11, color: '#8b949e', marginTop: 1 }}>
+          <div style={{ fontSize: 10, color: '#8b949e', marginTop: 1 }}>
             {company_name}
           </div>
         </div>
         <div style={{
-          padding: '5px 12px', borderRadius: 5, fontSize: 12, fontWeight: 800,
+          padding: '4px 10px', borderRadius: 5, fontSize: 11, fontWeight: 800,
           background: color, color: '#fff',
           boxShadow: `0 0 10px ${color}40`,
           letterSpacing: 0.5,
@@ -87,10 +87,10 @@ export default function AnalysisCard({ result, onViewReport }) {
 
       {/* ── SCORE (dominant) ── */}
       <div style={{ padding: '16px 16px 12px', textAlign: 'center' }}>
-        <div style={{ fontSize: 36, fontWeight: 800, color: scoreBarColor, lineHeight: 1 }}>
-          {total}<span style={{ fontSize: 18, fontWeight: 400, color: '#8b949e' }}>/40</span>
+        <div style={{ fontSize: 32, fontWeight: 800, color: scoreBarColor, lineHeight: 1 }}>
+          {total}<span style={{ fontSize: 16, fontWeight: 400, color: '#8b949e' }}>/40</span>
         </div>
-        <div style={{ fontSize: 11, color: '#484f58', marginTop: 4, textTransform: 'uppercase', letterSpacing: 1 }}>
+        <div style={{ fontSize: 10, color: '#484f58', marginTop: 4, textTransform: 'uppercase', letterSpacing: 1 }}>
           Composite Score
         </div>
         {/* Score bar */}
@@ -118,7 +118,7 @@ export default function AnalysisCard({ result, onViewReport }) {
       {/* ── AI INSIGHT ── */}
       {insight && (
         <div style={{
-          padding: '8px 16px', fontSize: 12, color: '#8b949e',
+          padding: '8px 16px', fontSize: 11, color: '#8b949e',
           background: '#161b22', borderBottom: '1px solid #21262d',
           fontStyle: 'italic',
         }}>
@@ -136,7 +136,7 @@ export default function AnalysisCard({ result, onViewReport }) {
         <button
           onClick={() => onViewReport(ticker, scoring)}
           style={{
-            flex: 1, padding: '7px 0', fontSize: 12, fontWeight: 500,
+            flex: 1, padding: '6px 0', fontSize: 11, fontWeight: 500,
             background: '#21262d', border: '1px solid #30363d',
             borderRadius: 5, color: '#58a6ff', cursor: 'pointer',
             transition: 'background 0.15s',
@@ -150,7 +150,7 @@ export default function AnalysisCard({ result, onViewReport }) {
           href={getTickerDownloadUrl(ticker)}
           download
           style={{
-            flex: 1, padding: '7px 0', fontSize: 12, fontWeight: 500,
+            flex: 1, padding: '6px 0', fontSize: 11, fontWeight: 500,
             background: '#21262d', border: '1px solid #30363d',
             borderRadius: 5, color: '#8b949e', cursor: 'pointer',
             textDecoration: 'none', textAlign: 'center',
@@ -169,7 +169,7 @@ export default function AnalysisCard({ result, onViewReport }) {
       }}>
         <span style={{
           display: 'inline-block', padding: '3px 10px', borderRadius: 3,
-          fontSize: 10, fontWeight: 700,
+          fontSize: 9, fontWeight: 700,
           background: `${convictionColor}20`, color: convictionColor,
           border: `1px solid ${convictionColor}40`,
           textTransform: 'uppercase', letterSpacing: 0.5,
@@ -188,10 +188,10 @@ function MetricBox({ label, value, border }) {
       borderLeft: border ? '1px solid #21262d' : 'none',
       borderRight: border ? '1px solid #21262d' : 'none',
     }}>
-      <div style={{ fontSize: 10, color: '#484f58', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>
+      <div style={{ fontSize: 9, color: '#484f58', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>
         {label}
       </div>
-      <div style={{ fontSize: 13, fontWeight: 600, color: '#e1e4e8' }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: '#e1e4e8' }}>
         {value}
       </div>
     </div>
