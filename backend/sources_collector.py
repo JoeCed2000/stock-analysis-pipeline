@@ -4,8 +4,54 @@ import json
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Cache layer — file-based JSON cache with TTL
+# ---------------------------------------------------------------------------
+
+CACHE_DIR = Path(__file__).parent / ".cache"
+CACHE_TTL_SECONDS = 3600  # 1 hour
+
+
+def _cache_path(ticker: str) -> Path:
+    """Get cache file path for a ticker."""
+    CACHE_DIR.mkdir(exist_ok=True)
+    return CACHE_DIR / f"{ticker.upper()}.json"
+
+
+def _cache_get(ticker: str) -> Optional[Dict[str, Any]]:
+    """Read from cache if still valid."""
+    path = _cache_path(ticker)
+    if not path.exists():
+        return None
+    try:
+        with open(path) as f:
+            entry = json.load(f)
+        age = datetime.now(timezone.utc).timestamp() - entry.get("timestamp", 0)
+        if age < CACHE_TTL_SECONDS:
+            logger.info(f"Cache HIT for {ticker} (age: {age:.0f}s)")
+            return entry["data"]
+        logger.info(f"Cache EXPIRED for {ticker} (age: {age:.0f}s)")
+    except Exception:
+        pass
+    return None
+
+
+def _cache_set(ticker: str, data: Dict[str, Any]) -> None:
+    """Write data to cache."""
+    try:
+        entry = {
+            "timestamp": datetime.now(timezone.utc).timestamp(),
+            "data": data,
+        }
+        with open(_cache_path(ticker), "w") as f:
+            json.dump(entry, f)
+        logger.info(f"Cache SET for {ticker}")
+    except Exception:
+        pass
 
 # ---------------------------------------------------------------------------
 # YFinance wrapper
@@ -18,7 +64,13 @@ def _load_yfinance():
 
 
 def get_yahoo_data(ticker: str) -> Dict[str, Any]:
-    """Fetch all available fundamental + price data from Yahoo Finance."""
+    """Fetch all available fundamental + price data from Yahoo Finance.
+    Uses file-based cache (TTL 1h) to avoid rate-limits."""
+    # Check cache first
+    cached = _cache_get(ticker)
+    if cached is not None:
+        return cached
+
     yf = _load_yfinance()
     stock = yf.Ticker(ticker)
     info = stock.info or {}
@@ -124,7 +176,7 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
     # Guidance
     financials["guidance_official"] = info.get("earningsQuarterlyGrowth")
 
-    return {
+    result = {
         "ticker": ticker,
         "company_name": info.get("longName") or info.get("shortName") or ticker,
         "sector": info.get("sector"),
@@ -143,6 +195,11 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
         "52w_low": info.get("fiftyTwoWeekLow"),
         "description": info.get("longBusinessSummary"),
     }
+
+    # Save to cache
+    _cache_set(ticker, result)
+
+    return result
 
 
 # ---------------------------------------------------------------------------
