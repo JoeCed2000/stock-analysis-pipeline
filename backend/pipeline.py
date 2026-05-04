@@ -989,6 +989,41 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
     except Exception:
         pass
     
+    # ── Synchronous dossier essentials (makes dossier "ready" immediately) ──
+    # Write report.md and Excel so the frontend shows 📥 Download instantly.
+    # Background thread handles PDF conversion and optional heavy files (10-K, transcripts).
+    try:
+        # Write minimal report.md
+        report_dir = os.path.join(output_dir, "07_final_report")
+        os.makedirs(report_dir, exist_ok=True)
+        report_path = os.path.join(report_dir, "report.md")
+        lines = [
+            f"# {company_name} ({ticker}) — Analysis Report",
+            f"**Decision**: {decision} (conviction: {conviction})",
+            f"**Score**: {scoring.total}/40",
+            f"**Price**: {price_native} {yf_data.get('currency', 'USD')}",
+            f"**Sector**: {yf_data.get('sector', 'N/A')}",
+            "",
+            "## Key Phrase",
+            result.key_phrase,
+            "",
+            "---",
+            f"*Full analysis in progress — download again for complete dossier.*",
+        ]
+        with open(report_path, "w") as f:
+            f.write("\n".join(lines))
+    except Exception as e:
+        logger.warning(f"[{ticker}] Report.md write failed: {e}")
+    
+    try:
+        # Write Excel financials
+        from backend.excel_generator import generate_excel
+        excel_path = os.path.join(output_dir, "03_financial_data_sources", f"financials_{ticker}.xlsx")
+        risks_data = [r.model_dump() if hasattr(r, 'model_dump') else r for r in result.risks]
+        generate_excel(excel_path, ticker, company_name, yf_data, risks_data)
+    except Exception as e:
+        logger.warning(f"[{ticker}] Excel generation failed: {e}")
+    
     # ── Background dossier generation (best-effort, may not survive on Render free tier) ──
     # The actual dossier generation happens synchronously in GET /api/dossier/{ticker}/download
     # when the user requests the ZIP. This background thread is a local-dev optimization.
