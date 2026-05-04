@@ -44,7 +44,7 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
         claim_id = next_claim()
         sha = hashlib.sha256(f"{text}|{src}|{file_path}|{section}".encode()).hexdigest()[:16]
         claims.append(Claim(
-            claim_id=f"C-{claim_id:03d}", claim=text, source_id=src,
+            claim_id=claim_id, claim=text, source_id=src,
             file_path=file_path, page_or_section=section, confidence="high",
             sha256=sha
         ))

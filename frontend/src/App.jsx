@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import TickerInput from './components/TickerInput.jsx';
+import BatchAnalysis from './components/BatchAnalysis.jsx';
 import AnalysisCard from './components/AnalysisCard.jsx';
 import ReportView from './components/ReportView.jsx';
 import { analyzeTickers } from './api.js';
 
 export default function App() {
+  const [mode, setMode] = useState('single'); // 'single' | 'batch'
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -36,16 +38,52 @@ export default function App() {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
       {/* Header */}
-      <div style={{ marginBottom: 32 }}>
+      <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: '#e1e4e8', marginBottom: 6 }}>
           📈 Stock Analysis Pipeline
         </h1>
-        <p style={{ fontSize: 13, color: '#8b949e' }}>
+        <p style={{ fontSize: 13, color: '#8b949e', marginBottom: 16 }}>
           Analyse fondamentale automatisée — BUY / HOLD / SELL basé sur 8 critères
         </p>
+
+        {/* Mode tabs */}
+        <div style={{ display: 'flex', gap: 2, background: '#1a1d27', border: '1px solid #30363d', borderRadius: 6, padding: 3, width: 'fit-content' }}>
+          <button
+            onClick={() => { setMode('single'); setResults([]); setError(null); }}
+            style={{
+              padding: '8px 20px', fontSize: 14, fontWeight: 500,
+              background: mode === 'single' ? '#238636' : 'transparent',
+              color: mode === 'single' ? '#fff' : '#8b949e',
+              border: 'none', borderRadius: 4, cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
+          >
+            🔍 Analyse rapide
+          </button>
+          <button
+            onClick={() => { setMode('batch'); setResults([]); setError(null); }}
+            style={{
+              padding: '8px 20px', fontSize: 14, fontWeight: 500,
+              background: mode === 'batch' ? '#238636' : 'transparent',
+              color: mode === 'batch' ? '#fff' : '#8b949e',
+              border: 'none', borderRadius: 4, cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
+          >
+            📦 Batch (Upload + ZIP)
+          </button>
+        </div>
       </div>
 
-      <TickerInput onAnalyze={handleAnalyze} loading={loading} />
+      {/* Single mode */}
+      {mode === 'single' && (
+        <TickerInput onAnalyze={handleAnalyze} loading={loading} />
+      )}
+
+      {/* Batch mode */}
+      {mode === 'batch' && (
+        <BatchAnalysis onResultsReady={(results) => setResults(results)} />
+      )}
 
       {error && (
         <div style={{
@@ -57,7 +95,7 @@ export default function App() {
         </div>
       )}
 
-      {loading && (
+      {loading && mode === 'single' && (
         <div style={{ textAlign: 'center', padding: 40, color: '#8b949e' }}>
           ⏳ Analyse en cours... (peut prendre 30-60s par ticker)
         </div>
