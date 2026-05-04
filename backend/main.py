@@ -383,7 +383,7 @@ async def ticker_download(ticker: str):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "service": "stock-analysis-pipeline"}
+    return {"status": "ok", "service": "stock-analysis-pipeline", "commit": "83f33d0"}
 
 
 @app.get("/api/debug/sources")
