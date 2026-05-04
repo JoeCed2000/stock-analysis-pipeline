@@ -34,3 +34,5 @@ logs/
 
 # Dependencies in repo
 *.lock
+
+token_github.txt
