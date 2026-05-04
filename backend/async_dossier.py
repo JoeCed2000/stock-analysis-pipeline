@@ -49,6 +49,8 @@ def get_dossier_status(ticker: str) -> dict:
         return {"ready": False, "files": [], "stage": "not_started"}
     
     matches = sorted(analyses_dir.glob(f"*_{ticker_clean}_*"), reverse=True)
+    # Skip dummy UPLOADED directories
+    matches = [m for m in matches if "UPLOADED" not in str(m)]
     if not matches:
         return {"ready": False, "files": [], "stage": "not_started"}
     
