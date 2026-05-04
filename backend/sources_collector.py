@@ -57,8 +57,8 @@ def _cache_set(ticker: str, data: Dict[str, Any]) -> None:
         with open(_cache_path(ticker), "w") as f:
             json.dump(entry, f)
         logger.info(f"Cache SET for {ticker}")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Cache SET failed for {ticker}: {e}")
 
 # ---------------------------------------------------------------------------
 # YFinance cache — populated by cron (fill_dossiers.py) every 2 min
@@ -184,6 +184,8 @@ def get_stock_data(ticker: str) -> Dict[str, Any]:
                        "beta", "52w_high", "52w_low"]:
                 if yf_data.get(key) is None and yf_cached.get(key) is not None:
                     yf_data[key] = yf_cached[key]
+            # Persist enriched financials back to yf_data for downstream merge
+            yf_data["financials"] = yf_fin_live
         
         if yf_data:
             yf_fin = yf_data.get("financials", {})
