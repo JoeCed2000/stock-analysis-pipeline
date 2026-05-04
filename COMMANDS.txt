@@ -1,0 +1,123 @@
+Stock Analysis Pipeline — Commandes
+===================================
+
+📍 Racine projet : /mnt/c/Users/cedon/Documents/Codex/stock-analysis-pipeline/
+
+
+══════════════════════════════════════════════════════════
+BACKEND (FastAPI — port 8780)
+══════════════════════════════════════════════════════════
+
+cd /mnt/c/Users/cedon/Documents/Codex/stock-analysis-pipeline
+
+# Lancer le backend
+cd backend && PYTHONPATH=.. uvicorn main:app --host 0.0.0.0 --port 8780 --reload
+
+# Tests backend
+cd backend && PYTHONPATH=.. python -m pytest tests/ -v
+
+
+══════════════════════════════════════════════════════════
+FRONTEND (React + Vite — port 5180)
+══════════════════════════════════════════════════════════
+
+cd /mnt/c/Users/cedon/Documents/Codex/stock-analysis-pipeline/frontend
+
+# Install dépendances (première fois)
+npm install
+
+# Dev server
+npm run dev -- --host 0.0.0.0 --port 5180
+
+# Build production
+npm run build
+
+# Preview build
+npm run preview -- --host 0.0.0.0 --port 5180
+
+
+══════════════════════════════════════════════════════════
+REDÉMARRAGE RAPIDE (kill + restart)
+══════════════════════════════════════════════════════════
+
+# Tuer les anciens processus
+kill $(ss -tlnp | grep 5180 | grep -oP 'pid=\K\d+') 2>/dev/null
+kill $(ss -tlnp | grep 8780 | grep -oP 'pid=\K\d+') 2>/dev/null
+
+# Relancer backend
+cd /mnt/c/Users/cedon/Documents/Codex/stock-analysis-pipeline/backend && PYTHONPATH=.. uvicorn main:app --host 0.0.0.0 --port 8780 --reload &
+
+# Relancer frontend
+cd /mnt/c/Users/cedon/Documents/Codex/stock-analysis-pipeline/frontend && npm run dev -- --host 0.0.0.0 --port 5180 &
+
+
+══════════════════════════════════════════════════════════
+VÉRIFICATION
+══════════════════════════════════════════════════════════
+
+# Backend OK ?
+curl -s http://localhost:8780/api/health
+
+# Frontend OK ?
+curl -s -o /dev/null -w '%{http_code}' http://localhost:5180
+
+# Ports ouverts
+ss -tlnp | grep -E '5180|8780'
+
+
+══════════════════════════════════════════════════════════
+GIT
+══════════════════════════════════════════════════════════
+
+cd /mnt/c/Users/cedon/Documents/Codex/stock-analysis-pipeline
+
+git status
+git add -A && git commit -m "message"
+git log --oneline -10
+
+
+══════════════════════════════════════════════════════════
+DÉPLOIEMENT
+══════════════════════════════════════════════════════════
+
+# Vercel (frontend) — nécessite vercel login d'abord
+cd /mnt/c/Users/cedon/Documents/Codex/stock-analysis-pipeline/frontend
+npx vercel login
+npx vercel --prod -e VITE_API_URL=https://stock-analysis-api.onrender.com/api
+
+# Render (backend) — via render.yaml + repo GitHub
+# → Voir DEPLOY.md pour les détails
+
+
+══════════════════════════════════════════════════════════
+STRUCTURE PROJET
+══════════════════════════════════════════════════════════
+
+stock-analysis-pipeline/
+├── backend/
+│   ├── main.py              # FastAPI app
+│   ├── models.py
+│   ├── scoring.py
+│   ├── analyzer.py
+│   ├── isin_validator.py
+│   ├── pdf_report.py        # Génération PDF
+│   ├── requirements.txt
+│   └── tests/
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── api.js
+│   │   └── components/
+│   │       ├── TickerInput.jsx
+│   │       ├── BatchAnalysis.jsx
+│   │       ├── AnalysisCard.jsx
+│   │       ├── ScoreCard.jsx
+│   │       ├── SmartLoader.jsx
+│   │       ├── SkeletonCard.jsx
+│   │       ├── ReportView.jsx
+│   │       └── AboutSection.jsx
+│   ├── package.json
+│   └── vercel.json
+├── DEPLOY.md
+├── render.yaml
+└── COMMANDS.txt
