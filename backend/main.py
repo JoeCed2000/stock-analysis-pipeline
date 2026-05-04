@@ -21,8 +21,10 @@ from pydantic import BaseModel, Field
 from backend.models import TickerRequest, AnalysisResult
 from backend.orchestrator import run_analysis_sequential
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger(__name__)
+# Setup logging with our custom configuration
+from backend.logging_config import setup_logging, get_logger
+setup_logging()
+logger = get_logger(__name__)
 
 # Load .env
 env_path = Path(__file__).parent.parent / ".env"
@@ -351,23 +353,30 @@ async def health():
 
 @app.get("/api/debug/sources")
 async def debug_sources():
-    """Return which API sources are configured (masked keys)."""
+    """Return which API sources are configured (masked keys).
+    Only available in development mode. Set ENVIRONMENT=development to enable."""
+    if os.getenv("ENVIRONMENT", "production") != "development":
+        raise HTTPException(status_code=403, detail="Debug endpoints disabled in production")
+
     def mask(key: str) -> str:
         return key[:4] + "****" + key[-4:] if len(key) > 8 else "****"
     
     fh_key = os.getenv("FINNHUB_API_KEY", "")
     td_key = os.getenv("TWELVEDATA_API_KEY", "")
+    nv_key = os.getenv("NVIDIA_API_KEY", "")
     
     return {
         "finnhub": {
             "configured": bool(fh_key),
             "masked": mask(fh_key) if fh_key else None,
-            "key_length": len(fh_key),
         },
         "twelvedata": {
             "configured": bool(td_key),
             "masked": mask(td_key) if td_key else None,
-            "key_length": len(td_key),
+        },
+        "nvidia": {
+            "configured": bool(nv_key),
+            "masked": mask(nv_key) if nv_key else None,
         },
     }
 
