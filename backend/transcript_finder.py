@@ -14,8 +14,29 @@ def find_transcripts(ticker: str, output_dir: str = "") -> Dict[str, any]:
     Saves results to 04_transcripts_and_management/ if output_dir provided.
     """
     results = []
+    primary_text = ""  # Full transcript text from primary source
 
-    # 1. Seeking Alpha RSS
+    # 0. Alpha Vantage API — primary (structured JSON, 25 req/day free)
+    try:
+        from backend.alpha_vantage import fetch_transcript
+        av = fetch_transcript(ticker)
+        if av and av.get("content"):
+            primary_text = av["content"]
+            results.append({
+                "source": "Alpha Vantage API",
+                "type": "earnings_transcript",
+                "title": f"{ticker} {av.get('quarter', '')} Earnings Call",
+                "url": f"https://www.alphavantage.co/query?function=EARNINGS_CALL_TRANSCRIPT&symbol={ticker}",
+                "text": av["content"][:8000],
+                "text_length": len(av["content"]),
+                "quarter": av.get("quarter", ""),
+                "date": av.get("date", ""),
+            })
+            logger.info(f"Alpha Vantage transcript: {len(av['content'])} chars for {ticker}")
+    except Exception as e:
+        logger.warning(f"Alpha Vantage unavailable for {ticker}: {e}")
+
+    # 1. Seeking Alpha RSS (links only, primary text from AV above)
     from backend.seeking_alpha import search_earnings_transcript, search_seeking_alpha
     sa_transcript = search_earnings_transcript(ticker)
     if sa_transcript:
@@ -38,29 +59,33 @@ def find_transcripts(ticker: str, output_dir: str = "") -> Dict[str, any]:
             "date": art.get("date", ""),
         })
 
-    # 3. Motley Fool transcripts
-    from backend.seeking_alpha import search_transcript_web, fetch_fool_transcript
-    fool_results = search_transcript_web(ticker)
-    for r in fool_results:
-        url = r.get("url", "")
-        # Attempt to fetch and extract full transcript text
-        transcript_text = ""
-        if url:
-            try:
-                transcript_text = fetch_fool_transcript(url)
-                if transcript_text:
-                    logger.info(f"Fool.com transcript extracted: {len(transcript_text)} chars for {ticker}")
-            except Exception as e:
-                logger.warning(f"Failed to fetch transcript text from {url}: {e}")
-        results.append({
-            "source": r.get("source", "Motley Fool"),
-            "type": "earnings_transcript",
-            "title": r.get("title", ""),
-            "url": url,
-            "free": r.get("free", True),
-            "text": transcript_text[:5000] if transcript_text else "",
-            "text_length": len(transcript_text) if transcript_text else 0,
-        })
+    # 3. Motley Fool transcripts — fallback if Alpha Vantage failed
+    if not primary_text:
+        from backend.seeking_alpha import search_transcript_web, fetch_fool_transcript
+        fool_results = search_transcript_web(ticker)
+        for r in fool_results:
+            url = r.get("url", "")
+            # Attempt to fetch and extract full transcript text
+            transcript_text = ""
+            if url:
+                try:
+                    transcript_text = fetch_fool_transcript(url)
+                    if transcript_text:
+                        primary_text = transcript_text
+                        logger.info(f"Fool.com transcript extracted: {len(transcript_text)} chars for {ticker}")
+                except Exception as e:
+                    logger.warning(f"Failed to fetch transcript text from {url}: {e}")
+            results.append({
+                "source": r.get("source", "Motley Fool"),
+                "type": "earnings_transcript",
+                "title": r.get("title", ""),
+                "url": url,
+                "free": r.get("free", True),
+                "text": transcript_text[:5000] if transcript_text else "",
+                "text_length": len(transcript_text) if transcript_text else 0,
+            })
+    else:
+        logger.info(f"Skipping Fool.com — Alpha Vantage already provided {len(primary_text)} chars")
 
     # Save to disk if output_dir provided
     if output_dir and results:
