@@ -989,16 +989,95 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
     except Exception:
         pass
     
-    # ── Synchronous dossier essentials (makes dossier "ready" immediately) ──
-    # Write report.md and Excel so the frontend shows 📥 Download instantly.
-    # Background thread handles PDF conversion and optional heavy files (10-K, transcripts).
+    # ── Synchronous dossier generation (all content written immediately) ──
+    # Background thread on Render free tier is unreliable — generates everything here.
+    
+    # Place README.txt in ALL 7 directories (guarantees no empty dirs in ZIP)
+    dossier_descriptions = {
+        '01_official_company_sources': 'Company profile with business description, sector, and key facts.',
+        '02_sec_or_regulatory_filings': '10-K annual report, 10-Q quarterly, 8-K filings (SEC EDGAR).',
+        '03_financial_data_sources': 'Excel financial model, Yahoo Finance snapshot, Finnhub data.',
+        '04_transcripts_and_management': 'Earnings call transcripts, management interviews, news.',
+        '05_market_and_context': 'Sector analysis, peer comparison, macro indicators.',
+        '06_extracted_data': 'Traceability matrix, extracted financials, claim verification.',
+        '07_final_report': 'Final analysis report (PDF + Markdown), executive summary.',
+    }
+    for folder, description in dossier_descriptions.items():
+        folder_path = os.path.join(output_dir, folder)
+        os.makedirs(folder_path, exist_ok=True)
+        placeholder = os.path.join(folder_path, 'README.txt')
+        if not os.path.exists(placeholder):
+            with open(placeholder, 'w') as f:
+                f.write(f'{folder}\n{"=" * len(folder)}\n\n{description}\n\nTicker: {ticker}\n')
+    
+    # 1. Company profile (01) — from Yahoo Finance data
     try:
-        # Write minimal report.md
+        from backend.company_profile import generate_company_profile
+        profile_path = generate_company_profile(output_dir, ticker, yf_data)
+        if profile_path and os.path.exists(profile_path):
+            from backend.pdf_generator import md_to_pdf
+            profile_pdf = os.path.join(os.path.dirname(profile_path), f"company_profile_{ticker}.pdf")
+            md_to_pdf(profile_path, profile_pdf, title=f"{company_name} ({ticker}) — Company Profile")
+    except Exception as e:
+        logger.warning(f"[{ticker}] Company profile failed: {e}")
+    
+    # 2. Market context (05) — from Finnhub peers + Yahoo Finance
+    try:
+        fh_data = {}
+        try:
+            from backend.sources_collector import get_finnhub_data
+            fh_data = get_finnhub_data(ticker)
+        except Exception:
+            pass
+        
+        market_dir = os.path.join(output_dir, "05_market_and_context")
+        peers = fh_data.get("peers", [])
+        market_md = os.path.join(market_dir, f"market_context_{ticker}_{date_str}.md")
+        with open(market_md, "w") as f:
+            f.write(f"# Market Context — {ticker}\n\n")
+            f.write(f"**Sector**: {yf_data.get('sector', 'N/A')}\n")
+            f.write(f"**Industry**: {yf_data.get('industry', 'N/A')}\n")
+            f.write(f"**Market Cap**: {yf_data.get('market_cap', 'N/A')}\n")
+            f.write(f"**Currency**: {yf_data.get('currency', 'USD')}\n")
+            f.write(f"**Country**: {yf_data.get('country', 'N/A')}\n\n")
+            if peers:
+                f.write(f"**Peers** (Finnhub): {', '.join(peers[:10])}\n")
+            else:
+                f.write("**Peers**: Not available (Finnhub API limit or free tier restriction)\n")
+        from backend.pdf_generator import md_to_pdf
+        md_to_pdf(market_md, market_md.replace('.md', '.pdf'),
+                  title=f"{ticker} — Market Context")
+    except Exception as e:
+        logger.warning(f"[{ticker}] Market context failed: {e}")
+    
+    # 3. Transcripts/News (04) — from Finnhub news
+    try:
+        tx_dir = os.path.join(output_dir, "04_transcripts_and_management")
+        news = fh_data.get("news", []) if 'fh_data' in dir() else []
+        if news:
+            tx_md = os.path.join(tx_dir, f"earnings_news_{ticker}_{date_str}.md")
+            with open(tx_md, "w") as f:
+                f.write(f"# Earnings News — {ticker}\n\n")
+                f.write(f"**Source**: Finnhub\n")
+                f.write(f"**Generated**: {datetime.now(PARIS).isoformat()}\n\n")
+                for i, article in enumerate(news[:10]):
+                    f.write(f"## {article.get('headline', 'N/A')}\n")
+                    f.write(f"*{article.get('source', 'N/A')} — {article.get('datetime', 'N/A')}*\n\n")
+                    f.write(f"{article.get('summary', 'N/A')}\n\n")
+            from backend.pdf_generator import md_to_pdf
+            md_to_pdf(tx_md, tx_md.replace('.md', '.pdf'),
+                      title=f"{ticker} — Earnings News & Transcripts")
+    except Exception as e:
+        logger.warning(f"[{ticker}] Transcripts/news failed: {e}")
+    
+    # 4. Full report.md + report.pdf (07)
+    try:
         report_dir = os.path.join(output_dir, "07_final_report")
-        os.makedirs(report_dir, exist_ok=True)
-        report_path = os.path.join(report_dir, "report.md")
+        report_md = os.path.join(report_dir, "report.md")
+        # Build comprehensive report
         lines = [
             f"# {company_name} ({ticker}) — Analysis Report",
+            f"**Date**: {datetime.now(PARIS).strftime('%Y-%m-%d %H:%M')}",
             f"**Decision**: {decision} (conviction: {conviction})",
             f"**Score**: {scoring.total}/40",
             f"**Price**: {price_native} {yf_data.get('currency', 'USD')}",
@@ -1007,16 +1086,60 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
             "## Key Phrase",
             result.key_phrase,
             "",
-            "---",
-            f"*Full analysis in progress — download again for complete dossier.*",
+            "## Financial Highlights",
         ]
-        with open(report_path, "w") as f:
+        fin = yf_data.get("financials", {})
+        for label, key in [("Revenue (quarterly)", "revenue_quarterly"),
+                           ("Revenue YoY growth", "revenue_yoy_growth"),
+                           ("Gross margin", "gross_margin"),
+                           ("Operating margin", "operating_margin"),
+                           ("Net income", "net_income"),
+                           ("Free cash flow", "free_cash_flow")]:
+            val = fin.get(key)
+            lines.append(f"- **{label}**: {val if val else 'N/A'}")
+        lines += [
+            "",
+            "## Valuation",
+            f"- P/E (trailing): {yf_data.get('pe_current', 'N/A')}",
+            f"- P/E (forward): {yf_data.get('pe_forward', 'N/A')}",
+            f"- PEG ratio: {yf_data.get('peg_ratio', 'N/A')}",
+            "",
+            "## Management Discourse",
+            f"- Tone: {management_tone.tone}",
+            f"- Confidence: {management_tone.confidence}",
+            f"- Visibility: {management_tone.visibility}",
+            "",
+            "## Scoring Breakdown",
+        ]
+        scoring_dict = scoring.model_dump()
+        for key, value in scoring_dict.items():
+            if key != "total" and isinstance(value, (int, float)):
+                lines.append(f"- {key}: {value}/5")
+        lines.append(f"- **Total**: {scoring.total}/40")
+        lines += [
+            "",
+            "## Risks",
+        ]
+        for risk in result.risks[:8]:
+            r = risk if isinstance(risk, dict) else risk.model_dump()
+            lines.append(f"- [{r.get('severity', 'N/A').upper()}] {r.get('category', '')}: {r.get('description', '')}")
+        lines += [
+            "",
+            "---",
+            f"*Report generated by Stock Analysis Pipeline — {datetime.now(PARIS).isoformat()}*",
+        ]
+        with open(report_md, "w") as f:
             f.write("\n".join(lines))
+        # Convert to PDF
+        from backend.pdf_generator import md_to_pdf
+        report_pdf = os.path.join(report_dir, "report.pdf")
+        md_to_pdf(report_md, report_pdf, title=f"{company_name} ({ticker}) — Analysis Report")
+        logger.info(f"[{ticker}] Full report written (MD + PDF)")
     except Exception as e:
-        logger.warning(f"[{ticker}] Report.md write failed: {e}")
+        logger.warning(f"[{ticker}] Report generation failed: {e}")
     
+    # 5. Excel financials (03)
     try:
-        # Write Excel financials
         from backend.excel_generator import generate_excel
         excel_path = os.path.join(output_dir, "03_financial_data_sources", f"financials_{ticker}.xlsx")
         risks_data = [r.model_dump() if hasattr(r, 'model_dump') else r for r in result.risks]
