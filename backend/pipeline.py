@@ -600,6 +600,36 @@ def _write_output_files(output_dir: str, result: AnalysisResult,
     except Exception as e:
         logger.warning(f"PDF generation failed: {e}")
 
+    # Convert all MD/TXT deliverables to PDF
+    try:
+        from backend.pdf_generator import md_to_pdf
+        conversions = []
+        
+        # Transcripts & Management — convert .txt to PDF
+        tx_dir = os.path.join(output_dir, "04_transcripts_and_management")
+        if os.path.isdir(tx_dir):
+            for fname in os.listdir(tx_dir):
+                if fname.endswith('.txt'):
+                    txt_path = os.path.join(tx_dir, fname)
+                    pdf_path = txt_path.replace('.txt', '.pdf')
+                    md_to_pdf(txt_path, pdf_path, title=f"{ticker} — {fname.replace('.txt','').replace('_',' ').title()}")
+                    conversions.append(pdf_path)
+        
+        # Market Context — convert all .md to PDF
+        mc_dir = os.path.join(output_dir, "05_market_and_context")
+        if os.path.isdir(mc_dir):
+            for fname in os.listdir(mc_dir):
+                if fname.endswith('.md'):
+                    md_path = os.path.join(mc_dir, fname)
+                    pdf_path = md_path.replace('.md', '.pdf')
+                    md_to_pdf(md_path, pdf_path, title=f"{ticker} — {fname.replace('.md','').replace('_',' ').title()}")
+                    conversions.append(pdf_path)
+        
+        if conversions:
+            logger.info(f"MD/TXT → PDF: {len(conversions)} files converted")
+    except Exception as e:
+        logger.warning(f"MD/TXT → PDF conversion failed: {e}")
+
     logger.info(f"Output written to {output_dir}")
 
 
