@@ -55,6 +55,32 @@ BATCH_DIR.mkdir(exist_ok=True)
 TICKER_RE = re.compile(r'^[A-Z]{1,5}(?:\.[A-Z]{1,2})?$')  # AAPL, MC.PA, BRK.B
 ISIN_RE = re.compile(r'^[A-Z]{2}[A-Z0-9]{10}$')  # US0378331005
 
+# Lazy import yfinance for ticker validation
+_yf_available = None
+
+def _get_yf():
+    global _yf_available
+    if _yf_available is None:
+        try:
+            import yfinance as yf
+            _yf_available = yf
+        except ImportError:
+            _yf_available = False
+    return _yf_available
+
+
+def _ticker_exists(ticker: str) -> bool:
+    """Check if ticker exists on Yahoo Finance. Caches negative results for session."""
+    yf = _get_yf()
+    if not yf:
+        return True  # Can't validate — don't block
+    try:
+        info = yf.Ticker(ticker).info
+        # Valid tickers have at least symbol and shortName or longName
+        return bool(info.get('symbol') and (info.get('shortName') or info.get('longName')))
+    except Exception:
+        return False
+
 # Common ISIN → ticker mapping (extensible)
 ISIN_TO_TICKER = {
     "US0378331005": "AAPL",
@@ -143,9 +169,12 @@ def _parse_tickers_from_text(text: str) -> List[dict]:
                 })
             seen.add(token)
         elif TICKER_RE.match(token):
+            exists = _ticker_exists(token)
             items.append({
                 "value": token, "type": "TICKER",
-                "normalized": token, "status": "valid",
+                "normalized": token,
+                "status": "valid" if exists else "invalid",
+                "error": None if exists else "Ticker not found on any exchange — verify the symbol",
             })
             seen.add(token)
         else:
