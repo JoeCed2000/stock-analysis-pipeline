@@ -167,3 +167,62 @@ POST-FIX VERIFICATION — après tout fix, 3 vérifications : (1) l'endpoint ré
 - [ ] Patcher `agentic-engineering-review` avec Pre-push checklist
 - [ ] Ajouter les 4 règles mémoire au prompt système
 - [ ] Nettoyer le répertoire `NVDA_UPLOADED` orphelin sur Render (via redeploy)
+
+---
+
+## Session 2 — 21:00–22:10 — PE Ratio + YFinance Cache Saga
+
+**Objectif** : Faire apparaître le PE ratio, le Revenue, le Net Income et le FCF dans l'API Render (Finnhub free tier ne donne que les ratios, pas les valeurs absolues).
+
+### Contexte
+
+Finnhub free tier retourne `grossMarginTTM`, `operatingMarginTTM` (ratios) mais **jamais** `revenue_annual`, `net_income`, `free_cash_flow`, `pe_current` (valeurs absolues). Ces données viennent de yfinance, mais yfinance est **bloqué sur l'IP mutualisée de Render** (429 rate-limit Yahoo).
+
+Un cron local (`fill_dossiers.py`, toutes les 2 min) pousse les données yfinance vers l'endpoint `/api/cache/financials/{ticker}` sur Render. Mais ces données n'étaient **jamais utilisées** par le pipeline d'analyse.
+
+### Bugs découverts et corrigés
+
+| # | Problème | Cause racine | Correction | Temps |
+|---|---|---|---|---|
+| 12 | **PE/Revenue/NI/FCF = None** | `get_yahoo_data()` échoue sur Render → merge sauté. Cache yfinance du cron ignoré. | Fallback `_cache_get_yf()` ajouté dans la merge chain. Cache yfinance séparé (`_yf.json`) pour ne pas écraser les données Finnhub. | ~30 min |
+| 13 | **`valuation: {}` dans l'API** | `r.pop("valuation", None)` à la ligne 653 de `main.py` — le PE était dans `valuation` mais supprimé avant sérialisation | PE extrait de `valuation` → injecté dans `financial_summary` avant le pop | ~5 min |
+| 14 | **Revenue/NI/FCF = 0 après cache merge** | `yf_fin_live` modifié localement (variable shadow) mais jamais repoussé dans `yf_data["financials"]`. PE marchait car au top-level, pas dans `financials`. | `yf_data["financials"] = yf_fin_live` après enrichissement | ~10 min |
+| 15 | **Container Render wipe le filesystem** | À chaque restart/cold start, `_yf.json` disparaît. Le push yfinance arrivait avant l'analyse → données perdues. | Le endpoint `/api/cache/financials` enrichit maintenant **directement** le cache principal `{TICKER}.json` en plus d'écrire `_yf.json`. Double filet de sécurité. | ~10 min |
+| 16 | **`_cache_set()` erreurs silencieuses** | `except Exception: pass` — impossible de diagnostiquer pourquoi le cache ne persistait pas | `logger.warning()` ajouté | ~2 min |
+| 17 | **7+ commits pour debugger un problème local** | Tests uniquement sur Render (aller-retour deploy→test→fix→deploy). Pas de test local du scénario Render. | Aurait dû simuler l'échec `get_yahoo_data()` localement en premier | ~40 min |
+
+### Leçons apprises (spécifiques à cette session)
+
+#### 3.8 Ne jamais `pop` une clé sans vérifier si elle contient des données utiles
+- `r.pop("valuation", None)` supprimait le PE ratio de la réponse API depuis le jour 1
+- **Règle** : quand on `pop` un champ de la réponse, documenter POURQUOI et vérifier qu'aucune donnée utile n'est perdue
+
+#### 3.9 Toujours repousser les variables locales modifiées dans l'objet parent
+- `yf_fin_live = yf_data.get("financials", {})` → modifications sur `yf_fin_live` → jamais visibles dans `yf_data`
+- **Règle** : après avoir modifié une copie locale d'un sous-dict, toujours réassigner : `parent["key"] = local_copy`
+
+#### 3.10 Container restart = filesystem wipe sur Render free tier
+- Même un fichier écrit avec 200 OK peut disparaître 30 secondes plus tard si le container restart
+- **Règle** : tout fichier écrit sur Render doit être considéré comme éphémère. Le cache doit être enrichi immédiatement, pas « plus tard quand quelqu'un lira »
+
+#### 3.11 Tester le scénario d'échec en local avant de déployer
+- 7 commits pour debugger un problème reproductible localement (juste bloquer yfinance)
+- **Règle** : avant de déployer un fix pour un problème d'API externe, simuler l'échec en local (mock, monkeypatch, ou comment-out)
+
+#### 3.12 Deux caches valent mieux qu'un
+- `_yf.json` (yfinance-only) + `{TICKER}.json` (Finnhub+yfinance merged)
+- Si le container restart wipe tout, le `_yf.json` est perdu mais le flux d'analyse recrée le `{TICKER}.json` avec les données Finnhub, puis le cron ré-enrichit
+- **Règle** : pour les données provenant de deux sources dont une est instable, séparer les caches et faire un merge paresseux
+
+### Fichiers modifiés
+
+| Fichier | Changements |
+|---|---|
+| `backend/sources_collector.py` | +60 lignes : `_cache_get_yf()`, `_cache_path_yf()`, `YF_CACHE_TTL`, enrichment cache hit, merge yf cache dans fetch path, `yf_data["financials"] = yf_fin_live`, log erreurs `_cache_set` |
+| `backend/main.py` | +40 lignes : `_sanitize_json()`, endpoint debug `/api/debug/yf-cache`, enrichment direct du cache principal dans `/api/cache/financials`, PE extrait dans `financial_summary` |
+
+### Plan d'action additionnel
+
+- [ ] Patcher `systematic-debugging` avec § « Toujours simuler l'échec en local avant de déployer sur Render »
+- [ ] Ajouter règle mémoire : « Render container restart = filesystem wipe — enrichir le cache principal immédiatement »
+- [ ] Remplacer `commit: "83f33d0"` hardcodé → `git rev-parse HEAD` dans le health endpoint
