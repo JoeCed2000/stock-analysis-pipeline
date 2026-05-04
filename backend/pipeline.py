@@ -395,22 +395,22 @@ def _margin_of_safety_text(pe: Any, fpe: Any) -> str:
 def _conviction_text(s: Scoring) -> str:
     t = s.total
     if t >= 35:
-        return "Forte"
+        return "Strong"
     if t >= 28:
-        return "Modérée"
+        return "Moderate"
     if t >= 20:
-        return "Faible"
-    return "Très faible"
+        return "Weak"
+    return "Very weak"
 
 
 def _key_phrase(decision: str, name: str, total: int) -> str:
     if "BUY" in decision and "PULLBACK" not in decision:
-        return f"{name} présente un profil fondamental solide (score {total}/40) justifiant une position acheteuse."
+        return f"{name} has a strong fundamental profile (score {total}/40) — buy."
     if "PULLBACK" in decision:
-        return f"{name} est de bonne qualité (score {total}/40) mais le timing n'est pas optimal — attendre un pullback."
+        return f"{name} is good quality (score {total}/40) but timing is suboptimal — wait for pullback."
     if "HOLD fragile" in decision:
-        return f"{name} montre des signaux mitigés (score {total}/40) — conserver sans renforcer."
-    return f"{name} présente trop de risques (score {total}/40) pour justifier une position — éviter ou vendre."
+        return f"{name} shows mixed signals (score {total}/40) — hold, do not add."
+    return f"{name} carries too much risk (score {total}/40) — avoid or sell."
 
 
 def _write_output_files(output_dir: str, result: AnalysisResult,
@@ -463,7 +463,7 @@ def _generate_report(result: AnalysisResult, yf_data: Dict, sources: List[Source
 
     def fmt(val: Any, unit: str = "") -> str:
         if val is None:
-            return "DONNÉE NON DISPONIBLE"
+            return "DATA NOT AVAILABLE"
         if isinstance(val, float):
             if abs(val) > 1e9:
                 return f"{val/1e9:.1f}B{unit}"
@@ -473,67 +473,67 @@ def _generate_report(result: AnalysisResult, yf_data: Dict, sources: List[Source
         return str(val)
 
     lines = []
-    lines.append(f"# {result.company_name} ({result.ticker}) — Analyse IA")
+    lines.append(f"# {result.company_name} ({result.ticker}) — AI Analysis")
     lines.append(f"")
-    lines.append(f"**Date :** {result.retrieved_at}")
-    lines.append(f"**Cours :** {fmt(result.price_native, ' ' + result.currency)}")
-    lines.append(f"**Cours EUR :** {fmt(result.price_eur, ' €')}")
-    lines.append(f"**Capitalisation :** {fmt(result.market_cap, ' ' + result.currency)}")
-    lines.append(f"**Secteur :** {result.sector or 'N/A'}")
-    lines.append(f"")
-
-    # 1. Résumé exécutif
-    lines.append(f"## 1. Résumé exécutif")
-    lines.append(f"")
-    lines.append(f"**Décision :** {result.decision}")
-    lines.append(f"**Conviction :** {result.conviction}")
-    lines.append(f"**Phrase clé :** {result.key_phrase}")
+    lines.append(f"**Date:** {result.retrieved_at}")
+    lines.append(f"**Price:** {fmt(result.price_native, ' ' + result.currency)}")
+    lines.append(f"**EUR Price:** {fmt(result.price_eur, ' €')}")
+    lines.append(f"**Market Cap:** {fmt(result.market_cap, ' ' + result.currency)}")
+    lines.append(f"**Sector:** {result.sector or 'N/A'}")
     lines.append(f"")
 
-    # 2. Données financières
-    lines.append(f"## 2. Données financières")
+    # 1. Executive Summary
+    lines.append(f"## 1. Executive Summary")
+    lines.append(f"")
+    lines.append(f"**Decision:** {result.decision}")
+    lines.append(f"**Conviction:** {result.conviction}")
+    lines.append(f"**Key phrase:** {result.key_phrase}")
+    lines.append(f"")
+
+    # 2. Financial Data
+    lines.append(f"## 2. Financial Data")
     lines.append(f"")
     for label, v, src_id in [
-        ("Chiffre d'affaires trimestriel", fin.revenue_quarterly, "SRC-001"),
-        ("Croissance YoY", fin.revenue_yoy_growth, "SRC-001"),
-        ("Chiffre d'affaires annuel", fin.revenue_annual, "SRC-001"),
-        ("Croissance annuelle", fin.revenue_annual_growth, "SRC-001"),
-        ("Marge brute", fin.gross_margin, "SRC-001"),
-        ("Marge opérationnelle", fin.operating_margin, "SRC-001"),
-        ("Résultat net", fin.net_income, "SRC-001"),
-        ("Free cash flow", fin.free_cash_flow, "SRC-001"),
-        ("Dette nette", fin.net_debt, "SRC-001"),
-        ("Guidance officielle", fin.guidance_official, "SRC-001"),
+        ("Quarterly Revenue", fin.revenue_quarterly, "SRC-001"),
+        ("YoY Growth", fin.revenue_yoy_growth, "SRC-001"),
+        ("Annual Revenue", fin.revenue_annual, "SRC-001"),
+        ("Annual Growth", fin.revenue_annual_growth, "SRC-001"),
+        ("Gross Margin", fin.gross_margin, "SRC-001"),
+        ("Operating Margin", fin.operating_margin, "SRC-001"),
+        ("Net Income", fin.net_income, "SRC-001"),
+        ("Free Cash Flow", fin.free_cash_flow, "SRC-001"),
+        ("Net Debt", fin.net_debt, "SRC-001"),
+        ("Official Guidance", fin.guidance_official, "SRC-001"),
     ]:
         formatted = fmt(v)
-        if isinstance(v, float) and v is not None and v < 1 and (label.startswith("Croissance") or label.startswith("Marge")):
+        if isinstance(v, float) and v is not None and v < 1 and (label.startswith("YoY") or label.startswith("Gross") or label.startswith("Operating") or label.startswith("Annual Growth")):
             formatted = f"{v*100:.1f}%"
-        if label == "Guidance officielle" and v is not None and isinstance(v, float):
+        if label == "Official Guidance" and v is not None and isinstance(v, float):
             formatted = f"{v*100:.1f}%"
 
-        if isinstance(v, float) and abs(v) > 1e6 and not label.startswith("Croissance") and not label.startswith("Marge"):
+        if isinstance(v, float) and abs(v) > 1e6 and not label.startswith("YoY") and not label.startswith("Gross") and not label.startswith("Operating"):
             formatted = f"{v/1e9:.1f}B {result.currency}"
-        lines.append(f"- **{label} :** {formatted}")
+        lines.append(f"- **{label}:** {formatted}")
 
     lines.append(f"")
 
     # 3. Business
     lines.append(f"## 3. Business")
     lines.append(f"")
-    lines.append(f"{yf_data.get('description', 'DONNÉE NON DISPONIBLE')[:800]}")
+    lines.append(f"{yf_data.get('description', 'DATA NOT AVAILABLE')[:800]}")
     lines.append(f"")
 
     # 4. Management
     lines.append(f"## 4. Management")
     lines.append(f"")
-    lines.append(f"**Ton :** {result.management_tone.tone}")
-    lines.append(f"**Confiance :** {result.management_tone.confidence}")
-    lines.append(f"**Visibilité :** {result.management_tone.visibility}")
-    lines.append(f"**Note :** L'analyse du discours management nécessite les transcripts des earnings calls (SEC EDGAR ou Seeking Alpha).")
+    lines.append(f"**Tone:** {result.management_tone.tone}")
+    lines.append(f"**Confidence:** {result.management_tone.confidence}")
+    lines.append(f"**Visibility:** {result.management_tone.visibility}")
+    lines.append(f"**Note:** Management tone analysis requires earnings call transcripts (SEC EDGAR or Seeking Alpha).")
     lines.append(f"")
 
     # 5. Risks
-    lines.append(f"## 5. Risques")
+    lines.append(f"## 5. Risks")
     lines.append(f"")
     for r in result.risks:
         severity_emoji = {"high": "🔴", "medium": "🟠", "low": "🟡"}.get(r.severity, "⚪")
@@ -541,41 +541,41 @@ def _generate_report(result: AnalysisResult, yf_data: Dict, sources: List[Source
     lines.append(f"")
 
     # 6. Valuation
-    lines.append(f"## 6. Valorisation")
+    lines.append(f"## 6. Valuation")
     lines.append(f"")
-    lines.append(f"- **P/E actuel :** {fmt(val.pe_current)}")
-    lines.append(f"- **Forward P/E :** {fmt(val.pe_forward)}")
-    lines.append(f"- **PEG ratio :** {fmt(val.peg_ratio)}")
-    lines.append(f"- **Croissance attendue :** {fmt(val.expected_growth, '%') if val.expected_growth else 'DONNÉE NON DISPONIBLE'}")
-    lines.append(f"- **Marge de sécurité :** {val.margin_of_safety}")
+    lines.append(f"- **P/E (current):** {fmt(val.pe_current)}")
+    lines.append(f"- **Forward P/E:** {fmt(val.pe_forward)}")
+    lines.append(f"- **PEG ratio:** {fmt(val.peg_ratio)}")
+    lines.append(f"- **Expected Growth:** {fmt(val.expected_growth, '%') if val.expected_growth else 'DATA NOT AVAILABLE'}")
+    lines.append(f"- **Margin of Safety:** {val.margin_of_safety}")
     lines.append(f"")
 
     # 7. Scoring
     lines.append(f"## 7. Scoring")
     lines.append(f"")
     for criterion, score in [
-        ("Croissance", sc.growth),
-        ("Rentabilité", sc.profitability),
-        ("Solidité financière", sc.financial_strength),
+        ("Growth", sc.growth),
+        ("Profitability", sc.profitability),
+        ("Financial Strength", sc.financial_strength),
         ("Moat", sc.moat),
         ("Management", sc.management),
-        ("Risque valorisation", sc.valuation_risk),
-        ("Risque géopolitique", sc.geopolitical_risk),
-        ("Momentum business", sc.business_momentum),
+        ("Valuation Risk", sc.valuation_risk),
+        ("Geopolitical Risk", sc.geopolitical_risk),
+        ("Business Momentum", sc.business_momentum),
     ]:
         bar = "█" * score + "░" * (5 - score)
-        lines.append(f"- **{criterion} :** {bar} {score}/5")
+        lines.append(f"- **{criterion}:** {bar} {score}/5")
     lines.append(f"")
-    lines.append(f"**Total : {sc.total}/40**")
+    lines.append(f"**Total: {sc.total}/40**")
     lines.append(f"")
 
-    # 8. Décision
-    lines.append(f"## 8. Décision finale")
+    # 8. Decision
+    lines.append(f"## 8. Final Decision")
     lines.append(f"")
-    lines.append(f"**Décision :** {result.decision}")
-    lines.append(f"**Pourquoi :** Score {sc.total}/40 — {_decision_rationale(sc)}")
-    lines.append(f"**Conditions pour renforcer :** Amélioration du momentum, pullback de valorisation, guidance positive")
-    lines.append(f"**Conditions pour vendre :** Détérioration des fondamentaux, rupture de moat, risque géopolitique matérialisé")
+    lines.append(f"**Decision:** {result.decision}")
+    lines.append(f"**Why:** Score {sc.total}/40 — {_decision_rationale(sc)}")
+    lines.append(f"**Conditions to add:** Improved momentum, valuation pullback, positive guidance")
+    lines.append(f"**Conditions to sell:** Deteriorating fundamentals, moat erosion, materialized geopolitical risk")
     lines.append(f"")
 
     # 9. Sources
@@ -591,20 +591,20 @@ def _generate_report(result: AnalysisResult, yf_data: Dict, sources: List[Source
 def _decision_rationale(sc: Scoring) -> str:
     """Generate a one-line rationale for the decision."""
     strong = [name for name, score in [
-        ("croissance", sc.growth),
-        ("rentabilité", sc.profitability),
-        ("solidité financière", sc.financial_strength),
+        ("growth", sc.growth),
+        ("profitability", sc.profitability),
+        ("financial strength", sc.financial_strength),
         ("moat", sc.moat),
     ] if score >= 4]
     weak = [name for name, score in [
-        ("valorisation", 5 - sc.valuation_risk),
-        ("géopolitique", 5 - sc.geopolitical_risk),
+        ("valuation", 5 - sc.valuation_risk),
+        ("geopolitical", 5 - sc.geopolitical_risk),
         ("momentum", sc.business_momentum),
     ] if score <= 2]
 
     parts = []
     if strong:
-        parts.append(f"forces: {', '.join(strong)}")
+        parts.append(f"strengths: {', '.join(strong)}")
     if weak:
-        parts.append(f"faiblesses: {', '.join(weak)}")
-    return ". ".join(parts) if parts else "Profil équilibré sans extrêmes marqués."
+        parts.append(f"weaknesses: {', '.join(weak)}")
+    return ". ".join(parts) if parts else "Balanced profile with no extreme strengths or weaknesses."

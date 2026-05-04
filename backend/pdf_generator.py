@@ -36,8 +36,8 @@ def generate_pdf(result, report_md: str, output_path: str) -> str:
         canvas.setFont('Helvetica', 7)
         canvas.setFillColor(HexColor('#8b949e'))
         footer_text = (
-            "⚠️ Rapport généré automatiquement. Données marquées 'NON DISPONIBLE' = non sourcées. "
-            "Vérifier les sources avant toute décision. Ceci n'est pas un conseil en investissement."
+            "⚠️ Auto-generated report. Data marked 'NOT AVAILABLE' = unsourced. "
+            "Verify sources before making decisions. This is not investment advice."
         )
         canvas.drawString(20*mm, 12*mm, footer_text)
         canvas.drawRightString(A4[0] - 20*mm, 12*mm, f"Page {doc.page}")
@@ -61,11 +61,11 @@ def generate_pdf(result, report_md: str, output_path: str) -> str:
     story.append(Spacer(1, 4))
 
     # Price line
-    price_str = f"Cours: {result.price_native:.2f} {result.currency}" if result.price_native else "Cours: N/A"
+    price_str = f"Price: {result.price_native:.2f} {result.currency}" if result.price_native else "Price: N/A"
     eur_str = f" | EUR: {result.price_eur:.2f} €" if result.price_eur else ""
-    cap_str = f" | Capi: {result.market_cap/1e12:.2f}T" if result.market_cap else ""
+    cap_str = f" | Mkt Cap: {result.market_cap/1e12:.2f}T" if result.market_cap else ""
     story.append(Paragraph(f"{price_str}{eur_str}{cap_str}", small_style))
-    story.append(Paragraph(f"Date: {result.retrieved_at} | Secteur: {result.sector or 'N/A'}", small_style))
+    story.append(Paragraph(f"Date: {result.retrieved_at} | Sector: {result.sector or 'N/A'}", small_style))
     story.append(Spacer(1, 8))
 
     # Decision badge
@@ -80,19 +80,19 @@ def generate_pdf(result, report_md: str, output_path: str) -> str:
     story.append(Spacer(1, 8))
 
     # ── Financial Data ──
-    story.append(Paragraph("Données financières", h2_style))
+    story.append(Paragraph("Financial Data", h2_style))
     story.append(HRFlowable(width="100%", thickness=0.5, color=MUTED))
     fin = result.financials
     fin_data = [
-        ["Chiffre d'affaires trim.", _fmt(fin.revenue_quarterly, result.currency)],
-        ["Croissance YoY", _pct(fin.revenue_yoy_growth)],
-        ["Chiffre d'affaires annuel", _fmt(fin.revenue_annual, result.currency)],
-        ["Croissance annuelle", _pct(fin.revenue_annual_growth)],
-        ["Marge brute", _pct(fin.gross_margin)],
-        ["Marge opérationnelle", _pct(fin.operating_margin)],
-        ["Résultat net", _fmt(fin.net_income, result.currency)],
+        ["Quarterly Revenue", _fmt(fin.revenue_quarterly, result.currency)],
+        ["YoY Growth", _pct(fin.revenue_yoy_growth)],
+        ["Annual Revenue", _fmt(fin.revenue_annual, result.currency)],
+        ["Annual Growth", _pct(fin.revenue_annual_growth)],
+        ["Gross Margin", _pct(fin.gross_margin)],
+        ["Operating Margin", _pct(fin.operating_margin)],
+        ["Net Income", _fmt(fin.net_income, result.currency)],
         ["Free Cash Flow", _fmt(fin.free_cash_flow, result.currency)],
-        ["Dette nette", _fmt(fin.net_debt, result.currency)],
+        ["Net Debt", _fmt(fin.net_debt, result.currency)],
     ]
     t = Table(fin_data, colWidths=[120, 200])
     t.setStyle(TableStyle([
@@ -108,20 +108,20 @@ def generate_pdf(result, report_md: str, output_path: str) -> str:
 
     # ── Management Tone ──
     mt = result.management_tone
-    if mt.tone and "DONNÉE" not in mt.tone:
-        story.append(Paragraph("Discours Management (10-K)", h2_style))
+    if mt.tone and "NOT AVAIL" not in mt.tone and "DONNÉE" not in mt.tone:
+        story.append(Paragraph("Management Tone (10-K)", h2_style))
         story.append(HRFlowable(width="100%", thickness=0.5, color=MUTED))
-        story.append(Paragraph(f"<b>Ton:</b> {mt.tone}", body_style))
-        story.append(Paragraph(f"<b>Confiance:</b> {mt.confidence}", body_style))
-        story.append(Paragraph(f"<b>Visibilité:</b> {mt.visibility}", body_style))
+        story.append(Paragraph(f"<b>Tone:</b> {mt.tone}", body_style))
+        story.append(Paragraph(f"<b>Confidence:</b> {mt.confidence}", body_style))
+        story.append(Paragraph(f"<b>Visibility:</b> {mt.visibility}", body_style))
         if mt.concrete_promises:
-            story.append(Paragraph("<b>Promesses concrètes:</b>", body_style))
+            story.append(Paragraph("<b>Concrete promises:</b>", body_style))
             for p in mt.concrete_promises[:3]:
                 story.append(Paragraph(f"  • {p[:150]}", small_style))
         story.append(Spacer(1, 6))
 
     # ── Risks ──
-    story.append(Paragraph("Risques", h2_style))
+    story.append(Paragraph("Risks", h2_style))
     story.append(HRFlowable(width="100%", thickness=0.5, color=MUTED))
     for r in result.risks[:8]:
         sev_color = RED if r.severity == "high" else YELLOW if r.severity == "medium" else MUTED
@@ -133,13 +133,13 @@ def generate_pdf(result, report_md: str, output_path: str) -> str:
 
     # ── Valuation ──
     val = result.valuation
-    story.append(Paragraph("Valorisation", h2_style))
+    story.append(Paragraph("Valuation", h2_style))
     story.append(HRFlowable(width="100%", thickness=0.5, color=MUTED))
     story.append(Paragraph(
         f"P/E: {_fmt(val.pe_current)} | Forward P/E: {_fmt(val.pe_forward)} | PEG: {_fmt(val.peg_ratio)}",
         body_style
     ))
-    story.append(Paragraph(f"Marge de sécurité: {val.margin_of_safety}", body_style))
+    story.append(Paragraph(f"Margin of Safety: {val.margin_of_safety}", body_style))
     story.append(Spacer(1, 8))
 
     # ── Scoring ──
@@ -147,13 +147,13 @@ def generate_pdf(result, report_md: str, output_path: str) -> str:
     story.append(HRFlowable(width="100%", thickness=0.5, color=MUTED))
     sc = result.scoring
     sc_data = [
-        ["Croissance", _bar(sc.growth), str(sc.growth)],
-        ["Rentabilité", _bar(sc.profitability), str(sc.profitability)],
-        ["Solidité financière", _bar(sc.financial_strength), str(sc.financial_strength)],
+        ["Growth", _bar(sc.growth), str(sc.growth)],
+        ["Profitability", _bar(sc.profitability), str(sc.profitability)],
+        ["Financial Strength", _bar(sc.financial_strength), str(sc.financial_strength)],
         ["Moat", _bar(sc.moat), str(sc.moat)],
         ["Management", _bar(sc.management), str(sc.management)],
-        ["Valorisation", _bar(sc.valuation_risk), str(sc.valuation_risk)],
-        ["Géopolitique", _bar(sc.geopolitical_risk), str(sc.geopolitical_risk)],
+        ["Valuation Risk", _bar(sc.valuation_risk), str(sc.valuation_risk)],
+        ["Geopolitical", _bar(sc.geopolitical_risk), str(sc.geopolitical_risk)],
         ["Momentum", _bar(sc.business_momentum), str(sc.business_momentum)],
         ["TOTAL", "", f"{sc.total}/40"],
     ]
@@ -169,31 +169,31 @@ def generate_pdf(result, report_md: str, output_path: str) -> str:
     story.append(Spacer(1, 12))
 
     # ── Decision ──
-    story.append(Paragraph("Décision finale", h2_style))
+    story.append(Paragraph("Final Decision", h2_style))
     story.append(HRFlowable(width="100%", thickness=0.5, color=MUTED))
     story.append(Paragraph(
         f'<font color="{decision_color}" size="14"><b>{result.decision}</b></font>',
         ParagraphStyle('Final', parent=body_style)
     ))
-    story.append(Paragraph(f"Conditions pour renforcer: Amélioration du momentum, pullback de valorisation, guidance positive", small_style))
-    story.append(Paragraph(f"Conditions pour vendre: Détérioration des fondamentaux, rupture de moat, risque géopolitique matérialisé", small_style))
+    story.append(Paragraph(f"Conditions to add: Improved momentum, valuation pullback, positive guidance", small_style))
+    story.append(Paragraph(f"Conditions to sell: Deteriorating fundamentals, moat erosion, materialized geopolitical risk", small_style))
 
     # ── Disclaimer ──
     story.append(Spacer(1, 20))
     story.append(HRFlowable(width="100%", thickness=0.5, color=MUTED))
-    story.append(Paragraph("Avertissement", h2_style))
+    story.append(Paragraph("Disclaimer", h2_style))
     story.append(Paragraph(
-        "Ce document est généré automatiquement par le Stock Analysis Pipeline. "
-        "Il ne constitue pas un conseil en investissement, une recommandation d'achat/vente, "
-        "ni une sollicitation. Les données proviennent de sources publiques (SEC EDGAR 10-K/10-Q, "
-        "Yahoo Finance, Finnhub, Seeking Alpha, The Motley Fool) et peuvent contenir des erreurs. "
-        "Toute décision d'investissement relève de votre seule responsabilité.",
+        "This document is auto-generated by the Stock Analysis Pipeline. "
+        "It does not constitute investment advice, a buy/sell recommendation, "
+        "or a solicitation. Data is sourced from public records (SEC EDGAR 10-K/10-Q, "
+        "Yahoo Finance, Finnhub, Seeking Alpha, The Motley Fool) and may contain errors. "
+        "All investment decisions are your sole responsibility.",
         small_style
     ))
     story.append(Spacer(1, 4))
     story.append(Paragraph(
-        f"Analyse générée le {result.retrieved_at} | Ticker: {result.ticker} | "
-        f"Score: {result.scoring.total}/40 | Décision: {result.decision}",
+        f"Analysis generated on {result.retrieved_at} | Ticker: {result.ticker} | "
+        f"Score: {result.scoring.total}/40 | Decision: {result.decision}",
         ParagraphStyle('MetaFooter', parent=small_style, fontSize=7)
     ))
 

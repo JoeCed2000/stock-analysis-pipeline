@@ -1,12 +1,12 @@
 // Pure SVG scoring bar chart — zero dependencies
 const CRITERIA = [
-  { key: 'growth', label: 'Croissance' },
-  { key: 'profitability', label: 'Rentabilité' },
-  { key: 'financial_strength', label: 'Solidité fin.' },
+  { key: 'growth', label: 'Growth' },
+  { key: 'profitability', label: 'Profitability' },
+  { key: 'financial_strength', label: 'Financials' },
   { key: 'moat', label: 'Moat' },
   { key: 'management', label: 'Management' },
-  { key: 'valuation_risk', label: 'Valorisation' },
-  { key: 'geopolitical_risk', label: 'Géopolitique' },
+  { key: 'valuation_risk', label: 'Valuation' },
+  { key: 'geopolitical_risk', label: 'Geopolitical' },
   { key: 'business_momentum', label: 'Momentum' },
 ];
 
@@ -27,7 +27,7 @@ export default function ScoringChart({ scoring, height = 200 }) {
   return (
     <div style={{ margin: '12px 0' }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: '#e1e4e8', marginBottom: 8 }}>
-        Scoring détaillé ({total}/40)
+        Detailed Scoring ({total}/40)
       </div>
       <svg width={chartW} height={height + 30} style={{ display: 'block' }}>
         {/* Grid lines */}

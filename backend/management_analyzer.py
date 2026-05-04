@@ -58,29 +58,29 @@ def analyze_management_tone(mda_text: str, risk_text: str) -> Dict:
 
     # Determine tone
     if positive > negative * 2 and confident > hedging:
-        tone = "Confiant / Optimiste"
+        tone = "Confident / Optimistic"
     elif positive > negative and confident >= hedging:
-        tone = "Prudemment optimiste"
+        tone = "Cautiously Optimistic"
     elif negative > positive:
-        tone = "Défensif / Prudent"
+        tone = "Defensive / Cautious"
     else:
-        tone = "Neutre / Mesuré"
+        tone = "Neutral / Measured"
 
     # Confidence level
     if confident > hedging * 2:
-        confidence_level = "Élevée — management affirmatif, peu de hedging"
+        confidence_level = "High — confident management, minimal hedging"
     elif confident > hedging:
-        confidence_level = "Modérée — affirmations tempérées de réserves"
+        confidence_level = "Moderate — statements tempered with caveats"
     else:
-        confidence_level = "Faible — discours prudent, beaucoup de hedging"
+        confidence_level = "Low — cautious tone, heavy hedging"
 
     # Visibility
     if confident > 3 and defensive < 3:
-        visibility = "Bonne — perspectives clairement énoncées"
+        visibility = "Good — clearly stated outlook"
     elif confident > 1:
-        visibility = "Limitée — signaux mitigés"
+        visibility = "Limited — mixed signals"
     else:
-        visibility = "Faible — manque de guidance claire"
+        visibility = "Low — lacks clear guidance"
 
     return {
         "tone": tone,
@@ -211,20 +211,20 @@ def _extract_promises(text: str) -> List[str]:
 def _extract_themes(text: str) -> List[str]:
     """Extract key business themes."""
     theme_patterns = [
-        (r'AI\b|artificial intelligence', "Intelligence Artificielle"),
+        (r'AI\b|artificial intelligence', "Artificial Intelligence"),
         (r'data center', "Data Center"),
         (r'cloud\b', "Cloud Computing"),
-        (r'autonom\w+\s+(?:vehicle|driving)', "Véhicules Autonomes"),
+        (r'autonom\w+\s+(?:vehicle|driving)', "Autonomous Vehicles"),
         (r'gaming\b', "Gaming"),
-        (r'generative\s+AI', "IA Générative"),
+        (r'generative\s+AI', "Generative AI"),
         (r'\bLLM\b|large language model', "LLMs"),
-        (r'robotics?\b', "Robotique"),
-        (r'digital twin', "Jumeaux Numériques"),
+        (r'robotics?\b', "Robotics"),
+        (r'digital twin', "Digital Twins"),
         (r'omniverse\b', "Omniverse"),
-        (r'healthcare\b|medical', "Santé"),
+        (r'healthcare\b|medical', "Healthcare"),
         (r'enterprise\b', "Enterprise"),
-        (r'software\b', "Logiciels"),
-        (r'subscription\b', "Modèle Subscription"),
+        (r'software\b', "Software"),
+        (r'subscription\b', "Subscription Model"),
     ]
 
     found = set()
@@ -243,18 +243,18 @@ def defensive_signals_found(mda_text: str, risk_text: str) -> List[str]:
     combined = (mda_text + " " + risk_text).lower()
 
     checks = [
-        ("macroeconomic", "Références macroéconomiques défensives"),
-        ("inflation", "Mention de l'inflation comme risque"),
-        ("recession", "Mention de récession"),
-        ("supply chain constraint", "Contraintes supply chain"),
-        ("export control", "Contrôles d'exportation"),
-        ("trade restriction", "Restrictions commerciales"),
-        ("foreign exchange", "Risque de change"),
-        ("customer concentration", "Concentration clients"),
-        ("regulatory", "Risques réglementaires"),
-        ("litigation", "Litiges en cours"),
-        ("goodwill impairment", "Risque de dépréciation"),
-        ("seasonal", "Saisonnalité"),
+        ("macroeconomic", "Macroeconomic references — defensive"),
+        ("inflation", "Inflation mentioned as risk"),
+        ("recession", "Recession mentioned"),
+        ("supply chain constraint", "Supply chain constraints"),
+        ("export control", "Export controls"),
+        ("trade restriction", "Trade restrictions"),
+        ("foreign exchange", "FX risk"),
+        ("customer concentration", "Customer concentration"),
+        ("regulatory", "Regulatory risks"),
+        ("litigation", "Ongoing litigation"),
+        ("goodwill impairment", "Impairment risk"),
+        ("seasonal", "Seasonality"),
     ]
 
     for keyword, label in checks:
