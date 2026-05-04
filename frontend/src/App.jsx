@@ -88,6 +88,31 @@ export default function App() {
         <BatchAnalysis onResultsReady={(results) => setResults(results)} />
       )}
 
+      {/* Loading spinner */}
+      {loading && (
+        <div style={{ textAlign: 'center', padding: '48px 0' }}>
+          <style>{`
+            @keyframes hermesspin {
+              0%   { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          `}</style>
+          <div style={{
+            display: 'inline-block',
+            width: 40, height: 40,
+            border: '3px solid #30363d',
+            borderTop: '3px solid #58a6ff',
+            borderRadius: '50%',
+            animation: 'hermesspin 0.7s linear infinite',
+            marginBottom: 16,
+          }} />
+          <div style={{ color: '#8b949e', fontSize: 14 }}>Please wait — analyzing tickers…</div>
+          <div style={{ color: '#484f58', fontSize: 11, marginTop: 6 }}>
+            Each ticker takes ~20–30 seconds
+          </div>
+        </div>
+      )}
+
       {error && (
         <div style={{
           background: '#da363320', border: '1px solid #da3633',
