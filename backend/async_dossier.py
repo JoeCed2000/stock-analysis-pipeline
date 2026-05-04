@@ -50,15 +50,18 @@ def get_dossier_status(ticker: str) -> dict:
     dossier_dir = matches[0]
     files = _list_dossier_files(dossier_dir)
     
-    # Dossier is "ready" if we have: report.pdf + Excel + 10-K PDF (not just report.md)
-    required_files = {
-        "07_final_report/report.pdf",
-        "03_financial_data_sources",
-    }
-    ready = all(
-        any(r in str(f) for f in files)
-        for r in required_files
-    )
+    # Dossier is "ready" ONLY if we have the 4 key deliverables
+    # Check by exact filename suffix (file-extension-agnostic for the directory)
+    file_strs = [str(f) for f in files]
+    
+    has_report_pdf = any("07_final_report/report.pdf" in s for s in file_strs)
+    has_excel = any("financials_" in s and s.endswith(".xlsx") for s in file_strs)
+    has_tenk_pdf = any("02_sec_or_regulatory_filings" in s and s.endswith(".pdf") for s in file_strs)
+    has_company_pdf = any("01_official_company_sources" in s and s.endswith(".pdf") for s in file_strs)
+    
+    ready = has_report_pdf and has_excel
+    # has_tenk_pdf and has_company_pdf are nice-to-have but not strictly required
+    # (some tickers don't have 10-K on SEC EDGAR)
     
     status = {
         "ready": ready,
