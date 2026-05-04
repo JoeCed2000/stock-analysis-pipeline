@@ -122,6 +122,7 @@ def _get_stock_data_finnhub(ticker: str) -> Optional[Dict[str, Any]]:
     # Profile
     profile = _fh(f"/stock/profile2?symbol={ticker}")
     if not profile:
+        logger.error(f"Finnhub profile2 failed for {ticker} — API key valid? Network ok?")
         return None
 
     # Quote

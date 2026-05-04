@@ -349,6 +349,29 @@ async def health():
     return {"status": "ok", "service": "stock-analysis-pipeline"}
 
 
+@app.get("/api/debug/sources")
+async def debug_sources():
+    """Return which API sources are configured (masked keys)."""
+    def mask(key: str) -> str:
+        return key[:4] + "****" + key[-4:] if len(key) > 8 else "****"
+    
+    fh_key = os.getenv("FINNHUB_API_KEY", "")
+    td_key = os.getenv("TWELVEDATA_API_KEY", "")
+    
+    return {
+        "finnhub": {
+            "configured": bool(fh_key),
+            "masked": mask(fh_key) if fh_key else None,
+            "key_length": len(fh_key),
+        },
+        "twelvedata": {
+            "configured": bool(td_key),
+            "masked": mask(td_key) if td_key else None,
+            "key_length": len(td_key),
+        },
+    }
+
+
 @app.post("/api/analyze")
 async def analyze(request: TickerRequest):
     """Submit tickers for analysis. Runs sequentially, returns results immediately."""
