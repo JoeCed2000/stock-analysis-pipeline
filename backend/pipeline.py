@@ -14,6 +14,7 @@ from backend.sources_collector import get_stock_data, get_finnhub_data, get_sec_
 from backend.scorer import score_ticker
 from backend.excel_generator import generate_excel
 from backend.tenk_pdf import convert_10k_to_pdf
+from backend.company_profile import generate_company_profile
 
 logger = logging.getLogger(__name__)
 
@@ -76,21 +77,25 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
     ]:
         os.makedirs(os.path.join(output_dir, subdir), exist_ok=True)
 
-    # ── Populate dossiers 01 and 05 with README ──
+    # ── Populate dossier 01 with real company profile ──
+    try:
+        profile_path = generate_company_profile(output_dir, ticker, yf_data)
+        logger.info(f'Company profile generated: {profile_path}')
+    except Exception as e:
+        logger.warning(f'Company profile failed: {e}')
+
+    # ── Populate dossier 05 with README ──
     for folder, description in [
-        ("01_official_company_sources",
-         "Sources officielles de l'entreprise : rapports annuels, présentations investisseurs, "
-         "communiqués de presse, lettres aux actionnaires, enregistrements SEC hors 10-K (8-K, DEF 14A)."),
-        ("05_market_and_context",
-         "Contexte de marché : données sectorielles, comparables, rapports d'analystes, "
-         "indicateurs macroéconomiques, actualités du secteur, données de concurrence."),
+        ('05_market_and_context',
+         'Contexte de marché : données sectorielles, comparables, rapports d\'analystes, '
+         'indicateurs macroéconomiques, actualités du secteur, données de concurrence.'),
     ]:
-        readme_path = os.path.join(output_dir, folder, "README.txt")
-        with open(readme_path, "w") as f:
-            f.write(f"=== {folder} ===\n\n{description}\n\n"
-                    f"Ticker: {ticker}\nDate: {date_str}\n"
-                    "Ce dossier est destiné à recevoir les sources correspondantes.\n")
-        logger.debug(f"README created: {readme_path}")
+        readme_path = os.path.join(output_dir, folder, 'README.txt')
+        with open(readme_path, 'w') as f:
+            f.write(f'=== {folder} ===\n\n{description}\n\n'
+                    f'Ticker: {ticker}\nDate: {date_str}\n'
+                    'Ce dossier est destiné à recevoir les sources correspondantes.\n')
+        logger.debug(f'README created: {readme_path}')
 
     # Save Yahoo Finance snapshot
     yf_local = os.path.join(output_dir, "03_financial_data_sources", f"yahoo_snapshot_{ticker}.json")
