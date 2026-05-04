@@ -13,16 +13,15 @@ export default function BatchAnalysis({ onResultsReady }) {
   const [showHelp, setShowHelp] = useState(false);
   const fileRef = useRef(null);
 
-  const validItems = parsedItems.filter(it => it.status === 'valid');
-  const invalidItems = parsedItems.filter(it => it.status === 'invalid');
+  const validItems = parsedItems;
 
   const handleFile = useCallback(async (file) => {
     setError(null);
     try {
       const data = await uploadTickerFile(file);
       setParsedItems(data.items || []);
-      // Auto-select all valid items
-      setSelected(new Set((data.items || []).filter(it => it.status === 'valid').map(it => it.normalized)));
+      // Auto-select all items
+      setSelected(new Set((data.items || []).map(it => it.normalized)));
     } catch (e) {
       setError(`Upload failed: ${e.message}`);
     }
@@ -56,7 +55,7 @@ export default function BatchAnalysis({ onResultsReady }) {
     });
   };
 
-  const selectAll = () => setSelected(new Set(validItems.map(it => it.normalized)));
+  const selectAll = () => setSelected(new Set(parsedItems.map(it => it.normalized)));
   const deselectAll = () => setSelected(new Set());
 
   const startAnalysis = async () => {
@@ -194,7 +193,7 @@ export default function BatchAnalysis({ onResultsReady }) {
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <span style={{ fontSize: 13, color: '#8b949e' }}>
-              {validItems.length} valid tickers — {invalidItems.length} invalid — {selected.size} selected
+              {parsedItems.length} ticker{parsedItems.length !== 1 ? 's' : ''} — {selected.size} selected
             </span>
             <div style={{ display: 'flex', gap: 6 }}>
               <button onClick={selectAll} disabled={loading}
@@ -208,13 +207,13 @@ export default function BatchAnalysis({ onResultsReady }) {
             </div>
           </div>
 
-          {/* Valid tickers */}
+          {/* Tickers */}
           <div style={{
             display: 'flex', flexWrap: 'wrap', gap: 8,
             padding: '8px', background: '#1a1d27', border: '1px solid #30363d',
-            borderRadius: 6, marginBottom: invalidItems.length > 0 ? 8 : 12,
+            borderRadius: 6, marginBottom: 12,
           }}>
-            {validItems.map(item => {
+            {parsedItems.map(item => {
               const isSelected = selected.has(item.normalized);
               return (
                 <label
@@ -241,43 +240,10 @@ export default function BatchAnalysis({ onResultsReady }) {
                 </label>
               );
             })}
-            {validItems.length === 0 && (
-              <span style={{ fontSize: 12, color: '#484f58', padding: 4 }}>No valid tickers found</span>
+            {parsedItems.length === 0 && (
+              <span style={{ fontSize: 12, color: '#484f58', padding: 4 }}>No tickers found</span>
             )}
           </div>
-
-          {/* Invalid tickers */}
-          {invalidItems.length > 0 && (
-            <div style={{
-              padding: '8px', background: '#1a1d27', border: '1px solid #da3633',
-              borderRadius: 6, marginBottom: 12,
-            }}>
-              <div style={{ fontSize: 12, color: '#f85149', fontWeight: 600, marginBottom: 6 }}>
-                ⚠️ {invalidItems.length} invalid ticker(s) — not selectable:
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {invalidItems.map(item => (
-                  <div
-                    key={item.value}
-                    title={item.error}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 4,
-                      padding: '4px 8px', borderRadius: 3,
-                      background: '#da363315', border: '1px solid #da3633',
-                      fontSize: 12, color: '#f85149',
-                    }}
-                  >
-                    <span style={{ fontWeight: 600, textDecoration: 'line-through' }}>
-                      {item.value}
-                    </span>
-                    <span style={{ fontSize: 10, color: '#da3633aa' }}>
-                      {item.error}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Run button */}
           <button

@@ -10,8 +10,7 @@ export default function TickerInput({ onAnalyze, loading }) {
   const [parsing, setParsing] = useState(false);
   const timerRef = useRef(null);
 
-  const validItems = items.filter(it => it.status === 'valid');
-  const invalidItems = items.filter(it => it.status === 'invalid');
+  const validItems = items;
 
   // Auto-parse with debounce
   useEffect(() => {
@@ -31,7 +30,6 @@ export default function TickerInput({ onAnalyze, loading }) {
         setItems(data.items || []);
         setSelected(new Set(
           (data.items || [])
-            .filter(it => it.status === 'valid')
             .map(it => it.normalized)
         ));
       } catch (e) {
@@ -89,50 +87,38 @@ export default function TickerInput({ onAnalyze, loading }) {
               borderTop: '1px solid #21262d', paddingTop: 10,
             }}>
               <span style={{ fontSize: 11, color: '#484f58', marginRight: 2 }}>
-                {parsing ? '…' : `${validItems.length} valid · ${invalidItems.length} invalid`}
+                {parsing ? '…' : `${items.length} ticker${items.length !== 1 ? 's' : ''}`}
               </span>
 
-              {[...validItems, ...invalidItems].map((it, idx) => {
-                const isValid = it.status === 'valid';
+              {items.map((it, idx) => {
                 const isSelected = selected.has(it.normalized);
                 return (
                   <span
                     key={it.value}
-                    onClick={() => isValid && !loading && toggle(it.normalized)}
+                    onClick={() => !loading && toggle(it.normalized)}
                     title={it.error || it.value}
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 4,
                       padding: '3px 8px', borderRadius: 4, fontSize: 12,
                       fontWeight: 600,
-                      background: isValid
-                        ? (isSelected ? '#1a3528' : '#21262d')
-                        : '#3d1414',
+                      background: isSelected ? '#1a3528' : '#21262d',
                       border: `1px solid ${
-                        isValid
-                          ? (isSelected ? '#238636' : '#30363d')
-                          : '#da3633'
+                        isSelected ? '#238636' : '#30363d'
                       }`,
-                      color: isValid ? '#e1e4e8' : '#f85149',
-                      cursor: isValid && !loading ? 'pointer' : 'default',
-                      opacity: isValid && !isSelected ? 0.7 : 1,
+                      color: '#e1e4e8',
+                      cursor: loading ? 'default' : 'pointer',
+                      opacity: !isSelected ? 0.7 : 1,
                       transition: 'all 0.15s ease',
                       animation: 'tagIn 0.2s ease',
                     }}
                   >
-                    {isValid && (
-                      <span style={{
-                        fontSize: 10, color: isSelected ? '#238636' : '#484f58',
-                        transition: 'color 0.15s',
-                      }}>
-                        {isSelected ? '✓' : '○'}
-                      </span>
-                    )}
+                    <span style={{
+                      fontSize: 10, color: isSelected ? '#238636' : '#484f58',
+                      transition: 'color 0.15s',
+                    }}>
+                      {isSelected ? '✓' : '○'}
+                    </span>
                     <span>{it.normalized}</span>
-                    {!isValid && (
-                      <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 2 }}>
-                        ✕
-                      </span>
-                    )}
                     <span style={{ fontSize: 9, opacity: 0.4 }}>{it.type}</span>
                   </span>
                 );
@@ -163,7 +149,7 @@ export default function TickerInput({ onAnalyze, loading }) {
         </div>
 
         {/* Analyze button */}
-        {validItems.length > 0 && selected.size > 0 && (
+        {items.length > 0 && selected.size > 0 && (
           <button
             type="submit"
             disabled={loading}
@@ -185,8 +171,8 @@ export default function TickerInput({ onAnalyze, loading }) {
           </button>
         )}
 
-        {/* Hint when no valid tickers */}
-        {value.trim() && validItems.length === 0 && !parsing && (
+        {/* Hint when no tickers typed yet */}
+        {value.trim() && items.length === 0 && !parsing && (
           <div style={{
             marginTop: 10, fontSize: 12, color: '#8b949e',
             textAlign: 'center', padding: '8px 0',
