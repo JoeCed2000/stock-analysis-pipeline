@@ -244,7 +244,7 @@ async def batch_analyze(request: BatchAnalyzeRequest):
     # For now, we'll process synchronously in the status endpoint
     # A proper implementation would use BackgroundTasks or a task queue
 
-    logger.info(f"Batch job {job_id}: {len(request.tickers)} tickers queued")
+    logger.info(f"Batch job {job_id}: {request.tickers} — {len(request.tickers)} tickers queued")
 
     return JSONResponse({
         "job_id": job_id,
