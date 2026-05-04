@@ -755,22 +755,52 @@ async def cache_financials(
     # Sanitize NaN/inf values (yfinance can return numpy NaN for some fields)
     body = _sanitize_json(body)
     
-    # Write to yfinance cache — separate from main stock cache
-    # Main cache (get_stock_data) is Finnhub+yfinance merged
-    # This cache is yfinance-only, used as merge fallback when get_yahoo_data() is blocked
+    ticker_upper = ticker.upper()
     cache_dir = Path("backend/.cache")
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_path = cache_dir / f"{ticker.upper()}_yf.json"
     
-    entry = {
-        "timestamp": datetime.now(timezone.utc).timestamp(),
-        "data": body,
-    }
-    with open(cache_path, "w") as f:
+    # 1. Write yfinance-only cache (used as fallback during fresh get_stock_data calls)
+    yf_path = cache_dir / f"{ticker_upper}_yf.json"
+    entry = {"timestamp": datetime.now(timezone.utc).timestamp(), "data": body}
+    with open(yf_path, "w") as f:
         json.dump(entry, f)
     
-    logger.info(f"[{ticker}] Financials cached ({len(json.dumps(body))} bytes)")
-    return JSONResponse({"status": "cached", "ticker": ticker.upper()})
+    # 2. If main stock data cache exists, enrich it immediately with yfinance data
+    # This ensures PE/revenue show up even if the container restarts later
+    main_path = cache_dir / f"{ticker_upper}.json"
+    enriched = False
+    if main_path.exists():
+        try:
+            with open(main_path) as f:
+                main_entry = json.load(f)
+            main_data = main_entry.get("data", main_entry)
+            yf_fin = body.get("financials", {})
+            main_fin = main_data.get("financials", {})
+            
+            for key in ["revenue_quarterly", "revenue_annual", "net_income",
+                       "free_cash_flow", "net_debt"]:
+                if main_fin.get(key) is None and yf_fin.get(key) is not None:
+                    main_fin[key] = yf_fin[key]
+                    enriched = True
+            for key in ["pe_current", "pe_forward", "peg_ratio", "beta",
+                       "52w_high", "52w_low"]:
+                if main_data.get(key) is None and body.get(key) is not None:
+                    main_data[key] = body[key]
+                    enriched = True
+            
+            if enriched:
+                main_entry["data"] = main_data
+                main_entry["timestamp"] = datetime.now(timezone.utc).timestamp()
+                with open(main_path, "w") as f:
+                    json.dump(main_entry, f)
+                logger.info(f"[{ticker}] Main cache enriched with yfinance data")
+        except Exception as e:
+            logger.warning(f"[{ticker}] Main cache enrichment failed: {e}")
+    
+    logger.info(f"[{ticker}] Financials cached ({len(json.dumps(body))} bytes)" +
+                (", main cache enriched" if enriched else ""))
+    return JSONResponse({"status": "cached", "ticker": ticker_upper,
+                         "enriched": enriched})
 
 
 @app.get("/api/analyses")
