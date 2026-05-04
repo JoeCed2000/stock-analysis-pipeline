@@ -15,6 +15,7 @@ from backend.scorer import score_ticker
 from backend.excel_generator import generate_excel
 from backend.tenk_pdf import convert_10k_to_pdf
 from backend.company_profile import generate_company_profile
+from backend.sec_8k import download_latest_8k
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +219,12 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
         # ── Claims: Step 4 ──
         add_claim(f"Management tone: {tone_data.get('tone', '')}", s4, tenk_local, "Item 7 MD&A")
         add_claim(f"Management confidence: {tone_data.get('confidence', '')}", s4, tenk_local, "Item 7 MD&A")
+
+    # ── Download latest 8-K / 10-Q (earnings release) ──
+    try:
+        eight_k = download_latest_8k(ticker, output_dir)
+    except Exception as e:
+        logger.warning(f"8-K download failed: {e}")
 
     # ── Transcript search ──
     from backend.transcript_rich import find_transcripts_rich
