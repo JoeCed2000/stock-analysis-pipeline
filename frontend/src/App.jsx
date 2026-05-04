@@ -98,12 +98,6 @@ export default function App() {
         </div>
       )}
 
-      {loading && mode === 'single' && (
-        <div style={{ textAlign: 'center', padding: 40, color: '#8b949e' }}>
-          ⏳ Running analysis... (~30-60s per ticker)
-        </div>
-      )}
-
       {results.length > 0 && (
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16,
