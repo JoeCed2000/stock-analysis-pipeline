@@ -1,4 +1,5 @@
-const API_BASE = '/api';
+// Use deployed backend URL in production, local proxy in dev
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 export async function analyzeTickers(tickers) {
   const res = await fetch(`${API_BASE}/analyze`, {
