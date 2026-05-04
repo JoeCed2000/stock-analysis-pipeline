@@ -676,14 +676,51 @@ async def get_traceability(ticker: str):
 
 @app.get("/api/analyses")
 async def list_analyses():
-    """List all completed analyses."""
+    """List all analyzed tickers with dates, names, and file counts.
+    
+    Scans the analyses/ directory for completed dossiers.
+    Returns {analyses: [{ticker, company_name, date, files, directory}]} sorted newest first.
+    """
+    import re
+    from pathlib import Path
+    
     analyses = []
-    if ANALYSES_DIR.exists():
-        for d in sorted(ANALYSES_DIR.iterdir(), reverse=True):
-            if d.is_dir():
-                report = d / "07_final_report" / "report.md"
-                analyses.append({
-                    "directory": d.name,
-                    "has_report": report.exists(),
-                })
-    return {"analyses": analyses}
+    if not ANALYSES_DIR.exists():
+        return JSONResponse({"analyses": []})
+    
+    for entry in sorted(ANALYSES_DIR.iterdir(), reverse=True):
+        if not entry.is_dir() or entry.name == "UPLOADED" or entry.name.startswith('.'):
+            continue
+        
+        # Count real files (exclude README.txt placeholders)
+        all_files = [f for f in entry.rglob("*") if f.is_file()]
+        real_files = [f for f in all_files if f.name != "README.txt"]
+        
+        # Parse naming convention: YYYYMMDD_TICKER_NAME
+        # Example: 20260504_NVDA_NVIDIA_Corp
+        name = entry.name
+        ticker = "?"
+        company_name = name
+        date_str = ""
+        has_report = (entry / "07_final_report" / "report.md").exists() or \
+                     (entry / "07_final_report" / "report.pdf").exists()
+        
+        # Extract date (first 8 digits)
+        if len(name) >= 8 and name[:8].isdigit():
+            date_str = f"{name[:4]}-{name[4:6]}-{name[6:8]}"
+            rest = name[9:]  # skip date + underscore
+            parts = rest.split('_')
+            if parts and re.match(r'^[A-Z0-9]+$', parts[0]):
+                ticker = parts[0].replace('_', '.')
+                company_name = ' '.join(parts[1:]).replace('_', ' ') if len(parts) > 1 else parts[0]
+        
+        analyses.append({
+            "ticker": ticker,
+            "company_name": company_name.replace('_', ' ').strip() if company_name != name else "",
+            "date": date_str,
+            "files": len(real_files),
+            "has_report": has_report,
+            "directory": str(entry),
+        })
+    
+    return JSONResponse({"analyses": analyses})
