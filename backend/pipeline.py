@@ -1021,17 +1021,20 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
     except Exception as e:
         logger.warning(f"[{ticker}] Company profile failed: {e}")
     
-    # 2. Market context (05) — from Finnhub peers + Yahoo Finance
+    # 2. Market context (05) — from Yahoo Finance (always available)
     try:
-        fh_data = {}
+        market_dir = os.path.join(output_dir, "05_market_and_context")
+        os.makedirs(market_dir, exist_ok=True)
+        
+        # Try Finnhub peers as bonus
+        peers = []
         try:
             from backend.sources_collector import get_finnhub_data
             fh_data = get_finnhub_data(ticker)
+            peers = fh_data.get("peers", [])
         except Exception:
             pass
         
-        market_dir = os.path.join(output_dir, "05_market_and_context")
-        peers = fh_data.get("peers", [])
         market_md = os.path.join(market_dir, f"market_context_{ticker}_{date_str}.md")
         with open(market_md, "w") as f:
             f.write(f"# Market Context — {ticker}\n\n")
@@ -1039,34 +1042,64 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
             f.write(f"**Industry**: {yf_data.get('industry', 'N/A')}\n")
             f.write(f"**Market Cap**: {yf_data.get('market_cap', 'N/A')}\n")
             f.write(f"**Currency**: {yf_data.get('currency', 'USD')}\n")
-            f.write(f"**Country**: {yf_data.get('country', 'N/A')}\n\n")
+            f.write(f"**Country**: {yf_data.get('country', 'N/A')}\n")
+            f.write(f"**Price**: {price_native} {yf_data.get('currency', 'USD')}\n")
+            f.write(f"**P/E (trailing)**: {yf_data.get('pe_current', 'N/A')}\n")
+            f.write(f"**P/E (forward)**: {yf_data.get('pe_forward', 'N/A')}\n")
+            f.write(f"**52w High**: {yf_data.get('52w_high', 'N/A')}\n\n")
             if peers:
                 f.write(f"**Peers** (Finnhub): {', '.join(peers[:10])}\n")
             else:
-                f.write("**Peers**: Not available (Finnhub API limit or free tier restriction)\n")
+                f.write("**Peers**: Not available (Finnhub free tier limit)\n")
         from backend.pdf_generator import md_to_pdf
         md_to_pdf(market_md, market_md.replace('.md', '.pdf'),
                   title=f"{ticker} — Market Context")
     except Exception as e:
         logger.warning(f"[{ticker}] Market context failed: {e}")
     
-    # 3. Transcripts/News (04) — from Finnhub news
+    # 3. Transcripts/News (04) — from Yahoo Finance + Finnhub
     try:
         tx_dir = os.path.join(output_dir, "04_transcripts_and_management")
-        news = fh_data.get("news", []) if 'fh_data' in dir() else []
-        if news:
-            tx_md = os.path.join(tx_dir, f"earnings_news_{ticker}_{date_str}.md")
-            with open(tx_md, "w") as f:
-                f.write(f"# Earnings News — {ticker}\n\n")
-                f.write(f"**Source**: Finnhub\n")
-                f.write(f"**Generated**: {datetime.now(PARIS).isoformat()}\n\n")
-                for i, article in enumerate(news[:10]):
-                    f.write(f"## {article.get('headline', 'N/A')}\n")
-                    f.write(f"*{article.get('source', 'N/A')} — {article.get('datetime', 'N/A')}*\n\n")
+        os.makedirs(tx_dir, exist_ok=True)
+        
+        # Collect news from Finnhub (best effort)
+        news_articles = []
+        try:
+            from backend.sources_collector import get_finnhub_data
+            fh_news = get_finnhub_data(ticker)
+            news_articles = fh_news.get("news", [])
+        except Exception:
+            pass
+        
+        tx_md = os.path.join(tx_dir, f"earnings_news_{ticker}_{date_str}.md")
+        with open(tx_md, "w") as f:
+            f.write(f"# Earnings News & Management — {ticker}\n\n")
+            f.write(f"**Generated**: {datetime.now(PARIS).isoformat()}\n")
+            f.write(f"**Management Tone**: {management_tone.tone}\n")
+            f.write(f"**Confidence**: {management_tone.confidence}\n")
+            f.write(f"**Visibility**: {management_tone.visibility}\n\n")
+            if management_tone.concrete_promises:
+                f.write("## Concrete Promises\n")
+                for p in management_tone.concrete_promises:
+                    f.write(f"- {p}\n")
+                f.write("\n")
+            if management_tone.defensive_signals:
+                f.write("## Defensive Signals\n")
+                for s in management_tone.defensive_signals:
+                    f.write(f"- {s}\n")
+                f.write("\n")
+            if news_articles:
+                f.write(f"## Recent News ({len(news_articles)} articles)\n\n")
+                for article in news_articles[:10]:
+                    f.write(f"### {article.get('headline', 'N/A')}\n")
+                    f.write(f"*{article.get('source', 'N/A')}*\n\n")
                     f.write(f"{article.get('summary', 'N/A')}\n\n")
-            from backend.pdf_generator import md_to_pdf
-            md_to_pdf(tx_md, tx_md.replace('.md', '.pdf'),
-                      title=f"{ticker} — Earnings News & Transcripts")
+            else:
+                f.write("## Recent News\n\n")
+                f.write("No news articles available (Finnhub free tier limit or API unavailable).\n")
+        from backend.pdf_generator import md_to_pdf
+        md_to_pdf(tx_md, tx_md.replace('.md', '.pdf'),
+                  title=f"{ticker} — Earnings News & Management")
     except Exception as e:
         logger.warning(f"[{ticker}] Transcripts/news failed: {e}")
     
