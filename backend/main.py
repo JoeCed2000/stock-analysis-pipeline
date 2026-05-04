@@ -392,14 +392,23 @@ async def dossier_status(ticker: str):
 
 @app.get("/api/dossier/{ticker}/download")
 async def dossier_download(ticker: str):
-    """Download the complete dossier as ZIP. Returns 503 if not ready."""
+    """Download the complete dossier as ZIP. Generates files synchronously if not ready."""
     from backend.async_dossier import get_dossier_status
     status = get_dossier_status(ticker)
+    
+    # If dossier not ready, generate it synchronously
     if not status.get("ready"):
-        raise HTTPException(
-            status_code=503,
-            detail=f"Dossier not ready — stage: {status.get('stage', 'unknown')}"
-        )
+        logger.info(f"[{ticker}] Dossier not ready — generating synchronously...")
+        try:
+            from backend.pipeline import analyze_ticker
+            result = analyze_ticker(ticker, output_base=str(ANALYSES_DIR))
+            logger.info(f"[{ticker}] Dossier generated — {result.decision} ({result.scoring.total}/40)")
+        except Exception as e:
+            logger.error(f"[{ticker}] Dossier generation failed: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"Dossier generation failed: {str(e)}"
+            )
     
     ticker_clean = ticker.replace(".", "_")
     matches = sorted(ANALYSES_DIR.glob(f"*_{ticker_clean}_*"), reverse=True)

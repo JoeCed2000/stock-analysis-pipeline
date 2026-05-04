@@ -938,11 +938,14 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
     except Exception:
         pass
     
-    # ── Spawn background dossier generation ──
+    # ── Background dossier generation (best-effort, may not survive on Render free tier) ──
+    # The actual dossier generation happens synchronously in GET /api/dossier/{ticker}/download
+    # when the user requests the ZIP. This background thread is a local-dev optimization.
     try:
         from backend.async_dossier import generate_dossier_background
         generate_dossier_background(ticker, company_name, yf_data, result, output_dir)
+        logger.debug(f"[{ticker}] Background dossier thread spawned (best-effort)")
     except Exception as e:
-        logger.warning(f"[{ticker}] Background dossier spawn failed: {e}")
+        logger.debug(f"[{ticker}] Background dossier spawn skipped: {e}")
     
     return result
