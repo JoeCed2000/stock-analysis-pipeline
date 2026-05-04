@@ -178,6 +178,7 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
     logger.info(f"[{ticker}] Step 4: Management discourse")
     from backend.sources_collector import extract_10k_sections
     from backend.management_analyzer import analyze_management_tone
+    from backend.kimi_provider import kimi_analyze_management
 
     sec_10k = extract_10k_sections(ticker, output_dir=output_dir)
     mda_text = sec_10k.get("mda", "")
@@ -214,7 +215,7 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
             reliability="high"
         ))
 
-        tone_data = analyze_management_tone(mda_text, risk_text)
+        tone_data = kimi_analyze_management(mda_text, risk_text)
         management_tone = ManagementTone(
             tone=tone_data.get("tone", ""),
             confidence=tone_data.get("confidence", ""),
@@ -249,12 +250,13 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
 
     # ── Step 5: Risks ──
     logger.info(f"[{ticker}] Step 5: Risks")
+    from backend.kimi_provider import kimi_extract_risks
     from backend.management_analyzer import extract_risks_from_10k
 
     # Try 10-K risk factors first for real risks
     if risk_text and len(risk_text) > 500:
-        risks_10k = extract_risks_from_10k(risk_text)
-        risks_10k_source = "SEC 10-K Risk Factors"
+        risks_10k = kimi_extract_risks(risk_text)
+        risks_10k_source = "SEC 10-K Risk Factors (Kimi K2.6)"
     else:
         risks_10k = []
         risks_10k_source = ""
