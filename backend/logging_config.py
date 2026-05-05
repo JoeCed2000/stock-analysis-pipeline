@@ -33,6 +33,7 @@ class SecretRedactingFormatter(logging.Formatter):
     _SECRET_KEYS = [
         "NVIDIA_API_KEY", "FINNHUB_API_KEY", "TWELVEDATA_API_KEY",
         "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY",
+        "RAPIDAPI_KEY",
     ]
 
     # Patterns that look like secrets

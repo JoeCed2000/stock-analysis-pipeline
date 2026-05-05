@@ -9,5 +9,7 @@ services:
         value: 3.11.0
       - key: ALPHA_VANTAGE_API_KEY
         sync: false
+      - key: RAPIDAPI_KEY
+        sync: false
       - key: FINNHUB_API_KEY
         sync: false
