@@ -675,10 +675,11 @@ async def dossier_status(ticker: str):
 
 
 @app.get("/api/dossier/{ticker}/download")
-async def dossier_download(ticker: str, lang: str = "en"):
+async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
     """Download the complete dossier as ZIP. Generates files synchronously if not ready.
     Converts MD/TXT → PDF on-the-fly. ZIP contains ONLY PDF + XLSX + README.txt.
-    Use ?lang=ja for Japanese translated dossier."""
+    Use ?lang=ja for Japanese translated dossier.
+    Use ?quarter=2025Q4 for quarter-specific deep-dive (auto-generates)."""
     ticker = ticker.strip().upper()
     from backend.async_dossier import get_dossier_status
     status = get_dossier_status(ticker)
@@ -702,6 +703,35 @@ async def dossier_download(ticker: str, lang: str = "en"):
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
     
     analysis_dir = matches[0]
+    
+    # If quarter specified, regenerate deep-dive for that quarter
+    if quarter and quarter != "latest":
+        logger.info(f"[{ticker}] Regenerating deep-dive for quarter={quarter}...")
+        try:
+            from backend.sources_collector import get_yahoo_data_for_quarter
+            from backend.pipeline import _deep_dive_metrics
+            from backend.models import AnalysisResult
+            q_data = get_yahoo_data_for_quarter(ticker, quarter)
+            if q_data:
+                dummy = AnalysisResult(
+                    ticker=ticker,
+                    company_name=q_data.get("company_name", ticker),
+                    price=q_data.get("price"),
+                    currency=q_data.get("currency", "USD"),
+                    sector=q_data.get("sector"),
+                )
+                metrics = _deep_dive_metrics(dummy, q_data)
+                generate_deep_dive(DeepDiveRequest(
+                    ticker=ticker,
+                    company=q_data.get("company_name", ticker),
+                    quarter=quarter,
+                    language="en",
+                    output_dir=str(analysis_dir),
+                    metrics=metrics,
+                ))
+                logger.info(f"[{ticker}] Deep-dive regenerated for {quarter}")
+        except Exception as e:
+            logger.warning(f"[{ticker}] Deep-dive regeneration for {quarter} failed: {e}")
     
     # Translate dossier content if non-English language requested
     # NEVER mutate originals — work on a temp copy (Codex P0 audit 2026-05-05)

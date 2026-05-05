@@ -73,8 +73,11 @@ export function getBatchDownloadUrl(jobId) {
   return `${API_BASE}/batch/${jobId}/download`;
 }
 
-export function getTickerDownloadUrl(ticker, lang = 'en') {
+export function getTickerDownloadUrl(ticker, lang = 'en', quarter = null) {
   const base = `${API_BASE}/dossier/${ticker}/download?lang=${lang}`;
+  if (quarter) {
+    return base + `&quarter=${quarter}`;
+  }
   return base;
 }
 
