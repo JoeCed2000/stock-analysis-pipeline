@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { getTickerDownloadUrl, getDossierStatus, countDossierSections } from '../api.js';
+import { getTickerDownloadUrl, getDossierStatus, countDossierSections, fetchQuarters } from '../api.js';
 import ScoringChart from './ScoringChart.jsx';
 
 const SCORE_COLORS = {
@@ -65,6 +65,22 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
   const countdownRef = useRef(null);
   const ESTIMATED_SECS = 5; // dossier is now synchronous — ready in <5s
 
+  // ── Quarter selector ──
+  const [quarters, setQuarters] = useState([]);
+  const [selectedQuarter, setSelectedQuarter] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchQuarters(ticker).then(data => {
+      if (!cancelled) {
+        const qs = (data.quarters || []).slice(0, 4);
+        setQuarters(qs);
+        if (qs.length > 0) setSelectedQuarter(qs[0]);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [ticker]);
+
   useEffect(() => {
     let cancelled = false;
     let poles = 0;
@@ -129,12 +145,31 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
             {company_name}
           </div>
         </div>
-        <div style={{
-          padding: '3px 8px', borderRadius: 5, fontSize: 10, fontWeight: 800,
-          background: color, color: '#fff',
-          letterSpacing: 0.5,
-        }}>
-          {t(decision) || decision}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* Quarter selector */}
+          {quarters.length > 1 && (
+            <select
+              value={selectedQuarter || quarters[0]}
+              onChange={e => setSelectedQuarter(e.target.value)}
+              style={{
+                background: '#161b22', border: '1px solid #30363d',
+                borderRadius: 4, color: '#58a6ff', fontSize: 9,
+                fontWeight: 500, padding: '2px 4px', cursor: 'pointer',
+                outline: 'none', maxWidth: 68,
+              }}
+            >
+              {quarters.map(q => (
+                <option key={q} value={q}>{q}</option>
+              ))}
+            </select>
+          )}
+          <div style={{
+            padding: '3px 8px', borderRadius: 5, fontSize: 10, fontWeight: 800,
+            background: color, color: '#fff',
+            letterSpacing: 0.5,
+          }}>
+            {t(decision) || decision}
+          </div>
         </div>
       </div>
 

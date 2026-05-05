@@ -109,3 +109,26 @@ export function countDossierSections(files) {
   }
   return sectionsWithContent.size;
 }
+
+// ── Quarter selector ──
+
+export async function fetchQuarters(ticker) {
+  const res = await fetch(`${API_BASE}/earnings/quarters/${ticker}`);
+  if (!res.ok) return { quarters: [], latest: null };
+  return res.json();
+}
+
+export async function generateDeepDive(ticker, quarter, lang = 'en') {
+  const res = await fetch(`${API_BASE}/earnings/deep-dive`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ticker,
+      quarter,
+      language: lang === 'ja' ? 'jp' : lang,
+      output_dir: `analyses/deepdive_${ticker}`,
+    }),
+  });
+  if (!res.ok) throw new Error(`Deep-dive failed: ${res.status}`);
+  return res.json();
+}
