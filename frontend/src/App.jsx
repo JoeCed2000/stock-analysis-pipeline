@@ -19,7 +19,21 @@ export default function App() {
   const [error, setError] = useState(null);
   const [reportResult, setReportResult] = useState(null);
   const [progress, setProgress] = useState({ current: 0, total: 0, ticker: '' });
-  const [lang, setLang] = useState('en');
+  const [lang, setLang] = useState(() => {
+    // Persist language across refreshes
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('lang');
+      if (saved && translations[saved]) return saved;
+    }
+    return 'en';
+  });
+
+  const handleLanguageChange = (newLang) => {
+    setLang(newLang);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('lang', newLang);
+    }
+  };
   const progressRef = useRef(null);
 
   const t = (key) => translations[lang]?.[key] || translations.en[key] || key;
@@ -67,7 +81,7 @@ export default function App() {
       {/* Header — centered */}
       <div style={{ marginBottom: 24, textAlign: 'center' }}>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-          <LanguageSelector lang={lang} onLanguageChange={setLang} />
+          <LanguageSelector lang={lang} onLanguageChange={handleLanguageChange} />
         </div>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: '#e1e4e8', marginBottom: 4 }}>
           {t('siteTitle')}
