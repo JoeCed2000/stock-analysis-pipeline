@@ -2,9 +2,9 @@
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 export async function analyzeTickers(tickers, lang = 'en') {
-  // 45s timeout — Render free tier kills requests after ~30s
+  // 120s timeout — Render cold starts can take 60-90s
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 45000);
+  const timeoutId = setTimeout(() => controller.abort(), 120000);
   const res = await fetch(`${API_BASE}/analyze?lang=${lang}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
