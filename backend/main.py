@@ -95,6 +95,35 @@ _batch_jobs: dict = {}
 BATCH_DIR = Path(__file__).parent.parent / "batches"
 BATCH_DIR.mkdir(exist_ok=True)
 
+def _save_batch_job(job: dict):
+    """Persist batch job to disk for Render restart resilience."""
+    try:
+        job_path = BATCH_DIR / f"{job['job_id']}.json"
+        # Serialize AnalysisResult objects to dict
+        safe_job = {}
+        for k, v in job.items():
+            if k == "results":
+                safe_job[k] = {}
+                for ticker, r in v.items():
+                    safe_job[k][ticker] = r.model_dump() if hasattr(r, "model_dump") else r
+            else:
+                safe_job[k] = v
+        with open(job_path, "w") as f:
+            json.dump(safe_job, f, default=str)
+    except Exception:
+        pass  # Best-effort
+
+def _load_batch_job(job_id: str) -> dict | None:
+    """Try to load a batch job from disk (survives restart)."""
+    try:
+        job_path = BATCH_DIR / f"{job_id}.json"
+        if job_path.exists():
+            with open(job_path) as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return None
+
 TICKER_RE = re.compile(r'^[A-Z]{1,5}(?:\.[A-Z]{1,2})?$')  # AAPL, MC.PA, BRK.B
 ISIN_RE = re.compile(r'^[A-Z]{2}[A-Z0-9]{10}$')  # US0378331005
 
@@ -151,13 +180,39 @@ def _get_yf():
     return _yf_available
 
 
+# Lightweight ticker existence cache (30min TTL)
+_ticker_cache: dict = {}
+
 def _ticker_exists(ticker: str) -> bool:
-    """Check if ticker format is valid.
-    Network validation (yfinance) is DISABLED — too slow (1-3s per ticker).
-    Invalid tickers are caught during analysis when Yahoo Finance returns no data.
-    For batch validation speed, see fill_dossiers.py --scrape-tickers option.
-    """
-    return True  # Always pass format check — analysis catches real invalid tickers
+    """Check if ticker exists on Yahoo Finance via search API.
+    Uses lightweight query1 endpoint (fast, ~200ms) with 30min cache.
+    Falls back to True (optimistic) on network error — invalid tickers
+    are caught during analysis when no data returns."""
+    now = time.time()
+    if ticker in _ticker_cache:
+        cached_at, exists = _ticker_cache[ticker]
+        if now - cached_at < 1800:  # 30 min TTL
+            return exists
+    
+    try:
+        import requests
+        r = requests.get(
+            f"https://query1.finance.yahoo.com/v1/finance/search?q={ticker}",
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=3
+        )
+        if r.status_code == 200:
+            quotes = r.json().get("quotes", [])
+            for q in quotes:
+                if q.get("symbol", "").upper() == ticker.upper():
+                    _ticker_cache[ticker] = (now, True)
+                    return True
+            _ticker_cache[ticker] = (now, False)
+            return False
+    except Exception:
+        pass
+    # On error, be optimistic — let analysis catch the invalid ticker
+    return True
 
 
 def _isin_to_ticker_lookup(isin: str) -> str | None:
@@ -351,6 +406,7 @@ async def batch_analyze(request: BatchAnalyzeRequest):
     # For now, we'll process synchronously in the status endpoint
     # A proper implementation would use BackgroundTasks or a task queue
 
+    _save_batch_job(_batch_jobs[job_id])
     logger.info(f"Batch job {job_id}: {request.tickers} — {len(request.tickers)} tickers queued")
 
     return JSONResponse({
@@ -365,7 +421,12 @@ async def batch_status(job_id: str):
     """Get batch job status. Triggers processing if pending."""
     job = _batch_jobs.get(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        job = _load_batch_job(job_id)  # Survives Render restart
+        if job:
+            _batch_jobs[job_id] = job
+            logger.info(f"Batch job {job_id} restored from disk")
+        else:
+            raise HTTPException(status_code=404, detail="Job not found")
 
     # If pending, process now
     if job["status"] == "pending":
@@ -387,6 +448,7 @@ async def batch_status(job_id: str):
                 job["completed"] += 1
 
         job["status"] = "completed" if not job["errors"] else "partial"
+        _save_batch_job(job)  # Persist to survive restart
 
     # Serialize results
     results_list = []
@@ -415,7 +477,11 @@ async def batch_download(job_id: str):
     """Download all analysis documents as a ZIP file."""
     job = _batch_jobs.get(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        job = _load_batch_job(job_id)
+        if job:
+            _batch_jobs[job_id] = job
+        else:
+            raise HTTPException(status_code=404, detail="Job not found")
     if job["status"] not in ("completed", "partial"):
         raise HTTPException(status_code=400, detail="Job not yet complete")
 
@@ -746,6 +812,7 @@ async def analyze(request: TickerRequest, lang: str = "en"):
     Use ?lang=ja for Japanese labels."""
     tickers = request.tickers
     logger.info(f"Analyze request: {tickers} [lang={lang}]")
+    t_start = time.time()
 
     # Normalize: resolve ISINs to tickers before validation
     normalized_tickers = []
@@ -811,6 +878,7 @@ async def analyze(request: TickerRequest, lang: str = "en"):
                 r["conviction"] = translate(r["conviction"], lang)
         results_list.append(r)
 
+    logger.info(f"Analyze complete: {len(results_list)} tickers, {len(errors_list)} errors [{time.time()-t_start:.1f}s, lang={lang}]")
     return JSONResponse({
         "status": "completed" if not batch["errors"] else "partial",
         "results": results_list,

@@ -102,9 +102,9 @@ def kimi_analyze_management(mda_text: str, risk_text: str) -> Dict[str, Any]:
     Returns the same structure as management_analyzer.analyze_management_tone()."""
     if not mda_text or len(mda_text) < 500:
         return {
-            "tone": "DONNÉE NON DISPONIBLE",
-            "confidence": "DONNÉE NON DISPONIBLE",
-            "visibility": "DONNÉE NON DISPONIBLE",
+            "tone": "DATA NOT AVAILABLE",
+            "confidence": "DATA NOT AVAILABLE",
+            "visibility": "DATA NOT AVAILABLE",
             "concrete_promises": [],
             "defensive_signals": [],
         }
@@ -131,9 +131,9 @@ Return ONLY valid JSON, no markdown formatting."""
 
     if not response:
         return {
-            "tone": "DONNÉE NON DISPONIBLE — Kimi K2.6 unavailable",
-            "confidence": "DONNÉE NON DISPONIBLE",
-            "visibility": "DONNÉE NON DISPONIBLE",
+            "tone": "DATA NOT AVAILABLE — Kimi K2.6 unavailable",
+            "confidence": "DATA NOT AVAILABLE",
+            "visibility": "DATA NOT AVAILABLE",
             "concrete_promises": [],
             "defensive_signals": [],
         }
@@ -164,8 +164,8 @@ Return ONLY valid JSON, no markdown formatting."""
         logger.warning(f"Kimi JSON parse failed: {e}")
         return {
             "tone": f"PARSE ERROR — raw: {response[:100]}",
-            "confidence": "DONNÉE NON DISPONIBLE",
-            "visibility": "DONNÉE NON DISPONIBLE",
+            "confidence": "DATA NOT AVAILABLE",
+            "visibility": "DATA NOT AVAILABLE",
             "concrete_promises": [],
             "defensive_signals": [],
         }

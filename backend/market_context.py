@@ -7,7 +7,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-GEMINI_API = "http://127.0.0.1:7863"
+GEMINI_API = os.getenv("GEMINI_API_URL", "http://127.0.0.1:7863")
 
 
 def submit_market_research(ticker: str, company_name: str) -> Optional[str]:

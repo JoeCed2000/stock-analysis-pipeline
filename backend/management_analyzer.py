@@ -34,9 +34,9 @@ def analyze_management_tone(mda_text: str, risk_text: str) -> Dict:
     """
     if not mda_text or len(mda_text) < 200:
         return {
-            "tone": "DONNÉE NON DISPONIBLE",
-            "confidence": "DONNÉE NON DISPONIBLE",
-            "visibility": "DONNÉE NON DISPONIBLE",
+            "tone": "DATA NOT AVAILABLE",
+            "confidence": "DATA NOT AVAILABLE",
+            "visibility": "DATA NOT AVAILABLE",
             "concrete_promises": [],
             "defensive_signals": [],
             "key_themes": [],

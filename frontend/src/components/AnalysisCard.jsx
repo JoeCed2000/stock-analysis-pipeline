@@ -15,7 +15,13 @@ const CONVICTION_COLORS = {
   Low: '#da3633',
 };
 
-function getConvictionLevel(conviction) {
+function getConvictionLevel(conviction, scoring) {
+  // Use scoring for language-agnostic classification
+  // Falls back to string matching for backward compat
+  if (scoring?.total >= 32) return 'High';
+  if (scoring?.total >= 26) return 'Moderate';
+  if (scoring?.total < 18) return 'Low';
+  // Fallback: string matching (EN only)
   if (!conviction) return 'Moderate';
   const c = conviction.toLowerCase();
   if (c.includes('high') || c.includes('strong')) return 'High';
@@ -23,18 +29,21 @@ function getConvictionLevel(conviction) {
   return 'Moderate';
 }
 
-function getInsight(scoring) {
+function getInsight(scoring, t) {
   if (!scoring) return null;
   const s = scoring;
-  if (s.business_momentum >= 4) return '🚀 Strong momentum detected';
-  if (s.valuation_risk <= 2 && s.business_momentum >= 3) return '📈 Undervalued vs sector';
-  if (s.financial_strength >= 4 && s.profitability >= 4) return '🏛️ Stable fundamentals';
-  if (s.moat >= 4) return '🛡️ Strong competitive moat';
-  if (s.management >= 4) return '👔 Quality management signals';
-  if (s.growth >= 4 && s.business_momentum >= 3) return '📊 Consistent growth pattern';
-  if (s.valuation_risk <= 2) return '⚠️ Valuation concerns';
-  if (s.geopolitical_risk <= 2) return '🌍 Geopolitical exposure flagged';
-  return '🔍 Mixed signals — review full report';
+  const key = (() => {
+    if (s.business_momentum >= 4) return 'insight_momentum';
+    if (s.valuation_risk <= 2 && s.business_momentum >= 3) return 'insight_undervalued';
+    if (s.financial_strength >= 4 && s.profitability >= 4) return 'insight_fundamentals';
+    if (s.moat >= 4) return 'insight_moat';
+    if (s.management >= 4) return 'insight_management';
+    if (s.growth >= 4 && s.business_momentum >= 3) return 'insight_growth';
+    if (s.valuation_risk <= 2) return 'insight_valuation_concern';
+    if (s.geopolitical_risk <= 2) return 'insight_geopolitical';
+    return 'insight_mixed';
+  })();
+  return t ? t(key) : key;
 }
 
 export default function AnalysisCard({ result, onViewReport, t, lang }) {
@@ -45,9 +54,9 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
 
   const color = SCORE_COLORS[decision] || '#8b949e';
   const total = scoring?.total || 0;
-  const level = getConvictionLevel(conviction);
+  const level = getConvictionLevel(conviction, scoring);
   const convictionColor = CONVICTION_COLORS[level];
-  const insight = getInsight(scoring);
+  const insight = getInsight(scoring, t);
 
   // ── Dossier polling ──
   const [dossierStatus, setDossierStatus] = useState(null);

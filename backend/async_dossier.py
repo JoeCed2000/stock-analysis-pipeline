@@ -26,7 +26,7 @@ _dossier_registry: Dict[str, dict] = {}
 _registry_lock = threading.Lock()
 
 # Paris timezone
-PARIS = timezone(offset=datetime.now(timezone.utc).astimezone().utcoffset() or __import__("datetime").timedelta(hours=2))
+PARIS = __import__("zoneinfo").ZoneInfo("Europe/Paris")
 
 
 def _analyses_dir() -> Path:

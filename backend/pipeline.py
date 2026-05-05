@@ -20,7 +20,7 @@ from backend.sec_8k import download_latest_8k
 logger = logging.getLogger(__name__)
 
 # Paris timezone
-PARIS = timezone(offset=datetime.now(timezone.utc).astimezone().utcoffset() or __import__("datetime").timedelta(hours=2))
+PARIS = __import__("zoneinfo").ZoneInfo("Europe/Paris")
 
 
 def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult:
@@ -192,7 +192,7 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
         primary_segment=yf_data.get("industry") or yf_data.get("sector"),
         revenue_share_pct=None,
         segment_growth=None,
-        excessive_dependency="DONNÉE NON DISPONIBLE — segment breakdown requires company filings"
+        excessive_dependency="DATA NOT AVAILABLE — segment breakdown requires company filings"
     )
 
     # ── Step 4: Management discourse ──
@@ -209,9 +209,9 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
 
     # Default fallback for management_tone (overridden below if data available)
     management_tone = ManagementTone(
-        tone="DONNÉE NON DISPONIBLE — 10-K text extraction failed",
-        confidence="DONNÉE NON DISPONIBLE",
-        visibility="DONNÉE NON DISPONIBLE",
+        tone="DATA NOT AVAILABLE — 10-K text extraction failed",
+        confidence="DATA NOT AVAILABLE",
+        visibility="DATA NOT AVAILABLE",
         concrete_promises=[],
         defensive_signals=[]
     )
@@ -415,27 +415,27 @@ def _assess_risks(yf_data: Dict, fh_data: Dict, ticker: str) -> List[RiskItem]:
     industry = str(yf_data.get("industry", "")).lower()
 
     if "technology" in sector or "semiconductor" in industry:
-        risks.append(RiskItem(category="Sector", description="Cyclicalité tech / semi-conducteurs", severity="medium", source="Yahoo Finance sector classification"))
+        risks.append(RiskItem(category="Sector", description="Tech/semiconductor cyclicality risk", severity="medium", source="Yahoo Finance sector classification"))
     if "china" in yf_data.get("description", "").lower() or "china" in industry:
-        risks.append(RiskItem(category="Geopolitique", description="Exposition Chine / tensions commerciales", severity="high", source="Company description analysis"))
+        risks.append(RiskItem(category="Geopolitical", description="China exposure / trade tensions", severity="high", source="Company description analysis"))
 
     # Concentration risk
     if yf_data.get("market_cap") and yf_data.get("market_cap", 0) > 5e11:
-        risks.append(RiskItem(category="Taille", description="Mega-cap → croissance plus difficile à maintenir", severity="low", source="Market cap analysis"))
+        risks.append(RiskItem(category="Size", description="Mega-cap → growth harder to sustain", severity="low", source="Market cap analysis"))
 
     # Debt risk
     fin = yf_data.get("financials", {})
     if fin.get("net_debt") is not None and fin.get("net_debt", 0) > 1e10:
-        risks.append(RiskItem(category="Financier", description=f"Dette nette significative ({fin['net_debt']/1e9:.1f}B)", severity="medium", source="Yahoo Finance balance sheet"))
+        risks.append(RiskItem(category="Financial", description=f"Significant net debt ({fin['net_debt']/1e9:.1f}B)", severity="medium", source="Yahoo Finance balance sheet"))
 
     # Valuation risk
     pe = yf_data.get("pe_current")
     if pe is not None and pe > 50:
-        risks.append(RiskItem(category="Valorisation", description=f"PE élevé ({pe:.1f}) → prime de croissance importante", severity="high", source="Yahoo Finance valuation"))
+        risks.append(RiskItem(category="Valuation", description=f"High PE ({pe:.1f}) → growth premium", severity="high", source="Yahoo Finance valuation"))
 
     # No risks found
     if not risks:
-        risks.append(RiskItem(category="Général", description="Aucun risque majeur identifié avec les données disponibles", severity="low", source="Analysis"))
+        risks.append(RiskItem(category="General", description="No major risks identified from available data", severity="low", source="Analysis"))
 
     return risks
 
@@ -443,7 +443,7 @@ def _assess_risks(yf_data: Dict, fh_data: Dict, ticker: str) -> List[RiskItem]:
 def _margin_of_safety_text(pe: Any, fpe: Any) -> str:
     pe_val = fpe if fpe else pe
     if pe_val is None:
-        return "DONNÉE NON DISPONIBLE"
+        return "DATA NOT AVAILABLE"
     if pe_val < 15:
         return "Marge de sécurité confortable (PE < 15)"
     if pe_val < 25:
@@ -869,7 +869,7 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
         primary_segment=yf_data.get("industry") or yf_data.get("sector"),
         revenue_share_pct=None,
         segment_growth=None,
-        excessive_dependency="DONNÉE NON DISPONIBLE"
+        excessive_dependency="DATA NOT AVAILABLE"
     )
     
     # ── Management discourse (10-K text only, no PDF conversion) ──
@@ -897,9 +897,9 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
         )
     else:
         management_tone = ManagementTone(
-            tone="DONNÉE NON DISPONIBLE",
-            confidence="DONNÉE NON DISPONIBLE",
-            visibility="DONNÉE NON DISPONIBLE",
+            tone="DATA NOT AVAILABLE",
+            confidence="DATA NOT AVAILABLE",
+            visibility="DATA NOT AVAILABLE",
             concrete_promises=[], defensive_signals=[],
         )
     
@@ -1179,6 +1179,42 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
         generate_excel(excel_path, ticker, company_name, yf_data, risks_data)
     except Exception as e:
         logger.warning(f"[{ticker}] Excel generation failed: {e}")
+    
+    # ── Write sources manifest (traceability — C06 P1 audit 2026-05-05) ──
+    try:
+        manifest_sources = [{
+            "id": "SRC-001",
+            "category": "financial_data_sources",
+            "title": f"Yahoo Finance — {ticker} snapshot",
+            "url": f"https://finance.yahoo.com/quote/{ticker}/",
+            "retrieved_at": retrieved_at,
+            "source_type": "financial_aggregator",
+            "publisher": "Yahoo Finance",
+            "used_for": ["price", "financials", "valuation", "identification"]
+        }]
+        # Add Finnhub if available
+        from backend.sources_collector import get_finnhub_data
+        try:
+            fh = get_finnhub_data(ticker)
+            if fh.get("peers"):
+                manifest_sources.append({
+                    "id": "SRC-002",
+                    "category": "financial_data_sources",
+                    "title": f"Finnhub — {ticker} metrics and peers",
+                    "url": f"https://finnhub.io/stock/{ticker}",
+                    "retrieved_at": retrieved_at,
+                    "source_type": "financial_data_api",
+                    "publisher": "Finnhub",
+                    "used_for": ["peer_analysis", "financials"]
+                })
+        except Exception:
+            pass
+        manifest_path = os.path.join(output_dir, "06_extracted_data", "sources_manifest.json")
+        os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
+        with open(manifest_path, "w") as f:
+            json.dump(manifest_sources, f, indent=2, default=str)
+    except Exception as e:
+        logger.warning(f"[{ticker}] Sources manifest write failed: {e}")
     
     # ── Background dossier generation (best-effort, may not survive on Render free tier) ──
     # The actual dossier generation happens synchronously in GET /api/dossier/{ticker}/download

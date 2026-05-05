@@ -78,6 +78,17 @@ const translations = {
     
     // Language
     language: "Language",
+    
+    // Insights
+    insight_momentum: "🚀 Strong momentum detected",
+    insight_undervalued: "📈 Undervalued vs sector",
+    insight_fundamentals: "🏛️ Stable fundamentals",
+    insight_moat: "🛡️ Strong competitive moat",
+    insight_management: "👔 Quality management signals",
+    insight_growth: "📊 Consistent growth pattern",
+    insight_valuation_concern: "⚠️ Valuation concerns",
+    insight_geopolitical: "🌍 Geopolitical exposure flagged",
+    insight_mixed: "🔍 Mixed signals — review full report",
   },
   
   ja: {
@@ -155,6 +166,17 @@ const translations = {
     
     // Language
     language: "言語",
+    
+    // Insights
+    insight_momentum: "🚀 強いモメンタム検出",
+    insight_undervalued: "📈 セクター比で割安",
+    insight_fundamentals: "🏛️ 安定したファンダメンタルズ",
+    insight_moat: "🛡️ 強い競争優位性",
+    insight_management: "👔 質の高い経営陣のシグナル",
+    insight_growth: "📊 一貫した成長パターン",
+    insight_valuation_concern: "⚠️ バリュエーション懸念",
+    insight_geopolitical: "🌍 地政学的リスクあり",
+    insight_mixed: "🔍 混在シグナル — 詳細レポートを確認",
   }
 };
 
