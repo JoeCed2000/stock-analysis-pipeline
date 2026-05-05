@@ -674,10 +674,11 @@ async def dossier_upload(
 
 
 @app.post("/api/analyze")
-async def analyze(request: TickerRequest):
-    """Submit tickers for analysis. Runs sequentially, returns results immediately."""
+async def analyze(request: TickerRequest, lang: str = "en"):
+    """Submit tickers for analysis. Runs sequentially, returns results immediately.
+    Use ?lang=ja for Japanese labels."""
     tickers = request.tickers
-    logger.info(f"Analyze request: {tickers}")
+    logger.info(f"Analyze request: {tickers} [lang={lang}]")
 
     # Normalize: resolve ISINs to tickers before validation
     normalized_tickers = []
@@ -709,6 +710,8 @@ async def analyze(request: TickerRequest):
         logger.exception("Batch analysis failed")
         raise HTTPException(status_code=500, detail=str(e))
 
+    from backend.i18n import translate
+
     results_list = []
     errors_list = list(batch["errors"].values())
 
@@ -733,6 +736,12 @@ async def analyze(request: TickerRequest):
         # Include computed total (Pydantic doesn't serialize @property)
         if "scoring" in r and isinstance(r["scoring"], dict):
             r["scoring"]["total"] = result.scoring.total
+        # Translate labels based on lang
+        if lang != "en":
+            if "decision" in r:
+                r["decision"] = translate(r["decision"], lang)
+            if "conviction" in r:
+                r["conviction"] = translate(r["conviction"], lang)
         results_list.append(r)
 
     return JSONResponse({
