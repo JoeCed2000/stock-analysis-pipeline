@@ -90,6 +90,27 @@ def _ticker_exists(ticker: str) -> bool:
     """
     return True  # Always pass format check — analysis catches real invalid tickers
 
+
+def _isin_to_ticker_lookup(isin: str) -> str | None:
+    """Resolve an ISIN to a ticker symbol via Yahoo Finance search.
+    Used as fallback when ISIN is not in ISIN_TO_TICKER mapping.
+    Returns None if resolution fails."""
+    try:
+        import requests
+        r = requests.get(
+            f"https://query1.finance.yahoo.com/v1/finance/search?q={isin}",
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10
+        )
+        if r.status_code == 200:
+            quotes = r.json().get("quotes", [])
+            for q in quotes:
+                if q.get("quoteType") == "EQUITY":
+                    return q.get("symbol")
+    except Exception:
+        pass
+    return None
+
 # Common ISIN → ticker mapping (extensible)
 ISIN_TO_TICKER = {
     "US0378331005": "AAPL",
@@ -112,6 +133,7 @@ ISIN_TO_TICKER = {
     "US0970231058": "BA",
     "US00206R1023": "T",
     "US88579Y1010": "CRM",
+    "US0080731088": "AVAV",
 }
 
 
@@ -160,6 +182,8 @@ def _parse_tickers_from_text(text: str) -> List[dict]:
         if ISIN_RE.match(token):
             if _isin_checksum(token):
                 ticker = ISIN_TO_TICKER.get(token, None)
+                if not ticker:
+                    ticker = _isin_to_ticker_lookup(token)  # Yahoo Finance fallback
                 if ticker:
                     items.append({
                         "value": token, "type": "ISIN",
@@ -169,6 +193,7 @@ def _parse_tickers_from_text(text: str) -> List[dict]:
                     items.append({
                         "value": token, "type": "ISIN",
                         "normalized": token, "status": "valid",
+                        "error": "ISIN valid but ticker not found — add to ISIN_TO_TICKER mapping",
                     })
             else:
                 items.append({
@@ -615,8 +640,20 @@ async def analyze(request: TickerRequest):
     tickers = request.tickers
     logger.info(f"Analyze request: {tickers}")
 
+    # Normalize: resolve ISINs to tickers before validation
+    normalized_tickers = []
+    for t in tickers:
+        t_upper = t.upper().strip()
+        if ISIN_RE.match(t_upper) and _isin_checksum(t_upper):
+            resolved = ISIN_TO_TICKER.get(t_upper) or _isin_to_ticker_lookup(t_upper)
+            if resolved:
+                logger.info(f"ISIN {t_upper} → {resolved}")
+                normalized_tickers.append(resolved)
+                continue
+        normalized_tickers.append(t_upper)
+
     # Validate all tickers before processing
-    invalid_tickers = [t for t in tickers if not TICKER_RE.match(t.upper().strip())]
+    invalid_tickers = [t for t in normalized_tickers if not TICKER_RE.match(t)]
     if invalid_tickers:
         raise HTTPException(
             status_code=422,
@@ -628,7 +665,7 @@ async def analyze(request: TickerRequest):
         )
 
     try:
-        batch = run_analysis_sequential(tickers, output_base=str(ANALYSES_DIR))
+        batch = run_analysis_sequential(normalized_tickers, output_base=str(ANALYSES_DIR))
     except Exception as e:
         logger.exception("Batch analysis failed")
         raise HTTPException(status_code=500, detail=str(e))
