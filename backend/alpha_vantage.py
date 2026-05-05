@@ -2,6 +2,7 @@
 import os
 import json
 import logging
+import httpx
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ def fetch_transcript(ticker: str, quarter: Optional[str] = None) -> Optional[Dic
         }
         or None if API key not set or request failed.
     """
-    import requests
+    from backend.http_client import http
 
     api_key = get_api_key()
     if not api_key:
@@ -53,11 +54,11 @@ def fetch_transcript(ticker: str, quarter: Optional[str] = None) -> Optional[Dic
     
     def _do_call(p: dict) -> Optional[Dict]:
         try:
-            resp = requests.get(AV_BASE, params=p, timeout=15)
+            resp = http.get(AV_BASE, params=p, timeout=15)
             if resp.status_code != 200:
                 return None
             return resp.json()
-        except requests.RequestException:
+        except httpx.RequestError:
             return None
 
     data = _do_call(params)

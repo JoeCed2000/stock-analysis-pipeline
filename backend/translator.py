@@ -10,6 +10,7 @@ Quality > Speed configuration:
 import os
 import time
 import logging
+import httpx
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -108,10 +109,10 @@ def translate_text(text: str, target_lang: str = "ja") -> str:
         logger.warning("NVIDIA_API_KEY not set — translation unavailable")
         return text
 
-    import requests
+    from backend.http_client import http
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            resp = requests.post(
+            resp = http.post(
                 f"{NVIDIA_BASE_URL}/chat/completions",
                 headers={
                     "Authorization": f"Bearer {api_key}",
@@ -144,7 +145,7 @@ def translate_text(text: str, target_lang: str = "ja") -> str:
                 logger.warning(f"NVIDIA HTTP {resp.status_code} (attempt {attempt}/{MAX_RETRIES}): {resp.text[:200]}")
                 if attempt < MAX_RETRIES:
                     time.sleep(RETRY_DELAY_BASE * (2 ** (attempt - 1)))
-        except requests.Timeout:
+        except httpx.TimeoutException:
             logger.warning(f"NVIDIA HTTP timeout {API_TIMEOUT}s (attempt {attempt}/{MAX_RETRIES})")
             if attempt < MAX_RETRIES:
                 time.sleep(RETRY_DELAY_BASE * (2 ** (attempt - 1)))

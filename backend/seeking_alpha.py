@@ -16,14 +16,14 @@ def search_seeking_alpha(ticker: str, limit: int = 5) -> List[Dict]:
     Uses public RSS feed — no auth required.
     Returns list of {title, url, date, summary} dicts.
     """
-    import requests
+    from backend.http_client import http
     from xml.etree import ElementTree
 
     results = []
     try:
         # Seeking Alpha RSS feed for ticker news
         url = f"https://seekingalpha.com/api/sa/combined/{ticker}.xml"
-        resp = requests.get(
+        resp = http.get(
             url,
             headers={"User-Agent": "StockAnalysisPipeline/1.0"},
             timeout=10
@@ -55,12 +55,12 @@ def search_earnings_transcript(ticker: str) -> Optional[Dict]:
     Note: Full transcript access may require authentication.
     Returns {title, url, snippet} or None.
     """
-    import requests
+    from backend.http_client import http
 
     try:
         # Search for earnings transcript
         search_url = f"https://seekingalpha.com/symbol/{ticker}/earnings/transcripts"
-        resp = requests.get(
+        resp = http.get(
             search_url,
             headers={"User-Agent": "StockAnalysisPipeline/1.0"},
             timeout=10
@@ -89,10 +89,10 @@ def fetch_fool_transcript(url: str) -> str:
     Fetch and extract the actual transcript text from a Fool.com transcript page.
     Returns the clean text content or empty string on failure.
     """
-    import requests
+    from backend.http_client import http
     try:
         # Fetch the transcript page
-        resp = requests.get(
+        resp = http.get(
             url,
             headers={"User-Agent": "StockAnalysisPipeline/1.0"},
             timeout=15
@@ -167,9 +167,9 @@ def search_transcript_web(ticker: str) -> List[Dict]:
 
     # The Motley Fool has free transcripts
     try:
-        import requests
+        from backend.http_client import http
         url = f"https://www.fool.com/earnings/call-transcripts/{ticker.lower()}/"
-        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        resp = http.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
         if resp.status_code == 200 and "transcript" in resp.text.lower():
             # Find transcript links
             links = re.findall(r'href="(/earnings/call-transcripts/[^"]+)"', resp.text)

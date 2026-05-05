@@ -1,6 +1,6 @@
 """Market context via Gemini Cockpit — saves deep research report into 05_market_and_context."""
 import os
-import requests
+from backend.http_client import http
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -13,7 +13,7 @@ GEMINI_API = os.getenv("GEMINI_API_URL", "http://127.0.0.1:7863")
 def submit_market_research(ticker: str, company_name: str) -> Optional[str]:
     """Submit a Gemini Deep Research job for market context. Returns job_id or None."""
     try:
-        resp = requests.post(
+        resp = http.post(
             f"{GEMINI_API}/api/research-jobs",
             json={
                 "title": f"{ticker} Market Context",
@@ -46,7 +46,7 @@ def fetch_market_report(job_id: str, output_dir: str, ticker: str, timeout_minut
 
     while time.time() < deadline:
         try:
-            resp = requests.get(f"{GEMINI_API}/api/research-jobs/{job_id}", timeout=10)
+            resp = http.get(f"{GEMINI_API}/api/research-jobs/{job_id}", timeout=10)
             if resp.status_code != 200:
                 return None
             data = resp.json()

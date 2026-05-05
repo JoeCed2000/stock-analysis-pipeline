@@ -807,16 +807,24 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
     except Exception as e:
         logger.warning(f"[{ticker}] Excel generation failed: {e}")
     
-    # ── Write sources manifest (traceability — C06 P1 audit 2026-05-05) ──
+    # ── Write sources manifest with accurate source tracking ──
     try:
+        actual_source = yf_data.get("_source", "yfinance")
+        source_names = {
+            "finnhub": ("Finnhub", "https://finnhub.io/", "financial_data_api"),
+            "twelvedata": ("Twelve Data", "https://twelvedata.com/", "financial_data_api"),
+            "yfinance": ("Yahoo Finance", f"https://finance.yahoo.com/quote/{ticker}/", "financial_aggregator"),
+            "cache": ("Yahoo Finance (cache)", f"https://finance.yahoo.com/quote/{ticker}/", "financial_aggregator"),
+        }
+        name, url, stype = source_names.get(actual_source, source_names["yfinance"])
         manifest_sources = [{
             "id": "SRC-001",
             "category": "financial_data_sources",
-            "title": f"Yahoo Finance — {ticker} snapshot",
-            "url": f"https://finance.yahoo.com/quote/{ticker}/",
+            "title": f"{name} — {ticker} snapshot (source: {actual_source})",
+            "url": url,
             "retrieved_at": retrieved_at,
-            "source_type": "financial_aggregator",
-            "publisher": "Yahoo Finance",
+            "source_type": stype,
+            "publisher": name,
             "used_for": ["price", "financials", "valuation", "identification"]
         }]
         # Add Finnhub if available

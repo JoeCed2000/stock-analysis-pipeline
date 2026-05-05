@@ -206,8 +206,8 @@ def _ticker_exists(ticker: str) -> bool:
             return exists
     
     try:
-        import requests
-        r = requests.get(
+        from backend.http_client import http
+        r = http.get(
             f"https://query1.finance.yahoo.com/v1/finance/search?q={ticker}",
             headers={"User-Agent": "Mozilla/5.0"},
             timeout=3
@@ -231,8 +231,8 @@ def _isin_to_ticker_lookup(isin: str) -> str | None:
     Used as fallback when ISIN is not in ISIN_TO_TICKER mapping.
     Returns None if resolution fails."""
     try:
-        import requests
-        r = requests.get(
+        from backend.http_client import http
+        r = http.get(
             f"https://query1.finance.yahoo.com/v1/finance/search?q={isin}",
             headers={"User-Agent": "Mozilla/5.0"},
             timeout=10

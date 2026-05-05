@@ -54,9 +54,9 @@ def _try_alpha_vantage_earnings(ticker: str) -> str:
     if not api_key:
         return ""
 
-    import requests
+    from backend.http_client import http
     try:
-        resp = requests.get(
+        resp = http.get(
             "https://www.alphavantage.co/query",
             params={
                 "function": "EARNINGS",
@@ -99,7 +99,7 @@ def _try_alpha_vantage_earnings(ticker: str) -> str:
 
 def _try_web_search_transcript(ticker: str) -> tuple:
     """Search the web for public earnings call transcripts."""
-    import requests
+    from backend.http_client import http
 
     queries = [
         f"{ticker} earnings call transcript Q1 2026 site:seekingalpha.com",
@@ -114,7 +114,7 @@ def _try_web_search_transcript(ticker: str) -> tuple:
     for query in queries[:1]:  # Just try first query for speed
         try:
             # Use DuckDuckGo instant answer API (no API key needed, rate-limited to ~30/min)
-            resp = requests.get(
+            resp = http.get(
                 "https://api.duckduckgo.com/",
                 params={"q": query, "format": "json", "no_html": 1},
                 headers=headers,

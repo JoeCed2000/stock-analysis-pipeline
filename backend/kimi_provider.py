@@ -20,7 +20,6 @@ def _get_kimi_client():
         from openai import OpenAI
         return OpenAI(base_url=KIMI_BASE_URL, api_key=api_key)
     except ImportError:
-        import requests
         return None
 
 
@@ -66,9 +65,9 @@ def _kimi_chat_http(
         logger.warning("NVIDIA_API_KEY not set — Kimi K2.6 unavailable")
         return None
 
-    import requests
+    from backend.http_client import http
     try:
-        resp = requests.post(
+        resp = http.post(
             f"{KIMI_BASE_URL}/chat/completions",
             headers={
                 "Authorization": f"Bearer {api_key}",

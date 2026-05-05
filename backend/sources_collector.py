@@ -2,6 +2,7 @@
 import os
 import json
 import logging
+import httpx
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 from pathlib import Path
@@ -132,22 +133,30 @@ def get_stock_data(ticker: str) -> Dict[str, Any]:
             if enriched:
                 logger.info(f"Cache enriched from yfinance cron data for {ticker}")
                 _cache_set(ticker, cached)  # persist enrichment
+        cached["_source"] = "cache"
         return cached
 
     result = None
+    _source = None
 
     # Try Finnhub (US only) — best for price/sector/name
     result = _get_stock_data_finnhub(ticker)
+    if result is not None:
+        _source = "finnhub"
     
     if result is None:
         # Try Twelve Data (international)
         result = _get_stock_data_twelvedata(ticker)
+        if result is not None:
+            _source = "twelvedata"
     
     if result is None:
         # Last resort: pure yfinance
         logger.info(f"Finnhub/Twelve Data unavailable for {ticker}, falling back to yfinance")
         try:
             result = get_yahoo_data(ticker)
+            _source = "yfinance"
+            result["_source"] = _source
             _cache_set(ticker, result)
             return result
         except Exception as e:
@@ -204,6 +213,7 @@ def get_stock_data(ticker: str) -> Dict[str, Any]:
         logger.warning(f"YFinance merge failed for {ticker} — using Finnhub-only data: {e}")
 
     _cache_set(ticker, result)
+    result["_source"] = _source or "cache"
     return result
 
 
@@ -213,7 +223,7 @@ def _get_stock_data_finnhub(ticker: str) -> Optional[Dict[str, Any]]:
     if not api_key:
         return None
 
-    import requests
+    from backend.http_client import http
     import time as _time_module
 
     def _fh(path: str, retries: int = 3) -> Optional[Dict]:
@@ -221,7 +231,7 @@ def _get_stock_data_finnhub(ticker: str) -> Optional[Dict[str, Any]]:
         last_error = None
         for attempt in range(retries + 1):
             try:
-                resp = requests.get(
+                resp = http.get(
                     f"https://finnhub.io/api/v1{path}&token={api_key}",
                     timeout=10
                 )
@@ -240,7 +250,7 @@ def _get_stock_data_finnhub(ticker: str) -> Optional[Dict[str, Any]]:
                     if attempt < retries:
                         _time_module.sleep(2 ** attempt)
                         continue
-            except requests.Timeout:
+            except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError):
                 if attempt < retries:
                     _time_module.sleep(2 ** attempt)
                     continue
@@ -316,11 +326,11 @@ def _get_stock_data_twelvedata(ticker: str) -> Optional[Dict[str, Any]]:
     if not api_key:
         return None
 
-    import requests
+    from backend.http_client import http
 
     try:
         # Quote endpoint (real-time price)
-        resp = requests.get(
+        resp = http.get(
             "https://api.twelvedata.com/quote",
             params={"symbol": ticker, "apikey": api_key},
             timeout=10
@@ -576,14 +586,14 @@ def get_finnhub_data(ticker: str) -> Dict[str, Any]:
 
 def get_sec_filings(ticker: str, cik: Optional[str] = None) -> Dict[str, Any]:
     """Get latest SEC filings metadata for a ticker."""
-    import requests  # local import for testability
+    from backend.http_client import http  # local import for testability
 
     result: Dict[str, Any] = {"filings": [], "cik": cik}
 
     # Resolve CIK if not provided
     if not cik:
         try:
-            resp = requests.get(
+            resp = http.get(
                 "https://www.sec.gov/files/company_tickers.json",
                 headers={"User-Agent": "StockAnalysisPipeline/1.0"},
                 timeout=10
@@ -601,7 +611,7 @@ def get_sec_filings(ticker: str, cik: Optional[str] = None) -> Dict[str, Any]:
 
     if cik:
         try:
-            resp = requests.get(
+            resp = http.get(
                 f"https://data.sec.gov/submissions/CIK{cik}.json",
                 headers={"User-Agent": "StockAnalysisPipeline/1.0"},
                 timeout=10
@@ -675,9 +685,9 @@ def _today_str() -> str:
 
 def _resolve_cik(ticker: str) -> Optional[str]:
     """Resolve ticker to CIK number."""
-    import requests
+    from backend.http_client import http
     try:
-        resp = requests.get(
+        resp = http.get(
             "https://www.sec.gov/files/company_tickers.json",
             headers={"User-Agent": "StockAnalysisPipeline/1.0"},
             timeout=10
@@ -695,13 +705,13 @@ def _resolve_cik(ticker: str) -> Optional[str]:
 
 def _get_latest_10k_url(ticker: str) -> Optional[tuple]:
     """Get the URL and accession number of the latest 10-K filing."""
-    import requests
+    from backend.http_client import http
     cik = _resolve_cik(ticker)
     if not cik:
         return None
 
     try:
-        resp = requests.get(
+        resp = http.get(
             f"https://data.sec.gov/submissions/CIK{cik}.json",
             headers={"User-Agent": "StockAnalysisPipeline/1.0"},
             timeout=10
@@ -734,8 +744,8 @@ def extract_10k_sections(ticker: str, output_dir: Optional[str] = None) -> Dict[
     If output_dir is provided, saves raw HTML to 02_sec_or_regulatory_filings/.
     Returns {'mda': '...', 'risk_factors': '...', 'url': '...', 'local_path': '...'}
     """
+    from backend.http_client import http
     result = {"mda": "", "risk_factors": "", "url": "", "error": "", "local_path": ""}
-    import requests
 
     filing = _get_latest_10k_url(ticker)
     if not filing:
@@ -746,7 +756,7 @@ def extract_10k_sections(ticker: str, output_dir: Optional[str] = None) -> Dict[
     result["url"] = url
 
     try:
-        resp = requests.get(
+        resp = http.get(
             url,
             headers={"User-Agent": "StockAnalysisPipeline/1.0 (contact@example.com)"},
             timeout=30

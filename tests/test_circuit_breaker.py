@@ -16,12 +16,12 @@ class TestCircuitBreakerFinnhub:
 
     def test_finnhub_retries_on_429(self):
         """RED: Finnhub 429 should trigger retry, not immediate failure."""
-        import requests
+        import httpx
         from backend.sources_collector import _get_stock_data_finnhub
         
         call_count = [0]
         
-        def mock_get(url, timeout=10):
+        def mock_get(url, timeout=10, **kwargs):
             call_count[0] += 1
             resp = MagicMock()
             if call_count[0] <= 2:
@@ -37,7 +37,7 @@ class TestCircuitBreakerFinnhub:
                 }
             return resp
         
-        with patch("requests.get", side_effect=mock_get):
+        with patch("backend.http_client.http.get", side_effect=mock_get):
             result = _get_stock_data_finnhub("AAPL")
         
         # Should succeed after retries
@@ -55,7 +55,7 @@ class TestCircuitBreakerFinnhub:
             resp.headers = {"Retry-After": "0"}
             return resp
         
-        with patch("requests.get", side_effect=mock_get):
+        with patch("backend.http_client.http.get", side_effect=mock_get):
             result = _get_stock_data_finnhub("AAPL")
         
         # Should return None gracefully after exhausting retries
@@ -63,13 +63,13 @@ class TestCircuitBreakerFinnhub:
 
     def test_finnhub_handles_timeout(self):
         """RED: Finnhub timeout should not crash, return None after retries."""
-        import requests
+        import httpx
         from backend.sources_collector import _get_stock_data_finnhub
         
-        def mock_get(url, timeout=10):
-            raise requests.Timeout("Connection timed out")
+        def mock_get(url, timeout=10, **kwargs):
+            raise httpx.TimeoutException("Connection timed out")
         
-        with patch("requests.get", side_effect=mock_get):
+        with patch("backend.http_client.http.get", side_effect=mock_get):
             result = _get_stock_data_finnhub("AAPL")
         
         assert result is None

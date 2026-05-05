@@ -44,3 +44,4 @@ COMMANDS.md
 NVDA_analysis.zip
 NVDA_10K_demo.pdf
 *.bak.*
+_check_render.py

@@ -1,7 +1,7 @@
 """SEC 8-K / earnings release downloader — supplements 10-K with quarterly filings."""
 import os
 import re
-import requests
+from backend.http_client import http
 import logging
 from typing import Optional
 
@@ -19,7 +19,7 @@ def download_latest_8k(ticker: str, output_dir: str) -> Optional[str]:
 
     # Get filing list from SEC submissions API
     try:
-        resp = requests.get(
+        resp = http.get(
             f"https://data.sec.gov/submissions/CIK{cik}.json",
             headers={"User-Agent": "StockAnalysisPipeline/1.0 (contact@example.com)"},
             timeout=10
@@ -44,7 +44,7 @@ def download_latest_8k(ticker: str, output_dir: str) -> Optional[str]:
                 url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc}/{doc}"
 
                 # Download
-                resp2 = requests.get(
+                resp2 = http.get(
                     url,
                     headers={"User-Agent": "StockAnalysisPipeline/1.0 (contact@example.com)"},
                     timeout=30
