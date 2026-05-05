@@ -266,7 +266,7 @@ def _get_stock_data_finnhub(ticker: str) -> Optional[Dict[str, Any]]:
             "net_income": None,
             "free_cash_flow": None,
             "net_debt": None,
-            "guidance_official": metrics.get("revenueGrowthTTMYoy"),
+            "guidance_official": _pct_to_decimal(metrics.get("revenueGrowthTTMYoy")),
         },
         "pe_current": metrics.get("peTTM") or metrics.get("peBasicExclExtraTTM"),
         "pe_forward": metrics.get("forwardPE"),
@@ -328,7 +328,7 @@ def _get_stock_data_twelvedata(ticker: str) -> Optional[Dict[str, Any]]:
             "currency": currency,
             "financials": {
                 "revenue_quarterly": None,
-                "revenue_yoy_growth": change_pct,  # Not ideal but better than nothing
+                "revenue_yoy_growth": None,  # percent_change is PRICE change, not revenue growth
                 "revenue_annual": None,
                 "revenue_annual_growth": None,
                 "gross_margin": None,
@@ -618,7 +618,7 @@ def convert_to_eur(amount_usd: float) -> Optional[float]:
         eur = yf.Ticker("EURUSD=X")
         rate = eur.info.get("regularMarketPrice") or eur.info.get("currentPrice")
         if rate:
-            return round(amount_usd * rate, 2)
+            return round(amount_usd / rate, 2)
     except Exception:
         pass
     return None

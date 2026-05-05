@@ -47,13 +47,43 @@ if env_path.exists():
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
                 k, v = line.split("=", 1)
-                os.environ.setdefault(k.strip(), v.strip())
+                os.environ[k.strip()] = v.strip()
 
 app = FastAPI(title="Stock Analysis Pipeline", version="1.0.0")
 
+# ── Rate limiting middleware (P0 audit 2026-05-05) ──
+# In-memory token bucket: 60 req/min per IP for /api/analyze, 120 req/min for others
+_rate_limits = {}  # IP → (window_start, count)
+_RATE_WINDOW = 60  # seconds
+_RATE_LIMIT_ANALYZE = 30  # expensive endpoint — 30/min
+_RATE_LIMIT_DEFAULT = 120  # cheap endpoints — 120/min
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    from time import time as _time
+    client_ip = request.client.host if request.client else "unknown"
+    path = request.url.path
+    limit = _RATE_LIMIT_ANALYZE if path == "/api/analyze" else _RATE_LIMIT_DEFAULT
+    now = _time()
+    entry = _rate_limits.get(client_ip)
+    if entry and now - entry[0] < _RATE_WINDOW:
+        if entry[1] >= limit:
+            return JSONResponse(
+                status_code=429,
+                content={"detail": f"Rate limit exceeded ({limit} req/{_RATE_WINDOW}s). Retry shortly."},
+            )
+        entry[1] += 1
+    else:
+        _rate_limits[client_ip] = [now, 1]
+    return await call_next(request)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://stock-analysis-pipeline.vercel.app",
+        "http://localhost:5173",
+        "http://localhost:5180",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -452,7 +482,10 @@ async def health():
 
 @app.get("/api/debug/yf-cache/{ticker}")
 async def debug_yf_cache(ticker: str):
-    """Debug: show yfinance cache status for a ticker."""
+    """Debug: show yfinance cache status for a ticker.
+    Only available in development mode. Set ENVIRONMENT=development to enable."""
+    if os.getenv("ENVIRONMENT", "production") != "development":
+        raise HTTPException(status_code=403, detail="Debug endpoints disabled in production")
     from backend.sources_collector import _cache_get_yf, _cache_get, _cache_path_yf, _cache_path
     import glob
     
@@ -552,23 +585,41 @@ async def dossier_download(ticker: str, lang: str = "en"):
     analysis_dir = matches[0]
     
     # Translate dossier content if non-English language requested
+    # NEVER mutate originals — work on a temp copy (Codex P0 audit 2026-05-05)
+    import tempfile, shutil
+    work_dir = None
     if lang != "en":
-        logger.info(f"[{ticker}] Translating dossier to {lang}...")
+        logger.info(f"[{ticker}] Translating dossier to {lang} (temp copy)...")
         try:
-            from backend.translator import translate_file
-            for fpath in sorted(analysis_dir.rglob("*.txt")):
-                translate_file(str(fpath), lang)
-            for fpath in sorted(analysis_dir.rglob("*.md")):
+            from backend.translator import translate_text
+            work_dir = Path(tempfile.mkdtemp(prefix=f"dossier_{ticker}_"))
+            # Copy original dir to temp
+            shutil.copytree(analysis_dir, work_dir, dirs_exist_ok=True)
+            for fpath in sorted(work_dir.rglob("*.txt")):
+                try:
+                    translated = translate_text(fpath.read_text(encoding="utf-8"), lang)
+                    fpath.write_text(translated, encoding="utf-8")
+                except Exception:
+                    pass
+            for fpath in sorted(work_dir.rglob("*.md")):
                 if fpath.name != "README.md":
-                    translate_file(str(fpath), lang)
-            logger.info(f"[{ticker}] Dossier translation complete")
+                    try:
+                        translated = translate_text(fpath.read_text(encoding="utf-8"), lang)
+                        fpath.write_text(translated, encoding="utf-8")
+                    except Exception:
+                        pass
+            logger.info(f"[{ticker}] Dossier translation complete (temp copy)")
         except Exception as e:
             logger.warning(f"[{ticker}] Translation error (continuing with original): {e}")
+            work_dir = None  # fall back to original
+    
+    # Use the translated temp dir if available, otherwise original
+    source_dir = work_dir if work_dir else analysis_dir
     
     # Pre-convert MD/TXT files to PDF on-the-fly 
     try:
         from backend.pdf_generator import md_to_pdf
-        for fpath in sorted(analysis_dir.rglob("*.md")):
+        for fpath in sorted(source_dir.rglob("*.md")):
             if fpath.name == "README.md":
                 continue
             pdf_path = fpath.with_suffix(".pdf")
@@ -578,7 +629,7 @@ async def dossier_download(ticker: str, lang: str = "en"):
                     logger.info(f"[{ticker}] Converted {fpath.name} → PDF")
                 except Exception as e:
                     logger.warning(f"[{ticker}] MD→PDF failed for {fpath.name}: {e}")
-        for fpath in sorted(analysis_dir.rglob("*.txt")):
+        for fpath in sorted(source_dir.rglob("*.txt")):
             if fpath.name == "README.txt":
                 continue
             pdf_path = fpath.with_suffix(".pdf")
@@ -594,14 +645,14 @@ async def dossier_download(ticker: str, lang: str = "en"):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
         included_dirs = set()
-        for fpath in sorted(analysis_dir.rglob("*")):
+        for fpath in sorted(source_dir.rglob("*")):
             if fpath.is_file():
                 # Only PDF + XLSX + README.txt in the deliverable ZIP
                 if fpath.suffix in ('.json', '.csv', '.md'):
                     continue
                 if fpath.suffix == '.txt' and fpath.name != 'README.txt':
                     continue
-                arcname = fpath.relative_to(analysis_dir)
+                arcname = fpath.relative_to(source_dir)
                 zf.write(fpath, arcname)
                 included_dirs.add(str(arcname.parent))
         

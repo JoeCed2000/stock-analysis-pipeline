@@ -917,7 +917,7 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
     data_risks = _assess_risks(yf_data, {}, ticker)
     risks = risks_10k + data_risks
     if not risks:
-        risks = [RiskItem(category="Général", description="Aucun risque majeur identifié", severity="low", source="Analysis")]
+        risks = [RiskItem(category="General", description="No major risks identified", severity="low", source="Analysis")]
     
     # ── Valuation ──
     valuation = ValuationData(

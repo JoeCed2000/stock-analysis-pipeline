@@ -105,15 +105,15 @@ def _score_management_realtime(tone: Dict) -> int:
     promises = tone.get("concrete_promises", [])
     defensive = tone.get("defensive_signals", [])
 
-    if "optimiste" in t or "confiant" in t:
+    if "optimistic" in t or "confident" in t or "optimiste" in t or "confiant" in t:
         score += 1
-    if "élevée" in conf:
+    if "high" in conf or "strong" in conf or "élevée" in conf:
         score += 1
-    elif "faible" in conf:
+    elif "low" in conf or "faible" in conf:
         score -= 1
-    if "bonne" in vis:
+    if "good" in vis or "bonne" in vis or "clear" in vis:
         score += 1
-    elif "faible" in vis:
+    elif "low" in vis or "faible" in vis or "poor" in vis:
         score -= 1
     if len(promises) >= 3:
         score += 1
