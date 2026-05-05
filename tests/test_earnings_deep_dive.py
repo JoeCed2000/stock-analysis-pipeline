@@ -33,6 +33,45 @@ def test_assemble_final_report_uses_deterministic_order_and_warnings():
     assert "- Guidance failed" in report
 
 
+def test_pdf_aligned_prompts_require_nami_template_shape():
+    from backend.earnings_deep_dive.prompts import (
+        PROMPT_BUILDERS,
+        SECTION_ORDER,
+        TABLE_REQUIREMENTS,
+        build_prompt,
+        system_prompt,
+    )
+
+    assert len(SECTION_ORDER) == 10
+    assert "Nami" in system_prompt("jp")
+
+    for section in SECTION_ORDER:
+        prompt = build_prompt(
+            section,
+            "jp",
+            "GEV",
+            "GE Vernova Inc.",
+            "2026 Q1",
+            {"eps_actual": "$17.44", "revenue_actual": "$9.34B"},
+            "Revenue and EPS were discussed in the earnings call.",
+        )
+        assert f"Required heading: ## {section.title}" in prompt
+        assert "Question (EN):" in prompt
+        assert "Question (JP):" in prompt
+        assert "①" in prompt and "②" in prompt and "③" in prompt
+        assert "Namiさん" in prompt
+        assert "> 一言まとめ:" in prompt
+        assert TABLE_REQUIREMENTS[str.__str__(section)] in prompt
+        assert PROMPT_BUILDERS[str.__str__(section)]
+
+    eps_prompt = build_prompt("EPS & Revenue", "jp", "GEV", "GE Vernova Inc.", "2026 Q1", {}, "")
+    assert "| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |" in eps_prompt
+
+    guidance_prompt = build_prompt("Guidance", "jp", "SNDK", "SanDisk", "2026 Q4", {}, "")
+    assert "| Metric | Guidance | QoQ | Medium-term Signal | Source |" in guidance_prompt
+    assert "来期以降のガイダンス" in guidance_prompt
+
+
 def test_generate_deep_dive_writes_report_and_meta(tmp_path, monkeypatch):
     outputs = {
         "📊 EPS & Revenue": "## 📊 EPS & Revenue\n\n| Metric | Estimate | Actual | Variance | YoY |\n|---|---|---|---|---|\n| EPS | $1.20 | $1.25 | +4% | +10% |\n| Revenue | $26B | $26B | 0% | +12% |",

@@ -1,4 +1,4 @@
-"""Prompt templates for earnings call deep-dive sections."""
+"""PDF-aligned prompt templates for earnings call deep-dive sections."""
 from typing import Any, Callable, Dict, List
 
 
@@ -50,68 +50,276 @@ SECTION_ORDER: List[str] = [
 ]
 
 SECTION_KEYWORDS: Dict[str, List[str]] = {
-    "EPS & Revenue": ["eps", "earnings per share", "revenue", "sales", "top line"],
-    "Highlights": ["highlight", "record", "growth", "demand", "margin", "customer"],
-    "Operating Metrics": ["operating", "utilization", "volume", "unit", "margin", "retention"],
-    "Cash Flow": ["cash flow", "free cash flow", "operating cash", "capex", "liquidity"],
-    "Capital Efficiency": ["roic", "roe", "roa", "return", "capital", "buyback", "dividend"],
-    "Segments": ["segment", "division", "cloud", "data center", "geography", "product"],
+    "EPS & Revenue": ["eps", "earnings per share", "revenue", "sales", "estimate", "actual"],
+    "Highlights": ["highlight", "record", "growth", "demand", "margin", "risk", "concern"],
+    "Operating Metrics": ["operating", "gross profit", "gross margin", "opex", "net income", "margin"],
+    "Cash Flow": ["cash flow", "operating cash", "free cash flow", "capex", "buyback", "dividend"],
+    "Capital Efficiency": ["roe", "rote", "rotce", "roa", "roic", "return", "capital"],
+    "Segments": ["segment", "division", "product", "category", "geography", "region"],
     "Forward P/E": ["valuation", "forward", "earnings", "multiple", "pe", "p/e"],
-    "Backlog": ["backlog", "remaining performance", "bookings", "orders", "pipeline"],
-    "Guidance": ["guidance", "outlook", "forecast", "next quarter", "full year"],
-    "Verdict": ["priority", "risk", "opportunity", "guidance", "demand", "margin"],
+    "Backlog": ["backlog", "remaining performance", "bookings", "orders", "contract", "pipeline"],
+    "Guidance": ["guidance", "outlook", "forecast", "next quarter", "full year", "medium term"],
+    "Verdict": ["priority", "risk", "opportunity", "guidance", "demand", "margin", "cash"],
 }
 
 TABLE_SECTIONS = set(SECTION_ORDER)
 
 TABLE_REQUIREMENTS: Dict[str, str] = {
-    "EPS & Revenue": (
-        "Include an estimate-vs-actual table with rows for EPS and Revenue. "
-        "Columns: Metric | Estimate | Actual | Variance vs Estimate | YoY Change | Source."
-    ),
-    "Highlights": (
-        "Include a table separating 🌟 Highlights and ⚠️ Lowlights. "
-        "Columns: Type | Item | Evidence / Severity | Investor implication."
-    ),
-    "Operating Metrics": (
-        "Include a YoY comparison table for 🧠 Revenue, Gross Profit/Margin, OpEx, "
-        "Operating Income/Margin, and Net Income. Columns: Metric | Current | Prior Year | YoY Change | Source."
-    ),
-    "Cash Flow": (
-        "Include a 💵 cash-flow table for OCF, CapEx, and FCF with YoY comparison. "
-        "Columns: Metric | Current | Prior Year | YoY Change | Quality read-through."
-    ),
-    "Capital Efficiency": (
-        "Include a 💰 capital-efficiency table for ROE, ROIC, and ROA. "
-        "Columns: Metric | Current | Prior Year / Benchmark | Driver | Interpretation."
-    ),
-    "Segments": (
-        "Include two 🎯 tables: product/category performance and geography performance. "
-        "Columns for each: Segment | Revenue / KPI | YoY Change | Mix shift | Risk."
-    ),
-    "Forward P/E": (
-        "Include a 📈 valuation table centered on forward P/E. "
-        "Columns: Metric | Current | Comparison / Context | Evidence | Read-through."
-    ),
-    "Backlog": (
-        "Include a 📦 backlog-quality table. "
-        "Columns: Quantity | Coverage | Quality | Contract firmness | Source."
-    ),
-    "Guidance": (
-        "Include a 🧩 guidance table. "
-        "Columns: Metric | Next-period Guidance | QoQ Change | YoY / Medium-term Signal | Source."
-    ),
-    "Verdict": (
-        "Include a 🏆 verdict table. "
-        "Columns: Dimension | Positive evidence | Negative evidence | Net assessment."
-    ),
+    "EPS & Revenue": "| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |",
+    "Highlights": "| Type | Number | Point | Evidence | Investor implication | Severity |",
+    "Operating Metrics": "| Metric | Actual | Prior Year | YoY | Source |",
+    "Cash Flow": "| Metric | Actual | Prior Year | YoY | Quality read-through | Source |",
+    "Capital Efficiency": "| Metric | Value | Evaluation | Driver | Source |",
+    "Segments": "| Segment / Region | Revenue / KPI | Prior Year | YoY | Mix / Risk | Source |",
+    "Forward P/E": "| Metric | Current | Context | Growth Support | Source |",
+    "Backlog": "| Backlog Dimension | Quantity / Coverage | Quality | Contract firmness | Source |",
+    "Guidance": "| Metric | Guidance | QoQ | Medium-term Signal | Source |",
+    "Verdict": "| Dimension | Positive evidence | Negative evidence | Net assessment | Source |",
+}
+
+SECTION_QUESTIONS: Dict[str, Dict[str, str]] = {
+    "EPS & Revenue": {
+        "en": (
+            "Please summarize the estimated and actual figures for EPS (earnings per share) "
+            "and revenue of {company} ({ticker}) for {quarter} in a table, including the "
+            "variance versus estimates and the year-over-year change."
+        ),
+        "jp": "{company} ({ticker}) の{quarter}決算のEPS（1株当たり利益）と売上高の予想値、実績値、予想比、前年同期比をまとめて下さい。",
+    },
+    "Highlights": {
+        "en": "What are the highlights and lowlights (key concerns) of this earnings report?",
+        "jp": "今回の決算のハイライト、ローライトを教えてください。",
+    },
+    "Operating Metrics": {
+        "en": (
+            "How were operating income, operating margin, gross profit, gross margin, "
+            "operating expenses, and net income? Please provide a summary of the key "
+            "metrics first, followed by an explanation and analysis."
+        ),
+        "jp": "営業利益、営業利益率、粗利益、粗利益率、営業費用、純利益などは前年同期比と比べてどうでしたか？最初に指標の一覧を出して、その後説明・分析をしてください。",
+    },
+    "Cash Flow": {
+        "en": "Please share any available figures for operating cash flow, CapEx, and free cash flow.",
+        "jp": "営業キャッシュフロー、CapEx、フリーキャッシュフローの数値についてもわかることを教えてください。",
+    },
+    "Capital Efficiency": {
+        "en": "How were ROE, ROTCE (ROTE), ROA, and ROIC?",
+        "jp": "ROE / ROTCE（ROTE）/ ROA / ROICなどはどうでしたか？",
+    },
+    "Segments": {
+        "en": "What were the results by segment?",
+        "jp": "セグメント別の業績はどうでしたか？",
+    },
+    "Forward P/E": {
+        "en": "What is the forward P/E ratio?",
+        "jp": "Forward P/Eはどうなっていますか？",
+    },
+    "Backlog": {
+        "en": "How is the quality and quantity of the backlog? (Applicable for only certain companies)",
+        "jp": "バックログの質と量はどうですか？",
+    },
+    "Guidance": {
+        "en": "What is the guidance for the upcoming quarters and beyond?",
+        "jp": "来期以降のガイダンスをおしえてください。",
+    },
+    "Verdict": {
+        "en": "What is the overall earnings verdict for Nami-san after weighing growth, margins, cash flow, valuation, backlog, and guidance?",
+        "jp": "成長、利益率、キャッシュフロー、バリュエーション、バックログ、ガイダンスを踏まえて、Namiさん向けの総合評価を教えてください。",
+    },
+}
+
+SECTION_FORMATS: Dict[str, str] = {
+    "EPS & Revenue": """Required table:
+{table_header}
+|---|---|---|---|---|---|
+| EPS | ... | ... | ... | ... | ... |
+| Revenue | ... | ... | ... | ... | ... |
+
+Required analysis format:
+① EPS: beat/miss, YoY direction, and exact source.
+② Revenue: beat/miss, YoY direction, and exact source.
+③ Quality of the beat/miss: explain whether both top line and profit moved together.
+👉 Namiさん向け解釈: explain in plain Japanese-investor terms whether this is a high-quality surprise or not.""",
+    "Highlights": """Required table:
+{table_header}
+|---|---|---|---|---|---|
+| 🌟 Highlight | ① | ... | ... | ... | DONNÉE NON DISPONIBLE |
+| ⚠️ Lowlight | ① | ... | ... | ... | Low / Medium / High |
+
+Required analysis format:
+🌟 ハイライト（良かった点）
+① ...
+● Metric / transcript evidence
+👉 Why it matters
+② ...
+③ ...
+
+⚠️ ローライト（懸念点）
+① ...
+● Evidence and severity
+👉 Investor concern
+② ...
+③ ...
+
+🧠 総合評価（Namiさん向け）: grade the quarter in one concise line.
+🎯 投資視点の一言: state the core takeaway without investment advice.""",
+    "Operating Metrics": """Required table:
+{table_header}
+|---|---|---|---|---|
+| Revenue | ... | ... | ... | ... |
+| Gross Profit | ... | ... | ... | ... |
+| Gross Margin | ... | ... | ... | ... |
+| OpEx | ... | ... | ... | ... |
+| Operating Income | ... | ... | ... | ... |
+| Operating Margin | ... | ... | ... | ... |
+| Net Income | ... | ... | ... | ... |
+
+Required analysis format:
+🧠 説明・分析
+① Gross profit / gross margin: expansion or compression, with drivers.
+② Operating income / operating margin: whether scale benefits offset OpEx.
+③ OpEx and net income: cost investment, tax/other effects, and sustainability.
+🎯 全体構造（超重要）: summarize the revenue growth x margins x cost structure.
+🧩 Namiさん向けの本質理解: explain whether the earnings quality is high or fragile.
+⚠️ 今後のチェックポイント: list the next 2 checks.""",
+    "Cash Flow": """Required table:
+{table_header}
+|---|---|---|---|---|---|
+| Operating Cash Flow (OCF) | ... | ... | ... | ... | ... |
+| CapEx | ... | ... | ... | ... | ... |
+| Free Cash Flow (FCF) | ... | ... | ... | ... | ... |
+
+Required analysis format:
+🧠 説明・分析
+① Operating cash flow: cash earnings quality and working-capital effect.
+② CapEx: whether investment intensity is rising or falling.
+③ Free cash flow: conversion from earnings to cash and sustainability.
+🎯 Cash structure（超重要）: compare cash generation versus reinvestment needs.
+🧩 Namiさん向け解釈: explain whether the company creates cash efficiently or burns cash.
+💰 Cash use: buybacks, dividends, debt paydown, or DONNÉE NON DISPONIBLE.
+⚠️ 注意点（Namiさん向け）: mention one-off working-capital or future investment risks.""",
+    "Capital Efficiency": """Required table:
+{table_header}
+|---|---|---|---|---|
+| ROE | ... | ... | ... | ... |
+| ROTCE / ROTE | ... | ... | ... | ... |
+| ROA | ... | ... | ... | ... |
+| ROIC | ... | ... | ... | ... |
+
+Required analysis format:
+🧾 補足データ（計算ベース）: list net income, assets, equity, invested capital if available.
+🧠 指標ごとの解説
+① ROE: why high/low and whether buybacks distort it.
+② ROTCE / ROTE and ROA: core efficiency and asset productivity.
+③ ROIC: the most important capital-return read-through versus cost of capital.
+🎯 総合評価（Namiさん向け）: state whether capital efficiency is excellent, normal, or weak.
+⚠️ 注意点（かなり重要）: distinguish financial engineering from business-model strength.""",
+    "Segments": """Required tables:
+{table_header}
+|---|---|---|---|---|---|
+| Product / Category 1 | ... | ... | ... | ... | ... |
+| Product / Category 2 | ... | ... | ... | ... | ... |
+
+{table_header}
+|---|---|---|---|---|---|
+| Region 1 | ... | ... | ... | ... | ... |
+| Region 2 | ... | ... | ... | ... | ... |
+
+Required analysis format:
+🧠 セグメント別の解説・分析
+① Lead product/category segment: growth, mix, and driver.
+② Profit engine or recurring segment: margin relevance and durability.
+③ Stable / weak segments: recovery, maturity, or pressure.
+🌍 地域別の重要ポイント
+① Strongest region
+② Emerging growth region
+③ Mature-market stability or weakness
+🎯 全体構造（超重要）: revenue mix and concentration.
+🧩 Namiさん向け本質理解: short / medium / long-term segment thesis.
+⚠️ 注意ポイント: concentration and future segment dependency.""",
+    "Forward P/E": """Required table:
+{table_header}
+|---|---|---|---|---|
+| Forward P/E | ... | Sector / history / peers | ... | ... |
+| Forward EPS basis | ... | Consensus / company guide | ... | ... |
+| Growth support | ... | Revenue / margin / guidance | ... | ... |
+
+Required analysis format:
+📈 Forward P/Eの確認
+① Current multiple: state the value or DONNÉE NON DISPONIBLE.
+② Comparison: sector, history, peers, or DONNÉE NON DISPONIBLE.
+③ Justification: whether growth, margins, cash, backlog, or guidance support the multiple.
+👉 Namiさん向け解釈: explain if valuation looks supported, stretched, or not assessable.
+⚠️ 注意点: do not invent consensus numbers; mark missing data.""",
+    "Backlog": """Required table:
+{table_header}
+|---|---|---|---|---|
+| Quantity | ... | ... | ... | ... |
+| Coverage | ... | ... | ... | ... |
+| Quality | ... | ... | ... | ... |
+| Conversion risk | ... | ... | ... | ... |
+
+Required analysis format:
+■ 結論: quantity and quality in one line.
+■ ① 量（どれくらいあるのか）: backlog amount and quarters of coverage.
+■ ② 質（ここがもっと重要）: firm commitments versus cancellable pipeline.
+■ ③ なぜ質が高い/低いのか？: demand duration, customer commitment, supply constraints.
+■ ④ ただし注意点（重要）: pricing, cancellation, coverage, and burn-down risk.
+■ ⑤ バックログの“質”を一言でいうと: one direct phrase.
+■ Namiさん向けの本質: explain what visibility changed and list next questions.""",
+    "Guidance": """Required table:
+{table_header}
+|---|---|---|---|---|
+| Revenue | ... | ... | ... | ... |
+| Gross Margin | ... | ... | ... | ... |
+| OpEx | ... | ... | ... | ... |
+| EPS | ... | ... | ... | ... |
+| Diluted Shares | ... | ... | ... | ... |
+
+Required analysis format:
+■ 来期ガイダンス: present the table first.
+■ 一言でいうと: concise direction such as strong growth, high profitability, cautious, or DONNÉE NON DISPONIBLE.
+■ 分析（かなり重要）
+① Revenue: acceleration/deceleration and demand drivers.
+② Profitability: gross margin and OpEx implications.
+③ EPS: QoQ / YoY direction.
+④ Structural signals: customer mix, long-term contracts, pricing, product cycle, or macro.
+■ 中期（来期以降）の示唆
+① Revenue direction
+② Margin direction
+③ Stabilizing or risk factors
+■ ただし注意点（かなり重要）: whether guidance is too strong, price dependent, or cyclical.
+■ Namiさん向けの本質: what the guide means and what to monitor next.""",
+    "Verdict": """Required table:
+{table_header}
+|---|---|---|---|---|
+| Growth | ... | ... | ... | ... |
+| Margins | ... | ... | ... | ... |
+| Cash Flow | ... | ... | ... | ... |
+| Capital Efficiency | ... | ... | ... | ... |
+| Segments | ... | ... | ... | ... |
+| Valuation / Forward P/E | ... | ... | ... | ... |
+| Backlog / Guidance | ... | ... | ... | ... |
+
+Required analysis format:
+🏆 総合評価（Namiさん向け）
+① What was strongest: growth, margins, cash, backlog, or guidance.
+② What was weakest: costs, concentration, valuation, cyclicality, or missing data.
+③ What matters next: the 2-3 monitor items for the next quarter.
+🎯 投資視点の一言: summarize the thesis without making buy/sell advice.
+⚠️ リスク: cite only sourced risks.
+🧩 本質理解: explain the quality of the quarter in simple terms.""",
 }
 
 
 def system_prompt(language: str) -> str:
     return (
-        "You are a sell-side analyst producing earnings reports for an institutional investor. "
-        "Use emojis as markers. Be concise but evidence-backed."
+        "You are an earnings-call analyst writing for Nami-san, a Japanese investor. "
+        "Follow the 14-page Earnings Documents PDF template exactly: start each section "
+        "with the question, use the required markdown table, then numbered analysis using "
+        "① ② ③, include Namiさん向け interpretation lines where specified, and end with "
+        "> 一言まとめ:. Use only supplied metrics and transcript evidence; missing financial "
+        "data must be written exactly as DONNÉE NON DISPONIBLE."
     )
 
 
@@ -121,29 +329,50 @@ def _fmt_metrics(metrics: Dict[str, Any]) -> str:
     parts = []
     for key in sorted(metrics):
         value = metrics[key]
-        if value is None or value == "":
+        if value is None or value == "" or value == "Not disclosed":
             value = "DONNÉE NON DISPONIBLE"
         parts.append(f"{key}={value}")
     return " | ".join(parts) if parts else "DONNÉE NON DISPONIBLE"
 
 
+def _canonical_section(section: str) -> str:
+    return str.__str__(section) if isinstance(section, SectionName) else str(section)
+
+
 def _section_title(section: str) -> str:
-    return SECTION_TITLES.get(str.__str__(section) if isinstance(section, SectionName) else section, str(section))
+    return SECTION_TITLES.get(_canonical_section(section), str(section))
+
+
+def _format_question(section: str, language: str, ticker: str, company: str, quarter: str) -> str:
+    question = SECTION_QUESTIONS[section]
+    values = {"ticker": ticker, "company": company, "quarter": quarter}
+    en = question["en"].format(**values)
+    jp = question["jp"].format(**values)
+    normalized = language.lower()
+
+    if normalized in {"jp", "ja", "bilingual"}:
+        return f"Question (EN): {en}\nQuestion (JP): {jp}"
+    return f"Question (EN): {en}"
 
 
 def _language_rules(language: str) -> str:
     normalized = language.lower()
     if normalized in {"ja", "jp"}:
         return (
-            "Output Japanese, including the section question. Keep important English financial terms in parentheses, "
-            "for example 売上高 (Revenue), フリーキャッシュフロー (FCF), 投下資本利益率 (ROIC)."
+            "Use Japanese for the answer body. Keep important English financial terms in parentheses "
+            "when helpful, for example 売上高 (Revenue), 営業キャッシュフロー (OCF), "
+            "フリーキャッシュフロー (FCF), 投下資本利益率 (ROIC)."
         )
     if normalized == "bilingual":
         return (
-            "Output the English question and analysis first, then add a concise Japanese summary for the same section. "
-            "Do not introduce facts in the Japanese summary that were not stated in English."
+            "Use the English question followed by the Japanese question, then write the analysis in "
+            "Japanese with concise English financial terms in parentheses. Do not add facts in one "
+            "language that are absent in the other."
         )
-    return "Output English only, including the section question, except keep the required final label '> 一言まとめ:' exactly as written."
+    return (
+        "Use English for the answer body, but preserve the PDF labels that are explicitly Japanese: "
+        "Namiさん向け, 注意点, 本質理解, and the final blockquote label > 一言まとめ:."
+    )
 
 
 def _base_prompt(
@@ -155,10 +384,13 @@ def _base_prompt(
     quarter: str,
     metrics: Dict[str, Any],
     transcript_excerpt: str,
-    task: str,
 ) -> str:
+    canonical = _canonical_section(section)
     title = _section_title(section)
-    table_rule = TABLE_REQUIREMENTS[section]
+    table_header = TABLE_REQUIREMENTS[canonical]
+    section_format = SECTION_FORMATS[canonical].format(table_header=table_header)
+    question = _format_question(canonical, language, ticker, company, quarter)
+
     return f"""Required heading: ## {title}
 Language: {language}
 Language rule: {_language_rules(language)}
@@ -168,18 +400,24 @@ Quarter: {quarter}
 Metrics: {_fmt_metrics(metrics)}
 Transcript excerpt: {transcript_excerpt or "DONNÉE NON DISPONIBLE"}
 
-Task: {task}
+PDF template question:
+{question}
 
-Output rules:
+Section output contract:
 - Start with exactly: ## {title}
-- Strict markdown only.
-- Ask the section question before the answer, following the language rule above.
-- Use emojis in the heading, table labels, and analysis bullets.
-- Include markdown table(s) for this section: {table_rule}
-- Maximum 3 bullets per subsection.
-- Use direct transcript evidence when making a claim.
-- Use "DONNÉE NON DISPONIBLE" for missing financial data.
-- End the section with exactly one final blockquote line: > 一言まとめ: [one-line summary]
+- Immediately after the heading, print the question line(s) exactly as shown above.
+- Use strict markdown only.
+- Use the PDF visual markers where applicable: 📊 🌟 ⚠️ 🧠 🎯 🧩 💰 📈 📦 🏆.
+- Include the required table header exactly: {table_header}
+- Put every numeric financial claim in a table first, then explain it below.
+- Use numbered analysis markers ① ② ③. Use ④ ⑤ ⑥ only when the PDF section calls for more points.
+- Include Namiさん向け解釈 / Namiさん向けの本質理解 where specified.
+- Use direct transcript or supplied-metric evidence. Never invent financial data.
+- If a value, source, benchmark, estimate, or comparison is missing, write DONNÉE NON DISPONIBLE.
+- End with exactly one final blockquote line: > 一言まとめ: [one-line summary]
+
+PDF-aligned section skeleton:
+{section_format}
 """
 
 
@@ -192,7 +430,6 @@ def eps_revenue_prompt(language: str, ticker: str, company: str, quarter: str, m
         quarter=quarter,
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
-        task="Generate a concise 📊 EPS and revenue summary with estimate, actual, variance, YoY change, and evidence-backed analysis.",
     )
 
 
@@ -205,11 +442,6 @@ def highlights_prompt(language: str, ticker: str, company: str, quarter: str, me
         quarter=quarter,
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
-        task=(
-            "Summarize the main 🌟 positives and ⚠️ concerns. "
-            "Format highlights exactly like: '1. 🌟 [highlight] — Evidence: [transcript quote]'. "
-            "Format lowlights with severity, for example: '1. ⚠️ [lowlight] — Severity: [low/medium/high] — Evidence: [quote]'."
-        ),
     )
 
 
@@ -222,7 +454,6 @@ def operating_metrics_prompt(language: str, ticker: str, company: str, quarter: 
         quarter=quarter,
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
-        task="Explain the 🧠 operating metrics that moved the quarter and compare each disclosed metric YoY.",
     )
 
 
@@ -235,7 +466,6 @@ def cash_flow_prompt(language: str, ticker: str, company: str, quarter: str, met
         quarter=quarter,
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
-        task="Analyze 💵 OCF, CapEx, FCF, liquidity, working-capital signals, and cash-generation quality.",
     )
 
 
@@ -248,7 +478,6 @@ def capital_efficiency_prompt(language: str, ticker: str, company: str, quarter:
         quarter=quarter,
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
-        task="Evaluate 💰 ROE, ROIC, ROA, buybacks, dividends, and capital-allocation discipline.",
     )
 
 
@@ -261,7 +490,6 @@ def segments_prompt(language: str, ticker: str, company: str, quarter: str, metr
         quarter=quarter,
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
-        task="Summarize 🎯 product/category and geography performance, mix shifts, and concentration risks.",
     )
 
 
@@ -274,7 +502,6 @@ def forward_pe_prompt(language: str, ticker: str, company: str, quarter: str, me
         quarter=quarter,
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
-        task="Build a 📈 valuation table centered on forward P/E and explain whether the multiple is supported by disclosed growth signals.",
     )
 
 
@@ -287,7 +514,6 @@ def backlog_prompt(language: str, ticker: str, company: str, quarter: str, metri
         quarter=quarter,
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
-        task="Analyze 📦 backlog quantity, coverage, contract quality, bookings, RPO, order pipeline, and visibility.",
     )
 
 
@@ -300,7 +526,6 @@ def guidance_prompt(language: str, ticker: str, company: str, quarter: str, metr
         quarter=quarter,
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
-        task="Create a 🧩 guidance table covering next quarter, QoQ analysis, and medium-term directional signals.",
     )
 
 
@@ -313,7 +538,6 @@ def verdict_prompt(language: str, ticker: str, company: str, quarter: str, metri
         quarter=quarter,
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
-        task="Provide a balanced 🏆 sell-side analyst verdict using only supplied metrics and transcript evidence. Do not give investment advice.",
     )
 
 
@@ -332,5 +556,5 @@ PROMPT_BUILDERS: Dict[str, Callable[[str, str, str, str, Dict[str, Any], str], s
 
 
 def build_prompt(section: str, language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    """Build a prompt for one earnings deep-dive section."""
-    return PROMPT_BUILDERS[section](language, ticker, company, quarter, metrics, transcript_excerpt)
+    """Build a PDF-aligned prompt for one earnings deep-dive section."""
+    return PROMPT_BUILDERS[_canonical_section(section)](language, ticker, company, quarter, metrics, transcript_excerpt)
