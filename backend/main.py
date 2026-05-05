@@ -34,6 +34,7 @@ def _sanitize_json(obj):
 from backend.models import TickerRequest, AnalysisResult
 from backend.orchestrator import run_analysis_sequential
 from backend.earnings_deep_dive import DeepDiveRequest, DeepDiveResponse, generate_deep_dive
+from backend.sources_collector import list_available_quarters, get_yahoo_data_for_quarter
 
 # Setup logging with our custom configuration
 from backend.logging_config import setup_logging, get_logger
@@ -625,9 +626,38 @@ async def debug_sources():
     }
 
 
+@app.get("/api/earnings/quarters/{ticker}")
+async def earnings_quarters(ticker: str):
+    """List available quarterly periods for deep-dive analysis.
+    Returns {ticker, quarters: ['2026Q1', '2025Q4', ...], latest: '2026Q1'}"""
+    ticker = ticker.strip().upper()
+    quarters = list_available_quarters(ticker)
+    return {
+        "ticker": ticker,
+        "quarters": quarters,
+        "latest": quarters[0] if quarters else None,
+        "count": len(quarters),
+    }
+
+
 @app.post("/api/earnings/deep-dive", response_model=DeepDiveResponse)
 async def earnings_deep_dive(request: DeepDiveRequest):
-    """Generate a standalone earnings call deep-dive."""
+    """Generate a standalone earnings call deep-dive.
+    Use quarter param (e.g. '2025Q4') for historical analysis."""
+    # If quarter specified and metrics not fully populated, fetch quarter-specific data
+    if request.quarter != "latest quarter":
+        q_data = get_yahoo_data_for_quarter(request.ticker, request.quarter)
+        if q_data:
+            from backend.pipeline import _deep_dive_metrics
+            from backend.models import AnalysisResult
+            dummy = AnalysisResult(
+                ticker=request.ticker,
+                company_name=q_data.get("company_name", request.ticker),
+                price=q_data.get("price"),
+                currency=q_data.get("currency", "USD"),
+                sector=q_data.get("sector"),
+            )
+            request.metrics = _deep_dive_metrics(dummy, q_data)
     try:
         return generate_deep_dive(request)
     except Exception as e:

@@ -161,14 +161,24 @@ def _add_earnings_deep_dive_if_transcript(
             logger.info(f"[{ticker}] Earnings deep-dive skipped: no usable transcript")
             return False
 
+        transcript_quarter = str(transcript_source.get("quarter") or "latest quarter")
+
+        # If transcript is for a specific quarter, use quarter-specific yfinance data
+        deep_dive_metrics = _deep_dive_metrics(result, yf_data)
+        if transcript_quarter != "latest quarter":
+            from backend.sources_collector import get_yahoo_data_for_quarter
+            q_yf = get_yahoo_data_for_quarter(ticker, transcript_quarter)
+            if q_yf:
+                deep_dive_metrics = _deep_dive_metrics(result, q_yf)
+
         response = generate_deep_dive(
             DeepDiveRequest(
                 ticker=ticker,
                 company=company_name,
-                quarter=str(transcript_source.get("quarter") or "latest quarter"),
+                quarter=transcript_quarter,
                 language="en" if language == "bilingual" else language,
                 output_dir=output_dir,
-                metrics=_deep_dive_metrics(result, yf_data),
+                metrics=deep_dive_metrics,
                 transcript_text=transcript_text,
                 transcript_url=transcript_url,
             )

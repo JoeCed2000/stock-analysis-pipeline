@@ -715,6 +715,179 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
     return result
 
 
+# ── Quarter-aware data (v2.5) ──
+
+def list_available_quarters(ticker: str) -> List[str]:
+    """List available quarterly periods for a ticker from yfinance.
+    Returns list like ['2026Q1', '2025Q4', '2025Q3', ...].
+    Always available (yfinance has ~4 years of quarterly data)."""
+    yf = _load_yfinance()
+    stock = yf.Ticker(ticker)
+    try:
+        qf = stock.quarterly_financials
+        if qf is None or qf.empty:
+            return []
+        quarters = []
+        for col in qf.columns:
+            dt = col.to_pydatetime() if hasattr(col, 'to_pydatetime') else col
+            q_num = (dt.month - 1) // 3 + 1
+            quarters.append(f"{dt.year}Q{q_num}")
+        return quarters
+    except Exception:
+        return []
+
+
+def get_yahoo_data_for_quarter(ticker: str, quarter: str) -> Optional[Dict[str, Any]]:
+    """Fetch yfinance data for a specific quarter (e.g. '2025Q4').
+    Returns same structure as get_yahoo_data() but for the specified quarter.
+    Falls back to get_yahoo_data() if quarter not found."""
+    yf = _load_yfinance()
+    stock = yf.Ticker(ticker)
+
+    try:
+        qf = stock.quarterly_financials
+        cf = stock.quarterly_cashflow
+        bs = stock.quarterly_balance_sheet
+        info = stock.info or {}
+    except Exception:
+        return None
+
+    if qf is None or qf.empty:
+        return None
+
+    # Find the column matching the quarter
+    import re as _re
+    m = _re.match(r'(\d{4})Q([1-4])', quarter.upper())
+    if not m:
+        return None
+    year, q = int(m.group(1)), int(m.group(2))
+    target_month = (q - 1) * 3 + 1  # Q1→Jan(1), Q2→Apr(4), Q3→Jul(7), Q4→Oct(10)
+
+    target_col = None
+    for col in qf.columns:
+        dt = col.to_pydatetime() if hasattr(col, 'to_pydatetime') else col
+        if dt.year == year and ((dt.month - 1) // 3 + 1) == q:
+            target_col = col
+            break
+
+    if target_col is None:
+        # Fallback to latest
+        logger.warning(f"Quarter {quarter} not found for {ticker}, using latest")
+        return get_yahoo_data(ticker)
+
+    # Find matching column in cashflow and balance sheet
+    cf_col = target_col if cf is not None and not cf.empty and target_col in cf.columns else (cf.columns[0] if cf is not None and not cf.empty else None)
+    bs_col = target_col if bs is not None and not bs.empty and target_col in bs.columns else (bs.columns[0] if bs is not None and not bs.empty else None)
+
+    price = info.get("currentPrice") or info.get("regularMarketPrice")
+    prev_close = info.get("previousClose")
+    currency = info.get("currency", "USD")
+
+    financials: Dict[str, Any] = {
+        "revenue_quarterly": None, "revenue_yoy_growth": None,
+        "revenue_annual": None, "revenue_annual_growth": None,
+        "gross_margin": info.get("grossMargins"),
+        "operating_margin": info.get("operatingMargins"),
+        "net_income": None, "free_cash_flow": None,
+        "operating_cash_flow": None, "capex": None, "net_debt": None,
+        "guidance_official": info.get("earningsQuarterlyGrowth"),
+        "gross_profit": None, "opex": None, "rotce": None, "roa": info.get("returnOnAssets"),
+        "total_assets": None, "equity": None, "buybacks": None, "dividends": None,
+    }
+
+    # Extract from quarterly income
+    try:
+        financials["revenue_quarterly"] = _safe_float(
+            qf.loc["Total Revenue", target_col] if "Total Revenue" in qf.index else None)
+        financials["net_income"] = _safe_float(
+            qf.loc["Net Income", target_col] if "Net Income" in qf.index else None)
+        financials["gross_profit"] = _safe_float(
+            qf.loc["Gross Profit", target_col] if "Gross Profit" in qf.index else None)
+        financials["opex"] = _safe_float(
+            qf.loc["Total Expenses", target_col] if "Total Expenses" in qf.index else None)
+        if financials["opex"] is None:
+            rd = _safe_float(qf.loc["Research And Development", target_col] if "Research And Development" in qf.index else 0) or 0
+            sga = _safe_float(qf.loc["Selling General And Administration", target_col] if "Selling General And Administration" in qf.index else 0) or 0
+            financials["opex"] = rd + sga if (rd or sga) else None
+        # YoY growth
+        for i, col in enumerate(qf.columns):
+            dt = col.to_pydatetime() if hasattr(col, 'to_pydatetime') else col
+            if dt.year == year - 1 and ((dt.month - 1) // 3 + 1) == q:
+                prev_rev = _safe_float(qf.loc["Total Revenue", col] if "Total Revenue" in qf.index else None)
+                curr_rev = financials["revenue_quarterly"]
+                if prev_rev and curr_rev and prev_rev > 0:
+                    financials["revenue_yoy_growth"] = round((curr_rev - prev_rev) / prev_rev, 4)
+                break
+    except Exception:
+        pass
+
+    # Extract from cashflow
+    if cf is not None and not cf.empty and cf_col is not None:
+        try:
+            financials["free_cash_flow"] = _safe_float(
+                cf.loc["Free Cash Flow", cf_col] if "Free Cash Flow" in cf.index else None)
+            financials["operating_cash_flow"] = _safe_float(
+                cf.loc["Operating Cash Flow", cf_col] if "Operating Cash Flow" in cf.index else None)
+            financials["capex"] = _safe_float(
+                cf.loc["Capital Expenditure", cf_col] if "Capital Expenditure" in cf.index else None)
+            financials["buybacks"] = _safe_float(
+                cf.loc["Repurchase Of Capital Stock", cf_col] if "Repurchase Of Capital Stock" in cf.index else None)
+            financials["dividends"] = _safe_float(
+                cf.loc["Cash Dividends Paid", cf_col] if "Cash Dividends Paid" in cf.index else None)
+        except Exception:
+            pass
+
+    # Extract from balance sheet
+    if bs is not None and not bs.empty and bs_col is not None:
+        try:
+            total_assets = _safe_float(
+                bs.loc["Total Assets", bs_col] if "Total Assets" in bs.index else None)
+            financials["total_assets"] = total_assets
+            equity = _safe_float(
+                bs.loc["Stockholders Equity", bs_col] if "Stockholders Equity" in bs.index else None)
+            financials["equity"] = equity
+            goodwill = _safe_float(
+                bs.loc["Goodwill And Other Intangible Assets", bs_col] if "Goodwill And Other Intangible Assets" in bs.index else None) or 0
+            total_liab = _safe_float(
+                bs.loc["Total Liabilities Net Minority Interest", bs_col] if "Total Liabilities Net Minority Interest" in bs.index else None)
+            ni = financials.get("net_income")
+            if ni and total_assets and total_liab is not None:
+                tangible_equity = total_assets - goodwill - total_liab
+                if tangible_equity and tangible_equity > 0:
+                    financials["rotce"] = round(ni / tangible_equity, 4)
+            total_debt = _safe_float(
+                bs.loc["Total Debt", bs_col] if "Total Debt" in bs.index else None)
+            cash_eq = _safe_float(
+                bs.loc["Cash And Cash Equivalents", bs_col] if "Cash And Cash Equivalents" in bs.index else None)
+            if total_debt is not None and cash_eq is not None:
+                financials["net_debt"] = total_debt - cash_eq
+        except Exception:
+            pass
+
+    result = {
+        "ticker": ticker,
+        "company_name": info.get("longName") or info.get("shortName") or ticker,
+        "sector": info.get("sector"),
+        "industry": info.get("industry"),
+        "market_cap": info.get("marketCap"),
+        "price": price,
+        "prev_close": prev_close,
+        "currency": currency,
+        "financials": financials,
+        "pe_current": info.get("trailingPE"),
+        "pe_forward": info.get("forwardPE"),
+        "peg_ratio": info.get("pegRatio"),
+        "expected_growth": info.get("earningsGrowth"),
+        "beta": info.get("beta"),
+        "52w_high": info.get("fiftyTwoWeekHigh"),
+        "52w_low": info.get("fiftyTwoWeekLow"),
+        "description": info.get("longBusinessSummary"),
+        "quarter": quarter,
+    }
+
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Finnhub wrapper
 # ---------------------------------------------------------------------------
