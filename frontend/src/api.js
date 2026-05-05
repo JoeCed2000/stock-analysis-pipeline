@@ -2,14 +2,19 @@
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 export async function analyzeTickers(tickers, lang = 'en') {
+  // 45s timeout — Render free tier kills requests after ~30s
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 45000);
   const res = await fetch(`${API_BASE}/analyze?lang=${lang}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tickers }),
-  });
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timeoutId));
+
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    const err = new Error(body?.detail?.message || `Validation error: ${res.status}`);
+    const err = new Error(body?.detail?.message || `Analysis error: ${res.status}`);
     err.status = res.status;
     err.body = body;
     throw err;

@@ -70,7 +70,7 @@ export default function SmartLoader({ total, current, ticker, t }) {
               color: i < step ? '#fff' : 'transparent',
               transition: 'background 0.3s',
             }}>
-              {i < step ? '✓' : i + 1}
+              {i < step ? '✓' : ''}
             </span>
             <span style={{ whiteSpace: 'nowrap' }}>{s}</span>
           </div>

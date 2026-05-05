@@ -53,7 +53,7 @@ export default function App() {
     let current = 0;
     const intervalMs = (ESTIMATED_SEC_PER_TICKER * 1000) / total;
     progressRef.current = setInterval(() => {
-      current = Math.min(current + 1, total - 1);
+      current = Math.min(current + 1, total);
       setProgress({ current, total, ticker: tickers[current] || '' });
     }, intervalMs);
 

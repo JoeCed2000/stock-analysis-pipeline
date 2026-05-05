@@ -1,26 +1,30 @@
-"""Orchestrator — dispatches analysis to sub-agents and aggregates results."""
-import os
-import uuid
+"""Orchestrator — runs analysis sequentially or in parallel."""
 import logging
-from typing import List, Dict, Any
-
-from backend.models import AnalysisResult
-from backend.pipeline import analyze_ticker, analyze_ticker_fast
+import concurrent.futures
+from typing import Dict, Any, List
+from backend.pipeline import analyze_ticker_fast, AnalysisResult
 
 logger = logging.getLogger(__name__)
 
+PER_TICKER_TIMEOUT = 90  # seconds — Kimi K2.6 free tier can take 60-80s
+
 
 def run_analysis_sequential(tickers: List[str], output_base: str = "analyses") -> Dict[str, Any]:
-    """Run analysis for multiple tickers sequentially."""
+    """Run analysis for multiple tickers sequentially with per-ticker timeout."""
     results: Dict[str, AnalysisResult] = {}
     errors: Dict[str, str] = {}
 
     for ticker in tickers:
         try:
-            logger.info(f"Analyzing {ticker} (fast)...")
-            result = analyze_ticker_fast(ticker, output_base=output_base)
+            logger.info(f"Analyzing {ticker} (fast, timeout={PER_TICKER_TIMEOUT}s)...")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(analyze_ticker_fast, ticker, output_base)
+                result = future.result(timeout=PER_TICKER_TIMEOUT)
             results[ticker] = result
             logger.info(f"{ticker}: {result.decision} ({result.scoring.total}/40)")
+        except concurrent.futures.TimeoutError:
+            logger.error(f"{ticker}: TIMEOUT after {PER_TICKER_TIMEOUT}s")
+            errors[ticker] = f"Analysis timed out after {PER_TICKER_TIMEOUT}s"
         except Exception as e:
             logger.error(f"{ticker}: {e}")
             errors[ticker] = str(e)
