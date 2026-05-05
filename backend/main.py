@@ -91,11 +91,7 @@ async def rate_limit_middleware(request: Request, call_next):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://stock-analysis-pipeline.vercel.app",
-        "http://localhost:5173",
-        "http://localhost:5180",
-    ],
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
