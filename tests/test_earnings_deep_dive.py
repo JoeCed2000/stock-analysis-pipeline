@@ -44,6 +44,7 @@ def test_pdf_aligned_prompts_require_nami_template_shape():
 
     assert len(SECTION_ORDER) == 10
     assert "Nami" in system_prompt("jp")
+    assert "Cite transcript source:" in system_prompt("en")
 
     for section in SECTION_ORDER:
         prompt = build_prompt(
@@ -94,6 +95,7 @@ def test_generate_deep_dive_writes_report_and_meta(tmp_path, monkeypatch):
                     "source": "Alpha Vantage API",
                     "type": "earnings_transcript",
                     "quarter": "2026Q1",
+                    "url": "https://example.com/nvda-transcript",
                     "text": (
                         "Revenue exceeded expectations. EPS was strong. "
                         "Cloud segment growth improved. Guidance was not disclosed. "
@@ -122,6 +124,7 @@ def test_generate_deep_dive_writes_report_and_meta(tmp_path, monkeypatch):
         language="en",
         output_dir=str(tmp_path),
         metrics=FinancialMetrics(eps_actual=1.25, revenue_actual=26000000000, pe_forward=24.0),
+        transcript_url="https://example.com/nvda-transcript",
     )
 
     response = generate_deep_dive(request)
@@ -136,7 +139,42 @@ def test_generate_deep_dive_writes_report_and_meta(tmp_path, monkeypatch):
     assert any(status.status == "ok" for status in response.statuses)
     assert all(call["max_tokens"] == 400 for call in calls)
     assert all("Transcript excerpt:" in call["prompt"] for call in calls)
-    assert json.loads(meta_path.read_text())["ticker"] == "NVDA"
+    assert "## Sources" in response.report_markdown
+    assert "- Transcript: https://example.com/nvda-transcript" in response.report_markdown
+    meta = json.loads(meta_path.read_text())
+    assert meta["ticker"] == "NVDA"
+    assert meta["transcript_url"] == "https://example.com/nvda-transcript"
+    assert response.transcript_url == "https://example.com/nvda-transcript"
+
+
+def test_generate_deep_dive_bilingual_runs_en_and_jp_passes(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_kimi(prompt, system=None, max_tokens=400, temperature=0.0):
+        calls.append(prompt)
+        heading = prompt.split("Required heading: ## ", 1)[1].splitlines()[0]
+        return f"## {heading}\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n> 一言まとめ: ok"
+
+    monkeypatch.setattr("backend.earnings_deep_dive.generator.kimi_chat", fake_kimi)
+
+    response = generate_deep_dive(
+        DeepDiveRequest(
+            ticker="NVDA",
+            company="NVIDIA",
+            quarter="2026Q1",
+            language="bilingual",
+            output_dir=str(tmp_path),
+            transcript_text="Revenue EPS guidance backlog cash flow segments.",
+            transcript_url="https://example.com/nvda-transcript",
+        )
+    )
+
+    assert response.language == "bilingual"
+    assert (tmp_path / "en" / "07_final_report" / "earnings_deep_dive.md").exists()
+    assert (tmp_path / "jp" / "07_final_report" / "earnings_deep_dive.md").exists()
+    assert any("Language: en" in call for call in calls)
+    assert any("Language: jp" in call for call in calls)
+    assert response.transcript_url == "https://example.com/nvda-transcript"
 
 
 def test_generate_deep_dive_retries_then_degrades_to_placeholder(tmp_path, monkeypatch):

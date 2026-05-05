@@ -32,6 +32,8 @@ const translations = {
     buildingDossier: "📊 Building dossier…",
     sections: "sections",
     of: "of",
+    estimatedBilingual: "Bilingual EN+JP package — estimated ~2 min",
+    estimatedSingle: "Single language — estimated ~1 min",
     
     // Scoring
     conviction: "Conviction",
@@ -153,6 +155,8 @@ const translations = {
     buildingDossier: "📊 ドシエ作成中…",
     sections: "セクション",
     of: "/",
+    estimatedBilingual: "バイリンガルEN+JPパッケージ — 推定約2分",
+    estimatedSingle: "単一言語 — 推定約1分",
     
     // Scoring
     conviction: "確信度",

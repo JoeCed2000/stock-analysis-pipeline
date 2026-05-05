@@ -3,6 +3,7 @@ import os
 import json
 import hashlib
 import logging
+import shutil
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
@@ -44,6 +45,49 @@ def _best_transcript_source(sources: List[Dict[str, Any]]) -> tuple[str, Dict[st
             best_text = text.strip()
             best_source = source
     return best_text, best_source
+
+
+def _transcript_url(source: Dict[str, Any]) -> Optional[str]:
+    """Return the source URL for transcript citation, when provided by a finder."""
+    for key in ("url", "link", "source_url"):
+        value = source.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _copy_non_report_sections_to_language_dirs(output_dir: str) -> None:
+    for language in ("en", "jp"):
+        language_dir = os.path.join(output_dir, language)
+        os.makedirs(language_dir, exist_ok=True)
+        for section in (
+            "01_official_company_sources",
+            "02_sec_or_regulatory_filings",
+            "03_financial_data_sources",
+            "04_transcripts_and_management",
+            "05_market_and_context",
+            "06_extracted_data",
+        ):
+            src = os.path.join(output_dir, section)
+            dst = os.path.join(language_dir, section)
+            if os.path.isdir(src):
+                shutil.copytree(src, dst, dirs_exist_ok=True)
+
+
+def _move_final_report_to_language_dir(output_dir: str, language: str) -> str:
+    report_dir = os.path.join(output_dir, "07_final_report")
+    language_report_dir = os.path.join(output_dir, language, "07_final_report")
+    os.makedirs(language_report_dir, exist_ok=True)
+    if os.path.isdir(report_dir):
+        for name in os.listdir(report_dir):
+            src = os.path.join(report_dir, name)
+            dst = os.path.join(language_report_dir, name)
+            if os.path.isfile(dst) or os.path.islink(dst):
+                os.remove(dst)
+            elif os.path.isdir(dst):
+                shutil.rmtree(dst)
+            shutil.move(src, dst)
+    return language_report_dir
 
 
 def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> FinancialMetrics:
@@ -99,9 +143,11 @@ def _add_earnings_deep_dive_if_transcript(
 ) -> bool:
     """Generate the optional earnings call deep-dive when a usable transcript exists."""
     try:
+        language = "bilingual"
         transcript_results = find_transcripts(ticker, output_dir=output_dir)
         sources = transcript_results.get("sources", []) if isinstance(transcript_results, dict) else []
         transcript_text, transcript_source = _best_transcript_source(sources)
+        transcript_url = _transcript_url(transcript_source)
         if not transcript_text:
             logger.info(f"[{ticker}] Earnings deep-dive skipped: no usable transcript")
             return False
@@ -111,10 +157,11 @@ def _add_earnings_deep_dive_if_transcript(
                 ticker=ticker,
                 company=company_name,
                 quarter=str(transcript_source.get("quarter") or "latest quarter"),
-                language="en",
+                language="en" if language == "bilingual" else language,
                 output_dir=output_dir,
                 metrics=_deep_dive_metrics(result, yf_data),
                 transcript_text=transcript_text,
+                transcript_url=transcript_url,
             )
         )
 
@@ -124,6 +171,30 @@ def _add_earnings_deep_dive_if_transcript(
             pdf_path,
             title=f"{company_name} ({ticker}) — Earnings Deep-Dive",
         )
+
+        if language == "bilingual":
+            _copy_non_report_sections_to_language_dirs(output_dir)
+            _move_final_report_to_language_dir(output_dir, "en")
+            jp_output_dir = os.path.join(output_dir, "jp")
+            jp_response = generate_deep_dive(
+                DeepDiveRequest(
+                    ticker=ticker,
+                    company=company_name,
+                    quarter=str(transcript_source.get("quarter") or "latest quarter"),
+                    language="jp",
+                    output_dir=jp_output_dir,
+                    metrics=_deep_dive_metrics(result, yf_data),
+                    transcript_text=transcript_text,
+                    transcript_url=transcript_url,
+                )
+            )
+            jp_pdf_path = os.path.join(jp_output_dir, "07_final_report", "earnings_deep_dive.pdf")
+            os.makedirs(os.path.dirname(jp_pdf_path), exist_ok=True)
+            md_to_pdf(
+                jp_response.markdown_path,
+                jp_pdf_path,
+                title=f"{company_name} ({ticker}) — Earnings Deep-Dive JP",
+            )
         logger.info(f"[{ticker}] Earnings deep-dive added to dossier")
         return True
     except Exception as e:

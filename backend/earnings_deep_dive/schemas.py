@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-Language = Literal["en", "jp"]
+Language = Literal["en", "jp", "bilingual"]
 SectionState = Literal["ok", "retry_ok", "failed", "placeholder"]
 
 
@@ -46,6 +46,7 @@ class DeepDiveRequest(BaseModel):
     output_dir: str = Field(..., min_length=1)
     metrics: FinancialMetrics = Field(default_factory=FinancialMetrics)
     transcript_text: Optional[str] = None
+    transcript_url: Optional[str] = None
     max_section_chars: int = Field(default=2400, ge=600, le=5000)
 
     @field_validator("ticker")
@@ -79,6 +80,7 @@ class DeepDiveResponse(BaseModel):
     company: str
     quarter: str
     language: Language
+    transcript_url: Optional[str] = None
     markdown_path: str
     meta_path: str
     report_markdown: str

@@ -105,6 +105,37 @@ SECTION_METRIC_KEYS = {
 
 def generate_deep_dive(request: DeepDiveRequest) -> DeepDiveResponse:
     """Generate a section-by-section earnings call deep-dive and save it to the dossier."""
+    if request.language == "bilingual":
+        en_response = _generate_deep_dive_single(
+            request.model_copy(update={"language": "en", "output_dir": os.path.join(request.output_dir, "en")})
+        )
+        jp_response = _generate_deep_dive_single(
+            request.model_copy(update={"language": "jp", "output_dir": os.path.join(request.output_dir, "jp")})
+        )
+        return DeepDiveResponse(
+            ticker=en_response.ticker,
+            company=en_response.company,
+            quarter=en_response.quarter,
+            language="bilingual",
+            transcript_url=request.transcript_url or en_response.transcript_url or jp_response.transcript_url,
+            markdown_path=en_response.markdown_path,
+            meta_path=en_response.meta_path,
+            report_markdown=(
+                "# Earnings Call Deep-Dive (Bilingual)\n\n"
+                "## English\n\n"
+                f"{en_response.report_markdown.strip()}\n\n"
+                "## Japanese\n\n"
+                f"{jp_response.report_markdown.strip()}\n"
+            ),
+            sections={"en": en_response.report_markdown, "jp": jp_response.report_markdown},
+            statuses=en_response.statuses + jp_response.statuses,
+            warnings=en_response.warnings + jp_response.warnings,
+        )
+    return _generate_deep_dive_single(request)
+
+
+def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
+    """Generate one language variant of an earnings call deep-dive."""
     company = request.company or request.ticker
     output_dir = request.output_dir
     metrics = _normalize_metrics(request.metrics.model_dump(mode="json"))
@@ -150,7 +181,11 @@ def generate_deep_dive(request: DeepDiveRequest) -> DeepDiveResponse:
         if status.status in {"failed", "placeholder"}:
             warnings.append(f"{section}: {status.error or 'section unavailable'}")
 
-    report_markdown = assemble_final_report(sections, warnings=warnings)
+    transcript_url = request.transcript_url or transcript_meta.get("url") or transcript_meta.get("transcript_url")
+    report_markdown = _append_sources_section(
+        assemble_final_report(sections, warnings=warnings),
+        transcript_url,
+    )
     markdown_path, meta_path = _save_outputs(
         output_dir=output_dir,
         request=request,
@@ -160,6 +195,7 @@ def generate_deep_dive(request: DeepDiveRequest) -> DeepDiveResponse:
         statuses=statuses,
         warnings=warnings,
         transcript_meta=transcript_meta,
+        transcript_url=transcript_url,
     )
 
     return DeepDiveResponse(
@@ -167,6 +203,7 @@ def generate_deep_dive(request: DeepDiveRequest) -> DeepDiveResponse:
         company=company,
         quarter=request.quarter,
         language=request.language,
+        transcript_url=transcript_url,
         markdown_path=markdown_path,
         meta_path=meta_path,
         report_markdown=report_markdown,
@@ -245,29 +282,41 @@ def _section_metrics(section: str, metrics: Dict[str, Any]) -> Dict[str, Any]:
 
 def _load_transcript(request: DeepDiveRequest) -> Tuple[str, Dict[str, Any]]:
     if request.transcript_text and request.transcript_text.strip():
-        return request.transcript_text.strip(), {"found": True, "source": "request.transcript_text"}
+        return request.transcript_text.strip(), {
+            "found": True,
+            "source": "request.transcript_text",
+            "url": request.transcript_url,
+        }
 
     results = find_transcripts(request.ticker, output_dir=request.output_dir)
     sources = results.get("sources", []) if isinstance(results, dict) else []
-    transcript_text = _best_transcript_text(sources)
+    transcript_text, transcript_source = _best_transcript(sources)
     if transcript_text:
         return transcript_text, {
             "found": True,
             "source_count": len(sources),
             "primary_source": _primary_source_name(sources),
+            "url": transcript_source.get("url") or transcript_source.get("link"),
         }
     raise TranscriptMissingError(f"No usable earnings call transcript found for {request.ticker}")
 
 
 def _best_transcript_text(sources: Iterable[Dict[str, Any]]) -> str:
+    best, _ = _best_transcript(sources)
+    return best
+
+
+def _best_transcript(sources: Iterable[Dict[str, Any]]) -> Tuple[str, Dict[str, Any]]:
     best = ""
+    best_source: Dict[str, Any] = {}
     for source in sources:
         text = source.get("text") or source.get("content") or source.get("transcript") or ""
         if isinstance(text, list):
             text = "\n".join(str(item) for item in text)
         if isinstance(text, str) and len(text.strip()) > len(best):
             best = text.strip()
-    return best
+            best_source = source
+    return best, best_source
 
 
 def _primary_source_name(sources: Iterable[Dict[str, Any]]) -> str:
@@ -360,6 +409,12 @@ def _placeholder_section(section: str, reason: str) -> str:
     return f"## {section}\n\n- Section unavailable. Not disclosed.\n- Reason: {reason_text}"
 
 
+def _append_sources_section(report_markdown: str, transcript_url: str | None) -> str:
+    if not transcript_url:
+        return report_markdown
+    return report_markdown.rstrip() + f"\n\n## Sources\n\n- Transcript: {transcript_url}\n"
+
+
 def _save_outputs(
     *,
     output_dir: str,
@@ -370,6 +425,7 @@ def _save_outputs(
     statuses: List[SectionStatus],
     warnings: List[str],
     transcript_meta: Dict[str, Any],
+    transcript_url: str | None,
 ) -> Tuple[str, str]:
     report_dir = os.path.join(output_dir, "07_final_report")
     os.makedirs(report_dir, exist_ok=True)
@@ -390,6 +446,7 @@ def _save_outputs(
         "max_tokens_per_call": MAX_KIMI_TOKENS,
         "sections": {status.name: status.model_dump() for status in statuses},
         "warnings": warnings,
+        "transcript_url": transcript_url,
         "transcript": transcript_meta,
         "output_files": {
             "markdown": markdown_path,

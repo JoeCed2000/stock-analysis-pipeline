@@ -79,14 +79,21 @@ def test_pipeline_adds_earnings_deep_dive_when_transcript_text_exists(tmp_path, 
     assert generated_requests[0].transcript_text == transcript
     assert generated_requests[0].metrics.revenue_actual == 26_000_000_000
     assert generated_requests[0].metrics.eps_actual == 1.25
+    assert [request.language for request in generated_requests] == ["en", "jp"]
     assert pdf_calls == [
         (
             str(tmp_path / "07_final_report" / "earnings_deep_dive.md"),
             str(tmp_path / "07_final_report" / "earnings_deep_dive.pdf"),
             "NVIDIA (NVDA) — Earnings Deep-Dive",
-        )
+        ),
+        (
+            str(tmp_path / "07_final_report" / "earnings_deep_dive.md"),
+            str(tmp_path / "jp" / "07_final_report" / "earnings_deep_dive.pdf"),
+            "NVIDIA (NVDA) — Earnings Deep-Dive JP",
+        ),
     ]
-    assert (tmp_path / "07_final_report" / "earnings_deep_dive.pdf").exists()
+    assert (tmp_path / "en" / "07_final_report" / "earnings_deep_dive.pdf").exists()
+    assert (tmp_path / "jp" / "07_final_report" / "earnings_deep_dive.pdf").exists()
     assert "Earnings deep-dive added to dossier" in caplog.text
 
 

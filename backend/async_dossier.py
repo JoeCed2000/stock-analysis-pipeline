@@ -81,8 +81,16 @@ def get_dossier_status(ticker: str) -> dict:
     # Check by exact filename suffix (file-extension-agnostic for the directory)
     file_strs = [str(f) for f in files]
     
-    has_report = any("07_final_report/report" in s for s in file_strs)
-    has_excel = any("financials_" in s and s.endswith(".xlsx") for s in file_strs)
+    has_report = any(
+        "07_final_report/report" in s
+        or "en/07_final_report/report" in s
+        for s in file_strs
+    )
+    has_excel = any(
+        ("financials_" in s and s.endswith(".xlsx"))
+        and ("/03_financial_data_sources/" in f"/{s}" or s.startswith("03_financial_data_sources/"))
+        for s in file_strs
+    )
     
     # Ready if we have report (md or pdf) + Excel — MD→PDF conversion happens on download
     ready = has_report and has_excel
@@ -90,9 +98,9 @@ def get_dossier_status(ticker: str) -> dict:
     relative_files = [str(f.relative_to(dossier_dir)) for f in files]
     bonus_files = [
         path for path in relative_files
-        if path in (
-            "07_final_report/earnings_deep_dive.md",
-            "07_final_report/earnings_deep_dive.pdf",
+        if (
+            path.endswith("07_final_report/earnings_deep_dive.md")
+            or path.endswith("07_final_report/earnings_deep_dive.pdf")
         )
     ]
 
@@ -102,6 +110,7 @@ def get_dossier_status(ticker: str) -> dict:
         "bonus_files": bonus_files,
         "directory": str(dossier_dir),
         "stage": "complete" if ready else "in_progress",
+        "estimated_seconds": 0,
     }
     
     with _registry_lock:
@@ -121,7 +130,9 @@ def generate_dossier_background(ticker: str, company_name: str, yf_data: dict, r
     
     with _registry_lock:
         _dossier_registry[ticker_clean] = {
-            "ready": False, "files": [], "stage": "generating"
+            "ready": False, "files": [], "stage": "generating",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "estimated_seconds": 120,  # ~2 min for bilingual deep-dive
         }
     
     def _worker():

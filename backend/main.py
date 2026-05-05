@@ -752,6 +752,15 @@ async def dossier_download(ticker: str, lang: str = "en"):
             if folder not in included_dirs:
                 zf.writestr(f"{folder}/README.txt",
                            f"{folder}\n{'='*len(folder)}\n\nDossier section — see full report for details.\n")
+        for language in ("en", "jp"):
+            if (source_dir / language).is_dir():
+                for folder in ["01_official_company_sources", "02_sec_or_regulatory_filings",
+                               "03_financial_data_sources", "04_transcripts_and_management",
+                               "05_market_and_context", "06_extracted_data", "07_final_report"]:
+                    lang_folder = f"{language}/{folder}"
+                    if lang_folder not in included_dirs:
+                        zf.writestr(f"{lang_folder}/README.txt",
+                                   f"{folder}\n{'='*len(folder)}\n\nDossier section — see full report for details.\n")
     
     lang_suffix = f"_{lang}" if lang != "en" else ""
     buf.seek(0)

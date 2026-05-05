@@ -224,6 +224,11 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
             {countdown > 0
               ? `⏳ ${countdown}s · ${dossierStatus?.sectionsReady ?? '?'}/7`
               : `${t('buildingDossier')} ${dossierStatus?.sectionsReady ?? '?'}/7`}
+            {dossierStatus?.estimated_seconds > 0 && (
+              <span style={{ display: 'block', fontSize: 9, color: '#484f58', marginTop: 2 }}>
+                {lang === 'ja' ? t('estimatedSingle') : t('estimatedSingle')}
+              </span>
+            )}
           </div>
         )}
       </div>

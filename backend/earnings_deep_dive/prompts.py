@@ -319,7 +319,9 @@ def system_prompt(language: str) -> str:
         "with the question, use the required markdown table, then numbered analysis using "
         "① ② ③, include Namiさん向け interpretation lines where specified, and end with "
         "> 一言まとめ:. Use only supplied metrics and transcript evidence; missing financial "
-        "data must be written exactly as DONNÉE NON DISPONIBLE."
+        "data must be written exactly as DONNÉE NON DISPONIBLE. "
+        "Cite transcript source: after each claim, reference like (Transcript, CEO remarks). "
+        "End the report with ## Sources section listing the transcript URL."
     )
 
 
