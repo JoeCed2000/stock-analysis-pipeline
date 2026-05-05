@@ -30,6 +30,15 @@ class FinancialMetrics(BaseModel):
     net_debt: Optional[float] = None
     roic: Optional[float] = None
     roe: Optional[float] = None
+    # ── new yfinance-extracted fields (v2.5) ──
+    gross_profit: Optional[float] = None
+    opex: Optional[float] = None
+    rotce: Optional[float] = None
+    roa: Optional[float] = None
+    total_assets: Optional[float] = None
+    equity: Optional[float] = None
+    buybacks: Optional[float] = None
+    dividends: Optional[float] = None
     pe_forward: Optional[float] = None
     backlog: Optional[float] = None
     guidance: Optional[str] = None

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 CACHE_DIR = Path(__file__).parent / ".cache"
 CACHE_TTL_SECONDS = 3600  # 1 hour
-CACHE_VERSION = 2  # bump to invalidate old cache entries (v1: Finnhub-only, v2: Finnhub+yfinance merged)
+CACHE_VERSION = 3  # bump to invalidate old cache entries (v2: Finnhub+yfinance merged, v3: +8 deep-dive fields)
 YF_CACHE_TTL = 600  # 10 min — yfinance data pushed by cron (refreshed every 2 min)
 
 
@@ -537,8 +537,19 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
         "operating_margin": None,
         "net_income": None,
         "free_cash_flow": None,
+        "operating_cash_flow": None,
+        "capex": None,
         "net_debt": None,
         "guidance_official": None,
+        # v2.5 — new deep-dive fields
+        "gross_profit": None,
+        "opex": None,
+        "rotce": None,
+        "roa": None,
+        "total_assets": None,
+        "equity": None,
+        "buybacks": None,
+        "dividends": None,
     }
 
     if quarterly_income is not None and not quarterly_income.empty:
@@ -587,6 +598,49 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
                 cashflow.loc["Free Cash Flow", latest] if "Free Cash Flow" in cashflow.index else None
             )
             financials["free_cash_flow"] = fcf
+            ocf = _safe_float(
+                cashflow.loc["Operating Cash Flow", latest] if "Operating Cash Flow" in cashflow.index else None
+            )
+            financials["operating_cash_flow"] = ocf
+            capex_val = _safe_float(
+                cashflow.loc["Capital Expenditure", latest] if "Capital Expenditure" in cashflow.index else None
+            )
+            financials["capex"] = capex_val
+            # Buybacks & dividends (v2.5)
+            financials["buybacks"] = _safe_float(
+                cashflow.loc["Repurchase Of Capital Stock", latest] if "Repurchase Of Capital Stock" in cashflow.index else None
+            )
+            financials["dividends"] = _safe_float(
+                cashflow.loc["Cash Dividends Paid", latest] if "Cash Dividends Paid" in cashflow.index else None
+            )
+        except Exception:
+            pass
+
+    if quarterly_income is not None and not quarterly_income.empty:
+        try:
+            # Try latest quarter first, fall back to earlier quarters if NaN
+            gross_profit = None
+            opex_val = None
+            for col_idx in range(min(4, len(quarterly_income.columns))):
+                q_col = quarterly_income.columns[col_idx]
+                gp = _safe_float(
+                    quarterly_income.loc["Gross Profit", q_col] if "Gross Profit" in quarterly_income.index else None
+                )
+                te = _safe_float(
+                    quarterly_income.loc["Total Expenses", q_col] if "Total Expenses" in quarterly_income.index else None
+                )
+                if gp is not None or te is not None:
+                    gross_profit = gross_profit or gp
+                    opex_val = opex_val or te
+                    break
+                # Fallback: R&D + SG&A
+                rd = _safe_float(quarterly_income.loc["Research And Development", q_col] if "Research And Development" in quarterly_income.index else 0) or 0
+                sga = _safe_float(quarterly_income.loc["Selling General And Administration", q_col] if "Selling General And Administration" in quarterly_income.index else 0) or 0
+                if rd or sga:
+                    opex_val = opex_val or (rd + sga)
+                    break
+            financials["gross_profit"] = gross_profit
+            financials["opex"] = opex_val
         except Exception:
             pass
 
@@ -601,8 +655,32 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
             )
             if total_debt is not None and cash_eq is not None:
                 financials["net_debt"] = total_debt - cash_eq
+            # Total assets & equity (v2.5)
+            total_assets = _safe_float(
+                balance.loc["Total Assets", latest] if "Total Assets" in balance.index else None
+            )
+            financials["total_assets"] = total_assets
+            equity = _safe_float(
+                balance.loc["Stockholders Equity", latest] if "Stockholders Equity" in balance.index else None
+            )
+            financials["equity"] = equity
+            # ROTCE = NI / (Total Assets - Goodwill - Intangibles - Total Liabilities)
+            goodwill = _safe_float(
+                balance.loc["Goodwill And Other Intangible Assets", latest] if "Goodwill And Other Intangible Assets" in balance.index else None
+            ) or 0
+            total_liab = _safe_float(
+                balance.loc["Total Liabilities Net Minority Interest", latest] if "Total Liabilities Net Minority Interest" in balance.index else None
+            )
+            ni = financials.get("net_income")
+            if ni and total_assets and total_liab is not None:
+                tangible_equity = total_assets - goodwill - total_liab
+                if tangible_equity and tangible_equity > 0:
+                    financials["rotce"] = round(ni / tangible_equity, 4)
         except Exception:
             pass
+
+    # ROA from info (v2.5) — fallback to calculation if available
+    financials["roa"] = info.get("returnOnAssets")
 
     # Margins from info
     financials["gross_margin"] = info.get("grossMargins")
@@ -761,11 +839,15 @@ def convert_to_eur(amount_usd: float) -> Optional[float]:
 # ---------------------------------------------------------------------------
 
 def _safe_float(val: Any) -> Optional[float]:
-    """Safely convert a value to float."""
+    """Safely convert a value to float, treating NaN/Inf as None."""
     if val is None:
         return None
     try:
-        return float(val)
+        import math
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return None
+        return f
     except (TypeError, ValueError):
         return None
 

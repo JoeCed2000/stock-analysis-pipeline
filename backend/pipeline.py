@@ -123,6 +123,15 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
         net_debt=pick("net_debt"),
         roic=pick("roic"),
         roe=pick("roe"),
+        # v2.5 — new yfinance-extracted fields
+        gross_profit=pick("gross_profit"),
+        opex=pick("opex"),
+        rotce=pick("rotce"),
+        roa=pick("roa"),
+        total_assets=pick("total_assets"),
+        equity=pick("equity"),
+        buybacks=pick("buybacks"),
+        dividends=pick("dividends"),
         pe_forward=(
             (getattr(valuation, "pe_forward", None) if valuation else None)
             or (yf_data.get("pe_forward") if isinstance(yf_data, dict) else None)
