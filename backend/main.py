@@ -33,6 +33,7 @@ def _sanitize_json(obj):
 
 from backend.models import TickerRequest, AnalysisResult
 from backend.orchestrator import run_analysis_sequential
+from backend.earnings_deep_dive import DeepDiveRequest, DeepDiveResponse, generate_deep_dive
 
 # Setup logging with our custom configuration
 from backend.logging_config import setup_logging, get_logger
@@ -626,6 +627,16 @@ async def debug_sources():
             "masked": mask(nv_key) if nv_key else None,
         },
     }
+
+
+@app.post("/api/earnings/deep-dive", response_model=DeepDiveResponse)
+async def earnings_deep_dive(request: DeepDiveRequest):
+    """Generate a standalone earnings call deep-dive."""
+    try:
+        return generate_deep_dive(request)
+    except Exception as e:
+        logger.error(f"[{request.ticker}] Earnings deep-dive generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Earnings deep-dive generation failed: {str(e)}")
 
 
 @app.get("/api/dossier/{ticker}/status")

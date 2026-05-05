@@ -87,9 +87,19 @@ def get_dossier_status(ticker: str) -> dict:
     # Ready if we have report (md or pdf) + Excel — MD→PDF conversion happens on download
     ready = has_report and has_excel
     
+    relative_files = [str(f.relative_to(dossier_dir)) for f in files]
+    bonus_files = [
+        path for path in relative_files
+        if path in (
+            "07_final_report/earnings_deep_dive.md",
+            "07_final_report/earnings_deep_dive.pdf",
+        )
+    ]
+
     status = {
         "ready": ready,
-        "files": [str(f.relative_to(dossier_dir)) for f in files],
+        "files": relative_files,
+        "bonus_files": bonus_files,
         "directory": str(dossier_dir),
         "stage": "complete" if ready else "in_progress",
     }

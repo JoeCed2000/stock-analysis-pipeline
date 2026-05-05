@@ -16,11 +16,119 @@ from backend.excel_generator import generate_excel
 from backend.tenk_pdf import convert_10k_to_pdf
 from backend.company_profile import generate_company_profile
 from backend.sec_8k import download_latest_8k
+from backend.earnings_deep_dive import DeepDiveRequest, FinancialMetrics, generate_deep_dive
+from backend.transcript_finder import find_transcripts
 
 logger = logging.getLogger(__name__)
 
 # Paris timezone
 PARIS = __import__("zoneinfo").ZoneInfo("Europe/Paris")
+
+
+def md_to_pdf(md_path: str, pdf_path: str, title: str = "") -> str:
+    """Lazy wrapper so importing the pipeline does not require PDF dependencies."""
+    from backend.pdf_generator import md_to_pdf as _md_to_pdf
+
+    return _md_to_pdf(md_path, pdf_path, title=title)
+
+
+def _best_transcript_source(sources: List[Dict[str, Any]]) -> tuple[str, Dict[str, Any]]:
+    """Return the longest usable transcript text and its source metadata."""
+    best_text = ""
+    best_source: Dict[str, Any] = {}
+    for source in sources:
+        text = source.get("text") or source.get("content") or source.get("transcript") or ""
+        if isinstance(text, list):
+            text = "\n".join(str(item) for item in text)
+        if isinstance(text, str) and len(text.strip()) > len(best_text):
+            best_text = text.strip()
+            best_source = source
+    return best_text, best_source
+
+
+def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> FinancialMetrics:
+    """Map existing dossier metrics into the earnings deep-dive schema."""
+    fin_data = yf_data.get("financials", {}) if isinstance(yf_data, dict) else {}
+    financials = getattr(result, "financials", None)
+    valuation = getattr(result, "valuation", None)
+
+    def pick(name: str, fallback: Any = None) -> Any:
+        if isinstance(fin_data, dict) and fin_data.get(name) is not None:
+            return fin_data.get(name)
+        if financials is not None and hasattr(financials, name):
+            value = getattr(financials, name)
+            if value is not None:
+                return value
+        return fallback
+
+    return FinancialMetrics(
+        eps_estimate=pick("eps_estimate"),
+        eps_actual=pick("eps_actual"),
+        eps_vs_estimate=pick("eps_vs_estimate"),
+        eps_yoy=pick("eps_yoy"),
+        revenue_estimate=pick("revenue_estimate"),
+        revenue_actual=pick("revenue_quarterly"),
+        revenue_yoy=pick("revenue_yoy_growth"),
+        gross_margin=pick("gross_margin"),
+        operating_margin=pick("operating_margin"),
+        operating_income=pick("operating_income"),
+        net_income=pick("net_income"),
+        free_cash_flow=pick("free_cash_flow"),
+        operating_cash_flow=pick("operating_cash_flow"),
+        capex=pick("capex"),
+        net_debt=pick("net_debt"),
+        roic=pick("roic"),
+        roe=pick("roe"),
+        pe_forward=(
+            (getattr(valuation, "pe_forward", None) if valuation else None)
+            or (yf_data.get("pe_forward") if isinstance(yf_data, dict) else None)
+        ),
+        backlog=pick("backlog"),
+        guidance=pick("guidance") or pick("guidance_official"),
+        segments=fin_data.get("segments", {}) if isinstance(fin_data.get("segments"), dict) else {},
+    )
+
+
+def _add_earnings_deep_dive_if_transcript(
+    *,
+    ticker: str,
+    company_name: str,
+    output_dir: str,
+    result: AnalysisResult,
+    yf_data: Dict[str, Any],
+) -> bool:
+    """Generate the optional earnings call deep-dive when a usable transcript exists."""
+    try:
+        transcript_results = find_transcripts(ticker, output_dir=output_dir)
+        sources = transcript_results.get("sources", []) if isinstance(transcript_results, dict) else []
+        transcript_text, transcript_source = _best_transcript_source(sources)
+        if not transcript_text:
+            logger.info(f"[{ticker}] Earnings deep-dive skipped: no usable transcript")
+            return False
+
+        response = generate_deep_dive(
+            DeepDiveRequest(
+                ticker=ticker,
+                company=company_name,
+                quarter=str(transcript_source.get("quarter") or "latest quarter"),
+                language="en",
+                output_dir=output_dir,
+                metrics=_deep_dive_metrics(result, yf_data),
+                transcript_text=transcript_text,
+            )
+        )
+
+        pdf_path = os.path.join(output_dir, "07_final_report", "earnings_deep_dive.pdf")
+        md_to_pdf(
+            response.markdown_path,
+            pdf_path,
+            title=f"{company_name} ({ticker}) — Earnings Deep-Dive",
+        )
+        logger.info(f"[{ticker}] Earnings deep-dive added to dossier")
+        return True
+    except Exception as e:
+        logger.warning(f"[{ticker}] Earnings deep-dive skipped: {e}")
+        return False
 
 
 def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult:
@@ -824,6 +932,15 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
         logger.info(f"[{ticker}] Full report written (MD + PDF)")
     except Exception as e:
         logger.warning(f"[{ticker}] Report generation failed: {e}")
+
+    # 4b. Optional earnings call deep-dive (07) — only when a full transcript is available
+    _add_earnings_deep_dive_if_transcript(
+        ticker=ticker,
+        company_name=company_name,
+        output_dir=output_dir,
+        result=result,
+        yf_data=yf_data,
+    )
     
     # 5. Excel financials (03)
     try:

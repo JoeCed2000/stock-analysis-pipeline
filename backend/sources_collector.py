@@ -107,7 +107,8 @@ def get_stock_data(ticker: str) -> Dict[str, Any]:
     """Fetch fundamental + price data. Multi-source chain:
     1. Finnhub (US equities, 60 calls/min, free) — price, sector, market cap
     2. Twelve Data (international, 800 calls/day, free — needs TWELVEDATA_API_KEY)
-    3. yfinance — DEEP financials (revenue, net income, FCF) merged in
+    3. EODHD (global, 20 calls/day, free — needs EODHD_API_KEY) — price + 52w, EU fallback
+    4. yfinance — DEEP financials (PE, revenue, net income, FCF) merged in
     Uses file-based cache (TTL 1h) to minimize API calls."""
     # Check cache first
     cached = _cache_get(ticker)
@@ -149,6 +150,12 @@ def get_stock_data(ticker: str) -> Dict[str, Any]:
         result = _get_stock_data_twelvedata(ticker)
         if result is not None:
             _source = "twelvedata"
+
+    if result is None:
+        # Try EODHD (global coverage, richer fundamentals than Twelve Data)
+        result = _get_stock_data_eodhd(ticker)
+        if result is not None:
+            _source = "eodhd"
     
     if result is None:
         # Last resort: pure yfinance
@@ -164,7 +171,8 @@ def get_stock_data(ticker: str) -> Dict[str, Any]:
             raise RuntimeError(
                 f"No data source available for {ticker}. "
                 f"US stocks: set FINNHUB_API_KEY. "
-                f"International: set TWELVEDATA_API_KEY (free at twelvedata.com). "
+                f"International: set TWELVEDATA_API_KEY (free at twelvedata.com) "
+                f"or EODHD_API_KEY (free at eodhd.com). "
                 f"Or run analysis locally where yfinance works."
             )
 
@@ -386,6 +394,97 @@ def _get_stock_data_twelvedata(ticker: str) -> Optional[Dict[str, Any]]:
 
     except Exception as e:
         logger.warning(f"Twelve Data failed for {ticker}: {e}")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# EODHD wrapper (international fallback — global coverage, 20 req/day free)
+# ---------------------------------------------------------------------------
+
+def _get_stock_data_eodhd(ticker: str) -> Optional[Dict[str, Any]]:
+    """Fetch price data from EODHD. Returns None if unavailable.
+    Free tier: 20 req/day, global coverage. Price + 52w only (fundamentals = paid tier).
+    Used as price fallback for EU tickers where yfinance is blocked on Render."""
+    api_key = os.getenv("EODHD_API_KEY", "")
+    if not api_key:
+        return None
+
+    from backend.http_client import http
+
+    try:
+        # Real-time endpoint (delayed, free tier) — gives current price
+        rt_resp = http.get(
+            f"https://eodhd.com/api/real-time/{ticker}",
+            params={"api_token": api_key, "fmt": "json"},
+            timeout=10
+        )
+        if rt_resp.status_code != 200:
+            logger.warning(f"EODHD real-time HTTP {rt_resp.status_code} for {ticker}")
+            return None
+        rt_data = rt_resp.json()
+        if not rt_data or "close" not in rt_data:
+            logger.warning(f"EODHD real-time empty for {ticker}")
+            return None
+
+        price = rt_data.get("close")
+        prev_close = rt_data.get("previousClose")
+        change_pct = rt_data.get("change_p")
+
+        # Try EOD endpoint for 52-week high/low (last 260 trading days ≈ 1 year)
+        high_52w = None
+        low_52w = None
+        try:
+            eod_resp = http.get(
+                f"https://eodhd.com/api/eod/{ticker}",
+                params={"api_token": api_key, "fmt": "json", "period": "d", "from": "2025-05-01"},
+                timeout=8
+            )
+            if eod_resp.status_code == 200:
+                eod_data = eod_resp.json()
+                if eod_data and isinstance(eod_data, list) and len(eod_data) > 0:
+                    closes = [d["close"] for d in eod_data if "close" in d]
+                    if closes:
+                        high_52w = max(closes)
+                        low_52w = min(closes)
+        except Exception:
+            pass  # 52w is nice-to-have, not critical
+
+        result = {
+            "ticker": ticker,
+            "company_name": ticker,  # No name on free tier — will be enriched by yfinance later
+            "sector": None,
+            "industry": None,
+            "market_cap": None,
+            "price": price,
+            "prev_close": prev_close,
+            "currency": "EUR" if "." in ticker else "USD",  # best guess
+            "financials": {
+                "revenue_quarterly": None,
+                "revenue_yoy_growth": None,
+                "revenue_annual": None,
+                "revenue_annual_growth": None,
+                "gross_margin": None,
+                "operating_margin": None,
+                "net_income": None,
+                "free_cash_flow": None,
+                "net_debt": None,
+                "guidance_official": None,
+            },
+            "pe_current": None,
+            "pe_forward": None,
+            "peg_ratio": None,
+            "expected_growth": None,
+            "beta": None,
+            "52w_high": high_52w,
+            "52w_low": low_52w,
+            "description": "",
+        }
+
+        logger.info(f"EODHD OK for {ticker}: price={price} prev={prev_close} 52w=({low_52w},{high_52w})")
+        return result
+
+    except Exception as e:
+        logger.warning(f"EODHD failed for {ticker}: {e}")
         return None
 
 
