@@ -1,11 +1,6 @@
 import { useState, useEffect } from 'react';
 
-const STEPS = [
-  'Fetching financial data…',
-  'Processing ratios & metrics…',
-  'Scoring fundamentals…',
-  'Generating insights…',
-];
+const STEP_KEYS = ['step_fetching', 'step_ratios', 'step_scoring', 'step_insights'];
 
 export default function SmartLoader({ total, current, ticker, t }) {
   const [step, setStep] = useState(0);
@@ -13,7 +8,7 @@ export default function SmartLoader({ total, current, ticker, t }) {
   // Cycle through steps every 2.5s
   useEffect(() => {
     const interval = setInterval(() => {
-      setStep(s => (s + 1) % STEPS.length);
+      setStep(s => (s + 1) % STEP_KEYS.length);
     }, 2500);
     return () => clearInterval(interval);
   }, []);
@@ -55,7 +50,7 @@ export default function SmartLoader({ total, current, ticker, t }) {
         display: 'flex', justifyContent: 'center', gap: 24,
         flexWrap: 'wrap', marginBottom: 24,
       }}>
-        {STEPS.map((s, i) => {
+        {STEP_KEYS.map((key, i) => {
           const isCurrent = i === step;
           return (
           <div key={i} style={{
@@ -70,7 +65,7 @@ export default function SmartLoader({ total, current, ticker, t }) {
               background: isCurrent ? '#58a6ff' : '#30363d',
               transition: 'background 0.3s',
             }} />
-            <span style={{ whiteSpace: 'nowrap' }}>{s}</span>
+            <span style={{ whiteSpace: 'nowrap' }}>{t(key)}</span>
           </div>
         )})}
       </div>

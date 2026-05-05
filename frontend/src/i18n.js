@@ -67,6 +67,10 @@ const translations = {
     
     // Messages
     loading: "Loading…",
+    step_fetching: "Fetching financial data…",
+    step_ratios: "Processing ratios & metrics…",
+    step_scoring: "Scoring fundamentals…",
+    step_insights: "Generating insights…",
     error: "Error",
     noResults: "No results",
     tryExample: "Try e.g. AAPL, MSFT, GOOGL",
@@ -155,6 +159,10 @@ const translations = {
     
     // Messages
     loading: "読み込み中…",
+    step_fetching: "財務データ取得中…",
+    step_ratios: "比率・指標を処理中…",
+    step_scoring: "ファンダメンタルズ評価中…",
+    step_insights: "インサイト生成中…",
     error: "エラー",
     noResults: "結果なし",
     tryExample: "例: AAPL, MSFT, GOOGL",
