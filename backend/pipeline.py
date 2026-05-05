@@ -491,6 +491,33 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
         guidance_official=fin.get("guidance_official"),
     )
     
+    # ── Enrich with edgartools SEC XBRL data (replaces fragile HTML parsing) ──
+    try:
+        from backend.sources_collector import get_edgar_financials
+        edgar = get_edgar_financials(ticker)
+        if edgar:
+            # Only fill gaps — don't overwrite existing yfinance data
+            for attr, edgar_key in [
+                ("revenue_annual", "revenue"),
+                ("net_income", "net_income"),
+                ("free_cash_flow", "free_cash_flow"),
+            ]:
+                current = getattr(financials, attr, None)
+                edgar_val = edgar.get(edgar_key)
+                if (current is None or current == 0) and edgar_val is not None:
+                    setattr(financials, attr, edgar_val)
+                    logger.info(f"[{ticker}] Enriched {attr} = {edgar_val:,.0f} from SEC XBRL")
+            
+            # Also enrich operating_margin if missing
+            if (financials.operating_margin is None or financials.operating_margin == 0):
+                rev = edgar.get("revenue")
+                op_inc = edgar.get("operating_income")
+                if rev and op_inc and rev > 0:
+                    financials.operating_margin = round(op_inc / rev, 4)
+                    logger.info(f"[{ticker}] Enriched operating_margin = {financials.operating_margin:.1%} from SEC XBRL")
+    except Exception as e:
+        logger.debug(f"[{ticker}] edgartools enrichment skipped: {e}")
+    
     # ── Segments ──
     segments = SegmentInfo(
         primary_segment=yf_data.get("industry") or yf_data.get("sector"),

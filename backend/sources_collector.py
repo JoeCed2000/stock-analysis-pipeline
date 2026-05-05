@@ -867,3 +867,56 @@ def _extract_section(text: str, start_marker: str, end_marker: str) -> str:
     if not end_match:
         return text[start_idx:start_idx + 8000]
     return text[start_idx:end_match.start()]
+
+
+# ---------------------------------------------------------------------------
+# edgartools wrapper — structured SEC EDGAR fundamentals (replaces raw HTML parsing)
+# ---------------------------------------------------------------------------
+
+def get_edgar_financials(ticker: str) -> Optional[Dict[str, Any]]:
+    """Fetch structured financial data from SEC EDGAR via edgartools.
+    
+    Returns dict with: revenue, net_income, free_cash_flow, operating_income,
+    total_assets, total_liabilities, stockholders_equity, shares_outstanding,
+    current_ratio, debt_to_assets, and metrics dict.
+    
+    Returns None if edgartools unavailable or ticker not found.
+    
+    Requires: pip install edgartools
+    On Render, edgartools may be blocked (SEC rate-limits from shared IPs).
+    Fall back to manual SEC parsing if this returns None.
+    """
+    try:
+        from edgar import Company, set_identity
+        
+        # edgartools crashes on empty HTTPS_PROXY — unset before import
+        for var in ('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy', 'ALL_PROXY', 'all_proxy'):
+            if os.environ.get(var, 'x') == '':
+                del os.environ[var]
+        
+        set_identity('StockAnalysisPipeline/1.0 (contact@example.com)')
+        
+        company = Company(ticker)
+        financials = company.get_financials()
+        
+        result = {
+            "ticker": ticker,
+            "cik": company.cik,
+            "source": "sec_edgar_xbrl",
+            "metrics": financials.get_financial_metrics(),
+            "revenue": financials.get_revenue(),
+            "net_income": financials.get_net_income(),
+            "free_cash_flow": financials.get_free_cash_flow(),
+            "operating_income": financials.get_operating_income(),
+            "total_assets": financials.get_total_assets(),
+            "total_liabilities": financials.get_total_liabilities(),
+            "stockholders_equity": financials.get_stockholders_equity(),
+            "shares_outstanding": financials.get_shares_outstanding_basic(),
+        }
+        return result
+    except ImportError:
+        logger.debug("edgartools not installed — skipping structured SEC data")
+        return None
+    except Exception as e:
+        logger.warning(f"edgartools failed for {ticker}: {e}")
+        return None
