@@ -192,7 +192,7 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
         </button>
         {dossierStatus?.ready && countdown <= 0 ? (
           <a
-            href={getTickerDownloadUrl(ticker)}
+            href={getTickerDownloadUrl(ticker, lang)}
             download
             style={{
               flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500,

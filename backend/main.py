@@ -523,16 +523,17 @@ async def dossier_status(ticker: str):
 
 
 @app.get("/api/dossier/{ticker}/download")
-async def dossier_download(ticker: str):
+async def dossier_download(ticker: str, lang: str = "en"):
     """Download the complete dossier as ZIP. Generates files synchronously if not ready.
-    Converts MD/TXT → PDF on-the-fly. ZIP contains ONLY PDF + XLSX + README.txt."""
+    Converts MD/TXT → PDF on-the-fly. ZIP contains ONLY PDF + XLSX + README.txt.
+    Use ?lang=ja for Japanese translated dossier."""
     ticker = ticker.strip().upper()
     from backend.async_dossier import get_dossier_status
     status = get_dossier_status(ticker)
     
     # If dossier not ready, generate it synchronously
     if not status.get("ready"):
-        logger.info(f"[{ticker}] Dossier not ready — generating synchronously...")
+        logger.info(f"[{ticker}] Dossier not ready — generating synchronously... [lang={lang}]")
         try:
             from backend.pipeline import analyze_ticker
             result = analyze_ticker(ticker, output_base=str(ANALYSES_DIR))
@@ -549,6 +550,20 @@ async def dossier_download(ticker: str):
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
     
     analysis_dir = matches[0]
+    
+    # Translate dossier content if non-English language requested
+    if lang != "en":
+        logger.info(f"[{ticker}] Translating dossier to {lang}...")
+        try:
+            from backend.translator import translate_file
+            for fpath in sorted(analysis_dir.rglob("*.txt")):
+                translate_file(str(fpath), lang)
+            for fpath in sorted(analysis_dir.rglob("*.md")):
+                if fpath.name != "README.md":
+                    translate_file(str(fpath), lang)
+            logger.info(f"[{ticker}] Dossier translation complete")
+        except Exception as e:
+            logger.warning(f"[{ticker}] Translation error (continuing with original): {e}")
     
     # Pre-convert MD/TXT files to PDF on-the-fly 
     try:
@@ -598,11 +613,12 @@ async def dossier_download(ticker: str):
                 zf.writestr(f"{folder}/README.txt",
                            f"{folder}\n{'='*len(folder)}\n\nDossier section — see full report for details.\n")
     
+    lang_suffix = f"_{lang}" if lang != "en" else ""
     buf.seek(0)
     return StreamingResponse(
         buf,
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename={ticker}_dossier.zip"},
+        headers={"Content-Disposition": f"attachment; filename={ticker}_dossier{lang_suffix}.zip"},
     )
 
 

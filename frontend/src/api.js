@@ -68,8 +68,9 @@ export function getBatchDownloadUrl(jobId) {
   return `${API_BASE}/batch/${jobId}/download`;
 }
 
-export function getTickerDownloadUrl(ticker) {
-  return `${API_BASE}/dossier/${ticker}/download`;
+export function getTickerDownloadUrl(ticker, lang = 'en') {
+  const base = `${API_BASE}/dossier/${ticker}/download?lang=${lang}`;
+  return base;
 }
 
 export async function getDossierStatus(ticker) {
