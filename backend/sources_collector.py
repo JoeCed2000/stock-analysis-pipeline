@@ -214,21 +214,44 @@ def _get_stock_data_finnhub(ticker: str) -> Optional[Dict[str, Any]]:
         return None
 
     import requests
+    import time as _time_module
 
-    def _fh(path: str) -> Optional[Dict]:
-        try:
-            resp = requests.get(
-                f"https://finnhub.io/api/v1{path}&token={api_key}",
-                timeout=10
-            )
-            if resp.status_code != 200:
-                return None
-            data = resp.json()
-            if "error" in data:
-                return None
-            return data
-        except Exception:
-            return None
+    def _fh(path: str, retries: int = 3) -> Optional[Dict]:
+        """Fetch Finnhub endpoint with retry on 429/timeout."""
+        last_error = None
+        for attempt in range(retries + 1):
+            try:
+                resp = requests.get(
+                    f"https://finnhub.io/api/v1{path}&token={api_key}",
+                    timeout=10
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if "error" in data:
+                        return None
+                    return data
+                elif resp.status_code == 429:
+                    retry_after = int(resp.headers.get("Retry-After", 2 ** attempt))
+                    logger.warning(f"Finnhub 429 — attempt {attempt+1}/{retries+1}, waiting {retry_after}s")
+                    if attempt < retries:
+                        _time_module.sleep(retry_after)
+                        continue
+                else:
+                    if attempt < retries:
+                        _time_module.sleep(2 ** attempt)
+                        continue
+            except requests.Timeout:
+                if attempt < retries:
+                    _time_module.sleep(2 ** attempt)
+                    continue
+            except Exception as e:
+                last_error = e
+                if attempt < retries:
+                    _time_module.sleep(1)
+                    continue
+        if last_error:
+            logger.warning(f"Finnhub request failed after {retries+1} attempts: {last_error}")
+        return None
 
     # Profile
     profile = _fh(f"/stock/profile2?symbol={ticker}")
