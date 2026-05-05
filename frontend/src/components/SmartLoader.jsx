@@ -44,37 +44,35 @@ export default function SmartLoader({ total, current, ticker, t }) {
       }}>
         <div style={{
           width: `${pct}%`, height: '100%',
-          background: 'linear-gradient(90deg, #238636, #58a6ff)',
+          background: '#58a6ff',
           borderRadius: 6,
           transition: 'width 0.4s ease',
         }} />
       </div>
 
-      {/* Step indicator */}
+      {/* Step indicator — all circles stay neutral blue, no false green checkmarks */}
       <div style={{
         display: 'flex', justifyContent: 'center', gap: 24,
         flexWrap: 'wrap', marginBottom: 24,
       }}>
-        {STEPS.map((s, i) => (
+        {STEPS.map((s, i) => {
+          const isCurrent = i === step;
+          return (
           <div key={i} style={{
             display: 'flex', alignItems: 'center', gap: 6,
             fontSize: 12,
-            color: i === step ? '#e1e4e8' : i < step ? '#484f58' : '#30363d',
-            fontWeight: i === step ? 600 : 400,
+            color: isCurrent ? '#e1e4e8' : '#484f58',
+            fontWeight: isCurrent ? 600 : 400,
             transition: 'color 0.3s',
           }}>
             <span style={{
               display: 'inline-block', width: 16, height: 16, borderRadius: '50%',
-              background: i === step ? '#58a6ff' : i < step ? '#238636' : '#21262d',
-              fontSize: 9, lineHeight: '16px', textAlign: 'center',
-              color: i < step ? '#fff' : 'transparent',
+              background: isCurrent ? '#58a6ff' : '#30363d',
               transition: 'background 0.3s',
-            }}>
-              {i < step ? '✓' : ''}
-            </span>
+            }} />
             <span style={{ whiteSpace: 'nowrap' }}>{s}</span>
           </div>
-        ))}
+        )})}
       </div>
 
       {/* Pulse dot */}
