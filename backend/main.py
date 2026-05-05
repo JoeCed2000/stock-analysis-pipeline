@@ -52,11 +52,12 @@ if env_path.exists():
 app = FastAPI(title="Stock Analysis Pipeline", version="1.0.0")
 
 # ── Rate limiting middleware (P0 audit 2026-05-05) ──
-# In-memory token bucket: 60 req/min per IP for /api/analyze, 120 req/min for others
+# In-memory token bucket with auto-cleanup: 30 req/min analyze, 120 req/min others
 _rate_limits = {}  # IP → (window_start, count)
 _RATE_WINDOW = 60  # seconds
 _RATE_LIMIT_ANALYZE = 30  # expensive endpoint — 30/min
 _RATE_LIMIT_DEFAULT = 120  # cheap endpoints — 120/min
+_RATE_MAX_ENTRIES = 5000  # Prune oldest entries when exceeded
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
@@ -65,6 +66,13 @@ async def rate_limit_middleware(request: Request, call_next):
     path = request.url.path
     limit = _RATE_LIMIT_ANALYZE if path == "/api/analyze" else _RATE_LIMIT_DEFAULT
     now = _time()
+    
+    # Periodic cleanup: if dict grows too large, evict expired entries
+    if len(_rate_limits) > _RATE_MAX_ENTRIES:
+        expired = [ip for ip, (ts, _) in _rate_limits.items() if now - ts >= _RATE_WINDOW]
+        for ip in expired:
+            del _rate_limits[ip]
+    
     entry = _rate_limits.get(client_ip)
     if entry and now - entry[0] < _RATE_WINDOW:
         if entry[1] >= limit:
@@ -732,6 +740,15 @@ async def dossier_download(ticker: str, lang: str = "en"):
     
     lang_suffix = f"_{lang}" if lang != "en" else ""
     buf.seek(0)
+    
+    # Clean up temp dir if translation created one
+    if work_dir:
+        try:
+            shutil.rmtree(work_dir, ignore_errors=True)
+            logger.debug(f"[{ticker}] Temp translation dir cleaned up")
+        except Exception:
+            pass
+    
     return StreamingResponse(
         buf,
         media_type="application/zip",

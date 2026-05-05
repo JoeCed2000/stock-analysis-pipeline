@@ -43,3 +43,4 @@ COMMANDS.md
 *.srt
 NVDA_analysis.zip
 NVDA_10K_demo.pdf
+*.bak.*

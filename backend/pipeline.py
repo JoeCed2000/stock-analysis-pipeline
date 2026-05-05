@@ -57,7 +57,8 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
     logger.info(f"[{ticker}] Step 1: Identification")
     yf_data = get_stock_data(ticker)
     price_native = yf_data.get("price")
-    eur_rate = convert_to_eur(price_native) if price_native else None
+    currency = yf_data.get("currency", "USD")
+    eur_rate = convert_to_eur(price_native) if (price_native and currency == "USD") else None
     company_name = yf_data.get("company_name", ticker)
 
     # Compute output directory early
@@ -374,8 +375,8 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
         company_name=company_name,
         retrieved_at=retrieved_at,
         price_native=price_native,
-        price_eur=eur_rate,
-        currency=yf_data.get("currency", "USD"),
+        price_eur=convert_to_eur(price_native) if (price_native and currency == "USD") else None,
+        currency=currency,
         market_cap=yf_data.get("market_cap"),
         sector=yf_data.get("sector"),
         financials=financials,
@@ -829,6 +830,7 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
     logger.info(f"[{ticker}] Fast: Step 1 — stock data")
     yf_data = get_stock_data(ticker)
     price_native = yf_data.get("price")
+    currency_fast = yf_data.get("currency", "USD")
     company_name = yf_data.get("company_name", ticker)
     
     # Compute output directory
@@ -953,8 +955,8 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
         company_name=company_name,
         retrieved_at=retrieved_at,
         price_native=price_native,
-        price_eur=convert_to_eur(price_native) if price_native else None,
-        currency=yf_data.get("currency", "USD"),
+        price_eur=convert_to_eur(price_native) if (price_native and currency_fast == "USD") else None,
+        currency=currency_fast,
         market_cap=yf_data.get("market_cap"),
         sector=yf_data.get("sector"),
         financials=financials,
@@ -1216,14 +1218,15 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
     except Exception as e:
         logger.warning(f"[{ticker}] Sources manifest write failed: {e}")
     
-    # ── Background dossier generation (best-effort, may not survive on Render free tier) ──
-    # The actual dossier generation happens synchronously in GET /api/dossier/{ticker}/download
-    # when the user requests the ZIP. This background thread is a local-dev optimization.
-    try:
-        from backend.async_dossier import generate_dossier_background
-        generate_dossier_background(ticker, company_name, yf_data, result, output_dir)
-        logger.debug(f"[{ticker}] Background dossier thread spawned (best-effort)")
-    except Exception as e:
-        logger.debug(f"[{ticker}] Background dossier spawn skipped: {e}")
+    # ── Background dossier generation (best-effort) ──
+    # Only spawn if NOT already generated synchronously above
+    # (avoids double work + race condition with ZIP — Codex R2 audit)
+    from backend.async_dossier import generate_dossier_background
+    if not os.path.exists(os.path.join(output_dir, "07_final_report", "report.md")):
+        try:
+            generate_dossier_background(ticker, company_name, yf_data, result, output_dir)
+            logger.debug(f"[{ticker}] Background dossier thread spawned (best-effort)")
+        except Exception as e:
+            logger.debug(f"[{ticker}] Background dossier spawn skipped: {e}")
     
     return result
