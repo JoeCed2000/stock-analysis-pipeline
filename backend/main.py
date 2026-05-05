@@ -64,6 +64,9 @@ async def rate_limit_middleware(request: Request, call_next):
     from time import time as _time
     client_ip = request.client.host if request.client else "unknown"
     path = request.url.path
+    # Skip rate limiting for health and debug endpoints
+    if path in ("/api/health",) or path.startswith("/api/debug/"):
+        return await call_next(request)
     limit = _RATE_LIMIT_ANALYZE if path == "/api/analyze" else _RATE_LIMIT_DEFAULT
     now = _time()
     
@@ -436,26 +439,31 @@ async def batch_status(job_id: str):
         else:
             raise HTTPException(status_code=404, detail="Job not found")
 
-    # If pending, process now
+    # If pending, process now (in thread pool to avoid blocking event loop)
     if job["status"] == "pending":
-        job["status"] = "processing"
-        for ticker in job["tickers"]:
-            try:
-                logger.info(f"[{job_id}] Analyzing {ticker}...")
-                result = run_analysis_sequential([ticker], output_base=str(ANALYSES_DIR))
-                if ticker in result["results"]:
-                    job["results"][ticker] = result["results"][ticker]
-                elif ticker in result.get("errors", {}):
-                    job["errors"][ticker] = result["errors"][ticker]
-                else:
-                    job["errors"][ticker] = "Unknown error"
-                job["completed"] += 1
-            except Exception as e:
-                logger.error(f"[{job_id}] {ticker}: {e}")
-                job["errors"][ticker] = str(e)
-                job["completed"] += 1
-
-        job["status"] = "completed" if not job["errors"] else "partial"
+        import asyncio as _asyncio
+        
+        def _process_batch(j):
+            j["status"] = "processing"
+            for ticker in j["tickers"]:
+                try:
+                    logger.info(f"[{j['job_id']}] Analyzing {ticker}...")
+                    result = run_analysis_sequential([ticker], output_base=str(ANALYSES_DIR))
+                    if ticker in result["results"]:
+                        j["results"][ticker] = result["results"][ticker]
+                    elif ticker in result.get("errors", {}):
+                        j["errors"][ticker] = result["errors"][ticker]
+                    else:
+                        j["errors"][ticker] = "Unknown error"
+                    j["completed"] += 1
+                except Exception as e:
+                    logger.error(f"[{j['job_id']}] {ticker}: {e}")
+                    j["errors"][ticker] = str(e)
+                    j["completed"] += 1
+            j["status"] = "completed" if not j["errors"] else "partial"
+            return j
+        
+        job = await _asyncio.to_thread(_process_batch, job)
         _save_batch_job(job)  # Persist to survive restart
 
     # Serialize results
@@ -856,7 +864,8 @@ async def analyze(request: TickerRequest, lang: str = "en"):
         )
 
     try:
-        batch = run_analysis_sequential(normalized_tickers, output_base=str(ANALYSES_DIR))
+        import asyncio as _asyncio
+        batch = await _asyncio.to_thread(run_analysis_sequential, normalized_tickers, output_base=str(ANALYSES_DIR))
     except Exception as e:
         logger.exception("Batch analysis failed")
         raise HTTPException(status_code=500, detail=str(e))
