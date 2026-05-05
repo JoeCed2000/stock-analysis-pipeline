@@ -5,7 +5,7 @@ import { uploadTickerFile } from '../api.js';
 
 const DEBOUNCE_MS = 500;
 
-export default function TickerInput({ onAnalyze, loading }) {
+export default function TickerInput({ onAnalyze, loading, t }) {
   const [value, setValue] = useState('');
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(new Set());
@@ -71,7 +71,7 @@ export default function TickerInput({ onAnalyze, loading }) {
           <textarea
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            placeholder="Type tickers or ISINs (comma, space, or line separated)…"
+            placeholder={t('tickerPlaceholder')}
             rows={2}
             disabled={loading}
             style={{
@@ -169,7 +169,7 @@ export default function TickerInput({ onAnalyze, loading }) {
             onMouseDown={e => { if (!loading) e.target.style.transform = 'scale(0.98)'; }}
             onMouseUp={e => { if (!loading) e.target.style.transform = 'scale(1)'; }}
           >
-            {loading ? 'Analyzing…' : `🔍 Analyze ${selected.size} ticker${selected.size > 1 ? 's' : ''}`}
+            {loading ? t('analyzing') : `🔍 ${t('analyze')} ${selected.size} ticker${selected.size > 1 ? 's' : ''}`}
           </button>
         )}
 

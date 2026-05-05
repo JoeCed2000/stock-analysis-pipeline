@@ -94,14 +94,6 @@ def extract_zip(zip_path: Path, ticker: str) -> bool:
         log(f"Extract {ticker} failed: {e}")
         return False
 
-def parse_from_directory(dir_path: str):
-    """Extract (ticker, date) from directory like .../analyses/2026-05-05_META_Meta_Platforms_Inc"""
-    import re
-    m = re.search(r'/analyses/(\d{4}-\d{2}-\d{2})_([A-Z0-9]+(?:_[A-Z0-9]+)*)_', dir_path)
-    if m:
-        return m.group(2), m.group(1)
-    return "?", ""
-
 
 def main():
     log("━━━ Backup Render → Lapced ━━━")
@@ -125,14 +117,6 @@ def main():
     for analysis in remote_analyses:
         ticker = analysis.get("ticker", "?")
         date_str = analysis.get("date", "")
-        # Fallback: parse from directory path if API returns empty fields
-        if ticker == "?" or not date_str:
-            dir_path = analysis.get("directory", "")
-            parsed_ticker, parsed_date = parse_from_directory(dir_path)
-            if ticker == "?" and parsed_ticker != "?":
-                ticker = parsed_ticker
-            if not date_str and parsed_date:
-                date_str = parsed_date
         files = analysis.get("files", 0)
 
         # Check if already backed up (by ticker+date — re-analysis same day = overwrite)

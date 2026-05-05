@@ -37,7 +37,7 @@ function getInsight(scoring) {
   return '🔍 Mixed signals — review full report';
 }
 
-export default function AnalysisCard({ result, onViewReport }) {
+export default function AnalysisCard({ result, onViewReport, t, lang }) {
   const { ticker, company_name, decision, scoring, conviction,
           price_native, currency, price_eur, market_cap, sector } = result || {};
 
@@ -125,7 +125,7 @@ export default function AnalysisCard({ result, onViewReport }) {
           background: color, color: '#fff',
           letterSpacing: 0.5,
         }}>
-          {decision}
+          {t(decision) || decision}
         </div>
       </div>
 
@@ -188,7 +188,7 @@ export default function AnalysisCard({ result, onViewReport }) {
           onMouseEnter={e => e.target.style.background = '#30363d'}
           onMouseLeave={e => e.target.style.background = '#21262d'}
         >
-          📄 Full report
+          📄 {t('viewFullReport')}
         </button>
         {dossierStatus?.ready && countdown <= 0 ? (
           <a
@@ -204,7 +204,7 @@ export default function AnalysisCard({ result, onViewReport }) {
             onMouseEnter={e => e.target.style.background = '#2ea043'}
             onMouseLeave={e => e.target.style.background = '#238636'}
           >
-            📥 Download ({dossierStatus?.sectionsReady ?? '?'}/7)
+            📥 {t('downloadDossier')} ({dossierStatus?.sectionsReady ?? '?'}/7)
           </a>
         ) : (
           <div style={{
@@ -214,7 +214,7 @@ export default function AnalysisCard({ result, onViewReport }) {
           }}>
             {countdown > 0
               ? `⏳ ${countdown}s · ${dossierStatus?.sectionsReady ?? '?'}/7`
-              : `📊 Finalizing… ${dossierStatus?.sectionsReady ?? '?'}/7`}
+              : `${t('buildingDossier')} ${dossierStatus?.sectionsReady ?? '?'}/7`}
           </div>
         )}
       </div>
@@ -230,7 +230,7 @@ export default function AnalysisCard({ result, onViewReport }) {
           border: `1px solid ${convictionColor}40`,
           textTransform: 'uppercase', letterSpacing: 0.5,
         }}>
-          {level} conviction
+          {t(level)} {t('conviction')}
         </span>
       </div>
     </div>

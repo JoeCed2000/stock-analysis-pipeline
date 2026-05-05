@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { uploadTickerFile, submitBatch, getBatchStatus, getBatchDownloadUrl } from '../api.js';
 
-export default function BatchAnalysis({ onResultsReady }) {
+export default function BatchAnalysis({ onResultsReady, t }) {
   const [parsedItems, setParsedItems] = useState([]);
   const [selected, setSelected] = useState(new Set());
   const [textarea, setTextarea] = useState('');
@@ -165,8 +165,8 @@ export default function BatchAnalysis({ onResultsReady }) {
         <textarea
           value={textarea}
           onChange={(e) => setTextarea(e.target.value)}
-          placeholder="Or paste tickers here...&#10;NVDA&#10;MSFT&#10;AAPL&#10;US0378331005"
-          rows={4}
+          placeholder={t('pastePlaceholder')}
+          rows={6}
           disabled={loading}
           style={{
             width: '100%', padding: '10px 14px', fontSize: 14,

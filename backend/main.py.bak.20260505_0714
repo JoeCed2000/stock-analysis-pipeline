@@ -71,45 +71,6 @@ ISIN_RE = re.compile(r'^[A-Z]{2}[A-Z0-9]{10}$')  # US0378331005
 # Lazy import yfinance for ticker validation
 _yf_available = None
 
-
-def _ticker_dir_key(ticker: str) -> str:
-    """Return the ticker key used in analysis directory names."""
-    return ticker.strip().upper().replace(".", "_")
-
-
-def _find_analysis_dirs(ticker: str) -> list[Path]:
-    """Find analysis directories for a ticker, case-insensitively."""
-    return sorted(ANALYSES_DIR.glob(f"*_{_ticker_dir_key(ticker)}_*"), reverse=True)
-
-
-def _ticker_from_analysis_dir(entry: Path) -> str | None:
-    """Infer ticker from generated dossier files, falling back to directory name."""
-    for pattern in (
-        "03_financial_data_sources/yahoo_snapshot_*.json",
-        "03_financial_data_sources/financials_*.xlsx",
-    ):
-        for fpath in entry.glob(pattern):
-            stem = fpath.stem
-            if stem.startswith("yahoo_snapshot_"):
-                return stem.removeprefix("yahoo_snapshot_")
-            if stem.startswith("financials_"):
-                return stem.removeprefix("financials_")
-
-    manifest = entry / "06_extracted_data" / "sources_manifest.json"
-    if manifest.exists():
-        try:
-            sources = json.loads(manifest.read_text())
-            for source in sources if isinstance(sources, list) else []:
-                url = source.get("url", "")
-                match = re.search(r"/quote/([^/?]+)/?", url)
-                if match:
-                    return match.group(1)
-        except Exception:
-            pass
-
-    match = re.match(r"^(?:\d{4}-\d{2}-\d{2}|\d{8})_([A-Z0-9]+(?:_[A-Z0-9]+)?)_", entry.name)
-    return match.group(1).replace("_", ".") if match else None
-
 def _get_yf():
     global _yf_available
     if _yf_available is None:
@@ -421,8 +382,8 @@ async def batch_download(job_id: str):
 @app.get("/api/analyze/{ticker}/download")
 async def ticker_download(ticker: str):
     """Download all documents for a single ticker as a ZIP file."""
-    ticker = ticker.strip().upper()
-    matches = _find_analysis_dirs(ticker)
+    ticker_clean = ticker.replace(".", "_")
+    matches = sorted(ANALYSES_DIR.glob(f"*_{ticker_clean}_*"), reverse=True)
     if not matches:
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
 
@@ -526,7 +487,6 @@ async def dossier_status(ticker: str):
 async def dossier_download(ticker: str):
     """Download the complete dossier as ZIP. Generates files synchronously if not ready.
     Converts MD/TXT → PDF on-the-fly. ZIP contains ONLY PDF + XLSX + README.txt."""
-    ticker = ticker.strip().upper()
     from backend.async_dossier import get_dossier_status
     status = get_dossier_status(ticker)
     
@@ -544,7 +504,8 @@ async def dossier_download(ticker: str):
                 detail=f"Dossier generation failed: {str(e)}"
             )
     
-    matches = _find_analysis_dirs(ticker)
+    ticker_clean = ticker.replace(".", "_")
+    matches = sorted(ANALYSES_DIR.glob(f"*_{ticker_clean}_*"), reverse=True)
     if not matches:
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
     
@@ -745,8 +706,8 @@ async def analyze(request: TickerRequest):
 @app.get("/api/report/{ticker}/pdf")
 async def get_report_pdf(ticker: str):
     """Generate and retrieve PDF report for a ticker."""
-    ticker = ticker.strip().upper()
-    matches = _find_analysis_dirs(ticker)
+    ticker_clean = ticker.replace(".", "_")
+    matches = sorted(ANALYSES_DIR.glob(f"*_{ticker_clean}_*"), reverse=True)
     if not matches:
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
 
@@ -766,8 +727,8 @@ async def get_report_pdf(ticker: str):
 async def get_report(ticker: str):
     """Retrieve the full markdown report for a ticker."""
     # Find the latest analysis directory for this ticker
-    ticker = ticker.strip().upper()
-    matches = _find_analysis_dirs(ticker)
+    ticker_clean = ticker.replace(".", "_")
+    matches = sorted(ANALYSES_DIR.glob(f"*_{ticker_clean}_*"), reverse=True)
     if not matches:
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
 
@@ -781,8 +742,8 @@ async def get_report(ticker: str):
 @app.get("/api/sources/{ticker}")
 async def get_sources(ticker: str):
     """Retrieve the sources manifest for a ticker."""
-    ticker = ticker.strip().upper()
-    matches = _find_analysis_dirs(ticker)
+    ticker_clean = ticker.replace(".", "_")
+    matches = sorted(ANALYSES_DIR.glob(f"*_{ticker_clean}_*"), reverse=True)
     if not matches:
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
 
@@ -796,8 +757,8 @@ async def get_sources(ticker: str):
 @app.get("/api/traceability/{ticker}")
 async def get_traceability(ticker: str):
     """Retrieve the claim traceability matrix for a ticker."""
-    ticker = ticker.strip().upper()
-    matches = _find_analysis_dirs(ticker)
+    ticker_clean = ticker.replace(".", "_")
+    matches = sorted(ANALYSES_DIR.glob(f"*_{ticker_clean}_*"), reverse=True)
     if not matches:
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
 
@@ -904,28 +865,23 @@ async def list_analyses():
         all_files = [f for f in entry.rglob("*") if f.is_file()]
         real_files = [f for f in all_files if f.name != "README.txt"]
         
-        # Parse naming convention: YYYY-MM-DD_TICKER_NAME
-        # Example: 2026-05-04_NVDA_NVIDIA_Corp
+        # Parse naming convention: YYYYMMDD_TICKER_NAME
+        # Example: 20260504_NVDA_NVIDIA_Corp
         name = entry.name
-        ticker = _ticker_from_analysis_dir(entry) or "?"
+        ticker = "?"
         company_name = name
         date_str = ""
         has_report = (entry / "07_final_report" / "report.md").exists() or \
                      (entry / "07_final_report" / "report.pdf").exists()
         
-        date_match = re.match(r"^(\d{4}-\d{2}-\d{2}|\d{8})_(.+)$", name)
-        if date_match:
-            raw_date, rest = date_match.groups()
-            date_str = (
-                f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
-                if raw_date.isdigit()
-                else raw_date
-            )
-            ticker_key = ticker.replace(".", "_") if ticker != "?" else ""
-            if ticker_key and rest.startswith(f"{ticker_key}_"):
-                company_name = rest[len(ticker_key) + 1:]
-            else:
-                company_name = rest.split("_", 1)[1] if "_" in rest else rest
+        # Extract date (first 8 digits)
+        if len(name) >= 8 and name[:8].isdigit():
+            date_str = f"{name[:4]}-{name[4:6]}-{name[6:8]}"
+            rest = name[9:]  # skip date + underscore
+            parts = rest.split('_')
+            if parts and re.match(r'^[A-Z0-9]+$', parts[0]):
+                ticker = parts[0].replace('_', '.')
+                company_name = ' '.join(parts[1:]).replace('_', ' ') if len(parts) > 1 else parts[0]
         
         analyses.append({
             "ticker": ticker,

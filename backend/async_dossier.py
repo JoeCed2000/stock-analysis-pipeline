@@ -29,6 +29,14 @@ _registry_lock = threading.Lock()
 PARIS = timezone(offset=datetime.now(timezone.utc).astimezone().utcoffset() or __import__("datetime").timedelta(hours=2))
 
 
+def _analyses_dir() -> Path:
+    """Return the project analyses directory from either repo root or backend cwd."""
+    cwd = Path.cwd()
+    if cwd.name == "backend":
+        return cwd.parent / "analyses"
+    return cwd / "analyses"
+
+
 def get_dossier_status(ticker: str) -> dict:
     """Check if dossier is ready for a ticker. Returns {ready, files, error}."""
     ticker_clean = ticker.replace(".", "_").upper()
@@ -44,7 +52,7 @@ def get_dossier_status(ticker: str) -> dict:
             # If "generating", fall through to disk check
     
     # Check on disk
-    analyses_dir = Path("analyses")
+    analyses_dir = _analyses_dir()
     if not analyses_dir.exists():
         return {"ready": False, "files": [], "stage": "not_started"}
     

@@ -11,7 +11,7 @@ const SECTION_STYLE = {
   muted: { color: '#8b949e' },
 };
 
-export default function AboutSection() {
+export default function AboutSection({ t }) {
   const [open, setOpen] = useState(false);
 
   if (!open) {
@@ -23,7 +23,7 @@ export default function AboutSection() {
           fontSize: 12, cursor: 'pointer', padding: 0, marginBottom: 12,
         }}
       >
-        ▸ What is this? How does it work?
+        {t('whatIsThis')}
       </button>
     );
   }

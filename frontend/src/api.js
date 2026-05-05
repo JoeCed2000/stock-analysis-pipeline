@@ -1,8 +1,8 @@
 // Use deployed backend URL in production, local proxy in dev
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
-export async function analyzeTickers(tickers) {
-  const res = await fetch(`${API_BASE}/analyze`, {
+export async function analyzeTickers(tickers, lang = 'en') {
+  const res = await fetch(`${API_BASE}/analyze?lang=${lang}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tickers }),

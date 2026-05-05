@@ -6,7 +6,9 @@ import ReportView from './components/ReportView.jsx';
 import AboutSection from './components/AboutSection.jsx';
 import SmartLoader from './components/SmartLoader.jsx';
 import SkeletonCard from './components/SkeletonCard.jsx';
+import LanguageSelector from './components/LanguageSelector.jsx';
 import { analyzeTickers } from './api.js';
+import translations from './i18n.js';
 
 const ESTIMATED_SEC_PER_TICKER = 22;
 
@@ -17,7 +19,10 @@ export default function App() {
   const [error, setError] = useState(null);
   const [reportResult, setReportResult] = useState(null);
   const [progress, setProgress] = useState({ current: 0, total: 0, ticker: '' });
+  const [lang, setLang] = useState('en');
   const progressRef = useRef(null);
+
+  const t = (key) => translations[lang]?.[key] || translations.en[key] || key;
 
   const handleViewReport = (result) => {
     setReportResult(result);
@@ -31,7 +36,6 @@ export default function App() {
     const total = tickers.length;
     setProgress({ current: 0, total, ticker: tickers[0] || '' });
 
-    // Simulate progress while waiting for backend
     let current = 0;
     const intervalMs = (ESTIMATED_SEC_PER_TICKER * 1000) / total;
     progressRef.current = setInterval(() => {
@@ -40,13 +44,12 @@ export default function App() {
     }, intervalMs);
 
     try {
-      const data = await analyzeTickers(tickers);
+      const data = await analyzeTickers(tickers, lang);
       if (data.errors?.length > 0) {
         setError(`Errors: ${data.errors.join(', ')}`);
       }
       setResults(data.results || []);
     } catch (e) {
-      // Handle 422 validation errors (invalid tickers)
       if (e.status === 422 && e.body) {
         setError(e.body?.detail?.message || e.message);
       } else {
@@ -63,15 +66,18 @@ export default function App() {
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
       {/* Header — centered */}
       <div style={{ marginBottom: 24, textAlign: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <LanguageSelector lang={lang} onLanguageChange={setLang} />
+        </div>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: '#e1e4e8', marginBottom: 4 }}>
-          📈 Stock Analysis
+          {t('siteTitle')}
         </h1>
         <p style={{ fontSize: 13, color: '#8b949e' }}>
-          Automated fundamental analysis — BUY / HOLD / SELL based on 8 criteria
+          {t('siteSubtitle')}
         </p>
 
         <div style={{ marginTop: 16 }}>
-          <AboutSection />
+          <AboutSection t={t} />
         </div>
 
         {/* Mode tabs — centered */}
@@ -92,7 +98,7 @@ export default function App() {
                 transition: 'all 0.15s',
               }}
             >
-              🔍 Quick Analysis
+              {t('quickAnalysis')}
             </button>
             <button
               onClick={() => { setMode('batch'); setResults([]); setError(null); }}
@@ -104,7 +110,7 @@ export default function App() {
                 transition: 'all 0.15s',
               }}
             >
-              📦 Batch (Upload + ZIP)
+              {t('batchAnalysis')}
             </button>
           </div>
         </div>
@@ -112,24 +118,24 @@ export default function App() {
 
       {/* Single mode */}
       {mode === 'single' && (
-        <TickerInput onAnalyze={handleAnalyze} loading={loading} />
+        <TickerInput onAnalyze={handleAnalyze} loading={loading} t={t} />
       )}
 
       {/* Batch mode */}
       {mode === 'batch' && (
-        <BatchAnalysis onResultsReady={(results) => setResults(results)} />
+        <BatchAnalysis onResultsReady={(results) => setResults(results)} t={t} />
       )}
 
-      {/* Smart loading — replaces old double spinner */}
+      {/* Smart loading */}
       {loading && progress.total > 0 && (
         <>
           <SmartLoader
             total={progress.total}
             current={progress.current}
             ticker={progress.ticker}
+            t={t}
           />
 
-          {/* Skeleton cards */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 400px))',
@@ -163,13 +169,15 @@ export default function App() {
               key={r.ticker}
               result={r}
               onViewReport={handleViewReport}
+              t={t}
+              lang={lang}
             />
           ))}
         </div>
       )}
 
       {reportResult && (
-        <ReportView ticker={reportResult.ticker} result={reportResult} onClose={() => setReportResult(null)} />
+        <ReportView ticker={reportResult.ticker} result={reportResult} onClose={() => setReportResult(null)} t={t} lang={lang} />
       )}
 
       <style>{`

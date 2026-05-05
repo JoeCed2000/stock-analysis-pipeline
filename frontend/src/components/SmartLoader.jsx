@@ -7,7 +7,7 @@ const STEPS = [
   'Generating insights…',
 ];
 
-export default function SmartLoader({ total, current, ticker }) {
+export default function SmartLoader({ total, current, ticker, t }) {
   const [step, setStep] = useState(0);
 
   // Cycle through steps every 2.5s
@@ -29,8 +29,8 @@ export default function SmartLoader({ total, current, ticker }) {
       {/* Tick counter */}
       <div style={{ fontSize: 22, fontWeight: 700, color: '#e1e4e8', marginBottom: 4 }}>
         {ticker
-          ? <span>Analyzing <span style={{ color: '#58a6ff' }}>{ticker}</span></span>
-          : 'Preparing analysis…'}
+          ? <span>{t('analyzing')} <span style={{ color: '#58a6ff' }}>{ticker}</span></span>
+          : t('loading')}
       </div>
 
       <div style={{ fontSize: 13, color: '#8b949e', marginBottom: 20 }}>
@@ -87,7 +87,7 @@ export default function SmartLoader({ total, current, ticker }) {
           background: '#58a6ff',
           animation: 'pulse-dot 1.2s ease-in-out infinite',
         }} />
-        Processing
+        {t('processing')}
       </div>
 
       <style>{`
