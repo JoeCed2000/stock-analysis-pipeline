@@ -34,16 +34,16 @@ _TEXT = colors.HexColor("#111111")
 _MUTED = colors.HexColor("#5D5D5D")
 _REGISTERED_FONTS: set[str] = set()
 _SECTION_PREFIXES = {
-    "EPS & Revenue": "📊 [EPS]",
-    "Highlights": "🌟 [Highlights] ⚠️ [Lowlights]",
-    "Operating Metrics": "🧠 [Operating]",
-    "Cash Flow": "💰 [Cash]",
-    "Capital Efficiency": "🎯 [Capital]",
-    "Segments": "🧩 [Segments]",
-    "Forward P/E": "📈 [Valuation]",
-    "Backlog": "📦 [Backlog]",
-    "Guidance": "🔮 [Guidance]",
-    "Verdict": "🏆 [Verdict]",
+    "EPS & Revenue": "[EPS]",
+    "Highlights": "[Highlights] [Lowlights]",
+    "Operating Metrics": "[Operating]",
+    "Cash Flow": "[Cash]",
+    "Capital Efficiency": "[Capital]",
+    "Segments": "[Segments]",
+    "Forward P/E": "[Valuation]",
+    "Backlog": "[Backlog]",
+    "Guidance": "[Guidance]",
+    "Verdict": "[Verdict]",
 }
 
 
@@ -194,6 +194,26 @@ def _paragraph(text: str, style: ParagraphStyle, *, font_name: str) -> Paragraph
     return Paragraph(escaped, style)
 
 
+def _format_markdown(text: str) -> str:
+    """Convert basic markdown to ReportLab-compatible XML."""
+    import re
+    # Convert **bold** to <b>bold</b>
+    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+    # Convert *italic* to <i>italic</i> (but not **already bold**)
+    text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<i>\1</i>', text)
+    return text
+
+
+def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragraph:
+    """Paragraph with markdown formatting support (bold/italic)."""
+    formatted = _format_markdown(str(text))
+    escaped = escape(formatted)
+    # Unescape the XML tags we intentionally added
+    escaped = escaped.replace('&lt;b&gt;', '<b>').replace('&lt;/b&gt;', '</b>')
+    escaped = escaped.replace('&lt;i&gt;', '<i>').replace('&lt;/i&gt;', '</i>')
+    return Paragraph(escaped, style)
+
+
 def _section_title(section) -> str:
     prefix = _SECTION_PREFIXES.get(section.key)
     if not prefix:
@@ -203,7 +223,8 @@ def _section_title(section) -> str:
 
 def _official_website(report: EarningsDeepDiveReport) -> str | None:
     for source in report.sources:
-        if source.label.lower() == "official website" and source.url:
+        label = source.label.lower()
+        if any(kw in label for kw in ("website", "official", "company site", "homepage")) and source.url:
             return source.url
     return None
 
@@ -285,14 +306,18 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         story.append(_table(section, styles, fonts))
         if section.analysis:
             for paragraph in section.analysis:
-                story.append(_paragraph(paragraph, styles["body"], font_name=fonts.regular))
-        story.append(
-            _paragraph(
-                f"{section.summary_label}: {section.summary}",
-                styles["body"],
-                font_name=fonts.regular,
-            )
-        )
+                story.append(_paragraph_md(paragraph, styles["body"], font_name=fonts.regular))
+        # Summary as a styled sub-heading + body text on separate lines
+        story.append(Spacer(1, 0.12 * inch))
+        story.append(Paragraph(
+            f"<b>{escape(section.summary_label)}</b>",
+            styles["question"],
+        ))
+        story.append(_paragraph_md(
+            section.summary.strip() if section.summary.strip() else "Not available.",
+            styles["body"],
+            font_name=fonts.regular,
+        ))
         if index < len(report.sections) - 1:
             story.append(PageBreak())
         else:
@@ -301,12 +326,12 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
     if report.sources:
         story.append(Paragraph("Sources", styles["section"]))
         for source in report.sources:
-            text = source.label
+            text = escape(source.label)
             if source.url:
-                text += f": {source.url}"
+                text += f": {escape(source.url)}"
             elif source.note:
-                text += f": {source.note}"
-            story.append(_paragraph(text, styles["body"], font_name=fonts.regular))
+                text += f": {escape(source.note)}"
+            story.append(Paragraph(text, styles["body"]))
 
     def draw_footer(canvas, doc) -> None:
         _footer(canvas, doc, fonts.regular)
