@@ -7,7 +7,7 @@ from typing import Any, Dict
 logger = logging.getLogger(__name__)
 
 
-def find_transcripts(ticker: str, output_dir: str = "") -> Dict[str, Any]:
+def find_transcripts(ticker: str, output_dir: str = "", company: str | None = None) -> Dict[str, Any]:
     """
     Search for earnings call transcripts from configured sources.
     Returns {'sources': [...], 'found': bool}
@@ -95,6 +95,49 @@ def find_transcripts(ticker: str, output_dir: str = "") -> Dict[str, Any]:
             logger.warning(f"Motley Fool unavailable for {ticker}: {e}")
     else:
         logger.info(f"Skipping Fool.com — higher-priority source already provided {len(primary_text)} chars")
+
+    # 3. Legacy public web transcript fallback.
+    if not primary_text:
+        try:
+            from backend.seeking_alpha import search_transcript_web
+
+            for item in search_transcript_web(ticker):
+                text = item.get("text", "")
+                if not text:
+                    continue
+                primary_text = text
+                results.append({
+                    "source": item.get("source") or "Public transcript search",
+                    "type": "earnings_transcript",
+                    "title": item.get("title", f"{ticker} Earnings Call Transcript"),
+                    "url": item.get("url", ""),
+                    "text": text,
+                    "text_length": len(text),
+                    "quarter": item.get("quarter", ""),
+                    "date": item.get("date", ""),
+                    "id": "",
+                })
+                logger.info(f"Public transcript search: {len(primary_text)} chars for {ticker}")
+                break
+        except Exception as e:
+            logger.warning(f"Public transcript search unavailable for {ticker}: {e}")
+    else:
+        logger.info(f"Skipping public transcript search: higher-priority source already provided {len(primary_text)} chars")
+
+    # 4. Google-discovered public transcript pages.
+    if not primary_text:
+        try:
+            from backend.transcript_web_search import search_transcript_pages
+
+            web_results = search_transcript_pages(ticker, company=company)
+            if web_results:
+                primary_text = web_results[0].get("text", "")
+                results.extend(web_results)
+                logger.info(f"Google web transcript: {len(primary_text)} chars for {ticker}")
+        except Exception as e:
+            logger.warning(f"Google transcript discovery unavailable for {ticker}: {e}")
+    else:
+        logger.info(f"Skipping Google transcript discovery: higher-priority source already provided {len(primary_text)} chars")
 
     # Save to disk if output_dir provided
     if output_dir and results:

@@ -37,6 +37,42 @@ def _analyses_dir() -> Path:
     return cwd / "analyses"
 
 
+def _blocked_status(stage: str, issues: list[str] | None = None) -> dict:
+    verification_issues = issues or []
+    return {
+        "ready": False,
+        "files": [],
+        "stage": stage,
+        "verified": False,
+        "download_enabled": False,
+        "verification_issues": verification_issues,
+    }
+
+
+def _apply_verification_status(status: dict) -> dict:
+    verification_issues: list[str] = []
+
+    if not status.get("ready"):
+        verification_issues.append("Required dossier deliverables are not complete.")
+
+    deep_dive_validated = status.get("deep_dive_validated")
+    if deep_dive_validated is not True:
+        if deep_dive_validated is None:
+            verification_issues.append("Deep-dive validation has not run yet.")
+        else:
+            issues = status.get("deep_dive_issues") or []
+            if issues:
+                verification_issues.extend(str(issue) for issue in issues)
+            else:
+                verification_issues.append("Deep-dive validation failed.")
+
+    verified = bool(status.get("ready")) and deep_dive_validated is True and not verification_issues
+    status["verified"] = verified
+    status["download_enabled"] = verified
+    status["verification_issues"] = verification_issues
+    return status
+
+
 def get_dossier_status(ticker: str) -> dict:
     """Check if dossier is ready for a ticker. Returns {ready, files, error}."""
     ticker_clean = ticker.replace(".", "_").upper()
@@ -47,20 +83,21 @@ def get_dossier_status(ticker: str) -> dict:
     with _registry_lock:
         if ticker_clean in _dossier_registry:
             cached = _dossier_registry[ticker_clean]
-            if cached.get("stage") in ("complete", "failed"):
+            if cached.get("stage") == "failed":
                 return cached
-            # If "generating", fall through to disk check
+            # If "generating" or "complete", fall through to disk check so
+            # validation state always reflects the latest generated files.
     
     # Check on disk
     analyses_dir = _analyses_dir()
     if not analyses_dir.exists():
-        return {"ready": False, "files": [], "stage": "not_started"}
+        return _blocked_status("not_started")
     
     matches = sorted(analyses_dir.glob(f"*_{ticker_clean}_*"), reverse=True)
     # Skip dummy UPLOADED directories
     matches = [m for m in matches if "UPLOADED" not in str(m)]
     if not matches:
-        return {"ready": False, "files": [], "stage": "not_started"}
+        return _blocked_status("not_started")
     
     # Prefer directories that have actual analysis content (report.md/report.pdf)
     # over dummy UPLOADED directories created by the upload endpoint
@@ -79,7 +116,7 @@ def get_dossier_status(ticker: str) -> dict:
     
     # Dossier is "ready" ONLY if we have the 4 key deliverables
     # Check by exact filename suffix (file-extension-agnostic for the directory)
-    file_strs = [str(f) for f in files]
+    file_strs = [str(f).replace("\\", "/") for f in files]
     
     has_report = any(
         "07_final_report/report" in s
@@ -126,6 +163,8 @@ def get_dossier_status(ticker: str) -> dict:
             status["deep_dive_validated"] = False
     else:
         status["deep_dive_validated"] = None  # Not yet generated
+
+    _apply_verification_status(status)
     
     with _registry_lock:
         _dossier_registry[ticker_clean] = status
@@ -258,13 +297,27 @@ def generate_dossier_background(ticker: str, company_name: str, yf_data: dict, r
             # Update registry
             dossier_dir = Path(output_dir)
             files = _list_dossier_files(dossier_dir)
+            final_status = {
+                "ready": True,
+                "files": [str(f.relative_to(dossier_dir)) for f in files],
+                "directory": str(dossier_dir),
+                "stage": "complete",
+            }
+            dd_val_path = dossier_dir / "07_final_report" / "deep_dive_validation.json"
+            if dd_val_path.exists():
+                try:
+                    with open(dd_val_path) as f:
+                        dd_val = json.load(f)
+                    final_status["deep_dive_validated"] = dd_val.get("passed", False)
+                    if not dd_val.get("passed"):
+                        final_status["deep_dive_issues"] = dd_val.get("issues", [])
+                except Exception:
+                    final_status["deep_dive_validated"] = False
+            else:
+                final_status["deep_dive_validated"] = None
+            _apply_verification_status(final_status)
             with _registry_lock:
-                _dossier_registry[ticker_clean] = {
-                    "ready": True,
-                    "files": [str(f.relative_to(dossier_dir)) for f in files],
-                    "directory": str(dossier_dir),
-                    "stage": "complete",
-                }
+                _dossier_registry[ticker_clean] = final_status
             
             logger.info(f"[{ticker}] Background dossier complete — {len(files)} files")
             

@@ -83,3 +83,36 @@ def test_find_transcripts_falls_back_to_fool_when_structured_sources_fail(monkey
     assert result["sources"][0]["source"] == "The Motley Fool"
     assert result["sources"][0]["text"] == "Data center demand improved. " * 20
     assert result["sources"][0]["quarter"] == ""
+
+
+def test_find_transcripts_falls_back_to_google_discovered_web_source(monkeypatch):
+    def empty(*args, **kwargs):
+        return []
+
+    def none(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("backend.rapidapi_sa.search_sa_transcripts", empty)
+    monkeypatch.setattr("backend.alpha_vantage.fetch_transcript", none)
+    monkeypatch.setattr("backend.sources.motleyfool.get_transcript", none)
+    monkeypatch.setattr(
+        "backend.transcript_web_search.search_transcript_pages",
+        lambda ticker, company=None, limit=5: [
+            {
+                "source": "Google Search Transcript",
+                "title": "Microsoft FY26 Q1 Earnings Call Transcript",
+                "url": "https://www.microsoft.com/en-us/investor/events/fy-2026/earnings-fy-2026-q1",
+                "text": "Revenue was $77.7 billion and EPS was $4.13. " * 20,
+                "quarter": "FY2026 Q1",
+                "date": "2025-10-29",
+                "text_length": len("Revenue was $77.7 billion and EPS was $4.13. " * 20),
+            }
+        ],
+    )
+
+    result = transcript_finder.find_transcripts("MSFT", company="Microsoft Corporation")
+
+    assert result["found"] is True
+    assert result["sources"][0]["source"] == "Google Search Transcript"
+    assert "EPS was $4.13" in result["sources"][0]["text"]
+    assert result["sources"][0]["quarter"] == "FY2026 Q1"

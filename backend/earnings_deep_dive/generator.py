@@ -285,7 +285,12 @@ def _load_transcript(request: DeepDiveRequest) -> Tuple[str, Dict[str, Any]]:
             "url": request.transcript_url,
         }
 
-    results = find_transcripts(request.ticker, output_dir=request.output_dir)
+    try:
+        results = find_transcripts(request.ticker, output_dir=request.output_dir, company=request.company)
+    except TypeError as exc:
+        if "company" not in str(exc):
+            raise
+        results = find_transcripts(request.ticker, output_dir=request.output_dir)
     sources = results.get("sources", []) if isinstance(results, dict) else []
     transcript_text, transcript_source = _best_transcript(sources)
     if transcript_text:

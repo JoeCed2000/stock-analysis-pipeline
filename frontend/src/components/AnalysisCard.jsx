@@ -46,6 +46,15 @@ function getInsight(scoring, t) {
   return t ? t(key) : key;
 }
 
+export function canDownloadDossier(status, countdown) {
+  return Boolean(
+    status?.ready === true
+    && status?.verified === true
+    && status?.download_enabled === true
+    && countdown <= 0
+  );
+}
+
 export default function AnalysisCard({ result, onViewReport, t, lang }) {
   const { ticker, company_name, decision, scoring, conviction,
           price_native, currency, price_eur, market_cap, sector } = result || {};
@@ -91,8 +100,10 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
           poles++;
           const sectionCount = countDossierSections(status.files || []);
           setDossierStatus({ ...status, sectionsReady: sectionCount, poles });
-          // Stop polling when (ready AND countdown elapsed) OR after 30 poles timeout
-          if ((status.ready && countdownRef.current <= 0) || poles >= 30) {
+          // Stop polling only after a terminal verification state or timeout.
+          const terminalVerification = status.download_enabled === true
+            || (status.ready === true && status.deep_dive_validated === false);
+          if ((terminalVerification && countdownRef.current <= 0) || poles >= 30) {
             clearInterval(pollRef.current);
             pollRef.current = null;
           }
@@ -120,6 +131,10 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
 
   const scorePercent = (total / 40) * 100;
   const scoreBarColor = total >= 32 ? '#238636' : total >= 26 ? '#d29922' : '#da3633';
+  const downloadReady = canDownloadDossier(dossierStatus, countdown);
+  const verificationBlocked = dossierStatus?.ready === true
+    && dossierStatus?.verified === false
+    && countdown <= 0;
 
   return (
     <div style={{
@@ -234,7 +249,7 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
         >
           📄 {t('viewFullReport')}
         </button>
-        {dossierStatus?.ready && countdown <= 0 && dossierStatus?.deep_dive_validated !== false ? (
+        {downloadReady ? (
           <a
             href={getTickerDownloadUrl(ticker, lang, selectedQuarter)}
             download
@@ -250,13 +265,13 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
           >
             📥 {t('downloadDossier')} ({dossierStatus?.sectionsReady ?? '?'}/7)
           </a>
-        ) : dossierStatus?.deep_dive_validated === false ? (
+        ) : verificationBlocked ? (
           <div style={{
             flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500,
             background: '#3d1f1f', border: '1px solid #6b3030',
             borderRadius: 5, color: '#f85149', textAlign: 'center',
           }}>
-            ⚠️ {lang === 'ja' ? '検証失敗' : 'Validation failed'} · {t('buildingDossier')}...
+            ⚠️ {lang === 'ja' ? '検証失敗' : 'Verification failed'} · {dossierStatus?.sectionsReady ?? '?'}/7
           </div>
         ) : (
           <div style={{

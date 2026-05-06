@@ -1,12 +1,13 @@
-"""Orchestrator — runs analysis sequentially or in parallel."""
-import logging
+"""Orchestrator - runs analysis sequentially or in parallel."""
 import concurrent.futures
-from typing import Dict, Any, List
-from backend.pipeline import analyze_ticker_fast, AnalysisResult
+import logging
+from typing import Any, Dict, List
+
+from backend.pipeline import AnalysisResult, analyze_ticker_fast
 
 logger = logging.getLogger(__name__)
 
-PER_TICKER_TIMEOUT = 300  # seconds — 2 Kimi calls + stock data + dossier generation = up to 280s
+PER_TICKER_TIMEOUT = 300
 
 
 def run_analysis_sequential(tickers: List[str], output_base: str = "analyses") -> Dict[str, Any]:
@@ -32,11 +33,50 @@ def run_analysis_sequential(tickers: List[str], output_base: str = "analyses") -
     return {"results": results, "errors": errors}
 
 
-def run_analysis_parallel(tickers: List[str], output_base: str = "analyses") -> Dict[str, Any]:
-    """
-    Placeholder for parallel analysis via delegate_task.
-    Currently falls back to sequential — delegate_task is not available
-    inside FastAPI worker processes.
-    """
-    logger.info(f"Parallel analysis requested for {len(tickers)} tickers — falling back to sequential")
-    return run_analysis_sequential(tickers, output_base)
+def run_analysis_parallel(
+    tickers: List[str],
+    output_base: str = "analyses",
+    max_workers: int | None = None,
+) -> Dict[str, Any]:
+    """Run multiple ticker analyses concurrently with per-ticker timeout."""
+    results: Dict[str, AnalysisResult] = {}
+    errors: Dict[str, str] = {}
+    if not tickers:
+        return {"results": results, "errors": errors}
+
+    worker_count = max_workers or min(len(tickers), 4)
+    worker_count = max(1, min(worker_count, len(tickers)))
+    logger.info(f"Analyzing {len(tickers)} tickers in parallel (workers={worker_count})")
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = {
+            executor.submit(analyze_ticker_fast, ticker, output_base): ticker
+            for ticker in tickers
+        }
+        pending = set(futures)
+        while pending:
+            done, pending = concurrent.futures.wait(
+                pending,
+                timeout=PER_TICKER_TIMEOUT,
+                return_when=concurrent.futures.FIRST_COMPLETED,
+            )
+            if not done:
+                for future in list(pending):
+                    ticker = futures[future]
+                    future.cancel()
+                    logger.error(f"{ticker}: TIMEOUT after {PER_TICKER_TIMEOUT}s")
+                    errors[ticker] = f"Analysis timed out after {PER_TICKER_TIMEOUT}s"
+                    pending.remove(future)
+                break
+
+            for future in done:
+                ticker = futures[future]
+                try:
+                    result = future.result()
+                    results[ticker] = result
+                    logger.info(f"{ticker}: {result.decision} ({result.scoring.total}/40)")
+                except Exception as e:
+                    logger.error(f"{ticker}: {e}")
+                    errors[ticker] = str(e)
+
+    return {"results": results, "errors": errors}

@@ -168,7 +168,12 @@ def _add_earnings_deep_dive_if_transcript(
     """Generate the optional earnings deep-dive with transcript text when available."""
     try:
         report_language = _normalize_report_language(language)
-        transcript_results = find_transcripts(ticker, output_dir=output_dir)
+        try:
+            transcript_results = find_transcripts(ticker, output_dir=output_dir, company=company_name)
+        except TypeError as exc:
+            if "company" not in str(exc):
+                raise
+            transcript_results = find_transcripts(ticker, output_dir=output_dir)
         sources = transcript_results.get("sources", []) if isinstance(transcript_results, dict) else []
         transcript_text, transcript_source = _best_transcript_source(sources)
         transcript_url = _transcript_url(transcript_source)
@@ -213,10 +218,13 @@ def _add_earnings_deep_dive_if_transcript(
         logger.info(f"[{ticker}] Earnings deep-dive added to dossier")
         
         # ── Post-generation validation ──
-        from backend.earnings_deep_dive.deep_dive_validator import validate_deep_dive
+        from backend.earnings_deep_dive.deep_dive_validator import validate_deep_dive, validate_render_model
         
         en_md = response.markdown_path
-        passed, issues = validate_deep_dive(en_md)
+        md_passed, issues = validate_deep_dive(en_md)
+        render_issues = validate_render_model(report_model)
+        issues = issues + render_issues
+        passed = md_passed and not render_issues
         validation_result = {"passed": passed, "issues": issues, "checked_at": datetime.now(timezone.utc).isoformat()}
         
         # Write validation result next to the markdown

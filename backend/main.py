@@ -54,7 +54,7 @@ def _should_convert_dossier_text_to_pdf(fpath: Path, *, refresh_pdf: bool) -> bo
     return refresh_pdf or not pdf_path.exists()
 
 from backend.models import TickerRequest, AnalysisResult
-from backend.orchestrator import run_analysis_sequential
+from backend.orchestrator import run_analysis_parallel
 from backend.earnings_deep_dive import DeepDiveRequest, DeepDiveResponse, generate_deep_dive
 from backend.sources_collector import list_available_quarters, get_yahoo_data_for_quarter
 
@@ -465,21 +465,16 @@ async def batch_status(job_id: str):
         
         def _process_batch(j):
             j["status"] = "processing"
+            logger.info(f"[{j['job_id']}] Analyzing {len(j['tickers'])} tickers in parallel...")
+            result = run_analysis_parallel(j["tickers"], output_base=str(ANALYSES_DIR))
             for ticker in j["tickers"]:
-                try:
-                    logger.info(f"[{j['job_id']}] Analyzing {ticker}...")
-                    result = run_analysis_sequential([ticker], output_base=str(ANALYSES_DIR))
-                    if ticker in result["results"]:
-                        j["results"][ticker] = result["results"][ticker]
-                    elif ticker in result.get("errors", {}):
-                        j["errors"][ticker] = result["errors"][ticker]
-                    else:
-                        j["errors"][ticker] = "Unknown error"
-                    j["completed"] += 1
-                except Exception as e:
-                    logger.error(f"[{j['job_id']}] {ticker}: {e}")
-                    j["errors"][ticker] = str(e)
-                    j["completed"] += 1
+                if ticker in result["results"]:
+                    j["results"][ticker] = result["results"][ticker]
+                elif ticker in result.get("errors", {}):
+                    j["errors"][ticker] = result["errors"][ticker]
+                else:
+                    j["errors"][ticker] = "Unknown error"
+                j["completed"] += 1
             j["status"] = "completed" if not j["errors"] else "partial"
             return j
         
@@ -758,6 +753,17 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
                 logger.info(f"[{ticker}] Deep-dive regenerated for {quarter}")
         except Exception as e:
             logger.warning(f"[{ticker}] Deep-dive regeneration for {quarter} failed: {e}")
+
+    status = get_dossier_status(ticker)
+    if not status.get("download_enabled"):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Dossier generated but not verified; download is blocked.",
+                "issues": status.get("verification_issues", []),
+                "deep_dive_validated": status.get("deep_dive_validated"),
+            },
+        )
     
     # Translate dossier content if non-English language requested
     # NEVER mutate originals — work on a temp copy (Codex P0 audit 2026-05-05)
@@ -969,7 +975,7 @@ async def analyze(request: TickerRequest, lang: str = "en"):
 
     try:
         import asyncio as _asyncio
-        batch = await _asyncio.to_thread(run_analysis_sequential, normalized_tickers, output_base=str(ANALYSES_DIR))
+        batch = await _asyncio.to_thread(run_analysis_parallel, normalized_tickers, output_base=str(ANALYSES_DIR))
     except Exception as e:
         logger.exception("Batch analysis failed")
         raise HTTPException(status_code=500, detail=str(e))

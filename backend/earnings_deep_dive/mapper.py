@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+import re
 
 from backend.earnings_deep_dive.report_model import (
     EarningsDeepDiveReport,
@@ -92,6 +93,58 @@ def _variance(actual: Any, estimate: Any, explicit: Any = None) -> str:
     if estimate_number == 0:
         return MISSING
     return _pct((actual_number - estimate_number) / abs(estimate_number))
+
+
+def _clean_markdown_cell(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip().strip("`")).strip()
+
+
+def _is_markdown_separator(cells: list[str]) -> bool:
+    clean_cells = [cell.strip() for cell in cells if cell.strip()]
+    return bool(clean_cells) and all(re.fullmatch(r":?-{3,}:?", cell) for cell in clean_cells)
+
+
+def _extract_markdown_table(markdown: str, expected_columns: tuple[str, ...]) -> RenderedTable | None:
+    lines = [line.strip() for line in markdown.splitlines() if line.strip().startswith("|")]
+    if len(lines) < 3:
+        return None
+
+    for index in range(len(lines) - 2):
+        header = [_clean_markdown_cell(cell) for cell in lines[index].strip("|").split("|")]
+        separator = [_clean_markdown_cell(cell) for cell in lines[index + 1].strip("|").split("|")]
+        if len(header) < 2 or not _is_markdown_separator(separator):
+            continue
+
+        rows: list[RenderedTableRow] = []
+        for raw in lines[index + 2:]:
+            cells = [_clean_markdown_cell(cell) for cell in raw.strip("|").split("|")]
+            if len(cells) != len(header):
+                break
+            if _is_markdown_separator(cells):
+                continue
+            rows.append(RenderedTableRow(label=cells[0], cells=cells[1:]))
+
+        if rows:
+            return RenderedTable(columns=header or list(expected_columns), rows=rows)
+
+    return None
+
+
+def _analysis_without_table(markdown: str) -> str:
+    kept: list[str] = []
+    in_table = False
+    for line in markdown.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("|"):
+            in_table = True
+            continue
+        if in_table and not stripped:
+            in_table = False
+            continue
+        if stripped.startswith("## "):
+            continue
+        kept.append(line)
+    return "\n".join(kept).strip()
 
 
 def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) -> list[list[str]]:
@@ -241,18 +294,25 @@ def build_earnings_deep_dive_report(
 
     sections: list[RenderedSection] = []
     for section in template:
-        rows = _rows_for_section(section.key, section.table_rows, metrics)
         analysis_text = analysis_by_key.get(section.key) or analysis_by_key.get(section.title)
+        codex_table = _extract_markdown_table(analysis_text, section.table_columns) if analysis_text else None
+        if codex_table:
+            table = codex_table
+            analysis_items = [text for text in (_analysis_without_table(analysis_text),) if text]
+        else:
+            rows = _rows_for_section(section.key, section.table_rows, metrics)
+            table = RenderedTable(
+                columns=list(section.table_columns),
+                rows=[RenderedTableRow(label=row[0], cells=[str(cell) for cell in row]) for row in rows],
+            )
+            analysis_items = [analysis_text] if analysis_text else []
         sections.append(
             RenderedSection(
                 key=section.key,
                 title=section.title,
                 question=section.question,
-                table=RenderedTable(
-                    columns=list(section.table_columns),
-                    rows=[RenderedTableRow(label=row[0], cells=[str(cell) for cell in row]) for row in rows],
-                ),
-                analysis=[analysis_text] if analysis_text else [],
+                table=table,
+                analysis=analysis_items,
                 summary_label=section.summary_label,
                 summary=_summary(report_language, ticker_clean, section.key),
             )

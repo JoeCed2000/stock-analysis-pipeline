@@ -32,6 +32,7 @@ REQUIRED_SUMMARY_MARKER = re.compile(
 FORBIDDEN_MARKERS: List[str] = [
     "DATA NOT AVAILABLE",
     "DONNÉE NON DISPONIBLE",
+    "DONNÃ‰E NON DISPONIBLE",
     "Not disclosed",
     "Section unavailable",
     "Transcript missing",
@@ -113,6 +114,32 @@ def validate_deep_dive(md_path: str) -> Tuple[bool, List[str]]:
         issues.append(f"Content too short: {words} words (need ≥800)")
 
     return len(issues) == 0, issues
+
+
+def validate_render_model(report_model) -> List[str]:
+    """Validate the structured model that feeds the PDF renderer."""
+    try:
+        content = report_model.model_dump_json()
+    except AttributeError:
+        content = str(report_model)
+
+    issues: List[str] = []
+    for marker in FORBIDDEN_MARKERS:
+        count = content.count(marker)
+        if count > 0:
+            issues.append(f"Forbidden marker '{marker}' found {count}× in PDF render model")
+
+    for section in getattr(report_model, "sections", []):
+        table = getattr(section, "table", None)
+        rows = getattr(table, "rows", []) if table is not None else []
+        if not rows:
+            issues.append(f"Missing rows in PDF render model section: {getattr(section, 'title', 'unknown')}")
+
+    sources = getattr(report_model, "sources", [])
+    if not any(getattr(source, "url", None) for source in sources):
+        issues.append("Missing transcript/source URL in PDF render model")
+
+    return issues
 
 
 def validate_deep_dive_or_retry(
