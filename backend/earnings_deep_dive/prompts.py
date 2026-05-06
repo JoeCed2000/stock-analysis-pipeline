@@ -639,6 +639,7 @@ Section output contract:
 - Use direct transcript or supplied-metric evidence. Never invent financial data.
 - If the transcript excerpt says no transcript is available, use only Metrics and mark qualitative call evidence as Data not available in transcript.
 - Every table cell must contain a sourced value or —. Never leave cells empty and never invent missing values.
+- CRITICAL: Never write \"Section unavailable\" or similar placeholder text. If specific data is missing, use — in table cells and provide qualitative analysis based on the company's known business model, sector position, and total revenue/growth trends from Metrics.
 - End with exactly one final blockquote line: {summary_label}
 
 PDF-aligned section skeleton:

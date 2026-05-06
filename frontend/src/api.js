@@ -103,16 +103,24 @@ const ALL_SECTIONS = [
 
 export function countDossierSections(files) {
   // Count how many of the 7 sections have files (exclude .placeholder/.README)
+  // Language subdirectories (en/, jp/, fr/, etc.) share the same 7-section structure
+  // — skip them so we count sections once regardless of language variants present.
+  const LANG_PREFIXES = new Set(['en', 'jp', 'fr', 'de', 'zh', 'ko', 'es', 'pt']);
   const sectionsWithContent = new Set();
   for (const f of files) {
     const parts = f.split('/');
-    if (parts.length >= 2) {
-      const section = parts[0];
-      const filename = parts.slice(1).join('/');
-      // Skip placeholder files — only real content counts
-      if (filename === 'README.txt' || filename === '.placeholder.txt') continue;
-      sectionsWithContent.add(section);
+    // File with lang prefix: en/01_section/file → parts[0]='en', parts[1]='01_section'
+    // File without:          01_section/file     → parts[0]='01_section'
+    if (parts.length < 2) continue;
+    let sectionIdx = 0;
+    if (parts.length >= 3 && LANG_PREFIXES.has(parts[0].toLowerCase())) {
+      sectionIdx = 1;
     }
+    const section = parts[sectionIdx];
+    const filename = parts.slice(sectionIdx + 1).join('/');
+    // Skip placeholder files — only real content counts
+    if (filename === 'README.txt' || filename === '.placeholder.txt') continue;
+    sectionsWithContent.add(section);
   }
   return sectionsWithContent.size;
 }
