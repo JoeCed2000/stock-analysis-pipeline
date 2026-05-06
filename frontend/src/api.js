@@ -1,13 +1,16 @@
 // Use deployed backend URL in production, local proxy in dev
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
+// ngrok free tier requires this header to skip the browser warning interstitial
+const NGROK_HEADER = { 'ngrok-skip-browser-warning': 'true' };
+
 export async function analyzeTickers(tickers, lang = 'en') {
-  // 120s timeout — Render cold starts can take 60-90s
+  // 900s timeout — analysis with deep-dive can take 3-8 min
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 120000);
+  const timeoutId = setTimeout(() => controller.abort(), 900000);
   const res = await fetch(`${API_BASE}/analyze?lang=${lang}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...NGROK_HEADER, 'Content-Type': 'application/json' },
     body: JSON.stringify({ tickers }),
     signal: controller.signal,
   }).finally(() => clearTimeout(timeoutId));
@@ -23,19 +26,19 @@ export async function analyzeTickers(tickers, lang = 'en') {
 }
 
 export async function getReport(ticker) {
-  const res = await fetch(`${API_BASE}/report/${ticker}`);
+  const res = await fetch(`${API_BASE}/report/${ticker}`, { headers: NGROK_HEADER });
   if (!res.ok) return null;
   return res.text();
 }
 
 export async function getSources(ticker) {
-  const res = await fetch(`${API_BASE}/sources/${ticker}`);
+  const res = await fetch(`${API_BASE}/sources/${ticker}`, { headers: NGROK_HEADER });
   if (!res.ok) return null;
   return res.json();
 }
 
 export async function listAnalyses() {
-  const res = await fetch(`${API_BASE}/analyses`);
+  const res = await fetch(`${API_BASE}/analyses`, { headers: NGROK_HEADER });
   if (!res.ok) return { analyses: [] };
   return res.json();
 }
@@ -47,6 +50,7 @@ export async function uploadTickerFile(file) {
   formData.append('file', file);
   const res = await fetch(`${API_BASE}/batch/upload`, {
     method: 'POST',
+    headers: NGROK_HEADER,
     body: formData,
   });
   if (!res.ok) throw new Error(`Upload error: ${res.status}`);
@@ -56,7 +60,7 @@ export async function uploadTickerFile(file) {
 export async function submitBatch(tickers) {
   const res = await fetch(`${API_BASE}/batch/analyze`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...NGROK_HEADER, 'Content-Type': 'application/json' },
     body: JSON.stringify({ tickers }),
   });
   if (!res.ok) throw new Error(`Batch error: ${res.status}`);
@@ -64,7 +68,7 @@ export async function submitBatch(tickers) {
 }
 
 export async function getBatchStatus(jobId) {
-  const res = await fetch(`${API_BASE}/batch/${jobId}/status`);
+  const res = await fetch(`${API_BASE}/batch/${jobId}/status`, { headers: NGROK_HEADER });
   if (!res.ok) throw new Error(`Status error: ${res.status}`);
   return res.json();
 }
@@ -82,7 +86,7 @@ export function getTickerDownloadUrl(ticker, lang = 'en', quarter = null) {
 }
 
 export async function getDossierStatus(ticker) {
-  const res = await fetch(`${API_BASE}/dossier/${ticker}/status`);
+  const res = await fetch(`${API_BASE}/dossier/${ticker}/status`, { headers: NGROK_HEADER });
   if (!res.ok) return { ready: false, files: [], stage: 'error' };
   return res.json();
 }
@@ -116,7 +120,7 @@ export function countDossierSections(files) {
 // ── Quarter selector ──
 
 export async function fetchQuarters(ticker) {
-  const res = await fetch(`${API_BASE}/earnings/quarters/${ticker}`);
+  const res = await fetch(`${API_BASE}/earnings/quarters/${ticker}`, { headers: NGROK_HEADER });
   if (!res.ok) return { quarters: [], latest: null };
   return res.json();
 }
@@ -124,7 +128,7 @@ export async function fetchQuarters(ticker) {
 export async function generateDeepDive(ticker, quarter, lang = 'en') {
   const res = await fetch(`${API_BASE}/earnings/deep-dive`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...NGROK_HEADER, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       ticker,
       quarter,
