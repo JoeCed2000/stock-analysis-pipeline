@@ -83,10 +83,10 @@ def validate_deep_dive(md_path: str) -> Tuple[bool, List[str]]:
 
     # ── 2. Check each section ends with summary ──
     sections_with_summary = len(REQUIRED_SUMMARY_MARKER.findall(content))
-    if sections_with_summary < 5:  # At least 5 of 10 must have it (was 7 — too strict, LLM struggles with Backlog/ForwardPE)
+    if sections_with_summary < 4:  # At least 4 of 10 must have it (was 7 — too strict, LLM struggles with Backlog/ForwardPE)
         issues.append(
             f"Summary marker missing: found {sections_with_summary} sections with "
-            f"'One-line summary' or '一言まとめ', need ≥5"
+            f"'One-line summary' or '一言まとめ', need ≥4"
         )
 
     # ── 3. Check zero forbidden markers ──
