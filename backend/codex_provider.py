@@ -21,7 +21,8 @@ def _codex_chat(prompt: str, system: str = "", max_tokens: int = 1000) -> Option
         logger.warning("Codex CLI not found at %s", CODEX_BIN)
         return None
 
-    output_file = tempfile.mktemp(suffix='.txt')
+    fd, output_file = tempfile.mkstemp(suffix=".txt")
+    os.close(fd)
     full_prompt = f"{system}\n\n{prompt}\n\nReturn ONLY the requested output. No explanations."
 
     try:

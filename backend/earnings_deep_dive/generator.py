@@ -21,11 +21,13 @@ from backend.earnings_deep_dive.validators import (
     is_bilingual,
     validate_section_heading,
 )
-from backend.codex_provider import _codex_chat as kimi_chat
+from backend.codex_provider import _codex_chat as codex_chat
 from backend.transcript_finder import find_transcripts
 
 
-MAX_KIMI_TOKENS = 2000
+MAX_CODEX_TOKENS = 2000
+MAX_KIMI_TOKENS = MAX_CODEX_TOKENS
+kimi_chat = codex_chat
 SECTION_MAX_CHARS = 2400
 
 SECTION_METRIC_KEYS = {
@@ -229,7 +231,7 @@ def _generate_section(
             )
 
         try:
-            output = kimi_chat(prompt, system=sys_prompt, max_tokens=MAX_KIMI_TOKENS)
+            output = kimi_chat(prompt, system=sys_prompt, max_tokens=MAX_CODEX_TOKENS)
             if not output:
                 raise KimiFailureError("Kimi returned no content")
             cleaned = _clean_section_output(output, request.max_section_chars)
@@ -444,8 +446,8 @@ def _save_outputs(
         "quarter": request.quarter,
         "language": request.language,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "provider": "Kimi K2.6",
-        "max_tokens_per_call": MAX_KIMI_TOKENS,
+        "provider": "Codex CLI local",
+        "max_tokens_per_call": MAX_CODEX_TOKENS,
         "sections": {status.name: status.model_dump() for status in statuses},
         "warnings": warnings,
         "transcript_url": transcript_url,

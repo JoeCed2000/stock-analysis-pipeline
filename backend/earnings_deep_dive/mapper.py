@@ -1,0 +1,278 @@
+"""Map sourced earnings metrics into the structured PDF render model."""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any
+
+from backend.earnings_deep_dive.report_model import (
+    EarningsDeepDiveReport,
+    RenderedSection,
+    RenderedTable,
+    RenderedTableRow,
+    SourceRef,
+)
+from backend.earnings_deep_dive.schemas import FinancialMetrics
+from backend.earnings_deep_dive.template import TemplateLanguage, get_earnings_template
+
+
+MISSING = "DONNÉE NON DISPONIBLE"
+
+
+def _language(value: str) -> TemplateLanguage:
+    return "jp" if value == "jp" else "en"
+
+
+def _has(value: Any) -> bool:
+    return value is not None and value != ""
+
+
+def _source(*values: Any) -> str:
+    return "Supplied metrics" if any(_has(value) for value in values) else MISSING
+
+
+def _money(value: Any) -> str:
+    if not _has(value):
+        return MISSING
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    sign = "-" if amount < 0 else ""
+    amount = abs(amount)
+    if amount >= 1_000_000_000_000:
+        return f"{sign}${amount / 1_000_000_000_000:.2f}T"
+    if amount >= 1_000_000_000:
+        return f"{sign}${amount / 1_000_000_000:.1f}B"
+    if amount >= 1_000_000:
+        return f"{sign}${amount / 1_000_000:.1f}M"
+    return f"{sign}${amount:,.0f}"
+
+
+def _eps(value: Any) -> str:
+    if not _has(value):
+        return MISSING
+    try:
+        return f"${float(value):.2f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _pct(value: Any) -> str:
+    if not _has(value):
+        return MISSING
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if abs(number) <= 1:
+        number *= 100
+    sign = "+" if number > 0 else ""
+    return f"{sign}{number:.1f}%"
+
+
+def _multiple(value: Any) -> str:
+    if not _has(value):
+        return MISSING
+    try:
+        return f"{float(value):.2f}x"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _variance(actual: Any, estimate: Any, explicit: Any = None) -> str:
+    if _has(explicit):
+        return _pct(explicit)
+    if not (_has(actual) and _has(estimate)):
+        return MISSING
+    try:
+        actual_number = float(actual)
+        estimate_number = float(estimate)
+    except (TypeError, ValueError):
+        return MISSING
+    if estimate_number == 0:
+        return MISSING
+    return _pct((actual_number - estimate_number) / abs(estimate_number))
+
+
+def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) -> list[list[str]]:
+    rows: list[list[str]] = []
+    segments = metrics.segments if isinstance(metrics.segments, dict) else {}
+    segment_items = list(segments.items())[: len(labels)]
+
+    for index, row_label in enumerate(labels):
+        if index >= len(segment_items):
+            rows.append([row_label, MISSING, MISSING, MISSING, MISSING])
+            continue
+
+        name, raw = segment_items[index]
+        data = raw if isinstance(raw, dict) else {}
+        revenue = data.get("revenue") if isinstance(data, dict) else None
+        yoy = data.get("yoy") if isinstance(data, dict) else None
+        driver = data.get("driver") if isinstance(data, dict) else None
+        rows.append([
+            str(name) if name else row_label,
+            _money(revenue),
+            _pct(yoy),
+            str(driver) if _has(driver) else MISSING,
+            _source(raw),
+        ])
+    return rows
+
+
+def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: FinancialMetrics) -> list[list[str]]:
+    if section_key == "EPS & Revenue":
+        return [
+            [
+                row_labels[0],
+                _eps(metrics.eps_estimate),
+                _eps(metrics.eps_actual),
+                _variance(metrics.eps_actual, metrics.eps_estimate, metrics.eps_vs_estimate),
+                _pct(metrics.eps_yoy),
+                _source(metrics.eps_estimate, metrics.eps_actual, metrics.eps_vs_estimate, metrics.eps_yoy),
+            ],
+            [
+                row_labels[1],
+                _money(metrics.revenue_estimate),
+                _money(metrics.revenue_actual),
+                _variance(metrics.revenue_actual, metrics.revenue_estimate),
+                _pct(metrics.revenue_yoy),
+                _source(metrics.revenue_estimate, metrics.revenue_actual, metrics.revenue_yoy),
+            ],
+        ]
+
+    if section_key == "Highlights":
+        return [
+            [row_labels[0], MISSING, MISSING, MISSING, MISSING],
+            [row_labels[1], MISSING, MISSING, MISSING, MISSING],
+            [row_labels[2], MISSING, MISSING, MISSING, MISSING],
+        ]
+
+    if section_key == "Operating Metrics":
+        values = (
+            _money(metrics.gross_profit),
+            _pct(metrics.gross_margin),
+            _money(metrics.opex),
+            _money(metrics.operating_income),
+            _pct(metrics.operating_margin),
+            _money(metrics.net_income),
+        )
+        raw_values = (
+            metrics.gross_profit,
+            metrics.gross_margin,
+            metrics.opex,
+            metrics.operating_income,
+            metrics.operating_margin,
+            metrics.net_income,
+        )
+        return [[label, value, MISSING, MISSING, _source(raw)] for label, value, raw in zip(row_labels, values, raw_values)]
+
+    if section_key == "Cash Flow":
+        rows = (
+            (row_labels[0], _money(metrics.operating_cash_flow), metrics.operating_cash_flow),
+            (row_labels[1], _money(metrics.capex), metrics.capex),
+            (row_labels[2], _money(metrics.free_cash_flow), metrics.free_cash_flow),
+            (row_labels[3], _money(metrics.net_debt), metrics.net_debt),
+        )
+        return [[label, value, MISSING, MISSING, MISSING, _source(raw)] for label, value, raw in rows]
+
+    if section_key == "Capital Efficiency":
+        rows = (
+            (row_labels[0], _pct(metrics.roe), metrics.roe),
+            (row_labels[1], _pct(metrics.rotce), metrics.rotce),
+            (row_labels[2], _pct(metrics.roa), metrics.roa),
+            (row_labels[3], _pct(metrics.roic), metrics.roic),
+            (row_labels[4], _money(metrics.buybacks), metrics.buybacks),
+            (row_labels[5], _money(metrics.dividends), metrics.dividends),
+        )
+        return [[label, value, MISSING, MISSING, MISSING, _source(raw)] for label, value, raw in rows]
+
+    if section_key == "Segments":
+        return _extract_segment_rows(metrics, row_labels)
+
+    if section_key == "Forward P/E":
+        return [
+            [row_labels[0], _multiple(metrics.pe_forward), MISSING, MISSING, _source(metrics.pe_forward)],
+            [row_labels[1], MISSING, MISSING, MISSING, MISSING],
+        ]
+
+    if section_key == "Backlog":
+        return [
+            [row_labels[0], _money(metrics.backlog), MISSING, MISSING, _source(metrics.backlog)],
+            [row_labels[1], MISSING, MISSING, MISSING, MISSING],
+        ]
+
+    if section_key == "Guidance":
+        guidance = metrics.guidance if _has(metrics.guidance) else MISSING
+        return [
+            [row_labels[0], guidance, MISSING, MISSING, _source(metrics.guidance)],
+            [row_labels[1], MISSING, MISSING, MISSING, MISSING],
+            [row_labels[2], MISSING, MISSING, MISSING, MISSING],
+        ]
+
+    if section_key == "Verdict":
+        return [[label, MISSING, MISSING, MISSING, MISSING] for label in row_labels]
+
+    return [[label, *([MISSING] * 4)] for label in row_labels]
+
+
+def _summary(language: TemplateLanguage, ticker: str, section_key: str) -> str:
+    if language == "jp":
+        return f"{ticker}の{section_key}は、利用可能なソース済みデータに基づき評価しています。"
+    return f"{ticker} {section_key} is assessed from available sourced data."
+
+
+def build_earnings_deep_dive_report(
+    *,
+    ticker: str,
+    company: str | None,
+    quarter: str,
+    metrics: FinancialMetrics,
+    transcript_url: str | None = None,
+    language: str = "en",
+    section_analysis: dict[str, str] | None = None,
+    generated_at: str | None = None,
+) -> EarningsDeepDiveReport:
+    """Build the deterministic report model used by the PDF renderer."""
+    report_language = _language(language)
+    ticker_clean = ticker.strip().upper()
+    company_name = company.strip() if isinstance(company, str) and company.strip() else ticker_clean
+    template = get_earnings_template(report_language)
+    analysis_by_key = section_analysis or {}
+
+    sections: list[RenderedSection] = []
+    for section in template:
+        rows = _rows_for_section(section.key, section.table_rows, metrics)
+        analysis_text = analysis_by_key.get(section.key) or analysis_by_key.get(section.title)
+        sections.append(
+            RenderedSection(
+                key=section.key,
+                title=section.title,
+                question=section.question,
+                table=RenderedTable(
+                    columns=list(section.table_columns),
+                    rows=[RenderedTableRow(label=row[0], cells=[str(cell) for cell in row]) for row in rows],
+                ),
+                analysis=[analysis_text] if analysis_text else [],
+                summary_label=section.summary_label,
+                summary=_summary(report_language, ticker_clean, section.key),
+            )
+        )
+
+    sources = [
+        SourceRef(
+            label="Transcript",
+            url=transcript_url,
+            note="Earnings transcript source" if transcript_url else MISSING,
+        )
+    ]
+
+    return EarningsDeepDiveReport(
+        ticker=ticker_clean,
+        company=company_name,
+        quarter=quarter.strip() if quarter else "latest quarter",
+        language=report_language,
+        generated_at=generated_at or datetime.now(timezone.utc).isoformat(),
+        title=f"{company_name} ({ticker_clean}) - Earnings Deep-Dive",
+        sections=sections,
+        sources=sources,
+    )

@@ -234,7 +234,7 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
         >
           📄 {t('viewFullReport')}
         </button>
-        {dossierStatus?.ready && countdown <= 0 ? (
+        {dossierStatus?.ready && countdown <= 0 && dossierStatus?.deep_dive_validated !== false ? (
           <a
             href={getTickerDownloadUrl(ticker, lang, selectedQuarter)}
             download
@@ -250,6 +250,14 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
           >
             📥 {t('downloadDossier')} ({dossierStatus?.sectionsReady ?? '?'}/7)
           </a>
+        ) : dossierStatus?.deep_dive_validated === false ? (
+          <div style={{
+            flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500,
+            background: '#3d1f1f', border: '1px solid #6b3030',
+            borderRadius: 5, color: '#f85149', textAlign: 'center',
+          }}>
+            ⚠️ {lang === 'ja' ? '検証失敗' : 'Validation failed'} · {t('buildingDossier')}...
+          </div>
         ) : (
           <div style={{
             flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500,

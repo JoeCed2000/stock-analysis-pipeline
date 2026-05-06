@@ -143,7 +143,7 @@ Required analysis format:
     "Highlights": """Required table:
 {table_header}
 |---|---|---|---|---|---|
-| 🌟 Highlight | ① | ... | ... | ... | DONNÉE NON DISPONIBLE |
+| 🌟 Highlight | ① | ... | ... | ... | — |
 | ⚠️ Lowlight | ① | ... | ... | ... | Low / Medium / High |
 
 Required analysis format:
@@ -196,7 +196,7 @@ Required analysis format:
 ③ Free cash flow: conversion from earnings to cash and sustainability.
 🎯 Cash structure（超重要）: compare cash generation versus reinvestment needs.
 🧩 Namiさん向け解釈: explain whether the company creates cash efficiently or burns cash.
-💰 Cash use: buybacks, dividends, debt paydown, or DONNÉE NON DISPONIBLE.
+💰 Cash use: buybacks, dividends, debt paydown — state actual amounts.
 ⚠️ 注意点（Namiさん向け）: mention one-off working-capital or future investment risks.""",
     "Capital Efficiency": """Required table:
 {table_header}
@@ -246,8 +246,8 @@ Required analysis format:
 
 Required analysis format:
 📈 Forward P/Eの確認
-① Current multiple: state the value or DONNÉE NON DISPONIBLE.
-② Comparison: sector, history, peers, or DONNÉE NON DISPONIBLE.
+① Current multiple: state the value from supplied metrics.
+② Comparison: sector, history, peers — use available context.
 ③ Justification: whether growth, margins, cash, backlog, or guidance support the multiple.
 👉 Namiさん向け解釈: explain if valuation looks supported, stretched, or not assessable.
 ⚠️ 注意点: do not invent consensus numbers; mark missing data.""",
@@ -278,7 +278,7 @@ Required analysis format:
 
 Required analysis format:
 ■ 来期ガイダンス: present the table first.
-■ 一言でいうと: concise direction such as strong growth, high profitability, cautious, or DONNÉE NON DISPONIBLE.
+■ 一言でいうと: concise direction such as strong growth, high profitability, or cautious.
 ■ 分析（かなり重要）
 ① Revenue: acceleration/deceleration and demand drivers.
 ② Profitability: gross margin and OpEx implications.
@@ -320,8 +320,11 @@ def system_prompt(language: str) -> str:
             "Follow the 14-page Earnings Documents PDF template exactly: start each section "
             "with the question, use the required markdown table, then numbered analysis using "
             "①②③, include 'For Nami-san:' interpretation lines where specified, and end with "
-            "'> One-line summary:'. Use only supplied metrics and transcript evidence; missing financial "
-            "data must be written exactly as DATA NOT AVAILABLE. "
+            "'> One-line summary:'. Use the supplied metrics and transcript evidence. "
+            "Every table cell must contain a real number. "
+            "If a metric is missing from the supplied data, compute it from related metrics "
+            "(e.g., EPS = Net Income ÷ Shares Outstanding). Never omit a table cell. "
+            "End each section with exactly one line: > One-line summary: [concise insight]. "
             "If transcript is unavailable, generate each section using ONLY the supplied "
             "financial_metrics and write 'Data not available in transcript' for qualitative "
             "call discussion that would require management commentary. "
@@ -334,8 +337,10 @@ def system_prompt(language: str) -> str:
         "Follow the 14-page Earnings Documents PDF template exactly: start each section "
         "with the question, use the required markdown table, then numbered analysis using "
         "①②③, include Namiさん向け interpretation lines where specified, and end with "
-        "> 一言まとめ:. Use only supplied metrics and transcript evidence; missing financial "
-        "data must be written exactly as DONNÉE NON DISPONIBLE. "
+        "> 一言まとめ:. Use the supplied metrics and transcript evidence. "
+        "Every table cell must contain a real number. "
+        "If a metric is missing from the supplied data, compute it from related metrics "
+        "(e.g., EPS = Net Income ÷ Shares Outstanding). Never omit a table cell. "
         "If transcript is unavailable, generate each section using ONLY the supplied "
         "financial_metrics and write Data not available in transcript for qualitative "
         "call discussion that would require management commentary. "
@@ -347,14 +352,14 @@ def system_prompt(language: str) -> str:
 
 def _fmt_metrics(metrics: Dict[str, Any]) -> str:
     if not metrics:
-        return "DONNÉE NON DISPONIBLE"
+        return ""
     parts = []
     for key in sorted(metrics):
         value = metrics[key]
         if value is None or value == "" or value == "Not disclosed":
-            value = "DONNÉE NON DISPONIBLE"
+            continue  # skip missing values
         parts.append(f"{key}={value}")
-    return " | ".join(parts) if parts else "DONNÉE NON DISPONIBLE"
+    return " | ".join(parts) if parts else ""
 
 
 def _canonical_section(section: str) -> str:
@@ -396,7 +401,9 @@ def _language_rules(language: str) -> str:
         "Use these English labels: 'For Nami-san:' instead of Namiさん向け, "
         "'Caution:' instead of 注意点, 'Essential insight:' instead of 本質理解, "
         "and '> One-line summary:' instead of > 一言まとめ:. "
-        "Missing data = DATA NOT AVAILABLE (not DONNÉE NON DISPONIBLE)."
+        "Every table cell must contain a real number. "
+        "If a metric is missing, compute it from available metrics (e.g., EPS = Net Income ÷ Shares). "
+        "Never leave a cell empty."
     )
 
 
@@ -428,7 +435,7 @@ def _base_prompt(
 
     is_jp = language.lower() in {"jp", "ja"}
     nami_label = "Namiさん向け解釈 / Namiさん向けの本質理解" if is_jp else "For Nami-san / Essential insight"
-    missing_label = "DONNÉE NON DISPONIBLE" if is_jp else "DATA NOT AVAILABLE"
+    missing_label = "—"
     summary_label = "> 一言まとめ: [one-line summary]" if is_jp else "> One-line summary: [one-line summary]"
 
     return f"""Required heading: ## {title}
@@ -454,7 +461,7 @@ Section output contract:
 - Include {nami_label} where specified.
 - Use direct transcript or supplied-metric evidence. Never invent financial data.
 - If the transcript excerpt says no transcript is available, use only Metrics and mark qualitative call evidence as Data not available in transcript.
-- If a value, source, benchmark, estimate, or comparison is missing, write {missing_label}.
+- Every table cell must contain a real number or computed value. Never leave cells empty.
 - End with exactly one final blockquote line: {summary_label}
 
 PDF-aligned section skeleton:

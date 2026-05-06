@@ -31,6 +31,28 @@ def _sanitize_json(obj):
         return obj
     return obj
 
+
+def _normalize_dossier_language(lang: str) -> str:
+    """Normalize public language codes used by ZIP/PDF generation."""
+    clean = (lang or "en").strip().lower()
+    return "jp" if clean in ("jp", "ja") else "en"
+
+
+def _translation_language(lang: str) -> str:
+    return "ja" if lang == "jp" else lang
+
+
+def _should_convert_dossier_text_to_pdf(fpath: Path, *, refresh_pdf: bool) -> bool:
+    """Return whether a text artifact should be converted with the generic PDF renderer."""
+    if fpath.name == "README.md" or fpath.name == "README.txt":
+        return False
+    if fpath.suffix not in {".md", ".txt"}:
+        return False
+    pdf_path = fpath.with_suffix(".pdf")
+    if fpath.name == "earnings_deep_dive.md" and pdf_path.exists():
+        return False
+    return refresh_pdf or not pdf_path.exists()
+
 from backend.models import TickerRequest, AnalysisResult
 from backend.orchestrator import run_analysis_sequential
 from backend.earnings_deep_dive import DeepDiveRequest, DeepDiveResponse, generate_deep_dive
@@ -683,6 +705,8 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
     Use ?lang=ja for Japanese translated dossier.
     Use ?quarter=2025Q4 for quarter-specific deep-dive (auto-generates)."""
     ticker = ticker.strip().upper()
+    dossier_language = _normalize_dossier_language(lang)
+    translation_language = _translation_language(dossier_language)
     from backend.async_dossier import get_dossier_status
     status = get_dossier_status(ticker)
     
@@ -727,7 +751,7 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
                     ticker=ticker,
                     company=q_data.get("company_name", ticker),
                     quarter=quarter,
-                    language="en",
+                    language=dossier_language,
                     output_dir=str(analysis_dir),
                     metrics=metrics,
                 ))
@@ -739,8 +763,8 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
     # NEVER mutate originals — work on a temp copy (Codex P0 audit 2026-05-05)
     import tempfile, shutil
     work_dir = None
-    if lang != "en":
-        logger.info(f"[{ticker}] Translating dossier to {lang} (temp copy)...")
+    if dossier_language != "en":
+        logger.info(f"[{ticker}] Translating dossier to {dossier_language} (temp copy)...")
         try:
             from backend.translator import translate_text
             work_dir = Path(tempfile.mkdtemp(prefix=f"dossier_{ticker}_"))
@@ -748,21 +772,23 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
             shutil.copytree(analysis_dir, work_dir, dirs_exist_ok=True)
             for fpath in sorted(work_dir.rglob("*.txt")):
                 try:
-                    translated = translate_text(fpath.read_text(encoding="utf-8"), lang)
+                    translated = translate_text(fpath.read_text(encoding="utf-8"), translation_language, strict=True)
                     fpath.write_text(translated, encoding="utf-8")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"[{ticker}] TXT translation failed for {fpath}: {e}")
+                    raise
             for fpath in sorted(work_dir.rglob("*.md")):
                 if fpath.name != "README.md":
                     try:
-                        translated = translate_text(fpath.read_text(encoding="utf-8"), lang)
+                        translated = translate_text(fpath.read_text(encoding="utf-8"), translation_language, strict=True)
                         fpath.write_text(translated, encoding="utf-8")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"[{ticker}] MD translation failed for {fpath}: {e}")
+                        raise
             logger.info(f"[{ticker}] Dossier translation complete (temp copy)")
         except Exception as e:
-            logger.warning(f"[{ticker}] Translation error (continuing with original): {e}")
-            work_dir = None  # fall back to original
+            logger.error(f"[{ticker}] Translation error: {e}")
+            raise HTTPException(status_code=503, detail=f"Codex translation failed for {dossier_language}: {e}")
     
     # Use the translated temp dir if available, otherwise original
     source_dir = work_dir if work_dir else analysis_dir
@@ -770,21 +796,18 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
     # Pre-convert MD/TXT files to PDF on-the-fly 
     try:
         from backend.pdf_generator import md_to_pdf
+        refresh_pdf = work_dir is not None
         for fpath in sorted(source_dir.rglob("*.md")):
-            if fpath.name == "README.md":
-                continue
             pdf_path = fpath.with_suffix(".pdf")
-            if not pdf_path.exists():
+            if _should_convert_dossier_text_to_pdf(fpath, refresh_pdf=refresh_pdf):
                 try:
                     md_to_pdf(str(fpath), str(pdf_path), title=f"{ticker} — {fpath.stem.replace('_', ' ').title()}")
                     logger.info(f"[{ticker}] Converted {fpath.name} → PDF")
                 except Exception as e:
                     logger.warning(f"[{ticker}] MD→PDF failed for {fpath.name}: {e}")
         for fpath in sorted(source_dir.rglob("*.txt")):
-            if fpath.name == "README.txt":
-                continue
             pdf_path = fpath.with_suffix(".pdf")
-            if not pdf_path.exists():
+            if _should_convert_dossier_text_to_pdf(fpath, refresh_pdf=refresh_pdf):
                 try:
                     md_to_pdf(str(fpath), str(pdf_path), title=f"{ticker} — {fpath.stem.replace('_', ' ').title()}")
                     logger.info(f"[{ticker}] Converted {fpath.name} → PDF")
@@ -798,6 +821,9 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
         included_dirs = set()
         for fpath in sorted(source_dir.rglob("*")):
             if fpath.is_file():
+                rel_parts = fpath.relative_to(source_dir).parts
+                if rel_parts and rel_parts[0] in ("en", "jp") and rel_parts[0] != dossier_language:
+                    continue
                 # Only PDF + XLSX + README.txt in the deliverable ZIP
                 if fpath.suffix in ('.json', '.csv', '.md'):
                     continue
@@ -814,7 +840,7 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
             if folder not in included_dirs:
                 zf.writestr(f"{folder}/README.txt",
                            f"{folder}\n{'='*len(folder)}\n\nDossier section — see full report for details.\n")
-        for language in ("en", "jp"):
+        for language in (dossier_language,):
             if (source_dir / language).is_dir():
                 for folder in ["01_official_company_sources", "02_sec_or_regulatory_filings",
                                "03_financial_data_sources", "04_transcripts_and_management",
@@ -824,7 +850,7 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
                         zf.writestr(f"{lang_folder}/README.txt",
                                    f"{folder}\n{'='*len(folder)}\n\nDossier section — see full report for details.\n")
     
-    lang_suffix = f"_{lang}" if lang != "en" else ""
+    lang_suffix = f"_{dossier_language}" if dossier_language != "en" else ""
     buf.seek(0)
     
     # Clean up temp dir if translation created one

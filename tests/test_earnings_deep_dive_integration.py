@@ -15,7 +15,7 @@ def test_pipeline_adds_earnings_deep_dive_when_transcript_text_exists(tmp_path, 
 
     transcript = "Revenue improved. EPS beat expectations. Guidance was constructive."
     generated_requests = []
-    pdf_calls = []
+    render_calls = []
 
     def fake_find_transcripts(ticker, output_dir=""):
         return {
@@ -44,15 +44,15 @@ def test_pipeline_adds_earnings_deep_dive_when_transcript_text_exists(tmp_path, 
             warnings=[],
         )
 
-    def fake_md_to_pdf(md_path, pdf_path, title=""):
-        pdf_calls.append((md_path, pdf_path, title))
-        with open(pdf_path, "wb") as f:
-            f.write(b"pdf")
-        return pdf_path
+    def fake_render(report, pdf_path):
+        render_calls.append((report.language, report.ticker, pdf_path))
+        Path(pdf_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(pdf_path).write_bytes(b"pdf")
+        return str(pdf_path)
 
     monkeypatch.setattr(pipeline, "find_transcripts", fake_find_transcripts)
     monkeypatch.setattr(pipeline, "generate_deep_dive", fake_generate_deep_dive)
-    monkeypatch.setattr(pipeline, "md_to_pdf", fake_md_to_pdf)
+    monkeypatch.setattr(pipeline, "render_earnings_deep_dive_pdf", fake_render)
 
     result = SimpleNamespace(
         financials=SimpleNamespace(
@@ -74,27 +74,15 @@ def test_pipeline_adds_earnings_deep_dive_when_transcript_text_exists(tmp_path, 
         output_dir=str(tmp_path),
         result=result,
         yf_data={"financials": {"eps_actual": 1.25}},
+        language="jp",
     )
 
     assert added is True
     assert generated_requests[0].transcript_text == transcript
     assert generated_requests[0].metrics.revenue_actual == 26_000_000_000
     assert generated_requests[0].metrics.eps_actual == 1.25
-    assert [request.language for request in generated_requests] == ["en", "jp"]
-    assert pdf_calls == [
-        (
-            str(tmp_path / "07_final_report" / "earnings_deep_dive.md"),
-            str(tmp_path / "07_final_report" / "earnings_deep_dive.pdf"),
-            "NVIDIA (NVDA) — Earnings Deep-Dive",
-        ),
-        (
-            str(tmp_path / "07_final_report" / "earnings_deep_dive.md"),
-            str(tmp_path / "jp" / "07_final_report" / "earnings_deep_dive.pdf"),
-            "NVIDIA (NVDA) — Earnings Deep-Dive JP",
-        ),
-    ]
-    assert (tmp_path / "en" / "07_final_report" / "earnings_deep_dive.pdf").exists()
-    assert (tmp_path / "jp" / "07_final_report" / "earnings_deep_dive.pdf").exists()
+    assert [request.language for request in generated_requests] == ["jp"]
+    assert render_calls == [("jp", "NVDA", str(tmp_path / "07_final_report" / "earnings_deep_dive.pdf"))]
     assert (tmp_path / "07_final_report" / "earnings_deep_dive.md").exists()
     assert (tmp_path / "07_final_report" / "earnings_deep_dive.pdf").exists()
     assert "Earnings deep-dive added to dossier" in caplog.text
@@ -127,10 +115,10 @@ def test_pipeline_generates_earnings_deep_dive_without_usable_transcript(tmp_pat
             warnings=[],
         )
 
-    def fake_md_to_pdf(md_path, pdf_path, title=""):
+    def fake_render(report, pdf_path):
         Path(pdf_path).parent.mkdir(parents=True, exist_ok=True)
         Path(pdf_path).write_bytes(b"pdf")
-        return pdf_path
+        return str(pdf_path)
 
     monkeypatch.setattr(
         pipeline,
@@ -138,7 +126,7 @@ def test_pipeline_generates_earnings_deep_dive_without_usable_transcript(tmp_pat
         lambda ticker, output_dir="": {"found": True, "sources": [{"url": "https://example.com"}]},
     )
     monkeypatch.setattr(pipeline, "generate_deep_dive", fake_generate_deep_dive)
-    monkeypatch.setattr(pipeline, "md_to_pdf", fake_md_to_pdf)
+    monkeypatch.setattr(pipeline, "render_earnings_deep_dive_pdf", fake_render)
 
     added = pipeline._add_earnings_deep_dive_if_transcript(
         ticker="MSFT",
@@ -149,10 +137,9 @@ def test_pipeline_generates_earnings_deep_dive_without_usable_transcript(tmp_pat
     )
 
     assert added is True
-    assert [request.language for request in generated_requests] == ["en", "jp"]
+    assert [request.language for request in generated_requests] == ["en"]
     assert all(request.transcript_text == "" for request in generated_requests)
-    assert (tmp_path / "en" / "07_final_report" / "earnings_deep_dive.pdf").exists()
-    assert (tmp_path / "jp" / "07_final_report" / "earnings_deep_dive.pdf").exists()
+    assert (tmp_path / "07_final_report" / "earnings_deep_dive.pdf").exists()
 
 
 def test_deep_dive_metrics_coerces_numeric_guidance_to_string():

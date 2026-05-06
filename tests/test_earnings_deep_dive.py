@@ -158,6 +158,7 @@ def test_generate_deep_dive_writes_report_and_meta(tmp_path, monkeypatch):
     assert "- Transcript: https://example.com/nvda-transcript" in response.report_markdown
     meta = json.loads(meta_path.read_text())
     assert meta["ticker"] == "NVDA"
+    assert meta["provider"] == "Codex CLI local"
     assert meta["transcript_url"] == "https://example.com/nvda-transcript"
     assert response.transcript_url == "https://example.com/nvda-transcript"
 

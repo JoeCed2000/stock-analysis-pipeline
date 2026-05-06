@@ -17,7 +17,13 @@ from backend.excel_generator import generate_excel
 from backend.tenk_pdf import convert_10k_to_pdf
 from backend.company_profile import generate_company_profile
 from backend.sec_8k import download_latest_8k
-from backend.earnings_deep_dive import DeepDiveRequest, FinancialMetrics, generate_deep_dive
+from backend.earnings_deep_dive import (
+    DeepDiveRequest,
+    FinancialMetrics,
+    build_earnings_deep_dive_report,
+    generate_deep_dive,
+    render_earnings_deep_dive_pdf,
+)
 from backend.transcript_finder import find_transcripts
 
 logger = logging.getLogger(__name__)
@@ -90,6 +96,10 @@ def _move_final_report_to_language_dir(output_dir: str, language: str) -> str:
     return language_report_dir
 
 
+def _normalize_report_language(language: str) -> str:
+    return "jp" if language in ("jp", "ja") else "en"
+
+
 def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> FinancialMetrics:
     """Map existing dossier metrics into the earnings deep-dive schema."""
     fin_data = yf_data.get("financials", {}) if isinstance(yf_data, dict) else {}
@@ -153,10 +163,11 @@ def _add_earnings_deep_dive_if_transcript(
     output_dir: str,
     result: AnalysisResult,
     yf_data: Dict[str, Any],
+    language: str = "en",
 ) -> bool:
     """Generate the optional earnings deep-dive with transcript text when available."""
     try:
-        language = "bilingual"
+        report_language = _normalize_report_language(language)
         transcript_results = find_transcripts(ticker, output_dir=output_dir)
         sources = transcript_results.get("sources", []) if isinstance(transcript_results, dict) else []
         transcript_text, transcript_source = _best_transcript_source(sources)
@@ -179,7 +190,7 @@ def _add_earnings_deep_dive_if_transcript(
                 ticker=ticker,
                 company=company_name,
                 quarter=transcript_quarter,
-                language="en" if language == "bilingual" else language,
+                language=report_language,
                 output_dir=output_dir,
                 metrics=deep_dive_metrics,
                 transcript_text=transcript_text,
@@ -188,44 +199,38 @@ def _add_earnings_deep_dive_if_transcript(
         )
 
         pdf_path = os.path.join(output_dir, "07_final_report", "earnings_deep_dive.pdf")
-        md_to_pdf(
-            response.markdown_path,
-            pdf_path,
-            title=f"{company_name} ({ticker}) — Earnings Deep-Dive",
+        report_model = build_earnings_deep_dive_report(
+            ticker=ticker,
+            company=company_name,
+            quarter=transcript_quarter,
+            language=report_language,
+            metrics=deep_dive_metrics,
+            transcript_url=transcript_url,
+            section_analysis=response.sections,
         )
+        render_earnings_deep_dive_pdf(report_model, pdf_path)
 
-        if language == "bilingual":
-            _copy_non_report_sections_to_language_dirs(output_dir)
-            en_report_dir = _move_final_report_to_language_dir(output_dir, "en")
-            jp_output_dir = os.path.join(output_dir, "jp")
-            jp_response = generate_deep_dive(
-                DeepDiveRequest(
-                    ticker=ticker,
-                    company=company_name,
-                    quarter=str(transcript_source.get("quarter") or "latest quarter"),
-                    language="jp",
-                    output_dir=jp_output_dir,
-                    metrics=_deep_dive_metrics(result, yf_data),
-                    transcript_text=transcript_text,
-                    transcript_url=transcript_url,
-                )
-            )
-            jp_pdf_path = os.path.join(jp_output_dir, "07_final_report", "earnings_deep_dive.pdf")
-            os.makedirs(os.path.dirname(jp_pdf_path), exist_ok=True)
-            md_to_pdf(
-                jp_response.markdown_path,
-                jp_pdf_path,
-                title=f"{company_name} ({ticker}) — Earnings Deep-Dive JP",
-            )
-            root_report_dir = os.path.join(output_dir, "07_final_report")
-            os.makedirs(root_report_dir, exist_ok=True)
-            if os.path.isdir(en_report_dir):
-                for name in os.listdir(en_report_dir):
-                    src = os.path.join(en_report_dir, name)
-                    dst = os.path.join(root_report_dir, name)
-                    if os.path.isfile(src):
-                        shutil.copy2(src, dst)
         logger.info(f"[{ticker}] Earnings deep-dive added to dossier")
+        
+        # ── Post-generation validation ──
+        from backend.earnings_deep_dive.deep_dive_validator import validate_deep_dive
+        
+        en_md = response.markdown_path
+        passed, issues = validate_deep_dive(en_md)
+        validation_result = {"passed": passed, "issues": issues, "checked_at": datetime.now(timezone.utc).isoformat()}
+        
+        # Write validation result next to the markdown
+        val_path = os.path.join(os.path.dirname(en_md), "deep_dive_validation.json")
+        with open(val_path, "w") as f:
+            json.dump(validation_result, f, indent=2)
+        
+        if not passed:
+            logger.warning(f"[{ticker}] Deep-dive validation FAILED ({len(issues)} issues)")
+            for issue in issues[:5]:
+                logger.warning(f"  - {issue}")
+        else:
+            logger.info(f"[{ticker}] Deep-dive validation PASSED")
+        
         return True
     except Exception as e:
         logger.warning(f"[{ticker}] Earnings deep-dive skipped: {e}")

@@ -41,7 +41,7 @@ logger = logging.getLogger("fill_dossiers")
 
 def check_dossier(ticker: str) -> dict:
     """Check dossier status on Render."""
-    resp = requests.get(f"{RENDER_BASE}/api/dossier/{ticker}/status", timeout=15)
+    resp = requests.get(f"{RENDER_BASE}/api/dossier/{ticker}/status", timeout=120)
     resp.raise_for_status()
     return resp.json()
 
@@ -226,7 +226,7 @@ def fill_dossier(ticker: str) -> bool:
 
 def get_recent_tickers() -> list:
     """Get list of recently analyzed tickers from Render."""
-    resp = requests.get(f"{RENDER_BASE}/api/analyses", timeout=15)
+    resp = requests.get(f"{RENDER_BASE}/api/analyses", timeout=120)
     resp.raise_for_status()
     data = resp.json()
     

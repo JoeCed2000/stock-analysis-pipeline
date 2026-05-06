@@ -113,6 +113,20 @@ def get_dossier_status(ticker: str) -> dict:
         "estimated_seconds": 0,
     }
     
+    # Check deep-dive validation
+    dd_val_path = dossier_dir / "07_final_report" / "deep_dive_validation.json"
+    if dd_val_path.exists():
+        try:
+            with open(dd_val_path) as f:
+                dd_val = json.load(f)
+            status["deep_dive_validated"] = dd_val.get("passed", False)
+            if not dd_val.get("passed"):
+                status["deep_dive_issues"] = dd_val.get("issues", [])
+        except Exception:
+            status["deep_dive_validated"] = False
+    else:
+        status["deep_dive_validated"] = None  # Not yet generated
+    
     with _registry_lock:
         _dossier_registry[ticker_clean] = status
     

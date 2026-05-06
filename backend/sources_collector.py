@@ -504,11 +504,31 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
     # Check cache first
     cached = _cache_get(ticker)
     if cached is not None:
-        return cached
+        fin_cached = cached.get("financials", {}) if isinstance(cached.get("financials"), dict) else {}
+        new_financial_fields = {
+            "eps_actual",
+            "eps_estimate",
+            "eps_yoy",
+            "revenue_estimate",
+            "operating_income",
+            "roic",
+            "roe",
+            "pe_forward",
+            "backlog",
+            "guidance",
+            "segments",
+        }
+        if all(key in fin_cached for key in new_financial_fields):
+            return cached
 
-    yf = _load_yfinance()
-    stock = yf.Ticker(ticker)
-    info = stock.info or {}
+    try:
+        yf = _load_yfinance()
+        stock = yf.Ticker(ticker)
+        info = stock.info or {}
+    except Exception:
+        if cached is not None:
+            return cached
+        raise
 
     # Price data
     price = info.get("currentPrice") or info.get("regularMarketPrice")
@@ -533,13 +553,24 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
         "revenue_yoy_growth": None,
         "revenue_annual": None,
         "revenue_annual_growth": None,
+        "eps_actual": None,
+        "eps_estimate": None,
+        "eps_yoy": None,
+        "revenue_estimate": None,
         "gross_margin": None,
         "operating_margin": None,
+        "operating_income": None,
         "net_income": None,
         "free_cash_flow": None,
         "operating_cash_flow": None,
         "capex": None,
         "net_debt": None,
+        "roic": None,
+        "roe": None,
+        "pe_forward": None,
+        "backlog": None,
+        "guidance": None,
+        "segments": {},
         "guidance_official": None,
         # v2.5 — new deep-dive fields
         "gross_profit": None,
@@ -567,6 +598,31 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
                 curr_rev = financials["revenue_quarterly"]
                 if prev_rev and curr_rev and prev_rev > 0:
                     financials["revenue_yoy_growth"] = round((curr_rev - prev_rev) / prev_rev, 4)
+
+            # EPS extraction from quarterly income
+            if "Diluted EPS" in quarterly_income.index:
+                financials["eps_actual"] = _safe_float(quarterly_income.loc["Diluted EPS", latest_q])
+                if len(quarterly_income.columns) >= 5:
+                    prev_year_q = quarterly_income.columns[4]
+                    prev_eps = _safe_float(quarterly_income.loc["Diluted EPS", prev_year_q])
+                    curr_eps = financials["eps_actual"]
+                    if prev_eps and curr_eps and prev_eps != 0:
+                        financials["eps_yoy"] = round((curr_eps - prev_eps) / abs(prev_eps), 4)
+
+            operating_income = None
+            if "Operating Income" in quarterly_income.index:
+                operating_income = _safe_float(quarterly_income.loc["Operating Income", latest_q])
+                financials["operating_income"] = operating_income
+
+            if "Gross Profit" in quarterly_income.index:
+                gp = _safe_float(quarterly_income.loc["Gross Profit", latest_q])
+                rev = financials.get("revenue_quarterly")
+                if gp and rev and rev > 0:
+                    financials["gross_margin"] = round(gp / rev, 4)
+
+            rev = financials.get("revenue_quarterly")
+            if operating_income and rev and rev > 0:
+                financials["operating_margin"] = round(operating_income / rev, 4)
         except Exception:
             pass
 
@@ -676,18 +732,58 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
                 tangible_equity = total_assets - goodwill - total_liab
                 if tangible_equity and tangible_equity > 0:
                     financials["rotce"] = round(ni / tangible_equity, 4)
+
+            eq = _safe_float(
+                balance.loc["Total Equity Gross Minority Interest", latest]
+                if "Total Equity Gross Minority Interest" in balance.index
+                else financials.get("equity")
+            )
+            if eq is not None:
+                financials["equity"] = eq
+            if ni and eq and eq > 0:
+                financials["roe"] = round(ni / eq, 4)
+
+            ta = _safe_float(
+                balance.loc["Total Assets", latest] if "Total Assets" in balance.index else financials.get("total_assets")
+            )
+            if ta is not None:
+                financials["total_assets"] = ta
+            if ni and ta and ta > 0:
+                financials["roa"] = round(ni / ta, 4)
+
+            oi = financials.get("operating_income")
+            total_debt_val = financials.get("net_debt")
+            if oi and eq and total_debt_val is not None:
+                invested = eq + abs(total_debt_val)
+                if invested > 0:
+                    financials["roic"] = round(oi / invested, 4)
         except Exception:
             pass
 
     # ROA from info (v2.5) — fallback to calculation if available
-    financials["roa"] = info.get("returnOnAssets")
+    if financials["roa"] is None:
+        financials["roa"] = info.get("returnOnAssets")
 
     # Margins from info
-    financials["gross_margin"] = info.get("grossMargins")
-    financials["operating_margin"] = info.get("operatingMargins")
+    if financials["gross_margin"] is None:
+        financials["gross_margin"] = info.get("grossMargins")
+    if financials["operating_margin"] is None:
+        financials["operating_margin"] = info.get("operatingMargins")
 
     # Guidance
     financials["guidance_official"] = info.get("earningsQuarterlyGrowth")
+
+    # Forward-looking metrics from info
+    financials["eps_estimate"] = info.get("forwardEps")
+    financials["revenue_estimate"] = info.get("revenueEstimate")
+    financials["pe_forward"] = info.get("forwardPE")
+    financials["guidance"] = info.get("earningsGrowth") or info.get("revenueGrowth")
+    financials["backlog"] = info.get("backlog")
+    if info.get("sector") or info.get("industry"):
+        financials["segments"] = {
+            "sector": info.get("sector"),
+            "industry": info.get("industry"),
+        }
 
     result = {
         "ticker": ticker,

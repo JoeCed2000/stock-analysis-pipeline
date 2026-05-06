@@ -1,176 +1,91 @@
-"""Document translation via NVIDIA NIM free tier (Kimi K2.6).
+"""Document translation through the local Codex CLI provider."""
 
-Quality > Speed configuration:
-- 180s timeout (Kimi free tier can be slow)
-- 3 retries with exponential backoff (3s → 6s → 12s)
-- Temperature 0.0 for deterministic financial translation
-- Proper token budgeting for CJK languages
-"""
-
-import os
-import time
 import logging
-import httpx
-from typing import Optional
+
+from backend import codex_provider
 
 logger = logging.getLogger(__name__)
 
-NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
-KIMI_MODEL = "moonshotai/kimi-k2.6"
-
-# Quality > Speed tunables
-API_TIMEOUT = 180  # generous — Kimi free tier can spike
-MAX_RETRIES = 3
-RETRY_DELAY_BASE = 3  # exponential: 3s → 6s → 12s
+MAX_CHUNK_CHARS = 2000
 
 
-def _get_client(timeout: int = API_TIMEOUT):
-    """Get OpenAI-compatible client for NVIDIA NIM with explicit timeout."""
-    api_key = os.getenv("NVIDIA_API_KEY", "")
-    if not api_key:
-        return None
-    try:
-        from openai import OpenAI
-        return OpenAI(base_url=NVIDIA_BASE_URL, api_key=api_key, timeout=timeout, max_retries=0)
-    except ImportError:
-        return None
+class TranslationUnavailableError(RuntimeError):
+    """Raised when a required local Codex translation cannot be produced."""
+
+
+def _target_language_name(target_lang: str) -> str:
+    names = {
+        "ja": "Japanese",
+        "jp": "Japanese",
+        "fr": "French",
+        "zh": "Chinese",
+        "ko": "Korean",
+        "de": "German",
+        "en": "English",
+    }
+    return names.get(target_lang, target_lang)
 
 
 def _estimate_max_tokens(text: str, target_lang: str) -> int:
-    """Estimate output tokens. CJK languages need more headroom (~1.5x char count)."""
-    cjk_langs = {"ja", "zh", "ko"}
-    if target_lang in cjk_langs:
-        return min(int(len(text) * 1.5) + 50, 4000)
-    return min(len(text) * 2, 2000)
+    if target_lang in {"ja", "jp", "zh", "ko"}:
+        return min(int(len(text) * 1.5) + 200, 4000)
+    return min(len(text) * 2 + 200, 4000)
 
 
-def translate_text(text: str, target_lang: str = "ja") -> str:
-    """Translate text with retry + exponential backoff. Falls back to original only after all retries exhausted."""
-    if not text or not text.strip():
-        return text
-
-    if target_lang == "en":
-        return text
-
-    lang_names = {"ja": "Japanese", "fr": "French", "zh": "Chinese", "ko": "Korean", "de": "German"}
-    lang_name = lang_names.get(target_lang, target_lang)
-
-    # Chunk long texts by paragraph for reliability
-    if len(text) > 2000:
-        paragraphs = text.split("\n\n")
-        translated = []
-        for para in paragraphs:
-            if para.strip():
-                translated.append(translate_text(para.strip(), target_lang))
-            else:
-                translated.append("")
-        return "\n\n".join(translated)
-
+def _translate_chunk(text: str, target_lang: str, *, strict: bool = False) -> str:
+    language_name = _target_language_name(target_lang)
     system = (
-        f"You are a professional financial translator. "
-        f"Translate the following text to {lang_name}. "
-        f"Preserve ALL numbers, tickers (AAPL, ^GSPC), ISINs, percentages (15.3%), "
-        f"dates, and markdown/JSON/XML formatting exactly. "
-        f"Return ONLY the translation — no explanations, no notes, no prefixes."
+        f"You are a professional financial translator translating to {language_name}. "
+        "Preserve all numbers, tickers, URLs, dates, percentages, markdown structure, "
+        "tables, file paths, and financial units exactly. Return only the translation."
     )
-
-    max_tokens = _estimate_max_tokens(text, target_lang)
-
-    # --- Attempt 1: OpenAI SDK ---
-    client = _get_client()
-    if client:
-        for attempt in range(1, MAX_RETRIES + 1):
-            try:
-                resp = client.chat.completions.create(
-                    model=KIMI_MODEL,
-                    messages=[
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": f"Translate to {lang_name}:\n\n{text}"},
-                    ],
-                    max_tokens=max_tokens,
-                    temperature=0.0,
-                )
-                translated = resp.choices[0].message.content.strip()
-                if translated.startswith('"') and translated.endswith('"'):
-                    translated = translated[1:-1]
-                return translated
-            except Exception as e:
-                logger.warning(f"NVIDIA SDK attempt {attempt}/{MAX_RETRIES}: {e}")
-                if attempt < MAX_RETRIES:
-                    delay = RETRY_DELAY_BASE * (2 ** (attempt - 1))
-                    time.sleep(delay)
-                else:
-                    logger.error(f"NVIDIA SDK exhausted all {MAX_RETRIES} retries")
-                    # Fall through to HTTP fallback
-
-    # --- Attempt 2: HTTP fallback ---
-    api_key = os.getenv("NVIDIA_API_KEY", "")
-    if not api_key:
-        logger.warning("NVIDIA_API_KEY not set — translation unavailable")
-        return text
-
-    from backend.http_client import http
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            resp = http.post(
-                f"{NVIDIA_BASE_URL}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": KIMI_MODEL,
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": f"Translate to {lang_name}:\n\n{text}"},
-                    ],
-                    "max_tokens": max_tokens,
-                    "temperature": 0.0,
-                },
-                timeout=API_TIMEOUT,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                translated = data["choices"][0]["message"]["content"].strip()
-                if translated.startswith('"') and translated.endswith('"'):
-                    translated = translated[1:-1]
-                return translated
-            elif resp.status_code == 429:
-                retry_after = int(resp.headers.get("Retry-After", RETRY_DELAY_BASE * (2 ** (attempt - 1))))
-                logger.warning(f"NVIDIA HTTP 429 (rate limit) — retry {attempt}/{MAX_RETRIES} after {retry_after}s")
-                if attempt < MAX_RETRIES:
-                    time.sleep(retry_after)
-                continue
-            else:
-                logger.warning(f"NVIDIA HTTP {resp.status_code} (attempt {attempt}/{MAX_RETRIES}): {resp.text[:200]}")
-                if attempt < MAX_RETRIES:
-                    time.sleep(RETRY_DELAY_BASE * (2 ** (attempt - 1)))
-        except httpx.TimeoutException:
-            logger.warning(f"NVIDIA HTTP timeout {API_TIMEOUT}s (attempt {attempt}/{MAX_RETRIES})")
-            if attempt < MAX_RETRIES:
-                time.sleep(RETRY_DELAY_BASE * (2 ** (attempt - 1)))
-        except Exception as e:
-            logger.warning(f"NVIDIA HTTP error (attempt {attempt}/{MAX_RETRIES}): {e}")
-            if attempt < MAX_RETRIES:
-                time.sleep(RETRY_DELAY_BASE * (2 ** (attempt - 1)))
-
-    logger.error(f"NVIDIA translation FAILED after {MAX_RETRIES} SDK + {MAX_RETRIES} HTTP retries")
+    prompt = (
+        f"Translate the following text to {language_name}.\n\n"
+        "Do not add commentary. Do not remove source citations. Keep headings and lists structurally identical.\n\n"
+        f"{text}"
+    )
+    translated = codex_provider._codex_chat(
+        prompt,
+        system=system,
+        max_tokens=_estimate_max_tokens(text, target_lang),
+    )
+    if translated and translated.strip():
+        return translated.strip()
+    if strict:
+        raise TranslationUnavailableError(f"Codex translation unavailable for target language: {target_lang}")
     return text
 
 
-def translate_file(filepath: str, target_lang: str = "ja") -> bool:
-    """Translate a text file in-place. Returns True on success."""
+def translate_text(text: str, target_lang: str = "ja", *, strict: bool = False) -> str:
+    """Translate text using local Codex. Falls back to original text if Codex is unavailable."""
+    if not text or not text.strip() or target_lang == "en":
+        return text
+
+    if len(text) <= MAX_CHUNK_CHARS:
+        return _translate_chunk(text, target_lang, strict=strict)
+
+    translated: list[str] = []
+    for paragraph in text.split("\n\n"):
+        if paragraph.strip():
+            translated.append(translate_text(paragraph.strip(), target_lang, strict=strict))
+        else:
+            translated.append("")
+    return "\n\n".join(translated)
+
+
+def translate_file(filepath: str, target_lang: str = "ja", *, strict: bool = False) -> bool:
+    """Translate a text file in place through local Codex. Returns True when content changed."""
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
 
-        translated = translate_text(content, target_lang)
+        translated = translate_text(content, target_lang, strict=strict)
 
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(translated)
 
-        logger.info(f"Translated {filepath} → {target_lang} ({len(content)} → {len(translated)} chars)")
-        return translated != content  # True only if actually changed
+        logger.info("Translated %s -> %s (%d -> %d chars)", filepath, target_lang, len(content), len(translated))
+        return translated != content
     except Exception as e:
-        logger.warning(f"Translation failed for {filepath}: {e}")
+        logger.warning("Translation failed for %s: %s", filepath, e)
         return False
