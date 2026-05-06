@@ -708,13 +708,26 @@ def capital_efficiency_prompt(language: str, ticker: str, company: str, quarter:
 
 
 def segments_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
+    # Enrich with formatted segment table if XBRL data is available
+    enriched = dict(metrics)
+    seg_data = metrics.get("segments", {})
+    if isinstance(seg_data, dict) and seg_data.get("product_segments"):
+        lines = ["Segment revenue (from SEC 10-Q XBRL):",
+                 f"Total quarterly revenue: ${seg_data.get('total_revenue_quarterly', 0) / 1e9:.2f}B",
+                 "| Segment | Revenue (Q) |"]
+        lines.append("|---|---|")
+        for seg in seg_data["product_segments"]:
+            rev = seg.get("revenue_quarterly", 0)
+            name = seg.get("name", "?")
+            lines.append(f"| {name} | ${rev / 1e9:.2f}B |")
+        enriched["_segment_table"] = "\n".join(lines)
     return _base_prompt(
         section="Segments",
         language=language,
         ticker=ticker,
         company=company,
         quarter=quarter,
-        metrics=metrics,
+        metrics=enriched,
         transcript_excerpt=transcript_excerpt,
     )
 

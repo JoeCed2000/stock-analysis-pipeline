@@ -262,10 +262,17 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
             (getattr(valuation, "pe_forward", None) if valuation else None)
             or (yf_data.get("pe_forward") if isinstance(yf_data, dict) else None)
         ),
-        backlog=pick("backlog"),
-        guidance=str(guidance_value) if guidance_value is not None else None,
-        segments=fin_data.get("segments", {}) if isinstance(fin_data.get("segments"), dict) else {},
+        segments=_extract_segments(ticker, guidance_value),
     )
+
+
+def _extract_segments(ticker: str, guidance: Optional[str] = None) -> Dict[str, Any]:
+    """Extract segment revenue data from SEC EDGAR XBRL via edgartools."""
+    try:
+        from backend.edgar_extractor import extract_segment_revenue
+        return extract_segment_revenue(ticker)
+    except Exception:
+        return {}
 
 
 def _add_earnings_deep_dive_if_transcript(

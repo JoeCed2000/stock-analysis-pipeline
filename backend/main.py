@@ -1,5 +1,9 @@
 """FastAPI application for Stock Analysis Pipeline."""
 import os
+# ── Clean proxy env vars that break edgartools httpx transport ──
+for _k in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"):
+    os.environ.pop(_k, None)
+
 import uuid
 import logging
 from pathlib import Path
