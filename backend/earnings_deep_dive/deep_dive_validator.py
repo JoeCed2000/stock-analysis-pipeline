@@ -33,7 +33,6 @@ FORBIDDEN_MARKERS: List[str] = [
     "DATA NOT AVAILABLE",
     "DONNÉE NON DISPONIBLE",
     "DONNÃ‰E NON DISPONIBLE",
-    "Not disclosed",
     "Section unavailable",
     "Transcript missing",
 ]

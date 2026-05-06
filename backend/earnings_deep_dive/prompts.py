@@ -501,8 +501,8 @@ def system_prompt(language: str) -> str:
             "with the required heading, use the required markdown table, then numbered analysis using "
             "①②③, include 'For Nami-san:' interpretation lines where specified, and end with "
             "'> One-line summary:'. Use the supplied metrics and transcript evidence. "
-            "Every table cell must contain a sourced value or DONNÉE NON DISPONIBLE. "
-            "Compute a metric only when all formula inputs are supplied; otherwise write DONNÉE NON DISPONIBLE. "
+            "Every table cell must contain a sourced value or —. "
+            "Compute a metric only when all formula inputs are supplied; otherwise write —. "
             "End each section with exactly one line: > One-line summary: [concise insight]. "
             "If transcript is unavailable, generate each section using ONLY the supplied "
             "financial_metrics and write 'Data not available in transcript' for qualitative "
@@ -517,8 +517,8 @@ def system_prompt(language: str) -> str:
         "with the required heading, use the required markdown table, then numbered analysis using "
         "①②③, include Namiさん向け interpretation lines where specified, and end with "
         "> 一言まとめ:. Use the supplied metrics and transcript evidence. "
-        "Every table cell must contain a sourced value or DONNÉE NON DISPONIBLE. "
-        "Compute a metric only when all formula inputs are supplied; otherwise write DONNÉE NON DISPONIBLE. "
+        "Every table cell must contain a sourced value or —. "
+        "Compute a metric only when all formula inputs are supplied; otherwise write —. "
         "If transcript is unavailable, generate each section using ONLY the supplied "
         "financial_metrics and write Data not available in transcript for qualitative "
         "call discussion that would require management commentary. "
@@ -578,8 +578,8 @@ def _language_rules(language: str) -> str:
         "Use English ONLY for the entire answer — no Japanese characters, no CJK. "
         "Use English labels only: 'For Nami-san:', 'Caution:', 'Essential insight:', "
         "and '> One-line summary:'. "
-        "Every table cell must contain a sourced value or DONNÉE NON DISPONIBLE. "
-        "Compute a metric only when all formula inputs are supplied; otherwise write DONNÉE NON DISPONIBLE. "
+        "Every table cell must contain a sourced value or —. "
+        "Compute a metric only when all formula inputs are supplied; otherwise write —. "
         "Never leave a cell empty and never invent missing values."
     )
 
@@ -638,7 +638,7 @@ Section output contract:
 - Include {nami_label} where specified.
 - Use direct transcript or supplied-metric evidence. Never invent financial data.
 - If the transcript excerpt says no transcript is available, use only Metrics and mark qualitative call evidence as Data not available in transcript.
-- Every table cell must contain a sourced value or DONNÉE NON DISPONIBLE. Never leave cells empty and never invent missing values.
+- Every table cell must contain a sourced value or —. Never leave cells empty and never invent missing values.
 - End with exactly one final blockquote line: {summary_label}
 
 PDF-aligned section skeleton:

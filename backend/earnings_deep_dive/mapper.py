@@ -16,7 +16,7 @@ from backend.earnings_deep_dive.schemas import FinancialMetrics
 from backend.earnings_deep_dive.template import TemplateLanguage, get_earnings_template
 
 
-MISSING = "DONNÉE NON DISPONIBLE"
+MISSING = "—"
 
 
 def _language(value: str) -> TemplateLanguage:
