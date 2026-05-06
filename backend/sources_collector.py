@@ -1079,7 +1079,7 @@ def _get_latest_10k_url(ticker: str) -> Optional[tuple]:
         docs = filings.get("primaryDocument", [])
         accessions = filings.get("accessionNumber", [])
 
-        for i in range(min(100, len(forms))):
+        for i in range(len(forms)):
             if forms[i] == "10-K":
                 doc = docs[i] if i < len(docs) else ""
                 acc = accessions[i] if i < len(accessions) else ""

@@ -105,6 +105,10 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
                 return value
         return fallback
 
+    guidance_value = pick("guidance")
+    if guidance_value is None:
+        guidance_value = pick("guidance_official")
+
     return FinancialMetrics(
         eps_estimate=pick("eps_estimate"),
         eps_actual=pick("eps_actual"),
@@ -137,7 +141,7 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
             or (yf_data.get("pe_forward") if isinstance(yf_data, dict) else None)
         ),
         backlog=pick("backlog"),
-        guidance=pick("guidance") or pick("guidance_official"),
+        guidance=str(guidance_value) if guidance_value is not None else None,
         segments=fin_data.get("segments", {}) if isinstance(fin_data.get("segments"), dict) else {},
     )
 
@@ -150,7 +154,7 @@ def _add_earnings_deep_dive_if_transcript(
     result: AnalysisResult,
     yf_data: Dict[str, Any],
 ) -> bool:
-    """Generate the optional earnings call deep-dive when a usable transcript exists."""
+    """Generate the optional earnings deep-dive with transcript text when available."""
     try:
         language = "bilingual"
         transcript_results = find_transcripts(ticker, output_dir=output_dir)
@@ -158,8 +162,7 @@ def _add_earnings_deep_dive_if_transcript(
         transcript_text, transcript_source = _best_transcript_source(sources)
         transcript_url = _transcript_url(transcript_source)
         if not transcript_text:
-            logger.info(f"[{ticker}] Earnings deep-dive skipped: no usable transcript")
-            return False
+            logger.info(f"[{ticker}] Earnings deep-dive proceeding without usable transcript")
 
         transcript_quarter = str(transcript_source.get("quarter") or "latest quarter")
 
@@ -193,7 +196,7 @@ def _add_earnings_deep_dive_if_transcript(
 
         if language == "bilingual":
             _copy_non_report_sections_to_language_dirs(output_dir)
-            _move_final_report_to_language_dir(output_dir, "en")
+            en_report_dir = _move_final_report_to_language_dir(output_dir, "en")
             jp_output_dir = os.path.join(output_dir, "jp")
             jp_response = generate_deep_dive(
                 DeepDiveRequest(
@@ -214,6 +217,14 @@ def _add_earnings_deep_dive_if_transcript(
                 jp_pdf_path,
                 title=f"{company_name} ({ticker}) — Earnings Deep-Dive JP",
             )
+            root_report_dir = os.path.join(output_dir, "07_final_report")
+            os.makedirs(root_report_dir, exist_ok=True)
+            if os.path.isdir(en_report_dir):
+                for name in os.listdir(en_report_dir):
+                    src = os.path.join(en_report_dir, name)
+                    dst = os.path.join(root_report_dir, name)
+                    if os.path.isfile(src):
+                        shutil.copy2(src, dst)
         logger.info(f"[{ticker}] Earnings deep-dive added to dossier")
         return True
     except Exception as e:
@@ -724,10 +735,10 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
         excessive_dependency="DATA NOT AVAILABLE"
     )
     
-    # ── Management discourse (10-K text only, no PDF conversion) ──
-    logger.info(f"[{ticker}] Fast: Management analysis (Kimi K2.6)")
+    # ── Management discourse + Risk extraction (Codex — single call) ──
+    logger.info(f"[{ticker}] Fast: Management analysis (Codex)")
     from backend.sources_collector import extract_10k_sections
-    from backend.kimi_provider import kimi_analyze_management
+    from backend.codex_provider import codex_analyze_management
     
     try:
         sec_10k = extract_10k_sections(ticker, output_dir=output_dir)
@@ -739,14 +750,15 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
         mda_text, risk_text, has_10k = "", "", False
     
     if has_10k:
-        tone_data = kimi_analyze_management(mda_text, risk_text)
+        codex_data = codex_analyze_management(mda_text, risk_text)
         management_tone = ManagementTone(
-            tone=tone_data.get("tone", ""),
-            confidence=tone_data.get("confidence", ""),
-            visibility=tone_data.get("visibility", ""),
-            concrete_promises=tone_data.get("concrete_promises", []),
-            defensive_signals=tone_data.get("defensive_signals", []),
+            tone=codex_data.get("tone", ""),
+            confidence=codex_data.get("confidence", ""),
+            visibility=codex_data.get("visibility", ""),
+            concrete_promises=codex_data.get("concrete_promises", []),
+            defensive_signals=codex_data.get("defensive_signals", []),
         )
+        risks_10k = codex_data.get("risks", [])
     else:
         management_tone = ManagementTone(
             tone="DATA NOT AVAILABLE",
@@ -754,16 +766,6 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
             visibility="DATA NOT AVAILABLE",
             concrete_promises=[], defensive_signals=[],
         )
-    
-    # ── Risks ──
-    from backend.kimi_provider import kimi_extract_risks
-    if risk_text and len(risk_text) > 500:
-        try:
-            risks_10k = kimi_extract_risks(risk_text)
-        except Exception as e:
-            logger.warning(f"[{ticker}] Kimi risk extraction failed: {e}")
-            risks_10k = []
-    else:
         risks_10k = []
     
     data_risks = _assess_risks(yf_data, {}, ticker)
@@ -793,7 +795,7 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
         "market_cap": yf_data.get("market_cap"),
         "price": yf_data.get("price"),
         "52w_high": yf_data.get("52w_high"),
-    }, tone_data=tone_data if has_10k else None)
+    }, tone_data=codex_data if has_10k else None)
     
     # ── Decision ──
     decision = scoring.decision()
@@ -959,62 +961,11 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
     try:
         report_dir = os.path.join(output_dir, "07_final_report")
         report_md = os.path.join(report_dir, "report.md")
-        # Build comprehensive report
-        lines = [
-            f"# {company_name} ({ticker}) — Analysis Report",
-            f"**Date**: {datetime.now(PARIS).strftime('%Y-%m-%d %H:%M')}",
-            f"**Decision**: {decision} (conviction: {conviction})",
-            f"**Score**: {scoring.total}/40",
-            f"**Price**: {price_native} {yf_data.get('currency', 'USD')}",
-            f"**Sector**: {yf_data.get('sector', 'N/A')}",
-            "",
-            "## Key Phrase",
-            result.key_phrase,
-            "",
-            "## Financial Highlights",
-        ]
-        fin = yf_data.get("financials", {})
-        for label, key in [("Revenue (quarterly)", "revenue_quarterly"),
-                           ("Revenue YoY growth", "revenue_yoy_growth"),
-                           ("Gross margin", "gross_margin"),
-                           ("Operating margin", "operating_margin"),
-                           ("Net income", "net_income"),
-                           ("Free cash flow", "free_cash_flow")]:
-            val = fin.get(key)
-            lines.append(f"- **{label}**: {val if val else 'N/A'}")
-        lines += [
-            "",
-            "## Valuation",
-            f"- P/E (trailing): {yf_data.get('pe_current', 'N/A')}",
-            f"- P/E (forward): {yf_data.get('pe_forward', 'N/A')}",
-            f"- PEG ratio: {yf_data.get('peg_ratio', 'N/A')}",
-            "",
-            "## Management Discourse",
-            f"- Tone: {management_tone.tone}",
-            f"- Confidence: {management_tone.confidence}",
-            f"- Visibility: {management_tone.visibility}",
-            "",
-            "## Scoring Breakdown",
-        ]
-        scoring_dict = scoring.model_dump()
-        for key, value in scoring_dict.items():
-            if key != "total" and isinstance(value, (int, float)):
-                lines.append(f"- {key}: {value}/5")
-        lines.append(f"- **Total**: {scoring.total}/40")
-        lines += [
-            "",
-            "## Risks",
-        ]
-        for risk in result.risks[:8]:
-            r = risk if isinstance(risk, dict) else risk.model_dump()
-            lines.append(f"- [{r.get('severity', 'N/A').upper()}] {r.get('category', '')}: {r.get('description', '')}")
-        lines += [
-            "",
-            "---",
-            f"*Report generated by Stock Analysis Pipeline — {datetime.now(PARIS).isoformat()}*",
-        ]
+        # Use the rich 9-section template
+        sources = result.sources if hasattr(result, 'sources') and result.sources else []
+        report_text = _generate_report(result, yf_data, sources)
         with open(report_md, "w") as f:
-            f.write("\n".join(lines))
+            f.write(report_text)
         # Convert to PDF
         from backend.pdf_generator import md_to_pdf
         report_pdf = os.path.join(report_dir, "report.pdf")

@@ -313,14 +313,34 @@ Required analysis format:
 
 
 def system_prompt(language: str) -> str:
+    if language == "en":
+        return (
+            "You are an earnings-call analyst writing for Nami-san, a Japanese investor. "
+            "Write in ENGLISH only — no Japanese characters, no CJK. "
+            "Follow the 14-page Earnings Documents PDF template exactly: start each section "
+            "with the question, use the required markdown table, then numbered analysis using "
+            "①②③, include 'For Nami-san:' interpretation lines where specified, and end with "
+            "'> One-line summary:'. Use only supplied metrics and transcript evidence; missing financial "
+            "data must be written exactly as DATA NOT AVAILABLE. "
+            "If transcript is unavailable, generate each section using ONLY the supplied "
+            "financial_metrics and write 'Data not available in transcript' for qualitative "
+            "call discussion that would require management commentary. "
+            "Cite transcript source: after each claim, reference like (Transcript, CEO remarks). "
+            "When there is no transcript, cite supplied metrics as (Supplied metrics). "
+            "End the report with ## Sources section listing the transcript URL."
+        )
     return (
         "You are an earnings-call analyst writing for Nami-san, a Japanese investor. "
         "Follow the 14-page Earnings Documents PDF template exactly: start each section "
         "with the question, use the required markdown table, then numbered analysis using "
-        "① ② ③, include Namiさん向け interpretation lines where specified, and end with "
+        "①②③, include Namiさん向け interpretation lines where specified, and end with "
         "> 一言まとめ:. Use only supplied metrics and transcript evidence; missing financial "
         "data must be written exactly as DONNÉE NON DISPONIBLE. "
+        "If transcript is unavailable, generate each section using ONLY the supplied "
+        "financial_metrics and write Data not available in transcript for qualitative "
+        "call discussion that would require management commentary. "
         "Cite transcript source: after each claim, reference like (Transcript, CEO remarks). "
+        "When there is no transcript, cite supplied metrics as (Supplied metrics). "
         "End the report with ## Sources section listing the transcript URL."
     )
 
@@ -372,8 +392,11 @@ def _language_rules(language: str) -> str:
             "language that are absent in the other."
         )
     return (
-        "Use English for the answer body, but preserve the PDF labels that are explicitly Japanese: "
-        "Namiさん向け, 注意点, 本質理解, and the final blockquote label > 一言まとめ:."
+        "Use English ONLY for the entire answer — no Japanese characters, no CJK. "
+        "Use these English labels: 'For Nami-san:' instead of Namiさん向け, "
+        "'Caution:' instead of 注意点, 'Essential insight:' instead of 本質理解, "
+        "and '> One-line summary:' instead of > 一言まとめ:. "
+        "Missing data = DATA NOT AVAILABLE (not DONNÉE NON DISPONIBLE)."
     )
 
 
@@ -392,6 +415,21 @@ def _base_prompt(
     table_header = TABLE_REQUIREMENTS[canonical]
     section_format = SECTION_FORMATS[canonical].format(table_header=table_header)
     question = _format_question(canonical, language, ticker, company, quarter)
+    transcript_context = (
+        transcript_excerpt
+        if transcript_excerpt
+        else (
+            "No transcript available. Use ONLY the financial_metrics data below. "
+            "Do NOT invent qualitative commentary. Use Data not available in transcript "
+            "for management commentary, business drivers, and other call discussion that "
+            "requires transcript evidence."
+        )
+    )
+
+    is_jp = language.lower() in {"jp", "ja"}
+    nami_label = "Namiさん向け解釈 / Namiさん向けの本質理解" if is_jp else "For Nami-san / Essential insight"
+    missing_label = "DONNÉE NON DISPONIBLE" if is_jp else "DATA NOT AVAILABLE"
+    summary_label = "> 一言まとめ: [one-line summary]" if is_jp else "> One-line summary: [one-line summary]"
 
     return f"""Required heading: ## {title}
 Language: {language}
@@ -400,7 +438,7 @@ Ticker: {ticker}
 Company: {company}
 Quarter: {quarter}
 Metrics: {_fmt_metrics(metrics)}
-Transcript excerpt: {transcript_excerpt or "DONNÉE NON DISPONIBLE"}
+Transcript excerpt: {transcript_context}
 
 PDF template question:
 {question}
@@ -412,11 +450,12 @@ Section output contract:
 - Use the PDF visual markers where applicable: 📊 🌟 ⚠️ 🧠 🎯 🧩 💰 📈 📦 🏆.
 - Include the required table header exactly: {table_header}
 - Put every numeric financial claim in a table first, then explain it below.
-- Use numbered analysis markers ① ② ③. Use ④ ⑤ ⑥ only when the PDF section calls for more points.
-- Include Namiさん向け解釈 / Namiさん向けの本質理解 where specified.
+- Use numbered analysis markers ①②③. Use ④⑤⑥ only when the PDF section calls for more points.
+- Include {nami_label} where specified.
 - Use direct transcript or supplied-metric evidence. Never invent financial data.
-- If a value, source, benchmark, estimate, or comparison is missing, write DONNÉE NON DISPONIBLE.
-- End with exactly one final blockquote line: > 一言まとめ: [one-line summary]
+- If the transcript excerpt says no transcript is available, use only Metrics and mark qualitative call evidence as Data not available in transcript.
+- If a value, source, benchmark, estimate, or comparison is missing, write {missing_label}.
+- End with exactly one final blockquote line: {summary_label}
 
 PDF-aligned section skeleton:
 {section_format}

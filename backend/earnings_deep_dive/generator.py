@@ -21,11 +21,11 @@ from backend.earnings_deep_dive.validators import (
     is_bilingual,
     validate_section_heading,
 )
-from backend.kimi_provider import kimi_chat
+from backend.codex_provider import _codex_chat as kimi_chat
 from backend.transcript_finder import find_transcripts
 
 
-MAX_KIMI_TOKENS = 400
+MAX_KIMI_TOKENS = 2000
 SECTION_MAX_CHARS = 2400
 
 SECTION_METRIC_KEYS = {
@@ -148,7 +148,6 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
     except TranscriptMissingError as exc:
         transcript_text = ""
         transcript_meta = {"found": False, "error": str(exc)}
-        warnings.append(str(exc))
 
     excerpts = {
         section: _extract_relevant_excerpt(transcript_text, SECTION_KEYWORDS[section])
@@ -156,25 +155,13 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
     }
 
     for section in SECTION_ORDER:
-        if not transcript_text:
-            sections[section] = _placeholder_section(section, "Transcript missing")
-            statuses.append(
-                SectionStatus(
-                    name=section,
-                    status="placeholder",
-                    attempts=0,
-                    error="Transcript missing",
-                    warnings=["Transcript missing; section was not sent to Kimi."],
-                )
-            )
-            continue
-
         section_markdown, status = _generate_section(
             section=section,
             request=request,
             company=company,
             metrics=metrics,
             transcript_excerpt=excerpts[section],
+            has_transcript=bool(transcript_text),
         )
         sections[section] = section_markdown
         statuses.append(status)
@@ -220,6 +207,7 @@ def _generate_section(
     company: str,
     metrics: Dict[str, Any],
     transcript_excerpt: str,
+    has_transcript: bool,
 ) -> Tuple[str, SectionStatus]:
     last_error = ""
     sys_prompt = system_prompt(request.language)
@@ -241,11 +229,17 @@ def _generate_section(
             )
 
         try:
-            output = kimi_chat(prompt, system=sys_prompt, max_tokens=MAX_KIMI_TOKENS, temperature=0.0)
+            output = kimi_chat(prompt, system=sys_prompt, max_tokens=MAX_KIMI_TOKENS)
             if not output:
                 raise KimiFailureError("Kimi returned no content")
             cleaned = _clean_section_output(output, request.max_section_chars)
-            _validate_section(cleaned, section, request.language, request.max_section_chars)
+            _validate_section(
+                cleaned,
+                section,
+                request.language,
+                request.max_section_chars,
+                require_table=has_transcript,
+            )
             return cleaned, SectionStatus(
                 name=section,
                 status="ok" if attempt == 1 else "retry_ok",
@@ -277,7 +271,8 @@ def _normalize_metrics(metrics: Dict[str, Any]) -> Dict[str, Any]:
 def _section_metrics(section: str, metrics: Dict[str, Any]) -> Dict[str, Any]:
     keys = SECTION_METRIC_KEYS[section]
     relevant = {key: metrics.get(key, "Not disclosed") for key in keys}
-    return {key: value for key, value in relevant.items() if value != "Not disclosed"} or {"data": "Not disclosed"}
+    disclosed = {key: value for key, value in relevant.items() if value != "Not disclosed"}
+    return disclosed or relevant
 
 
 def _load_transcript(request: DeepDiveRequest) -> Tuple[str, Dict[str, Any]]:
@@ -377,12 +372,19 @@ def _split_transcript_blocks(transcript: str) -> List[str]:
     return blocks or [text.strip()]
 
 
-def _validate_section(markdown: str, section: str, language: str, max_chars: int = SECTION_MAX_CHARS) -> None:
+def _validate_section(
+    markdown: str,
+    section: str,
+    language: str,
+    max_chars: int = SECTION_MAX_CHARS,
+    *,
+    require_table: bool = True,
+) -> None:
     if not validate_section_heading(markdown, section):
         raise ValidationError(f"Missing required heading: ## {section}")
     if detect_repetition_loop(markdown):
         raise ValidationError("Repetition loop detected")
-    if section in TABLE_SECTIONS and not check_table_presence(markdown):
+    if require_table and section in TABLE_SECTIONS and not check_table_presence(markdown):
         raise ValidationError(f"Missing required markdown table for {section}")
     if is_bilingual(markdown, language):
         raise ValidationError("Bilingual output detected")

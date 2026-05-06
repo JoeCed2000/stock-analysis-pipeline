@@ -45,6 +45,7 @@ def test_pdf_aligned_prompts_require_nami_template_shape():
     assert len(SECTION_ORDER) == 10
     assert "Nami" in system_prompt("jp")
     assert "Cite transcript source:" in system_prompt("en")
+    assert "If transcript is unavailable" in system_prompt("en")
 
     for section in SECTION_ORDER:
         prompt = build_prompt(
@@ -67,10 +68,24 @@ def test_pdf_aligned_prompts_require_nami_template_shape():
 
     eps_prompt = build_prompt("EPS & Revenue", "jp", "GEV", "GE Vernova Inc.", "2026 Q1", {}, "")
     assert "| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |" in eps_prompt
+    assert "No transcript available. Use ONLY the financial_metrics data below." in eps_prompt
 
     guidance_prompt = build_prompt("Guidance", "jp", "SNDK", "SanDisk", "2026 Q4", {}, "")
     assert "| Metric | Guidance | QoQ | Medium-term Signal | Source |" in guidance_prompt
     assert "来期以降のガイダンス" in guidance_prompt
+
+
+def test_section_metrics_keeps_missing_keys_when_all_values_are_missing():
+    from backend.earnings_deep_dive.generator import _section_metrics
+
+    metrics = _section_metrics("Cash Flow", {})
+
+    assert metrics == {
+        "free_cash_flow": "Not disclosed",
+        "operating_cash_flow": "Not disclosed",
+        "capex": "Not disclosed",
+        "net_debt": "Not disclosed",
+    }
 
 
 def test_generate_deep_dive_writes_report_and_meta(tmp_path, monkeypatch):
@@ -137,7 +152,7 @@ def test_generate_deep_dive_writes_report_and_meta(tmp_path, monkeypatch):
     assert len(response.sections) == 10
     # at least one section succeeded (mock may not satisfy all new validators)
     assert any(status.status == "ok" for status in response.statuses)
-    assert all(call["max_tokens"] == 400 for call in calls)
+    assert all(call["max_tokens"] == 2000 for call in calls)
     assert all("Transcript excerpt:" in call["prompt"] for call in calls)
     assert "## Sources" in response.report_markdown
     assert "- Transcript: https://example.com/nvda-transcript" in response.report_markdown

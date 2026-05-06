@@ -18,7 +18,13 @@ def _get_kimi_client():
 
     try:
         from openai import OpenAI
-        return OpenAI(base_url=KIMI_BASE_URL, api_key=api_key)
+        import httpx
+        return OpenAI(
+            base_url=KIMI_BASE_URL,
+            api_key=api_key,
+            timeout=httpx.Timeout(120.0, connect=10.0),
+            max_retries=0,  # We handle retries ourselves
+        )
     except ImportError:
         return None
 
@@ -50,7 +56,11 @@ def kimi_chat(
         return resp.choices[0].message.content
     except Exception as e:
         logger.warning(f"Kimi K2.6 client error: {e}")
-        return _kimi_chat_http(prompt, system, max_tokens, temperature)
+        result = _kimi_chat_http(prompt, system, max_tokens, temperature)
+        if result is None:
+            # Fallback to DeepSeek if Kimi is down
+            return _deepseek_chat(prompt, system, max_tokens, temperature)
+        return result
 
 
 def _kimi_chat_http(
@@ -83,7 +93,7 @@ def _kimi_chat_http(
                 "temperature": temperature,
                 "stop": ["\n\n\n", "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n\nTokens:"],  # Kimi repetition guard
             },
-            timeout=60,
+            timeout=120,
         )
         if resp.status_code == 200:
             data = resp.json()
@@ -93,6 +103,47 @@ def _kimi_chat_http(
             return None
     except Exception as e:
         logger.warning(f"Kimi K2.6 HTTP error: {e}")
+        return None
+
+
+def _deepseek_chat(
+    prompt: str,
+    system: str,
+    max_tokens: int,
+    temperature: float,
+) -> Optional[str]:
+    """Fallback to DeepSeek when Kimi is unavailable."""
+    api_key = os.getenv("DEEPSEEK_API_KEY", "")
+    if not api_key:
+        return None
+    
+    from backend.http_client import http
+    try:
+        resp = http.post(
+            "https://api.deepseek.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "deepseek-chat",
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            },
+            timeout=120,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+        else:
+            logger.warning(f"DeepSeek HTTP {resp.status_code}: {resp.text[:200]}")
+            return None
+    except Exception as e:
+        logger.warning(f"DeepSeek error: {e}")
         return None
 
 

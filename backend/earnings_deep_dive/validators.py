@@ -6,6 +6,16 @@ from collections import Counter
 _CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]")
 _LATIN_WORD_RE = re.compile(r"\b[A-Za-z][A-Za-z'-]{2,}\b")
 _TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$", re.MULTILINE)
+_EN_ALLOWED_TEMPLATE_CJK_RE = re.compile(
+    r"Namiさん向け(?:解釈|の本質理解)?|"
+    r"Namiさん|"
+    r"一言まとめ|総合評価|説明・分析|全体構造|今後のチェックポイント|"
+    r"補足データ|計算ベース|指標ごとの解説|注意点|本質理解|"
+    r"ハイライト|良かった点|ローライト|懸念点|投資視点の一言|"
+    r"セグメント別の解説・分析|地域別の重要ポイント|"
+    r"来期ガイダンス|一言でいうと|分析|中期|来期以降|"
+    r"ただし注意点|リスク|超重要|かなり重要"
+)
 
 _LATIN_ALLOWLIST = {
     "EPS",
@@ -54,10 +64,15 @@ def is_bilingual(markdown: str, language: str) -> bool:
     if not markdown:
         return False
 
-    has_cjk = _CJK_RE.search(markdown) is not None
+    checked_markdown = (
+        _EN_ALLOWED_TEMPLATE_CJK_RE.sub("", markdown)
+        if language == "en"
+        else markdown
+    )
+    has_cjk = _CJK_RE.search(checked_markdown) is not None
     latin_words = [
         word
-        for word in _LATIN_WORD_RE.findall(markdown)
+        for word in _LATIN_WORD_RE.findall(checked_markdown)
         if word.upper() not in _LATIN_ALLOWLIST
     ]
 

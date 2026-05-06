@@ -74,37 +74,25 @@ def find_transcripts(ticker: str, output_dir: str = "") -> Dict[str, Any]:
     # 2. Motley Fool transcripts — last resort if structured sources failed.
     if not primary_text:
         try:
-            from backend.seeking_alpha import fetch_fool_transcript, search_transcript_web
+            from backend.sources.motleyfool import get_transcript as get_fool_transcript
 
-            fool_results = search_transcript_web(ticker)
-            for r in fool_results:
-                url = r.get("url", "")
-                transcript_text = r.get("text", "")
-                if url and not transcript_text:
-                    try:
-                        transcript_text = fetch_fool_transcript(url)
-                        if transcript_text:
-                            logger.info(f"Fool.com transcript extracted: {len(transcript_text)} chars for {ticker}")
-                    except Exception as e:
-                        logger.warning(f"Failed to fetch transcript text from {url}: {e}")
-
-                if transcript_text and not primary_text:
-                    primary_text = transcript_text
-
+            fool = get_fool_transcript(ticker)
+            if fool and fool.get("text"):
+                primary_text = fool["text"]
                 results.append({
-                    "source": r.get("source", "The Motley Fool"),
+                    "source": "The Motley Fool",
                     "type": "earnings_transcript",
-                    "title": r.get("title", ""),
-                    "url": url,
-                    "text": transcript_text,
-                    "text_length": len(transcript_text) if transcript_text else 0,
-                    "quarter": r.get("quarter", ""),
-                    "date": r.get("date", ""),
-                    "id": r.get("id", ""),
-                    "free": r.get("free", True),
+                    "title": f"{ticker} Earnings Call Transcript",
+                    "url": fool.get("url", ""),
+                    "text": primary_text,
+                    "text_length": len(primary_text),
+                    "quarter": "",
+                    "date": fool.get("date", ""),
+                    "id": "",
                 })
+                logger.info(f"Motley Fool transcript: {len(primary_text)} chars for {ticker}")
         except Exception as e:
-            logger.warning(f"Fool.com unavailable for {ticker}: {e}")
+            logger.warning(f"Motley Fool unavailable for {ticker}: {e}")
     else:
         logger.info(f"Skipping Fool.com — higher-priority source already provided {len(primary_text)} chars")
 

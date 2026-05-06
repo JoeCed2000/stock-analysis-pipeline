@@ -560,14 +560,16 @@ async def health():
     return {"status": "ok", "service": "stock-analysis-pipeline", "commit": "83f33d0"}
 
 
+# ═══════════ DEBUG ENDPOINTS — disabled in production ═══════════
+# These leak internal data and MUST NOT be exposed on public tunnels.
+# To re-enable locally: ENABLE_DEBUG=true in .env
+
 @app.get("/api/debug/yf-cache/{ticker}")
 async def debug_yf_cache(ticker: str):
-    """Debug: show yfinance cache status for a ticker.
-    Only available in development mode. Set ENVIRONMENT=development to enable."""
-    if os.getenv("ENVIRONMENT", "production") != "development":
-        raise HTTPException(status_code=403, detail="Debug endpoints disabled in production")
+    """Debug: show yfinance cache status for a ticker."""
+    if os.getenv("ENABLE_DEBUG") != "true":
+        raise HTTPException(status_code=403, detail="Debug endpoints disabled")
     from backend.sources_collector import _cache_get_yf, _cache_get, _cache_path_yf, _cache_path
-    import glob
     
     result = {
         "ticker": ticker.upper(),
@@ -598,10 +600,9 @@ async def debug_yf_cache(ticker: str):
 
 @app.get("/api/debug/sources")
 async def debug_sources():
-    """Return which API sources are configured (masked keys).
-    Only available in development mode. Set ENVIRONMENT=development to enable."""
-    if os.getenv("ENVIRONMENT", "production") != "development":
-        raise HTTPException(status_code=403, detail="Debug endpoints disabled in production")
+    """Return which API sources are configured (masked keys)."""
+    if os.getenv("ENABLE_DEBUG") != "true":
+        raise HTTPException(status_code=403, detail="Debug endpoints disabled")
 
     def mask(key: str) -> str:
         return key[:4] + "****" + key[-4:] if len(key) > 8 else "****"
@@ -653,6 +654,7 @@ async def earnings_deep_dive(request: DeepDiveRequest):
             dummy = AnalysisResult(
                 ticker=request.ticker,
                 company_name=q_data.get("company_name", request.ticker),
+                retrieved_at=datetime.now(timezone.utc).isoformat(),
                 price=q_data.get("price"),
                 currency=q_data.get("currency", "USD"),
                 sector=q_data.get("sector"),

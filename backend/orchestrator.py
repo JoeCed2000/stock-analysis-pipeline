@@ -6,7 +6,7 @@ from backend.pipeline import analyze_ticker_fast, AnalysisResult
 
 logger = logging.getLogger(__name__)
 
-PER_TICKER_TIMEOUT = 90  # seconds — Kimi K2.6 free tier can take 60-80s
+PER_TICKER_TIMEOUT = 300  # seconds — 2 Kimi calls + stock data + dossier generation = up to 280s
 
 
 def run_analysis_sequential(tickers: List[str], output_base: str = "analyses") -> Dict[str, Any]:

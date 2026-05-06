@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 import asyncio
+from pathlib import Path
 
 import fastapi.dependencies.utils
 
@@ -94,22 +95,50 @@ def test_pipeline_adds_earnings_deep_dive_when_transcript_text_exists(tmp_path, 
     ]
     assert (tmp_path / "en" / "07_final_report" / "earnings_deep_dive.pdf").exists()
     assert (tmp_path / "jp" / "07_final_report" / "earnings_deep_dive.pdf").exists()
+    assert (tmp_path / "07_final_report" / "earnings_deep_dive.md").exists()
+    assert (tmp_path / "07_final_report" / "earnings_deep_dive.pdf").exists()
     assert "Earnings deep-dive added to dossier" in caplog.text
 
 
-def test_pipeline_skips_earnings_deep_dive_without_usable_transcript(tmp_path, monkeypatch):
+def test_pipeline_generates_earnings_deep_dive_without_usable_transcript(tmp_path, monkeypatch):
     from backend import pipeline
+    from backend.earnings_deep_dive.schemas import DeepDiveResponse
+
+    generated_requests = []
+
+    def fake_generate_deep_dive(request):
+        generated_requests.append(request)
+        report_dir = Path(request.output_dir) / "07_final_report"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        md_path = report_dir / "earnings_deep_dive.md"
+        meta_path = report_dir / "earnings_deep_dive_meta.json"
+        md_path.write_text("# Earnings Deep-Dive\n", encoding="utf-8")
+        meta_path.write_text("{}", encoding="utf-8")
+        return DeepDiveResponse(
+            ticker=request.ticker,
+            company=request.company,
+            quarter=request.quarter,
+            language=request.language,
+            markdown_path=str(md_path),
+            meta_path=str(meta_path),
+            report_markdown="# Earnings Deep-Dive\n",
+            sections={},
+            statuses=[],
+            warnings=[],
+        )
+
+    def fake_md_to_pdf(md_path, pdf_path, title=""):
+        Path(pdf_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(pdf_path).write_bytes(b"pdf")
+        return pdf_path
 
     monkeypatch.setattr(
         pipeline,
         "find_transcripts",
         lambda ticker, output_dir="": {"found": True, "sources": [{"url": "https://example.com"}]},
     )
-    monkeypatch.setattr(
-        pipeline,
-        "generate_deep_dive",
-        lambda request: (_ for _ in ()).throw(AssertionError("should not generate without text")),
-    )
+    monkeypatch.setattr(pipeline, "generate_deep_dive", fake_generate_deep_dive)
+    monkeypatch.setattr(pipeline, "md_to_pdf", fake_md_to_pdf)
 
     added = pipeline._add_earnings_deep_dive_if_transcript(
         ticker="MSFT",
@@ -119,8 +148,22 @@ def test_pipeline_skips_earnings_deep_dive_without_usable_transcript(tmp_path, m
         yf_data={},
     )
 
-    assert added is False
-    assert not (tmp_path / "07_final_report" / "earnings_deep_dive.md").exists()
+    assert added is True
+    assert [request.language for request in generated_requests] == ["en", "jp"]
+    assert all(request.transcript_text == "" for request in generated_requests)
+    assert (tmp_path / "en" / "07_final_report" / "earnings_deep_dive.pdf").exists()
+    assert (tmp_path / "jp" / "07_final_report" / "earnings_deep_dive.pdf").exists()
+
+
+def test_deep_dive_metrics_coerces_numeric_guidance_to_string():
+    from backend import pipeline
+
+    metrics = pipeline._deep_dive_metrics(
+        SimpleNamespace(financials=SimpleNamespace(), valuation=SimpleNamespace()),
+        {"financials": {"guidance": 0.1787}},
+    )
+
+    assert metrics.guidance == "0.1787"
 
 
 def test_earnings_deep_dive_endpoint_returns_generator_response(tmp_path, monkeypatch):
@@ -148,7 +191,7 @@ def test_earnings_deep_dive_endpoint_returns_generator_response(tmp_path, monkey
     request = main.DeepDiveRequest(
         ticker="nvda",
         company="NVIDIA",
-        quarter="2026Q1",
+        quarter="latest quarter",
         language="en",
         output_dir=str(tmp_path),
         transcript_text="Revenue EPS guidance backlog cash flow segments.",
