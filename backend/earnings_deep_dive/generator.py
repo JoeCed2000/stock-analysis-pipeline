@@ -30,11 +30,11 @@ MAX_CODEX_TOKENS = 2000
 MAX_KIMI_TOKENS = MAX_CODEX_TOKENS
 
 def _llm_chat(prompt: str, system: str = "", max_tokens: int = MAX_CODEX_TOKENS) -> str | None:
-    """Try Codex first, fall back to Kimi→DeepSeek if Codex unavailable."""
-    result = codex_chat(prompt, system=system, max_tokens=max_tokens)
+    """Try Kimi→DeepSeek first (fast), fall back to Codex if unavailable."""
+    result = _kimi_provider_chat(prompt, system=system, max_tokens=max_tokens)
     if result:
         return result
-    return _kimi_provider_chat(prompt, system=system, max_tokens=max_tokens)
+    return codex_chat(prompt, system=system, max_tokens=max_tokens)
 
 kimi_chat = _llm_chat
 SECTION_MAX_CHARS = 2400
