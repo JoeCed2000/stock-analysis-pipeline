@@ -22,12 +22,21 @@ from backend.earnings_deep_dive.validators import (
     validate_section_heading,
 )
 from backend.codex_provider import _codex_chat as codex_chat
+from backend.kimi_provider import kimi_chat as _kimi_provider_chat
 from backend.transcript_finder import find_transcripts
 
 
 MAX_CODEX_TOKENS = 2000
 MAX_KIMI_TOKENS = MAX_CODEX_TOKENS
-kimi_chat = codex_chat
+
+def _llm_chat(prompt: str, system: str = "", max_tokens: int = MAX_CODEX_TOKENS) -> str | None:
+    """Try Codex first, fall back to Kimi→DeepSeek if Codex unavailable."""
+    result = codex_chat(prompt, system=system, max_tokens=max_tokens)
+    if result:
+        return result
+    return _kimi_provider_chat(prompt, system=system, max_tokens=max_tokens)
+
+kimi_chat = _llm_chat
 SECTION_MAX_CHARS = 2400
 
 SECTION_METRIC_KEYS = {

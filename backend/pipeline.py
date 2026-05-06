@@ -764,6 +764,10 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
     
     if has_10k:
         codex_data = codex_analyze_management(mda_text, risk_text)
+        # Fallback to Kimi→DeepSeek if Codex returned empty
+        if not codex_data or codex_data.get("tone", "").startswith("DATA NOT AVAILABLE"):
+            from backend.kimi_provider import kimi_analyze_management
+            codex_data = kimi_analyze_management(mda_text, risk_text)
         management_tone = ManagementTone(
             tone=codex_data.get("tone", ""),
             confidence=codex_data.get("confidence", ""),
