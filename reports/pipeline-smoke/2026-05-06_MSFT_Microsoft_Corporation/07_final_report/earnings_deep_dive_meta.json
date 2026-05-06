@@ -1,0 +1,91 @@
+{
+  "ticker": "MSFT",
+  "company": "Microsoft Corporation",
+  "quarter": "latest quarter",
+  "language": "en",
+  "generated_at": "2026-05-06T08:27:52.711352+00:00",
+  "provider": "Codex CLI local",
+  "max_tokens_per_call": 2000,
+  "sections": {
+    "EPS & Revenue": {
+      "name": "EPS & Revenue",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    },
+    "Highlights": {
+      "name": "Highlights",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    },
+    "Operating Metrics": {
+      "name": "Operating Metrics",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    },
+    "Cash Flow": {
+      "name": "Cash Flow",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    },
+    "Capital Efficiency": {
+      "name": "Capital Efficiency",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    },
+    "Segments": {
+      "name": "Segments",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    },
+    "Forward P/E": {
+      "name": "Forward P/E",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    },
+    "Backlog": {
+      "name": "Backlog",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    },
+    "Guidance": {
+      "name": "Guidance",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    },
+    "Verdict": {
+      "name": "Verdict",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    }
+  },
+  "warnings": [],
+  "transcript_url": null,
+  "transcript": {
+    "found": false,
+    "error": "No usable earnings call transcript found for MSFT"
+  },
+  "output_files": {
+    "markdown": "reports/pipeline-smoke/2026-05-06_MSFT_Microsoft_Corporation/07_final_report/earnings_deep_dive.md",
+    "meta": "reports/pipeline-smoke/2026-05-06_MSFT_Microsoft_Corporation/07_final_report/earnings_deep_dive_meta.json"
+  }
+}

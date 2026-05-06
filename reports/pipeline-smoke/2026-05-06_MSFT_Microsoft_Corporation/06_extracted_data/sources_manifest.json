@@ -1,0 +1,17 @@
+[
+  {
+    "id": "SRC-001",
+    "category": "financial_data_sources",
+    "title": "Yahoo Finance \u2014 MSFT snapshot (source: yfinance)",
+    "url": "https://finance.yahoo.com/quote/MSFT/",
+    "retrieved_at": "2026-05-06T10:23:20.016313+02:00",
+    "source_type": "financial_aggregator",
+    "publisher": "Yahoo Finance",
+    "used_for": [
+      "price",
+      "financials",
+      "valuation",
+      "identification"
+    ]
+  }
+]

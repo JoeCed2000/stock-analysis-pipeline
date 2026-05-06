@@ -160,16 +160,6 @@ export default function App() {
           }}>
             {t('analysisDuration')}
           </div>
-
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 400px))',
-            gap: 20, marginTop: 24, justifyContent: 'center',
-          }}>
-            {Array.from({ length: progress.total }).map((_, i) => (
-              <SkeletonCard key={i} />
-            ))}
-          </div>
         </>
       )}
 

@@ -1,0 +1,8 @@
+{
+  "passed": false,
+  "issues": [
+    "Summary marker missing: found 5 sections with 'One-line summary' or '\u4e00\u8a00\u307e\u3068\u3081', need \u22657",
+    "Forbidden marker 'Not disclosed' found 1\u00d7 in report"
+  ],
+  "checked_at": "2026-05-06T08:27:52.818830+00:00"
+}
