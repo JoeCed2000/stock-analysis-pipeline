@@ -90,11 +90,14 @@ export default function App() {
           {t('siteSubtitle')}
         </p>
 
+        {!loading && (
         <div style={{ marginTop: 16 }}>
           <AboutSection t={t} />
         </div>
+        )}
 
-        {/* Mode tabs — centered */}
+        {/* Mode tabs — centered, hidden during analysis */}
+        {!loading && (
         <div style={{
           display: 'flex', justifyContent: 'center', marginTop: 16,
         }}>
@@ -128,6 +131,7 @@ export default function App() {
             </button>
           </div>
         </div>
+        )}
       </div>
 
       {/* Single mode */}
@@ -149,6 +153,13 @@ export default function App() {
             ticker={progress.ticker}
             t={t}
           />
+
+          <div style={{
+            textAlign: 'center', color: '#8b949e', fontSize: 12,
+            marginTop: 16, marginBottom: 8,
+          }}>
+            {t('analysisDuration')}
+          </div>
 
           <div style={{
             display: 'grid',
