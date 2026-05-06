@@ -6,6 +6,12 @@ from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
+MIN_TRANSCRIPT_CHARS = 2000  # Anything shorter is metadata/error, not a real transcript
+
+
+def _is_usable(text: str) -> bool:
+    return bool(text) and len(text) >= MIN_TRANSCRIPT_CHARS
+
 
 def find_transcripts(ticker: str, output_dir: str = "", company: str | None = None) -> Dict[str, Any]:
     """
@@ -48,7 +54,7 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
         logger.warning(f"RapidAPI Seeking Alpha unavailable for {ticker}: {e}")
 
     # 1. Alpha Vantage API — fallback (structured JSON, 25 req/day free).
-    if not primary_text:
+    if not _is_usable(primary_text):
         try:
             from backend.alpha_vantage import fetch_transcript
             av = fetch_transcript(ticker)
@@ -72,7 +78,7 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
         logger.info(f"Skipping Alpha Vantage — RapidAPI Seeking Alpha already provided {len(primary_text)} chars")
 
     # 2. Motley Fool transcripts — last resort if structured sources failed.
-    if not primary_text:
+    if not _is_usable(primary_text):
         try:
             from backend.sources.motleyfool import get_transcript as get_fool_transcript
 
@@ -97,7 +103,7 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
         logger.info(f"Skipping Fool.com — higher-priority source already provided {len(primary_text)} chars")
 
     # 3. Legacy public web transcript fallback.
-    if not primary_text:
+    if not _is_usable(primary_text):
         try:
             from backend.seeking_alpha import search_transcript_web
 
@@ -125,7 +131,7 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
         logger.info(f"Skipping public transcript search: higher-priority source already provided {len(primary_text)} chars")
 
     # 4. Google-discovered public transcript pages.
-    if not primary_text:
+    if not _is_usable(primary_text):
         try:
             from backend.transcript_web_search import search_transcript_pages
 
