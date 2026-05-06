@@ -170,9 +170,9 @@ def kimi_analyze_management(mda_text: str, risk_text: str) -> Dict[str, Any]:
 
     prompt = f"""Analyze the management discourse in the following 10-K MD&A section.
 Return a JSON object with these exact keys:
-- "tone": overall tone (one of: "Confiant et transparent", "Prudent mais positif", "Évasif / langue de bois", "Alarmiste / défensif")
-- "confidence": management confidence level (one of: "Forte — guidance chiffrée", "Modérée — objectifs qualitatifs", "Faible — absence de visibilité")
-- "visibility": earnings visibility (one of: "Bonne — guidance précise", "Limitée — fourchette large", "Nulle — guidance suspendue")
+- "tone": overall tone (one of: "Confident and transparent", "Prudent but positive", "Evasive / vague", "Alarmist / defensive")
+- "confidence": management confidence level (one of: "Strong — quantified guidance", "Moderate — qualitative objectives", "Weak — no visibility")
+- "visibility": earnings visibility (one of: "Good — precise guidance", "Limited — wide range", "None — suspended guidance")
 - "concrete_promises": list of specific, measurable commitments made (max 5)
 - "defensive_signals": list of hedging language, caveats, or defensive phrasing (max 5)
 

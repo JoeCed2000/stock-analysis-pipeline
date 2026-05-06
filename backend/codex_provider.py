@@ -106,9 +106,9 @@ def codex_analyze_management(mda_text: str, risk_text: str) -> Dict[str, Any]:
   ]
 }}}}
 
-TONE OPTIONS: "Confiant et transparent", "Prudent mais positif", "Évasif / langue de bois", "Alarmiste / défensif"
-CONFIDENCE OPTIONS: "Forte — guidance chiffrée", "Modérée — objectifs qualitatifs", "Faible — absence de visibilité"
-VISIBILITY OPTIONS: "Bonne — guidance précise", "Limitée — fourchette large", "Nulle — guidance suspendue"
+TONE OPTIONS: "Confident and transparent", "Prudent but positive", "Evasive / vague", "Alarmist / defensive"
+CONFIDENCE OPTIONS: "Strong — quantified guidance", "Moderate — qualitative objectives", "Weak — no visibility"
+VISIBILITY OPTIONS: "Good — precise guidance", "Limited — wide range", "None — suspended guidance"
 
 MD&A TEXT:
 {mda_text[:3000]}

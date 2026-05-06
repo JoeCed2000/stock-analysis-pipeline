@@ -418,12 +418,12 @@ def _margin_of_safety_text(pe: Any, fpe: Any) -> str:
     if pe_val is None:
         return "DATA NOT AVAILABLE"
     if pe_val < 15:
-        return "Marge de sécurité confortable (PE < 15)"
+        return "Comfortable margin of safety (PE < 15)"
     if pe_val < 25:
-        return "Marge de sécurité modérée (PE 15-25)"
+        return "Moderate margin of safety (PE 15-25)"
     if pe_val < 40:
-        return "Marge de sécurité faible (PE 25-40)"
-    return "Absence de marge de sécurité (PE > 40)"
+        return "Weak margin of safety (PE 25-40)"
+    return "No margin of safety (PE > 40)"
 
 
 def _conviction_text(s: Scoring) -> str:
