@@ -130,6 +130,21 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
     else:
         logger.info(f"Skipping public transcript search: higher-priority source already provided {len(primary_text)} chars")
 
+    # 3.5 DuckDuckGo transcript search — free, no API key.
+    if not _is_usable(primary_text):
+        try:
+            from backend.ddg_transcript_search import search_transcripts_ddg
+
+            ddg_results = search_transcripts_ddg(ticker, company=company)
+            if ddg_results:
+                primary_text = ddg_results[0].get("text", "")
+                results.extend(ddg_results)
+                logger.info(f"DuckDuckGo transcript: {len(primary_text)} chars for {ticker}")
+        except Exception as e:
+            logger.warning(f"DuckDuckGo transcript search unavailable for {ticker}: {e}")
+    else:
+        logger.info(f"Skipping DuckDuckGo: higher-priority source already provided {len(primary_text)} chars")
+
     # 4. Google-discovered public transcript pages.
     if not _is_usable(primary_text):
         try:

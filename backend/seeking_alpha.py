@@ -182,7 +182,7 @@ def search_transcript_web(ticker: str) -> List[Dict]:
                     "url": first_link,
                     "source": "The Motley Fool",
                     "free": True,
-                    "text": transcript_text[:2000] if transcript_text else ""
+                    "text": transcript_text if transcript_text else ""
                 })
                 # Add additional links without text to keep consistent with current behavior
                 for link in links[1:3]:  # Only process a few more links
