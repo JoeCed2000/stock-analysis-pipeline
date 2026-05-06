@@ -3,6 +3,7 @@ import os
 import json
 import hashlib
 import logging
+import re
 import shutil
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
@@ -59,6 +60,117 @@ def _transcript_url(source: Dict[str, Any]) -> Optional[str]:
         value = source.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
+    return None
+
+
+def _parse_date(value: Any) -> Optional[datetime]:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+    except Exception:
+        pass
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%b %d, %Y", "%B %d, %Y"):
+        try:
+            return datetime.strptime(text, fmt)
+        except Exception:
+            pass
+    match = re.search(r"(20\d{2})[-/](\d{1,2})[-/](\d{1,2})", text)
+    if match:
+        year, month, day = (int(part) for part in match.groups())
+        try:
+            return datetime(year, month, day)
+        except ValueError:
+            return None
+    return None
+
+
+def _is_forward_quarter(label: str, today: Optional[datetime] = None) -> bool:
+    """Return True when a quarter label points beyond the current calendar quarter."""
+    if not label:
+        return False
+    match = re.search(r"(?:FY)?(20\d{2})\s*Q([1-4])", label, re.IGNORECASE)
+    if not match:
+        match = re.search(r"(20\d{2})\s*Q([1-4])", label, re.IGNORECASE)
+    if not match:
+        return False
+    year = int(match.group(1))
+    quarter = int(match.group(2))
+    today = today or datetime.now(PARIS)
+    current_quarter = (today.month - 1) // 3 + 1
+    return (year, quarter) > (today.year, current_quarter)
+
+
+def _period_from_filing(filing: Dict[str, Any]) -> Optional[str]:
+    filing_date = _parse_date(filing.get("date"))
+    form = str(filing.get("form") or "").upper()
+    if not filing_date:
+        return None
+    if form == "10-K":
+        fiscal_year = filing_date.year - 1 if filing_date.month <= 6 else filing_date.year
+        return f"FY{fiscal_year} Annual"
+    if form == "10-Q":
+        quarter = max(1, ((filing_date.month - 1) // 3))
+        return f"FY{filing_date.year} Q{quarter}"
+    return None
+
+
+def _latest_filing_period(ticker: str) -> Optional[str]:
+    try:
+        filings = get_sec_filings(ticker).get("filings", [])
+    except Exception:
+        return None
+    for filing in filings:
+        period = _period_from_filing(filing)
+        if period:
+            return period
+    return None
+
+
+def _resolve_deep_dive_quarter(
+    *,
+    ticker: str,
+    transcript_source: Dict[str, Any],
+    yf_data: Dict[str, Any],
+) -> str:
+    """Prefer reported periods and never use a future-looking transcript label."""
+    transcript_quarter = str(transcript_source.get("quarter") or "").strip()
+    if transcript_quarter and transcript_quarter.lower() != "latest quarter":
+        if not _is_forward_quarter(transcript_quarter):
+            return transcript_quarter
+
+    filing_period = _latest_filing_period(ticker)
+    if filing_period:
+        return filing_period
+
+    data_quarter = str(yf_data.get("quarter") or "").strip()
+    if data_quarter and not _is_forward_quarter(data_quarter):
+        return data_quarter
+
+    transcript_date = _parse_date(transcript_source.get("date"))
+    if transcript_date:
+        quarter = (transcript_date.month - 1) // 3 + 1
+        label = f"FY{transcript_date.year} Q{quarter}"
+        if not _is_forward_quarter(label):
+            return label
+
+    return "latest reported period"
+
+
+def _company_website(yf_data: Dict[str, Any], fh_data: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    candidates = [
+        yf_data.get("website"),
+        yf_data.get("weburl"),
+        yf_data.get("official_website"),
+    ]
+    if isinstance(fh_data, dict):
+        profile = fh_data.get("profile")
+        if isinstance(profile, dict):
+            candidates.extend([profile.get("weburl"), profile.get("website")])
+    for value in candidates:
+        if isinstance(value, str) and value.startswith(("http://", "https://")):
+            return value
     return None
 
 
@@ -164,6 +276,7 @@ def _add_earnings_deep_dive_if_transcript(
     result: AnalysisResult,
     yf_data: Dict[str, Any],
     language: str = "en",
+    company_website: Optional[str] = None,
 ) -> bool:
     """Generate the optional earnings deep-dive with transcript text when available."""
     try:
@@ -180,15 +293,24 @@ def _add_earnings_deep_dive_if_transcript(
         if not transcript_text:
             logger.info(f"[{ticker}] Earnings deep-dive proceeding without usable transcript")
 
-        transcript_quarter = str(transcript_source.get("quarter") or "latest quarter")
+        transcript_quarter = _resolve_deep_dive_quarter(
+            ticker=ticker,
+            transcript_source=transcript_source,
+            yf_data=yf_data,
+        )
 
         # If transcript is for a specific quarter, use quarter-specific yfinance data
         deep_dive_metrics = _deep_dive_metrics(result, yf_data)
-        if transcript_quarter != "latest quarter":
+        website = company_website or _company_website(yf_data)
+        if website:
+            deep_dive_metrics = deep_dive_metrics.model_copy(update={"company_website": website})
+        if re.search(r"(?:FY)?20\d{2}\s*Q[1-4]|20\d{2}Q[1-4]", transcript_quarter, re.IGNORECASE):
             from backend.sources_collector import get_yahoo_data_for_quarter
             q_yf = get_yahoo_data_for_quarter(ticker, transcript_quarter)
             if q_yf:
                 deep_dive_metrics = _deep_dive_metrics(result, q_yf)
+                if website:
+                    deep_dive_metrics = deep_dive_metrics.model_copy(update={"company_website": website})
 
         response = generate_deep_dive(
             DeepDiveRequest(
@@ -213,6 +335,9 @@ def _add_earnings_deep_dive_if_transcript(
             transcript_url=transcript_url,
             section_analysis=response.sections,
         )
+        if website:
+            from backend.earnings_deep_dive.report_model import SourceRef
+            report_model.sources.append(SourceRef(label="Official Website", url=website))
         render_earnings_deep_dive_pdf(report_model, pdf_path)
 
         logger.info(f"[{ticker}] Earnings deep-dive added to dossier")
@@ -750,8 +875,13 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
     
     # ── Management discourse + Risk extraction (Codex — single call) ──
     logger.info(f"[{ticker}] Fast: Management analysis (Codex)")
-    from backend.sources_collector import extract_10k_sections
+    from backend.sources_collector import extract_10k_sections, get_finnhub_data
     from backend.codex_provider import codex_analyze_management
+    
+    # Launch Finnhub fetch in parallel with 10-K extraction
+    import concurrent.futures as _cf
+    _fh_executor = _cf.ThreadPoolExecutor(max_workers=1)
+    _fh_future = _fh_executor.submit(get_finnhub_data, ticker)
     
     try:
         sec_10k = extract_10k_sections(ticker, output_dir=output_dir)
@@ -761,6 +891,13 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
     except Exception as e:
         logger.warning(f"[{ticker}] 10-K extraction failed: {e}")
         mda_text, risk_text, has_10k = "", "", False
+    
+    # Collect Finnhub result (should be ready by now)
+    try:
+        fh_data = _fh_future.result(timeout=5)
+    except Exception:
+        fh_data = {}
+    _fh_executor.shutdown(wait=False)
     
     if has_10k:
         codex_data = codex_analyze_management(mda_text, risk_text)
@@ -849,14 +986,12 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
     except Exception:
         pass
     
-    # Save Finnhub news (lightweight)
+    # Save Finnhub snapshot (already fetched in parallel with 10-K above)
     try:
-        from backend.sources_collector import get_finnhub_data
-        fh = get_finnhub_data(ticker)
-        if fh.get("news"):
+        if fh_data:
             fh_local = os.path.join(output_dir, "03_financial_data_sources", f"finnhub_{ticker}.json")
             with open(fh_local, "w") as f:
-                json.dump(fh, f, indent=2, default=str)
+                json.dump(fh_data, f, indent=2, default=str)
     except Exception:
         pass
     
@@ -897,14 +1032,8 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
         market_dir = os.path.join(output_dir, "05_market_and_context")
         os.makedirs(market_dir, exist_ok=True)
         
-        # Try Finnhub peers as bonus
-        peers = []
-        try:
-            from backend.sources_collector import get_finnhub_data
-            fh_data = get_finnhub_data(ticker)
-            peers = fh_data.get("peers", [])
-        except Exception:
-            pass
+        # Use already-fetched Finnhub peers (no re-fetch)
+        peers = fh_data.get("peers", [])
         
         market_md = os.path.join(market_dir, f"market_context_{ticker}_{date_str}.md")
         with open(market_md, "w") as f:
@@ -933,14 +1062,8 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
         tx_dir = os.path.join(output_dir, "04_transcripts_and_management")
         os.makedirs(tx_dir, exist_ok=True)
         
-        # Collect news from Finnhub (best effort)
-        news_articles = []
-        try:
-            from backend.sources_collector import get_finnhub_data
-            fh_news = get_finnhub_data(ticker)
-            news_articles = fh_news.get("news", [])
-        except Exception:
-            pass
+        # Use already-fetched Finnhub news (no re-fetch)
+        news_articles = fh_data.get("news", [])
         
         tx_md = os.path.join(tx_dir, f"earnings_news_{ticker}_{date_str}.md")
         with open(tx_md, "w") as f:
@@ -998,6 +1121,7 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
         output_dir=output_dir,
         result=result,
         yf_data=yf_data,
+        company_website=_company_website(yf_data, fh_data),
     )
     
     # 5. Excel financials (03)
@@ -1029,23 +1153,18 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
             "publisher": name,
             "used_for": ["price", "financials", "valuation", "identification"]
         }]
-        # Add Finnhub if available
-        from backend.sources_collector import get_finnhub_data
-        try:
-            fh = get_finnhub_data(ticker)
-            if fh.get("peers"):
-                manifest_sources.append({
-                    "id": "SRC-002",
-                    "category": "financial_data_sources",
-                    "title": f"Finnhub — {ticker} metrics and peers",
-                    "url": f"https://finnhub.io/stock/{ticker}",
-                    "retrieved_at": retrieved_at,
-                    "source_type": "financial_data_api",
-                    "publisher": "Finnhub",
-                    "used_for": ["peer_analysis", "financials"]
-                })
-        except Exception:
-            pass
+        # Use already-fetched Finnhub data (no re-fetch)
+        if fh_data.get("peers"):
+            manifest_sources.append({
+                "id": "SRC-002",
+                "category": "financial_data_sources",
+                "title": f"Finnhub — {ticker} metrics and peers",
+                "url": f"https://finnhub.io/stock/{ticker}",
+                "retrieved_at": retrieved_at,
+                "source_type": "financial_data_api",
+                "publisher": "Finnhub",
+                "used_for": ["peer_analysis", "financials"]
+            })
         manifest_path = os.path.join(output_dir, "06_extracted_data", "sources_manifest.json")
         os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
         with open(manifest_path, "w") as f:

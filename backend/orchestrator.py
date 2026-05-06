@@ -7,7 +7,7 @@ from backend.pipeline import AnalysisResult, analyze_ticker_fast
 
 logger = logging.getLogger(__name__)
 
-PER_TICKER_TIMEOUT = 300
+PER_TICKER_TIMEOUT = 1200  # generous for deep-dive LLM phase
 
 
 def run_analysis_sequential(tickers: List[str], output_base: str = "analyses") -> Dict[str, Any]:

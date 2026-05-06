@@ -64,24 +64,23 @@ def is_bilingual(markdown: str, language: str) -> bool:
     if not markdown:
         return False
 
-    checked_markdown = (
-        _EN_ALLOWED_TEMPLATE_CJK_RE.sub("", markdown)
-        if language == "en"
-        else markdown
-    )
-    has_cjk = _CJK_RE.search(checked_markdown) is not None
+    normalized = language.lower()
+    checked_markdown = markdown
+    cjk_chars = _CJK_RE.findall(checked_markdown)
+    has_cjk = bool(cjk_chars)
     latin_words = [
         word
         for word in _LATIN_WORD_RE.findall(checked_markdown)
         if word.upper() not in _LATIN_ALLOWLIST
     ]
 
-    if language == "en":
+    if normalized == "en":
         return has_cjk
 
-    if language == "jp":
+    if normalized in {"jp", "ja"}:
         if not has_cjk and len(latin_words) >= 12:
             return True
-        return has_cjk and len(latin_words) > 25
+        latin_chars = sum(len(word) for word in latin_words)
+        return has_cjk and len(latin_words) > 80 and latin_chars > (len(cjk_chars) * 2)
 
-    return has_cjk and len(latin_words) > 0
+    return False

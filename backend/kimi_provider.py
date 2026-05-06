@@ -37,21 +37,23 @@ def kimi_chat(
 ) -> Optional[str]:
     """Send a prompt to the best available LLM. Returns None on total failure.
     
-    Priority: Gemini (free) → Kimi K2.6 (free via NVIDIA) → DeepSeek → Codex
+    Priority: DeepSeek ($0.27/M) → Gemini (free) → Kimi K2.6 (free via NVIDIA)
     """
-    # 0. Gemini — free, no API key gate beyond Google account
+    # 1. DeepSeek — paid, fast, reliable (use first when key is set)
+    result = _deepseek_chat(prompt, system, max_tokens, temperature)
+    if result:
+        return result
+    
+    # 2. Gemini — free, good fallback
     from backend.gemini_provider import gemini_chat as _gemini
     result = _gemini(prompt, system=system, max_tokens=max_tokens)
     if result:
         return result
     
+    # 3. Kimi K2.6 — free via NVIDIA, last free option
     client = _get_kimi_client()
     if client is None:
-        # No NVIDIA key — try HTTP, then DeepSeek
-        result = _kimi_chat_http(prompt, system, max_tokens, temperature)
-        if result is not None:
-            return result
-        return _deepseek_chat(prompt, system, max_tokens, temperature)
+        return _kimi_chat_http(prompt, system, max_tokens, temperature)
 
     try:
         resp = client.chat.completions.create(
@@ -67,11 +69,7 @@ def kimi_chat(
         return resp.choices[0].message.content
     except Exception as e:
         logger.warning(f"Kimi K2.6 client error: {e}")
-        result = _kimi_chat_http(prompt, system, max_tokens, temperature)
-        if result is None:
-            # Fallback to DeepSeek if Kimi is down
-            return _deepseek_chat(prompt, system, max_tokens, temperature)
-        return result
+        return _kimi_chat_http(prompt, system, max_tokens, temperature)
 
 
 def _kimi_chat_http(
@@ -121,7 +119,7 @@ def _deepseek_chat(
     prompt: str,
     system: str,
     max_tokens: int,
-    temperature: float,
+    temperature: float = 0.3,
 ) -> Optional[str]:
     """Fallback to DeepSeek when Kimi is unavailable."""
     api_key = os.getenv("DEEPSEEK_API_KEY", "")

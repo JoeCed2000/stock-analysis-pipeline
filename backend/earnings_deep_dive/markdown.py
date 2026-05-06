@@ -8,10 +8,17 @@ def _placeholder(section: str) -> str:
     return f"## {section}\n\n- Section unavailable. Not disclosed."
 
 
-def assemble_final_report(sections: Dict[str, str], warnings: Optional[Iterable[str]] = None) -> str:
+def assemble_final_report(
+    sections: Dict[str, str],
+    warnings: Optional[Iterable[str]] = None,
+    company_website: Optional[str] = None,
+) -> str:
     """Assemble section markdown in deterministic report order."""
     lines: List[str] = ["# Earnings Call Deep-Dive", ""]
     warning_list = [w for w in (warnings or []) if w]
+
+    if company_website:
+        lines.extend([f"**Official Website:** {company_website}", ""])
 
     if warning_list:
         lines.extend(["## Warnings", ""])

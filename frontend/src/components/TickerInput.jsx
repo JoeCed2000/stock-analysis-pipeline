@@ -16,9 +16,12 @@ export default function TickerInput({ onAnalyze, loading, t }) {
 
   // Auto-parse with debounce
   useEffect(() => {
+    // Clear stale items on every keystroke to prevent race condition:
+    // user corrects ticker → submits before new debounce fires → old data persists
+    setItems([]);
+    setSelected(new Set());
+
     if (!value.trim()) {
-      setItems([]);
-      setSelected(new Set());
       return;
     }
 

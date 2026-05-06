@@ -27,13 +27,13 @@ SECTION_TITLES: Dict[str, str] = {
     "EPS & Revenue": "📊 EPS & Revenue",
     "Highlights": "🌟 Highlights & ⚠️ Lowlights",
     "Operating Metrics": "🧠 Operating Metrics",
-    "Cash Flow": "💵 Cash Flow",
-    "Capital Efficiency": "💰 Capital Efficiency",
-    "Segments": "🎯 Segments",
+    "Cash Flow": "💰 Cash Flow",
+    "Capital Efficiency": "🎯 Capital Efficiency",
+    "Segments": "🧩 Segments",
     "Forward P/E": "📈 Forward P/E",
     "Backlog": "📦 Backlog Quality",
-    "Guidance": "🧩 Guidance",
-    "Verdict": "🏆 Verdict / 総合評価",
+    "Guidance": "🔮 Guidance",
+    "Verdict": "🏆 Verdict",
 }
 
 SECTION_ORDER: List[str] = [
@@ -311,19 +311,198 @@ Required analysis format:
 🧩 本質理解: explain the quality of the quarter in simple terms.""",
 }
 
+EN_SECTION_FORMATS: Dict[str, str] = {
+    "EPS & Revenue": """Required table:
+{table_header}
+|---|---|---|---|---|---|
+| EPS | ... | ... | ... | ... | ... |
+| Revenue | ... | ... | ... | ... | ... |
+
+Required analysis format:
+① EPS: beat/miss, YoY direction, and exact source.
+② Revenue: beat/miss, YoY direction, and exact source.
+③ Quality of the beat/miss: explain whether both top line and profit moved together.
+For Nami-san: explain in plain investor terms whether this is a high-quality surprise or not.""",
+    "Highlights": """Required table:
+{table_header}
+|---|---|---|---|---|---|
+| 🌟 Highlight | ① | ... | ... | ... | — |
+| ⚠️ Lowlight | ① | ... | ... | ... | Low / Medium / High |
+
+Required analysis format:
+🌟 Highlights
+① ...
+* Metric / transcript evidence
+* Why it matters
+② ...
+③ ...
+
+⚠️ Lowlights
+① ...
+* Evidence and severity
+* Investor concern
+② ...
+③ ...
+
+Essential insight for Nami-san: grade the quarter in one concise line.
+Investment takeaway: state the core takeaway without investment advice.""",
+    "Operating Metrics": """Required table:
+{table_header}
+|---|---|---|---|---|
+| Revenue | ... | ... | ... | ... |
+| Gross Profit | ... | ... | ... | ... |
+| Gross Margin | ... | ... | ... | ... |
+| OpEx | ... | ... | ... | ... |
+| Operating Income | ... | ... | ... | ... |
+| Operating Margin | ... | ... | ... | ... |
+| Net Income | ... | ... | ... | ... |
+
+Required analysis format:
+🧠 Explanation and analysis
+① Gross profit / gross margin: expansion or compression, with drivers.
+② Operating income / operating margin: whether scale benefits offset OpEx.
+③ OpEx and net income: cost investment, tax/other effects, and sustainability.
+Operating structure: summarize revenue growth x margins x cost structure.
+Essential insight for Nami-san: explain whether earnings quality is high or fragile.
+Caution: list the next 2 checks.""",
+    "Cash Flow": """Required table:
+{table_header}
+|---|---|---|---|---|---|
+| Operating Cash Flow (OCF) | ... | ... | ... | ... | ... |
+| CapEx | ... | ... | ... | ... | ... |
+| Free Cash Flow (FCF) | ... | ... | ... | ... | ... |
+
+Required analysis format:
+🧠 Explanation and analysis
+① Operating cash flow: cash earnings quality and working-capital effect.
+② CapEx: whether investment intensity is rising or falling.
+③ Free cash flow: conversion from earnings to cash and sustainability.
+Cash structure: compare cash generation versus reinvestment needs.
+Essential insight for Nami-san: explain whether the company creates cash efficiently or burns cash.
+💰 Cash use: buybacks, dividends, debt paydown — state actual amounts.
+Caution for Nami-san: mention one-off working-capital or future investment risks.""",
+    "Capital Efficiency": """Required table:
+{table_header}
+|---|---|---|---|---|
+| ROE | ... | ... | ... | ... |
+| ROTCE / ROTE | ... | ... | ... | ... |
+| ROA | ... | ... | ... | ... |
+| ROIC | ... | ... | ... | ... |
+
+Required analysis format:
+Supporting calculation data: list net income, assets, equity, invested capital if available.
+🧠 Metric-by-metric explanation
+① ROE: why high/low and whether buybacks distort it.
+② ROTCE / ROTE and ROA: core efficiency and asset productivity.
+③ ROIC: the most important capital-return read-through versus cost of capital.
+For Nami-san: state whether capital efficiency is excellent, normal, or weak.
+Caution: distinguish financial engineering from business-model strength.""",
+    "Segments": """Required tables:
+{table_header}
+|---|---|---|---|---|---|
+| Product / Category 1 | ... | ... | ... | ... | ... |
+| Product / Category 2 | ... | ... | ... | ... | ... |
+
+{table_header}
+|---|---|---|---|---|---|
+| Region 1 | ... | ... | ... | ... | ... |
+| Region 2 | ... | ... | ... | ... | ... |
+
+Required analysis format:
+🧠 Segment explanation and analysis
+① Lead product/category segment: growth, mix, and driver.
+② Profit engine or recurring segment: margin relevance and durability.
+③ Stable / weak segments: recovery, maturity, or pressure.
+Regional points:
+① Strongest region
+② Emerging growth region
+③ Mature-market stability or weakness
+Overall structure: revenue mix and concentration.
+Essential insight for Nami-san: short / medium / long-term segment thesis.
+Caution: concentration and future segment dependency.""",
+    "Forward P/E": """Required table:
+{table_header}
+|---|---|---|---|---|
+| Forward P/E | ... | Sector / history / peers | ... | ... |
+| Forward EPS basis | ... | Consensus / company guide | ... | ... |
+| Growth support | ... | Revenue / margin / guidance | ... | ... |
+
+Required analysis format:
+📈 Forward P/E check
+① Current multiple: state the value from supplied metrics.
+② Comparison: sector, history, peers — use available context.
+③ Justification: whether growth, margins, cash, backlog, or guidance support the multiple.
+For Nami-san: explain if valuation looks supported, stretched, or not assessable.
+Caution: do not invent consensus numbers; mark missing data.""",
+    "Backlog": """Required table:
+{table_header}
+|---|---|---|---|---|
+| Quantity | ... | ... | ... | ... |
+| Coverage | ... | ... | ... | ... |
+| Quality | ... | ... | ... | ... |
+| Conversion risk | ... | ... | ... | ... |
+
+Required analysis format:
+Conclusion: quantity and quality in one line.
+① Quantity: backlog amount and quarters of coverage.
+② Quality: firm commitments versus cancellable pipeline.
+③ Why quality is high/low: demand duration, customer commitment, supply constraints.
+④ Caution: pricing, cancellation, coverage, and burn-down risk.
+⑤ Backlog quality in one phrase.
+Essential insight for Nami-san: explain what visibility changed and list next questions.""",
+    "Guidance": """Required table:
+{table_header}
+|---|---|---|---|---|
+| Revenue | ... | ... | ... | ... |
+| Gross Margin | ... | ... | ... | ... |
+| OpEx | ... | ... | ... | ... |
+| EPS | ... | ... | ... | ... |
+| Diluted Shares | ... | ... | ... | ... |
+
+Required analysis format:
+Next-quarter guidance: present the table first.
+In one line: concise direction such as strong growth, high profitability, or cautious.
+Analysis:
+① Revenue: acceleration/deceleration and demand drivers.
+② Profitability: gross margin and OpEx implications.
+③ EPS: QoQ / YoY direction.
+④ Structural signals: customer mix, long-term contracts, pricing, product cycle, or macro.
+Medium-term implications:
+① Revenue direction
+② Margin direction
+③ Stabilizing or risk factors
+Caution: whether guidance is too strong, price dependent, or cyclical.
+Essential insight for Nami-san: what the guide means and what to monitor next.""",
+    "Verdict": """Required table:
+{table_header}
+|---|---|---|---|---|
+| Strengths | ... | ... | ... | ... |
+| Weaknesses | ... | ... | ... | ... |
+| Opportunities | ... | ... | ... | ... |
+| Risks | ... | ... | ... | ... |
+
+Required analysis format:
+🏆 Overall assessment for Nami-san
+① What was strongest: growth, margins, cash, backlog, or guidance.
+② What was weakest: costs, concentration, valuation, cyclicality, or missing data.
+③ What matters next: the 2-3 monitor items for the next quarter.
+Investment takeaway: summarize the thesis without making buy/sell advice.
+Caution: cite only sourced risks.
+Essential insight: explain the quality of the quarter in simple terms.""",
+}
+
 
 def system_prompt(language: str) -> str:
     if language == "en":
         return (
             "You are an earnings-call analyst writing for Nami-san, a Japanese investor. "
-            "Write in ENGLISH only — no Japanese characters, no CJK. "
-            "Follow the 14-page Earnings Documents PDF template exactly: start each section "
-            "with the question, use the required markdown table, then numbered analysis using "
+            "Write in ENGLISH only: no Japanese characters and no CJK labels. "
+            "Follow the 14-page Earnings Documents PDF template: start each section "
+            "with the required heading, use the required markdown table, then numbered analysis using "
             "①②③, include 'For Nami-san:' interpretation lines where specified, and end with "
             "'> One-line summary:'. Use the supplied metrics and transcript evidence. "
-            "Every table cell must contain a real number. "
-            "If a metric is missing from the supplied data, compute it from related metrics "
-            "(e.g., EPS = Net Income ÷ Shares Outstanding). Never omit a table cell. "
+            "Every table cell must contain a sourced value or DONNÉE NON DISPONIBLE. "
+            "Compute a metric only when all formula inputs are supplied; otherwise write DONNÉE NON DISPONIBLE. "
             "End each section with exactly one line: > One-line summary: [concise insight]. "
             "If transcript is unavailable, generate each section using ONLY the supplied "
             "financial_metrics and write 'Data not available in transcript' for qualitative "
@@ -334,13 +513,12 @@ def system_prompt(language: str) -> str:
         )
     return (
         "You are an earnings-call analyst writing for Nami-san, a Japanese investor. "
-        "Follow the 14-page Earnings Documents PDF template exactly: start each section "
-        "with the question, use the required markdown table, then numbered analysis using "
+        "Follow the 14-page Earnings Documents PDF template: start each section "
+        "with the required heading, use the required markdown table, then numbered analysis using "
         "①②③, include Namiさん向け interpretation lines where specified, and end with "
         "> 一言まとめ:. Use the supplied metrics and transcript evidence. "
-        "Every table cell must contain a real number. "
-        "If a metric is missing from the supplied data, compute it from related metrics "
-        "(e.g., EPS = Net Income ÷ Shares Outstanding). Never omit a table cell. "
+        "Every table cell must contain a sourced value or DONNÉE NON DISPONIBLE. "
+        "Compute a metric only when all formula inputs are supplied; otherwise write DONNÉE NON DISPONIBLE. "
         "If transcript is unavailable, generate each section using ONLY the supplied "
         "financial_metrics and write Data not available in transcript for qualitative "
         "call discussion that would require management commentary. "
@@ -398,12 +576,11 @@ def _language_rules(language: str) -> str:
         )
     return (
         "Use English ONLY for the entire answer — no Japanese characters, no CJK. "
-        "Use these English labels: 'For Nami-san:' instead of Namiさん向け, "
-        "'Caution:' instead of 注意点, 'Essential insight:' instead of 本質理解, "
-        "and '> One-line summary:' instead of > 一言まとめ:. "
-        "Every table cell must contain a real number. "
-        "If a metric is missing, compute it from available metrics (e.g., EPS = Net Income ÷ Shares). "
-        "Never leave a cell empty."
+        "Use English labels only: 'For Nami-san:', 'Caution:', 'Essential insight:', "
+        "and '> One-line summary:'. "
+        "Every table cell must contain a sourced value or DONNÉE NON DISPONIBLE. "
+        "Compute a metric only when all formula inputs are supplied; otherwise write DONNÉE NON DISPONIBLE. "
+        "Never leave a cell empty and never invent missing values."
     )
 
 
@@ -420,7 +597,9 @@ def _base_prompt(
     canonical = _canonical_section(section)
     title = _section_title(section)
     table_header = TABLE_REQUIREMENTS[canonical]
-    section_format = SECTION_FORMATS[canonical].format(table_header=table_header)
+    is_jp = language.lower() in {"jp", "ja"}
+    format_source = SECTION_FORMATS if is_jp else EN_SECTION_FORMATS
+    section_format = format_source[canonical].format(table_header=table_header)
     question = _format_question(canonical, language, ticker, company, quarter)
     transcript_context = (
         transcript_excerpt
@@ -433,7 +612,6 @@ def _base_prompt(
         )
     )
 
-    is_jp = language.lower() in {"jp", "ja"}
     nami_label = "Namiさん向け解釈 / Namiさん向けの本質理解" if is_jp else "For Nami-san / Essential insight"
     missing_label = "—"
     summary_label = "> 一言まとめ: [one-line summary]" if is_jp else "> One-line summary: [one-line summary]"
@@ -447,21 +625,20 @@ Quarter: {quarter}
 Metrics: {_fmt_metrics(metrics)}
 Transcript excerpt: {transcript_context}
 
-PDF template question:
+Analysis question for context only; do not print it in the output:
 {question}
 
 Section output contract:
 - Start with exactly: ## {title}
-- Immediately after the heading, print the question line(s) exactly as shown above.
 - Use strict markdown only.
-- Use the PDF visual markers where applicable: 📊 🌟 ⚠️ 🧠 🎯 🧩 💰 📈 📦 🏆.
+- Use the PDF visual markers where applicable: 📊 🌟 ⚠️ 🧠 🎯 🧩 💰 📈 📦 🔮 🏆.
 - Include the required table header exactly: {table_header}
 - Put every numeric financial claim in a table first, then explain it below.
 - Use numbered analysis markers ①②③. Use ④⑤⑥ only when the PDF section calls for more points.
 - Include {nami_label} where specified.
 - Use direct transcript or supplied-metric evidence. Never invent financial data.
 - If the transcript excerpt says no transcript is available, use only Metrics and mark qualitative call evidence as Data not available in transcript.
-- Every table cell must contain a real number or computed value. Never leave cells empty.
+- Every table cell must contain a sourced value or DONNÉE NON DISPONIBLE. Never leave cells empty and never invent missing values.
 - End with exactly one final blockquote line: {summary_label}
 
 PDF-aligned section skeleton:

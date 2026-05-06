@@ -68,10 +68,11 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
   const insight = getInsight(scoring, t);
 
   // ── Dossier polling ──
-  const [dossierStatus, setDossierStatus] = useState(null);
+  const [dossierStatus, setDossierStatus] = useState({ sectionsReady: 0, pollFailures: 0 });
   const [countdown, setCountdown] = useState(null);
   const pollRef = useRef(null);
   const countdownRef = useRef(null);
+  const failedPollsRef = useRef(0);
   const ESTIMATED_SECS = 5; // dossier is now synchronous — ready in <5s
 
   // ── Quarter selector ──
@@ -97,9 +98,10 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
       try {
         const status = await getDossierStatus(ticker);
         if (!cancelled) {
+          failedPollsRef.current = 0;
           poles++;
           const sectionCount = countDossierSections(status.files || []);
-          setDossierStatus({ ...status, sectionsReady: sectionCount, poles });
+          setDossierStatus({ ...status, sectionsReady: sectionCount, poles, pollFailures: 0 });
           // Stop polling only after a terminal verification state or timeout.
           const terminalVerification = status.download_enabled === true
             || (status.ready === true && status.deep_dive_validated === false);
@@ -108,7 +110,17 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
             pollRef.current = null;
           }
         }
-      } catch { /* network error — will retry */ }
+      } catch (error) {
+        failedPollsRef.current += 1;
+        console.warn('Dossier status poll failed', error);
+        if (!cancelled) {
+          setDossierStatus(prev => ({
+            ...(prev || {}),
+            sectionsReady: prev?.sectionsReady ?? 0,
+            pollFailures: failedPollsRef.current,
+          }));
+        }
+      }
     };
     poll(); // immediate
     pollRef.current = setInterval(poll, 5000); // every 5s
@@ -285,6 +297,11 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
             {dossierStatus?.estimated_seconds > 0 && (
               <span style={{ display: 'block', fontSize: 9, color: '#484f58', marginTop: 2 }}>
                 {lang === 'ja' ? t('estimatedSingle') : t('estimatedSingle')}
+              </span>
+            )}
+            {dossierStatus?.pollFailures >= 3 && (
+              <span style={{ display: 'block', fontSize: 9, color: '#d29922', marginTop: 2 }}>
+                {lang === 'ja' ? 'ステータス再試行中' : 'Retrying status'}
               </span>
             )}
           </div>

@@ -33,6 +33,18 @@ _GRID = colors.HexColor("#B8B8B8")
 _TEXT = colors.HexColor("#111111")
 _MUTED = colors.HexColor("#5D5D5D")
 _REGISTERED_FONTS: set[str] = set()
+_SECTION_PREFIXES = {
+    "EPS & Revenue": "📊 [EPS]",
+    "Highlights": "🌟 [Highlights] ⚠️ [Lowlights]",
+    "Operating Metrics": "🧠 [Operating]",
+    "Cash Flow": "💰 [Cash]",
+    "Capital Efficiency": "🎯 [Capital]",
+    "Segments": "🧩 [Segments]",
+    "Forward P/E": "📈 [Valuation]",
+    "Backlog": "📦 [Backlog]",
+    "Guidance": "🔮 [Guidance]",
+    "Verdict": "🏆 [Verdict]",
+}
 
 
 @dataclass(frozen=True)
@@ -182,6 +194,20 @@ def _paragraph(text: str, style: ParagraphStyle, *, font_name: str) -> Paragraph
     return Paragraph(escaped, style)
 
 
+def _section_title(section) -> str:
+    prefix = _SECTION_PREFIXES.get(section.key)
+    if not prefix:
+        return section.title
+    return f"{prefix} {section.title}"
+
+
+def _official_website(report: EarningsDeepDiveReport) -> str | None:
+    for source in report.sources:
+        if source.label.lower() == "official website" and source.url:
+            return source.url
+    return None
+
+
 def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Table:
     data = [
         [_paragraph(column, styles["small_bold"], font_name=fonts.bold) for column in section.table.columns]
@@ -250,10 +276,12 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         Paragraph(escape(f"{report.company} ({report.ticker})"), styles["title"]),
         Paragraph(escape(f"Earnings Deep-Dive - {report.quarter}"), styles["meta"]),
     ]
+    website = _official_website(report)
+    if website:
+        story.append(Paragraph(escape(f"Official Website: {website}"), styles["meta"]))
 
     for index, section in enumerate(report.sections):
-        story.append(Paragraph(escape(section.title), styles["section"]))
-        story.append(_paragraph(section.question, styles["question"], font_name=fonts.regular))
+        story.append(Paragraph(escape(_section_title(section)), styles["section"]))
         story.append(_table(section, styles, fonts))
         if section.analysis:
             for paragraph in section.analysis:

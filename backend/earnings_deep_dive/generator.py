@@ -164,25 +164,95 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
         section: _extract_relevant_excerpt(transcript_text, SECTION_KEYWORDS[section])
         for section in SECTION_ORDER
     }
-
+    
+    has_tx = bool(transcript_text)
+    
+    def _gen_batch(
+        secs: List[str],
+        provider_name: str,
+        chat_fn,
+    ) -> Tuple[Dict[str, str], List[SectionStatus], List[str]]:
+        """Generate a batch of sections with a specific provider."""
+        batch_sections: Dict[str, str] = {}
+        batch_statuses: List[SectionStatus] = []
+        batch_warnings: List[str] = []
+        
+        for section in secs:
+            sys_prompt = system_prompt(request.language)
+            last_error = ""
+            ok = False
+            
+            for attempt in (1, 2):
+                prompt = build_prompt(
+                    section, request.language, request.ticker, company,
+                    request.quarter, _section_metrics(section, metrics),
+                    excerpts[section],
+                )
+                if attempt == 2:
+                    prompt += (
+                        "\nRetry instruction: fix the previous malformed output. "
+                        "Keep the exact required heading, avoid repeated lines, "
+                        "and follow table requirements.\n"
+                    )
+                
+                try:
+                    try:
+                        output = chat_fn(prompt, system=sys_prompt, max_tokens=MAX_CODEX_TOKENS, temperature=0.3)
+                    except TypeError as exc:
+                        if "temperature" not in str(exc):
+                            raise
+                        output = chat_fn(prompt, system=sys_prompt, max_tokens=MAX_CODEX_TOKENS)
+                    if not output:
+                        raise KimiFailureError(f"{provider_name} returned no content")
+                    
+                    cleaned = _clean_section_output(output, request.max_section_chars)
+                    _validate_section(
+                        cleaned, section, request.language,
+                        request.max_section_chars, require_table=has_tx,
+                    )
+                    batch_sections[section] = cleaned
+                    batch_statuses.append(SectionStatus(
+                        name=section,
+                        status="ok" if attempt == 1 else "retry_ok",
+                        attempts=attempt,
+                    ))
+                    ok = True
+                    break
+                except (KimiFailureError, ValidationError) as exc:
+                    last_error = str(exc)
+            
+            if not ok:
+                batch_sections[section] = _placeholder_section(section, last_error)
+                batch_statuses.append(SectionStatus(
+                    name=section, status="failed", attempts=2, error=last_error or "failed",
+                ))
+                batch_warnings.append(f"{section}: {last_error or 'section unavailable'}")
+        
+        return batch_sections, batch_statuses, batch_warnings
+    
+    # The wrapper keeps retries and provider fallback behavior patchable in tests.
+    sections_a_dict, statuses_a, warnings_a = _gen_batch(list(SECTION_ORDER), "kimi", kimi_chat)
+    sections_b_dict, statuses_b, warnings_b = {}, [], []
+    
+    # Merge in original order
     for section in SECTION_ORDER:
-        section_markdown, status = _generate_section(
-            section=section,
-            request=request,
-            company=company,
-            metrics=metrics,
-            transcript_excerpt=excerpts[section],
-            has_transcript=bool(transcript_text),
-        )
-        sections[section] = section_markdown
-        statuses.append(status)
-        if status.status in {"failed", "placeholder"}:
-            warnings.append(f"{section}: {status.error or 'section unavailable'}")
+        if section in sections_a_dict:
+            sections[section] = sections_a_dict[section]
+        elif section in sections_b_dict:
+            sections[section] = sections_b_dict[section]
+    statuses = statuses_a + statuses_b
+    warnings = warnings_a + warnings_b
+    # Keep existing warnings from status failures
+    for status in statuses:
+        if status.status in {"failed", "placeholder"} and status.name not in [w.split(":")[0] for w in warnings]:
+            warnings.append(f"{status.name}: {status.error or 'section unavailable'}")
 
     transcript_url = request.transcript_url or transcript_meta.get("url") or transcript_meta.get("transcript_url")
+    company_website = _company_website_from_metrics(metrics)
     report_markdown = _append_sources_section(
-        assemble_final_report(sections, warnings=warnings),
+        assemble_final_report(sections, warnings=warnings, company_website=company_website),
         transcript_url,
+        company_website,
     )
     markdown_path, meta_path = _save_outputs(
         output_dir=output_dir,
@@ -427,10 +497,27 @@ def _placeholder_section(section: str, reason: str) -> str:
     return f"## {section}\n\n- Section unavailable. Not disclosed.\n- Reason: {reason_text}"
 
 
-def _append_sources_section(report_markdown: str, transcript_url: str | None) -> str:
-    if not transcript_url:
+def _company_website_from_metrics(metrics: Dict[str, Any]) -> str | None:
+    for key in ("company_website", "website", "weburl", "official_website"):
+        value = metrics.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _append_sources_section(
+    report_markdown: str,
+    transcript_url: str | None,
+    company_website: str | None = None,
+) -> str:
+    if not transcript_url and not company_website:
         return report_markdown
-    return report_markdown.rstrip() + f"\n\n## Sources\n\n- Transcript: {transcript_url}\n"
+    lines = [report_markdown.rstrip(), "", "## Sources", ""]
+    if transcript_url:
+        lines.append(f"- Transcript: {transcript_url}")
+    if company_website:
+        lines.append(f"- Official Website: {company_website}")
+    return "\n".join(lines) + "\n"
 
 
 def _save_outputs(
