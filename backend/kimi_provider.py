@@ -39,8 +39,11 @@ def kimi_chat(
     Returns None on failure."""
     client = _get_kimi_client()
     if client is None:
-        # Fallback to raw HTTP
-        return _kimi_chat_http(prompt, system, max_tokens, temperature)
+        # No NVIDIA key — try HTTP, then DeepSeek
+        result = _kimi_chat_http(prompt, system, max_tokens, temperature)
+        if result is not None:
+            return result
+        return _deepseek_chat(prompt, system, max_tokens, temperature)
 
     try:
         resp = client.chat.completions.create(
