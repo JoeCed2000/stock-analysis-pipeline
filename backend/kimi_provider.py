@@ -35,8 +35,16 @@ def kimi_chat(
     max_tokens: int = 800,
     temperature: float = 0.3,
 ) -> Optional[str]:
-    """Send a prompt to Kimi K2.6 and return the response text.
-    Returns None on failure."""
+    """Send a prompt to the best available LLM. Returns None on total failure.
+    
+    Priority: Gemini (free) → Kimi K2.6 (free via NVIDIA) → DeepSeek → Codex
+    """
+    # 0. Gemini — free, no API key gate beyond Google account
+    from backend.gemini_provider import gemini_chat as _gemini
+    result = _gemini(prompt, system=system, max_tokens=max_tokens)
+    if result:
+        return result
+    
     client = _get_kimi_client()
     if client is None:
         # No NVIDIA key — try HTTP, then DeepSeek
