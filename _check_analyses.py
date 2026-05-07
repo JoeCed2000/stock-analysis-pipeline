@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
-"""Check what /api/analyses returns from Render."""
-import requests, json
+"""Quick check: what does /api/analyses return?"""
+import requests, json, sys
 
-RENDER_BASE = "https://stock-analysis-api-tdtj.onrender.com"
-resp = requests.get(f"{RENDER_BASE}/api/analyses", timeout=15)
-print("Status:", resp.status_code)
-data = resp.json()
-print(json.dumps(data, indent=2)[:3000])
+try:
+    r = requests.get("https://stock-analysis-api-tdtj.onrender.com/api/analyses", timeout=120)
+    print(f"Status: {r.status_code}")
+    data = r.json()
+    print(f"Keys: {list(data.keys())}")
+    analyses = data.get("analyses", [])
+    print(f"Analysis count: {len(analyses)}")
+    for a in analyses[:20]:
+        print(json.dumps(a))
+except Exception as e:
+    print(f"ERROR: {e}", file=sys.stderr)
+    sys.exit(1)

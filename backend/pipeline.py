@@ -286,13 +286,137 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
     )
 
 
+def _segment_metrics_shape(segment_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep segment rows first for the PDF mapper while preserving raw product_segments."""
+    if not isinstance(segment_data, dict):
+        return {}
+
+    shaped: Dict[str, Any] = {}
+    product_segments = segment_data.get("product_segments")
+    if isinstance(product_segments, list):
+        for segment in product_segments:
+            if not isinstance(segment, dict):
+                continue
+            name = str(segment.get("name") or "").strip()
+            if not name:
+                continue
+            revenue = segment.get("revenue_quarterly")
+            shaped[name] = {
+                "revenue": revenue,
+                "revenue_quarterly": revenue,
+                "revenue_q_prior_year": segment.get("revenue_q_prior_year"),
+                "source": segment.get("source") or segment_data.get("source") or "SEC XBRL",
+            }
+
+    for key in ("product_segments", "total_revenue_quarterly", "total_revenue_6m", "deferred_revenue_total", "deferred_revenue_1yr_pct", "source", "filing_date"):
+        if key in segment_data:
+            shaped[key] = segment_data[key]
+    return shaped
+
+
 def _extract_segments(ticker: str, guidance: Optional[str] = None) -> Dict[str, Any]:
     """Extract segment revenue data from SEC EDGAR XBRL via edgartools."""
     try:
         from backend.edgar_extractor import extract_segment_revenue
-        return extract_segment_revenue(ticker)
+        return _segment_metrics_shape(extract_segment_revenue(ticker))
     except Exception:
         return {}
+
+
+def _merge_press_release_segments(
+    existing_segments: Dict[str, Any],
+    press_release_data: Dict[str, Any],
+) -> Dict[str, Any]:
+    merged = dict(existing_segments) if isinstance(existing_segments, dict) else {}
+    press_segments = press_release_data.get("product_segments") if isinstance(press_release_data, dict) else None
+    if not isinstance(press_segments, list) or not press_segments:
+        return merged
+
+    raw_segments = []
+    existing_raw = merged.get("product_segments")
+    if isinstance(existing_raw, list):
+        raw_segments.extend(item for item in existing_raw if isinstance(item, dict))
+
+    seen = {str(item.get("name") or "").strip().lower() for item in raw_segments if item.get("name")}
+    for press_segment in press_segments:
+        if not isinstance(press_segment, dict):
+            continue
+        name = str(press_segment.get("name") or "").strip()
+        if not name:
+            continue
+        revenue = press_segment.get("revenue_quarterly")
+        row = merged.get(name)
+        if isinstance(row, dict):
+            if row.get("revenue") is None and revenue is not None:
+                row["revenue"] = revenue
+                row["revenue_quarterly"] = revenue
+            row["source"] = "SEC XBRL + Press release" if row.get("source") else "Press release"
+        else:
+            row = {"name": name, "revenue_quarterly": revenue, "source": "Press release"}
+        if name.lower() not in seen:
+            raw_segments.append(row if isinstance(row, dict) and row.get("name") else press_segment)
+            seen.add(name.lower())
+
+    raw_segment_data: Dict[str, Any] = {
+        "product_segments": raw_segments,
+        "source": merged.get("source") or "SEC XBRL + Press release",
+    }
+    if merged.get("total_revenue_quarterly") or press_release_data.get("revenue"):
+        raw_segment_data["total_revenue_quarterly"] = merged.get("total_revenue_quarterly") or press_release_data.get("revenue")
+    for key in ("total_revenue_6m", "deferred_revenue_total", "deferred_revenue_1yr_pct", "filing_date"):
+        if key in merged:
+            raw_segment_data[key] = merged[key]
+    return _segment_metrics_shape(raw_segment_data)
+
+
+def _format_guidance_from_press_release(press_release_data: Dict[str, Any]) -> Optional[str]:
+    guidance = press_release_data.get("guidance") if isinstance(press_release_data, dict) else None
+    if not isinstance(guidance, dict) or not guidance:
+        return None
+    if guidance.get("text"):
+        return str(guidance["text"])
+    parts = []
+    if guidance.get("revenue") is not None:
+        parts.append(f"Revenue guidance: {guidance['revenue']}")
+    if guidance.get("gross_margin_pct") is not None:
+        parts.append(f"Gross margin guidance: {guidance['gross_margin_pct']}%")
+    return "; ".join(parts) if parts else None
+
+
+def _apply_press_release_metrics(
+    metrics: FinancialMetrics,
+    press_release_data: Dict[str, Any],
+) -> FinancialMetrics:
+    if not isinstance(press_release_data, dict) or press_release_data.get("error"):
+        return metrics
+    updates: Dict[str, Any] = {}
+    url = press_release_data.get("url")
+    if isinstance(url, str) and url.startswith(("http://", "https://")):
+        updates["press_release_url"] = url
+    merged_segments = _merge_press_release_segments(metrics.segments, press_release_data)
+    if merged_segments:
+        updates["segments"] = merged_segments
+    if not metrics.guidance:
+        press_guidance = _format_guidance_from_press_release(press_release_data)
+        if press_guidance:
+            updates["guidance"] = press_guidance
+    return metrics.model_copy(update=updates) if updates else metrics
+
+
+def _strip_prompt_leak_text(text: str) -> str:
+    if not isinstance(text, str) or not text:
+        return text
+    cleaned = re.sub(
+        r"(?im)^\s*please\s+(?:summarize|explain|state)\b[^\n]*(?:\n|$)",
+        "",
+        text,
+    )
+    cleaned = re.sub(r"(?i)\bplease\s+(?:summarize|explain|state)\b[:\s,.-]*", "", cleaned)
+    return cleaned.strip()
+
+
+def _strip_prompt_leaks_from_sections(sections: Dict[str, str]) -> Dict[str, str]:
+    return {key: _strip_prompt_leak_text(value) for key, value in sections.items()}
 
 
 def _add_earnings_deep_dive_if_transcript(
@@ -325,6 +449,13 @@ def _add_earnings_deep_dive_if_transcript(
         if not transcript_text:
             logger.info(f"[{ticker}] Earnings deep-dive proceeding without usable transcript")
 
+        try:
+            from backend.press_release_fetcher import fetch_press_release_for_ticker
+            press_release_data = fetch_press_release_for_ticker(ticker, output_dir=output_dir)
+        except Exception as exc:
+            logger.warning(f"[{ticker}] Press release fetch failed: {exc}")
+            press_release_data = {}
+
         transcript_quarter = _resolve_deep_dive_quarter(
             ticker=ticker,
             transcript_source=transcript_source,
@@ -333,6 +464,7 @@ def _add_earnings_deep_dive_if_transcript(
 
         # If transcript is for a specific quarter, use quarter-specific yfinance data
         deep_dive_metrics = _deep_dive_metrics(result, yf_data)
+        deep_dive_metrics = _apply_press_release_metrics(deep_dive_metrics, press_release_data)
         website = company_website or _company_website(yf_data)
         investor_relations = _investor_relations_url(yf_data)
         if website:
@@ -346,6 +478,7 @@ def _add_earnings_deep_dive_if_transcript(
             q_yf = get_yahoo_data_for_quarter(ticker, transcript_quarter)
             if q_yf:
                 deep_dive_metrics = _deep_dive_metrics(result, q_yf)
+                deep_dive_metrics = _apply_press_release_metrics(deep_dive_metrics, press_release_data)
                 if website:
                     deep_dive_metrics = deep_dive_metrics.model_copy(update={"company_website": website})
                 if investor_relations:
@@ -369,6 +502,7 @@ def _add_earnings_deep_dive_if_transcript(
                 transcript_url=transcript_url,
             )
         )
+        response.sections = _strip_prompt_leaks_from_sections(response.sections)
 
         pdf_path = os.path.join(output_dir, "07_final_report", "earnings_deep_dive.pdf")
         report_model = build_earnings_deep_dive_report(

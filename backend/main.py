@@ -59,7 +59,7 @@ def _should_convert_dossier_text_to_pdf(fpath: Path, *, refresh_pdf: bool) -> bo
 
 from backend.models import TickerRequest, AnalysisResult
 from backend.orchestrator import run_analysis_parallel
-from backend.earnings_deep_dive import DeepDiveRequest, DeepDiveResponse, generate_deep_dive
+from backend.earnings_deep_dive.schemas import DeepDiveRequest, DeepDiveResponse
 from backend.sources_collector import list_available_quarters, get_yahoo_data_for_quarter
 from backend.search_logger import log_search
 
@@ -686,6 +686,8 @@ async def earnings_deep_dive(request: DeepDiveRequest):
             )
             request.metrics = _deep_dive_metrics(dummy, q_data)
     try:
+        from backend.earnings_deep_dive.generator import generate_deep_dive
+
         response = generate_deep_dive(request)
         
         # Post-generation validation — write result so dossier download gate can check
@@ -766,6 +768,8 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
                     sector=q_data.get("sector"),
                 )
                 metrics = _deep_dive_metrics(dummy, q_data)
+                from backend.earnings_deep_dive.generator import generate_deep_dive
+
                 generate_deep_dive(DeepDiveRequest(
                     ticker=ticker,
                     company=q_data.get("company_name", ticker),

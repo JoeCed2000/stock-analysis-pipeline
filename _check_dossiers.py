@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""Check dossier status and Render API availability for known tickers."""
-import requests, json
+"""Check dossier status for common tickers that might have dossiers on Render."""
+import requests, json, sys
 
-RENDER_BASE = "https://stock-analysis-api-tdtj.onrender.com"
+tickers_to_check = ["NVDA", "AAPL", "MSFT", "GOOGL", "TSLA", "AMZN", "META"]
 
-# Check multiple tickers that exist locally
-tickers = ["NVDA", "AAPL", "MSFT", "GOOGL", "META", "TSLA", "ASML"]
-for t in tickers:
+for ticker in tickers_to_check:
     try:
-        resp = requests.get(f"{RENDER_BASE}/api/dossier/{t}/status", timeout=15)
-        print(f"{t}: HTTP {resp.status_code} — {resp.text[:300]}")
+        r = requests.get(f"https://stock-analysis-api-tdtj.onrender.com/api/dossier/{ticker}/status", timeout=60)
+        if r.status_code == 200:
+            data = r.json()
+            stage = data.get("stage", "unknown")
+            files = data.get("files", [])
+            missing = data.get("missing", [])
+            print(f"{ticker}: stage={stage} | files={len(files)} | missing={missing}")
+        elif r.status_code == 404:
+            print(f"{ticker}: 404 — no dossier found")
+        else:
+            print(f"{ticker}: HTTP {r.status_code}")
     except Exception as e:
-        print(f"{t}: ERROR — {e}")
-
-# Also check root endpoint
-try:
-    resp = requests.get(f"{RENDER_BASE}/", timeout=15)
-    print(f"\nRoot: HTTP {resp.status_code} — {resp.text[:300]}")
-except Exception as e:
-    print(f"Root: ERROR — {e}")
+        print(f"{ticker}: ERROR — {e}")
