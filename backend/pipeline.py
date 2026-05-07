@@ -227,10 +227,28 @@ def _normalize_report_language(language: str) -> str:
 
 
 def _quarterly_comparison_keys() -> list[str]:
-    metrics = ("roe", "rotce", "roa", "roic", "buybacks", "dividends")
+    metrics = (
+        "roe",
+        "rotce",
+        "roa",
+        "roic",
+        "buybacks",
+        "dividends",
+        "gross_profit",
+        "opex",
+        "operating_income",
+        "net_income_quarterly",
+        "gross_margin",
+        "operating_margin",
+        "operating_cash_flow",
+        "capex",
+        "free_cash_flow",
+        "net_debt",
+    )
     keys: list[str] = []
     for metric in metrics:
         keys.extend([metric, f"{metric}_prior_year", f"{metric}_yoy"])
+    keys.extend(["revenue_quarterly", "revenue_quarterly_prior_year", "net_income_yoy", "pe_forward"])
     return keys
 
 
@@ -265,6 +283,11 @@ def _ratio(numerator: Optional[float], denominator: Optional[float]) -> Optional
     return numerator / denominator
 
 
+def _ratio_pct(numerator: Optional[float], denominator: Optional[float]) -> Optional[float]:
+    ratio = _ratio(numerator, denominator)
+    return ratio * 100 if ratio is not None else None
+
+
 def _yoy_change(current: Optional[float], prior: Optional[float]) -> Optional[float]:
     if current is None or prior in (None, 0):
         return None
@@ -272,7 +295,7 @@ def _yoy_change(current: Optional[float], prior: Optional[float]) -> Optional[fl
 
 
 def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
-    """Extract current quarter vs same quarter last year capital efficiency metrics."""
+    """Extract current quarter vs same quarter last year financial metrics."""
     result = _empty_quarterly_comparison()
     try:
         import yfinance as yf
@@ -292,31 +315,100 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
                 column_index,
             )
 
+        def financial_value(labels: tuple[str, ...], column_index: int) -> Optional[float]:
+            return _statement_value(financials, labels, column_index)
+
         def balance_value(labels: tuple[str, ...], column_index: int) -> Optional[float]:
             return _statement_value(balance_sheet, labels, column_index)
 
-        def cashflow_value(labels: tuple[str, ...], column_index: int) -> Optional[float]:
+        def cashflow_raw_value(labels: tuple[str, ...], column_index: int) -> Optional[float]:
+            return _statement_value(cashflow, labels, column_index)
+
+        def cashflow_abs_value(labels: tuple[str, ...], column_index: int) -> Optional[float]:
             value = _statement_value(cashflow, labels, column_index)
             return abs(value) if value is not None else None
 
         current_net_income = net_income(0)
         prior_net_income = net_income(4)
+        current_revenue = financial_value(("Total Revenue", "Revenue"), 0)
+        prior_revenue = financial_value(("Total Revenue", "Revenue"), 4)
+        current_gross_profit = financial_value(("Gross Profit",), 0)
+        prior_gross_profit = financial_value(("Gross Profit",), 4)
+        current_operating_income = financial_value(("Operating Income", "Operating Income Loss"), 0)
+        prior_operating_income = financial_value(("Operating Income", "Operating Income Loss"), 4)
+        current_operating_cash_flow = cashflow_raw_value(
+            ("Operating Cash Flow", "Total Cash From Operating Activities"),
+            0,
+        )
+        prior_operating_cash_flow = cashflow_raw_value(
+            ("Operating Cash Flow", "Total Cash From Operating Activities"),
+            4,
+        )
+        current_capex = cashflow_raw_value(("Capital Expenditure", "Capital Expenditures"), 0)
+        prior_capex = cashflow_raw_value(("Capital Expenditure", "Capital Expenditures"), 4)
+        current_free_cash_flow = cashflow_raw_value(("Free Cash Flow",), 0)
+        prior_free_cash_flow = cashflow_raw_value(("Free Cash Flow",), 4)
+        if current_free_cash_flow is None and current_operating_cash_flow is not None and current_capex is not None:
+            current_free_cash_flow = current_operating_cash_flow + current_capex
+        if prior_free_cash_flow is None and prior_operating_cash_flow is not None and prior_capex is not None:
+            prior_free_cash_flow = prior_operating_cash_flow + prior_capex
+
+        result["revenue_quarterly"] = current_revenue
+        result["revenue_quarterly_prior_year"] = prior_revenue
+        result["revenue_actual"] = current_revenue
+        result["revenue_prior_year"] = prior_revenue
+        result["revenue_yoy"] = _yoy_change(current_revenue, prior_revenue)
+        
+        # EPS data
+        current_eps = financial_value(("Diluted EPS", "Basic EPS"), 0)
+        prior_eps = financial_value(("Diluted EPS", "Basic EPS"), 4)
+        result["eps_actual"] = current_eps
+        result["eps_prior_year"] = prior_eps
+        result["eps_yoy"] = _yoy_change(current_eps, prior_eps)
+        
+        info = getattr(ticker_obj, "info", {}) or {}
+        if isinstance(info, dict):
+            result["pe_forward"] = info.get("forwardPE")
+            result["pe_trailing"] = info.get("trailingPE")
+            forward_eps = info.get("forwardEps")
+            if forward_eps:
+                result["eps_estimate"] = forward_eps / 4.0
 
         current_values = {
             "roe": _ratio(current_net_income, balance_value(("Stockholders Equity", "Common Stock Equity"), 0)),
             "rotce": _ratio(current_net_income, balance_value(("Tangible Book Value",), 0)),
             "roa": _ratio(current_net_income, balance_value(("Total Assets",), 0)),
             "roic": _ratio(current_net_income, balance_value(("Invested Capital",), 0)),
-            "buybacks": cashflow_value(("Repurchase Of Capital Stock", "Repurchase Of Common Stock"), 0),
-            "dividends": cashflow_value(("Cash Dividends Paid", "Common Stock Dividend Paid"), 0),
+            "buybacks": cashflow_abs_value(("Repurchase Of Capital Stock", "Repurchase Of Common Stock"), 0),
+            "dividends": cashflow_abs_value(("Cash Dividends Paid", "Common Stock Dividend Paid"), 0),
+            "gross_profit": current_gross_profit,
+            "opex": financial_value(("Operating Expense", "Total Operating Expenses"), 0),
+            "operating_income": current_operating_income,
+            "net_income_quarterly": current_net_income,
+            "gross_margin": _ratio_pct(current_gross_profit, current_revenue),
+            "operating_margin": _ratio_pct(current_operating_income, current_revenue),
+            "operating_cash_flow": current_operating_cash_flow,
+            "capex": current_capex,
+            "free_cash_flow": current_free_cash_flow,
+            "net_debt": balance_value(("Net Debt",), 0),
         }
         prior_values = {
             "roe": _ratio(prior_net_income, balance_value(("Stockholders Equity", "Common Stock Equity"), 4)),
             "rotce": _ratio(prior_net_income, balance_value(("Tangible Book Value",), 4)),
             "roa": _ratio(prior_net_income, balance_value(("Total Assets",), 4)),
             "roic": _ratio(prior_net_income, balance_value(("Invested Capital",), 4)),
-            "buybacks": cashflow_value(("Repurchase Of Capital Stock", "Repurchase Of Common Stock"), 4),
-            "dividends": cashflow_value(("Cash Dividends Paid", "Common Stock Dividend Paid"), 4),
+            "buybacks": cashflow_abs_value(("Repurchase Of Capital Stock", "Repurchase Of Common Stock"), 4),
+            "dividends": cashflow_abs_value(("Cash Dividends Paid", "Common Stock Dividend Paid"), 4),
+            "gross_profit": prior_gross_profit,
+            "opex": financial_value(("Operating Expense", "Total Operating Expenses"), 4),
+            "operating_income": prior_operating_income,
+            "net_income_quarterly": prior_net_income,
+            "gross_margin": _ratio_pct(prior_gross_profit, prior_revenue),
+            "operating_margin": _ratio_pct(prior_operating_income, prior_revenue),
+            "operating_cash_flow": prior_operating_cash_flow,
+            "capex": prior_capex,
+            "free_cash_flow": prior_free_cash_flow,
+            "net_debt": balance_value(("Net Debt",), 4),
         }
 
         for metric, current in current_values.items():
@@ -324,6 +416,8 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
             result[metric] = current
             result[f"{metric}_prior_year"] = prior
             result[f"{metric}_yoy"] = _yoy_change(current, prior)
+            if metric == "net_income_quarterly":
+                result["net_income_yoy"] = result[f"{metric}_yoy"]
         return result
     except Exception as exc:
         logger.warning("Failed to extract quarterly comparison for %s: %s", ticker, exc)
@@ -367,21 +461,44 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
         revenue_estimate=pick("revenue_estimate"),
         revenue_actual=pick("revenue_quarterly"),
         revenue_yoy=pick("revenue_yoy_growth"),
-        gross_margin=pick("gross_margin"),
-        operating_margin=pick("operating_margin"),
-        operating_income=pick("operating_income"),
-        net_income=pick("net_income"),
-        free_cash_flow=pick("free_cash_flow"),
-        operating_cash_flow=pick("operating_cash_flow"),
-        capex=pick("capex"),
-        net_debt=pick("net_debt"),
+        gross_margin=comparison_pick("gross_margin", pick("gross_margin")),
+        operating_margin=comparison_pick("operating_margin", pick("operating_margin")),
+        operating_income=comparison_pick("operating_income", pick("operating_income")),
+        net_income=comparison_pick("net_income_quarterly", pick("net_income")),
+        free_cash_flow=comparison_pick("free_cash_flow", pick("free_cash_flow")),
+        operating_cash_flow=comparison_pick("operating_cash_flow", pick("operating_cash_flow")),
+        capex=comparison_pick("capex", pick("capex")),
+        net_debt=comparison_pick("net_debt", pick("net_debt")),
         roic=comparison_pick("roic", pick("roic")),
         roe=comparison_pick("roe", pick("roe")),
         roe_prior_year=quarterly_comparison.get("roe_prior_year"),
         roe_yoy=quarterly_comparison.get("roe_yoy"),
         # v2.5 — new yfinance-extracted fields
-        gross_profit=pick("gross_profit"),
-        opex=pick("opex"),
+        gross_profit=comparison_pick("gross_profit", pick("gross_profit")),
+        gross_profit_prior_year=quarterly_comparison.get("gross_profit_prior_year"),
+        gross_profit_yoy=quarterly_comparison.get("gross_profit_yoy"),
+        revenue_quarterly=comparison_pick("revenue_quarterly", pick("revenue_quarterly")),
+        revenue_quarterly_prior_year=quarterly_comparison.get("revenue_quarterly_prior_year"),
+        gross_margin_prior_year=quarterly_comparison.get("gross_margin_prior_year"),
+        gross_margin_yoy=quarterly_comparison.get("gross_margin_yoy"),
+        opex=comparison_pick("opex", pick("opex")),
+        opex_prior_year=quarterly_comparison.get("opex_prior_year"),
+        opex_yoy=quarterly_comparison.get("opex_yoy"),
+        operating_income_prior_year=quarterly_comparison.get("operating_income_prior_year"),
+        operating_income_yoy=quarterly_comparison.get("operating_income_yoy"),
+        operating_margin_prior_year=quarterly_comparison.get("operating_margin_prior_year"),
+        operating_margin_yoy=quarterly_comparison.get("operating_margin_yoy"),
+        net_income_quarterly=comparison_pick("net_income_quarterly", pick("net_income")),
+        net_income_quarterly_prior_year=quarterly_comparison.get("net_income_quarterly_prior_year"),
+        net_income_yoy=quarterly_comparison.get("net_income_yoy"),
+        operating_cash_flow_prior_year=quarterly_comparison.get("operating_cash_flow_prior_year"),
+        operating_cash_flow_yoy=quarterly_comparison.get("operating_cash_flow_yoy"),
+        capex_prior_year=quarterly_comparison.get("capex_prior_year"),
+        capex_yoy=quarterly_comparison.get("capex_yoy"),
+        free_cash_flow_prior_year=quarterly_comparison.get("free_cash_flow_prior_year"),
+        free_cash_flow_yoy=quarterly_comparison.get("free_cash_flow_yoy"),
+        net_debt_prior_year=quarterly_comparison.get("net_debt_prior_year"),
+        net_debt_yoy=quarterly_comparison.get("net_debt_yoy"),
         rotce=comparison_pick("rotce", pick("rotce")),
         rotce_prior_year=quarterly_comparison.get("rotce_prior_year"),
         rotce_yoy=quarterly_comparison.get("rotce_yoy"),
@@ -398,9 +515,14 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
         dividends=comparison_pick("dividends", pick("dividends")),
         dividends_prior_year=quarterly_comparison.get("dividends_prior_year"),
         dividends_yoy=quarterly_comparison.get("dividends_yoy"),
-        pe_forward=(
+        pe_forward=comparison_pick(
+            "pe_forward",
             (getattr(valuation, "pe_forward", None) if valuation else None)
-            or (yf_data.get("pe_forward") if isinstance(yf_data, dict) else None)
+            or (yf_data.get("pe_forward") if isinstance(yf_data, dict) else None),
+        ),
+        pe_trailing=(
+            (getattr(valuation, "pe_current", None) if valuation else None)
+            or (yf_data.get("pe_current") if isinstance(yf_data, dict) else None)
         ),
         guidance=str(guidance_value) if guidance_value is not None else None,
         segments=_extract_segments(ticker_for_segments, guidance_value) if ticker_for_segments else {},

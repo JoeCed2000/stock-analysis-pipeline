@@ -238,17 +238,17 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 row_labels[0],
                 _eps(metrics.eps_estimate),
                 _eps(metrics.eps_actual),
-                _variance(metrics.eps_actual, metrics.eps_estimate, metrics.eps_vs_estimate),
-                _pct(metrics.eps_yoy),
-                _source(metrics.eps_estimate, metrics.eps_actual, metrics.eps_vs_estimate, metrics.eps_yoy),
+                _variance(metrics.eps_actual, metrics.eps_estimate, getattr(metrics, "eps_vs_estimate", None)),
+                _yoy_pct(getattr(metrics, "eps_yoy", None)),
+                _source(metrics.eps_estimate, metrics.eps_actual, getattr(metrics, "eps_vs_estimate", None), getattr(metrics, "eps_yoy", None)),
             ],
             [
                 row_labels[1],
-                _money(metrics.revenue_estimate),
-                _money(metrics.revenue_actual),
-                _variance(metrics.revenue_actual, metrics.revenue_estimate),
-                _pct(metrics.revenue_yoy),
-                _source(metrics.revenue_estimate, metrics.revenue_actual, metrics.revenue_yoy),
+                _money(getattr(metrics, "revenue_estimate", None)),
+                _money(getattr(metrics, "revenue_actual", None)),
+                _variance(getattr(metrics, "revenue_actual", None), getattr(metrics, "revenue_estimate", None)),
+                _yoy_pct(getattr(metrics, "revenue_yoy", None)),
+                _source(getattr(metrics, "revenue_estimate", None), getattr(metrics, "revenue_actual", None), getattr(metrics, "revenue_yoy", None)),
             ],
         ]
 
@@ -260,32 +260,105 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         ]
 
     if section_key == "Operating Metrics":
-        values = (
-            _money(metrics.gross_profit),
-            _pct(metrics.gross_margin),
-            _money(metrics.opex),
-            _money(metrics.operating_income),
-            _pct(metrics.operating_margin),
-            _money(metrics.net_income),
+        rows = (
+            (
+                row_labels[0],
+                _money(metrics.gross_profit),
+                _money(getattr(metrics, "gross_profit_prior_year", None)),
+                _yoy_pct(getattr(metrics, "gross_profit_yoy", None)),
+                metrics.gross_profit,
+            ),
+            (
+                row_labels[1],
+                _pct(metrics.gross_margin),
+                _pct(getattr(metrics, "gross_margin_prior_year", None)),
+                _yoy_pct(getattr(metrics, "gross_margin_yoy", None)),
+                metrics.gross_margin,
+            ),
+            (
+                row_labels[2],
+                _money(metrics.opex),
+                _money(getattr(metrics, "opex_prior_year", None)),
+                _yoy_pct(getattr(metrics, "opex_yoy", None)),
+                metrics.opex,
+            ),
+            (
+                row_labels[3],
+                _money(metrics.operating_income),
+                _money(getattr(metrics, "operating_income_prior_year", None)),
+                _yoy_pct(getattr(metrics, "operating_income_yoy", None)),
+                metrics.operating_income,
+            ),
+            (
+                row_labels[4],
+                _pct(metrics.operating_margin),
+                _pct(getattr(metrics, "operating_margin_prior_year", None)),
+                _yoy_pct(getattr(metrics, "operating_margin_yoy", None)),
+                metrics.operating_margin,
+            ),
+            (
+                row_labels[5],
+                _money(getattr(metrics, "net_income_quarterly", None)),
+                _money(getattr(metrics, "net_income_quarterly_prior_year", None)),
+                _yoy_pct(getattr(metrics, "net_income_yoy", None)),
+                getattr(metrics, "net_income_quarterly", None),
+            ),
         )
-        raw_values = (
-            metrics.gross_profit,
-            metrics.gross_margin,
-            metrics.opex,
-            metrics.operating_income,
-            metrics.operating_margin,
-            metrics.net_income,
-        )
-        return [[label, value, MISSING, MISSING, _source(raw)] for label, value, raw in zip(row_labels, values, raw_values)]
+        return [[label, value, prior, yoy, _source(raw)] for label, value, prior, yoy, raw in rows]
 
     if section_key == "Cash Flow":
+        def cash_flow_quality() -> str:
+            if not (_has(metrics.free_cash_flow) and _has(metrics.operating_cash_flow)):
+                return MISSING
+            try:
+                operating_cash_flow = float(metrics.operating_cash_flow)
+                ratio = float(metrics.free_cash_flow) / operating_cash_flow if operating_cash_flow else None
+            except (TypeError, ValueError):
+                return MISSING
+            if ratio is None:
+                return MISSING
+            if ratio > 0.8:
+                return "good"
+            if ratio >= 0.5:
+                return "watch"
+            return "weak"
+
+        quality = cash_flow_quality()
         rows = (
-            (row_labels[0], _money(metrics.operating_cash_flow), metrics.operating_cash_flow),
-            (row_labels[1], _money(metrics.capex), metrics.capex),
-            (row_labels[2], _money(metrics.free_cash_flow), metrics.free_cash_flow),
-            (row_labels[3], _money(metrics.net_debt), metrics.net_debt),
+            (
+                row_labels[0],
+                _money(metrics.operating_cash_flow),
+                _money(getattr(metrics, "operating_cash_flow_prior_year", None)),
+                _yoy_pct(getattr(metrics, "operating_cash_flow_yoy", None)),
+                MISSING,
+                metrics.operating_cash_flow,
+            ),
+            (
+                row_labels[1],
+                _money(metrics.capex),
+                _money(getattr(metrics, "capex_prior_year", None)),
+                _yoy_pct(getattr(metrics, "capex_yoy", None)),
+                MISSING,
+                metrics.capex,
+            ),
+            (
+                row_labels[2],
+                _money(metrics.free_cash_flow),
+                _money(getattr(metrics, "free_cash_flow_prior_year", None)),
+                _yoy_pct(getattr(metrics, "free_cash_flow_yoy", None)),
+                quality,
+                metrics.free_cash_flow,
+            ),
+            (
+                row_labels[3],
+                _money(metrics.net_debt),
+                _money(getattr(metrics, "net_debt_prior_year", None)),
+                _yoy_pct(getattr(metrics, "net_debt_yoy", None)),
+                MISSING,
+                metrics.net_debt,
+            ),
         )
-        return [[label, value, MISSING, MISSING, MISSING, _source(raw)] for label, value, raw in rows]
+        return [[label, value, prior, yoy, q, _source(raw)] for label, value, prior, yoy, q, raw in rows]
 
     if section_key == "Capital Efficiency":
         rows = (
@@ -348,8 +421,11 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         return _extract_segment_rows(metrics, row_labels)
 
     if section_key == "Forward P/E":
+        trailing_pe = getattr(metrics, "pe_trailing", None)
+        if trailing_pe is None:
+            trailing_pe = getattr(metrics, "pe_current", None)
         return [
-            [row_labels[0], _multiple(metrics.pe_forward), MISSING, MISSING, _source(metrics.pe_forward)],
+            [row_labels[0], _multiple(metrics.pe_forward), _multiple(trailing_pe), MISSING, _source(metrics.pe_forward)],
             [row_labels[1], MISSING, MISSING, MISSING, MISSING],
         ]
 
