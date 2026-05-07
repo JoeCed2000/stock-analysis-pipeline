@@ -758,11 +758,13 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
             from backend.sources_collector import get_yahoo_data_for_quarter
             from backend.pipeline import _deep_dive_metrics
             from backend.models import AnalysisResult
+            from datetime import datetime, timezone
             q_data = get_yahoo_data_for_quarter(ticker, quarter)
             if q_data:
                 dummy = AnalysisResult(
                     ticker=ticker,
                     company_name=q_data.get("company_name", ticker),
+                    retrieved_at=datetime.now(timezone.utc).isoformat(),
                     price=q_data.get("price"),
                     currency=q_data.get("currency", "USD"),
                     sector=q_data.get("sector"),
