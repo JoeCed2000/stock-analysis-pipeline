@@ -1,4 +1,5 @@
 """Earnings call deep-dive generator package."""
+
 from backend.earnings_deep_dive.errors import (
     EarningsDeepDiveError,
     KimiFailureError,

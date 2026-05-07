@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 import os
 from pathlib import Path
 from xml.sax.saxutils import escape
@@ -34,21 +35,21 @@ _TEXT = colors.HexColor("#111111")
 _MUTED = colors.HexColor("#5D5D5D")
 _REGISTERED_FONTS: set[str] = set()
 _GLYPH_FALLBACKS = {
-    "🌟": "★",
-    "⚠️": "⚠",
-    "🧠": "◎",
-    "🎯": "◉",
-    "📊": "▦",
+    "🌟": "*",
+    "⚠️": "!!",
+    "🧠": ">>",
+    "🎯": ">>",
+    "📊": "::",
     "💵": "$",
     "💰": "$",
-    "🏦": "◍",
-    "🧩": "◇",
-    "📈": "↗",
-    "📦": "▣",
-    "🔭": "➤",
-    "🔮": "✶",
-    "🏆": "✪",
-    "👉": "➤",
+    "🏦": "::",
+    "🧩": "::",
+    "📈": "^^",
+    "📦": "[]",
+    "🔭": ">>",
+    "🔮": "**",
+    "🏆": "**",
+    "👉": "->",
 }
 _SECTION_PREFIXES = {
     "EPS & Revenue": "📊",
@@ -119,6 +120,7 @@ def _register_cid(font_name: str) -> bool:
         return False
 
 
+@lru_cache(maxsize=4)
 def resolve_pdf_fonts(language: str) -> PdfFontSet:
     arial = _first_existing_font("arial.ttf")
     arial_bold = _first_existing_font("arialbd.ttf")
@@ -207,10 +209,13 @@ def _styles(fonts: PdfFontSet) -> dict[str, ParagraphStyle]:
 
 
 def _glyph_safe(text: str) -> str:
+    """Replace emoji with ASCII fallbacks, then strip to Latin-1 for Arial."""
     value = str(text)
     for source, replacement in _GLYPH_FALLBACKS.items():
         value = value.replace(source, replacement)
-    return value
+    # Encode to Latin-1 (ISO-8859-1), replacing unsupported chars with '?'
+    # Arial reliably covers all of Latin-1 (U+0000–U+00FF)
+    return value.encode("latin-1", errors="replace").decode("latin-1")
 
 
 def _paragraph(text: str, style: ParagraphStyle, *, font_name: str) -> Paragraph:
@@ -267,8 +272,8 @@ def _source_note(report: EarningsDeepDiveReport, *labels: str) -> str:
     for source in report.sources:
         label = source.label.lower()
         if any(expected in label for expected in lowered):
-            return source.url or source.note or MISSING
-    return MISSING
+            return source.url or source.note or "N/A"
+    return "N/A"
 
 
 def _earnings_documents_story(
@@ -383,9 +388,9 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
     available_width = LETTER[0] - (1.35 * inch)
     col_count = max(1, len(section.table.columns))
     if col_count == 6:
-        col_widths = [0.95 * inch, 0.85 * inch, 0.85 * inch, 0.8 * inch, 0.85 * inch, 1.3 * inch]
+        col_widths = [1.2 * inch, 1.1 * inch, 1.1 * inch, 1.0 * inch, 1.1 * inch, 1.65 * inch]
     elif col_count == 5:
-        col_widths = [1.05 * inch, 1.05 * inch, 1.05 * inch, 1.25 * inch, 1.2 * inch]
+        col_widths = [1.3 * inch, 1.3 * inch, 1.3 * inch, 1.45 * inch, 1.4 * inch]
     else:
         col_widths = [available_width / col_count] * col_count
 
@@ -456,7 +461,9 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
                 story.append(_paragraph_md(paragraph, styles["body"], font_name=fonts.regular))
         continuation = _section_continuation(section, report)
         if continuation:
-            story.append(PageBreak())
+            # Use spacer instead of unconditional PageBreak — ReportLab
+            # handles page flow naturally. Only break if needed.
+            story.append(Spacer(1, 0.18 * inch))
             story.append(Paragraph(escape(f"{_section_title(section)} - continued"), styles["section"]))
             for paragraph in continuation:
                 story.append(_paragraph_md(paragraph, styles["body"], font_name=fonts.regular))
@@ -472,7 +479,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             font_name=fonts.regular,
         ))
         if index < len(report.sections) - 1:
-            story.append(PageBreak())
+            story.append(Spacer(1, 0.25 * inch))
         else:
             story.append(Spacer(1, 0.18 * inch))
 

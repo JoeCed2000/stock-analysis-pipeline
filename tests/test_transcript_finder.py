@@ -95,6 +95,7 @@ def test_find_transcripts_falls_back_to_google_discovered_web_source(monkeypatch
     monkeypatch.setattr("backend.rapidapi_sa.search_sa_transcripts", empty)
     monkeypatch.setattr("backend.alpha_vantage.fetch_transcript", none)
     monkeypatch.setattr("backend.sources.motleyfool.get_transcript", none)
+    monkeypatch.setattr("backend.ddg_transcript_search.search_transcripts_ddg", empty)
     monkeypatch.setattr(
         "backend.transcript_web_search.search_transcript_pages",
         lambda ticker, company=None, limit=5: [
@@ -116,3 +117,40 @@ def test_find_transcripts_falls_back_to_google_discovered_web_source(monkeypatch
     assert result["sources"][0]["source"] == "Google Search Transcript"
     assert "EPS was $4.13" in result["sources"][0]["text"]
     assert result["sources"][0]["quarter"] == "FY2026 Q1"
+
+
+def test_find_transcripts_falls_back_to_duckduckgo_before_google(monkeypatch):
+    def empty(*args, **kwargs):
+        return []
+
+    def none(*args, **kwargs):
+        return None
+
+    def fail_google(*args, **kwargs):
+        raise AssertionError("Google fallback should not be called when DuckDuckGo succeeds")
+
+    monkeypatch.setattr("backend.rapidapi_sa.search_sa_transcripts", empty)
+    monkeypatch.setattr("backend.alpha_vantage.fetch_transcript", none)
+    monkeypatch.setattr("backend.sources.motleyfool.get_transcript", none)
+    monkeypatch.setattr("backend.seeking_alpha.search_transcript_web", empty)
+    monkeypatch.setattr(
+        "backend.ddg_transcript_search.search_transcripts_ddg",
+        lambda ticker, company=None: [
+            {
+                "source": "DuckDuckGo Transcript Search",
+                "title": "AMD Earnings Call Transcript",
+                "url": "https://example.com/amd-transcript",
+                "text": "Revenue and EPS improved. " * 120,
+                "quarter": "FY2026 Q1",
+                "date": "2026-04-30",
+                "text_length": len("Revenue and EPS improved. " * 120),
+            }
+        ],
+    )
+    monkeypatch.setattr("backend.transcript_web_search.search_transcript_pages", fail_google)
+
+    result = transcript_finder.find_transcripts("AMD", company="Advanced Micro Devices")
+
+    assert result["found"] is True
+    assert result["sources"][0]["source"] == "DuckDuckGo Transcript Search"
+    assert result["sources"][0]["url"] == "https://example.com/amd-transcript"

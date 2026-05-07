@@ -17,9 +17,13 @@ from backend.earnings_deep_dive.template import TemplateLanguage, get_earnings_t
 
 
 MISSING = "データ未取得"
+MISSING_EN = "Not available"
 NOT_DISCLOSED = "開示なし"
+NOT_DISCLOSED_EN = "Not disclosed"
 NOT_APPLICABLE = "該当なし"
+NOT_APPLICABLE_EN = "N/A"
 NOT_CALCULABLE = "計算不可"
+NOT_CALCULABLE_EN = "Not calculable"
 
 
 def _language(value: str) -> TemplateLanguage:

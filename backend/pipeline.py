@@ -18,13 +18,7 @@ from backend.excel_generator import generate_excel
 from backend.tenk_pdf import convert_10k_to_pdf
 from backend.company_profile import generate_company_profile
 from backend.sec_8k import download_latest_8k
-from backend.earnings_deep_dive import (
-    DeepDiveRequest,
-    FinancialMetrics,
-    build_earnings_deep_dive_report,
-    generate_deep_dive,
-    render_earnings_deep_dive_pdf,
-)
+from backend.earnings_deep_dive.schemas import DeepDiveRequest, FinancialMetrics
 from backend.transcript_finder import find_transcripts
 
 logger = logging.getLogger(__name__)
@@ -358,6 +352,10 @@ def _add_earnings_deep_dive_if_transcript(
                     deep_dive_metrics = deep_dive_metrics.model_copy(update={"investor_relations_url": investor_relations})
                 if transcript_source_name:
                     deep_dive_metrics = deep_dive_metrics.model_copy(update={"transcript_source": transcript_source_name})
+
+        from backend.earnings_deep_dive.generator import generate_deep_dive
+        from backend.earnings_deep_dive.mapper import build_earnings_deep_dive_report
+        from backend.earnings_deep_dive.pdf_renderer import render_earnings_deep_dive_pdf
 
         response = generate_deep_dive(
             DeepDiveRequest(

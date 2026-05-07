@@ -1,5 +1,6 @@
 from backend.earnings_deep_dive.deep_dive_validator import validate_render_model
 from backend.earnings_deep_dive.mapper import build_earnings_deep_dive_report
+from backend.earnings_deep_dive.prompts import build_prompt, system_prompt
 from backend.earnings_deep_dive.schemas import FinancialMetrics
 from backend.earnings_deep_dive.template import (
     EARNINGS_TEMPLATE,
@@ -7,6 +8,25 @@ from backend.earnings_deep_dive.template import (
     TEMPLATE_SECTION_KEYS,
     get_earnings_template,
 )
+
+
+def test_deep_dive_prompts_do_not_request_forbidden_placeholders():
+    prompt = build_prompt(
+        "Cash Flow",
+        "jp",
+        "MSFT",
+        "Microsoft Corporation",
+        "FY2026 Q1",
+        {"operating_cash_flow": 95_000_000_000},
+        "",
+    )
+    combined = f"{system_prompt('jp')}\n{system_prompt('en')}\n{prompt}"
+
+    assert "Data not available in transcript" not in combined
+    assert "Every table cell must contain a sourced value or —" not in combined
+    assert "otherwise write —" not in combined
+    assert "Section unavailable. Not disclosed" not in combined
+    assert "Not retrieved" in combined
 
 
 def test_template_contains_all_model_sections_in_order():
@@ -94,6 +114,51 @@ def test_mapper_replaces_examples_with_requested_ticker():
     assert "SanDisk" not in text
 
 
+def test_mapper_documents_target_company_earnings_sources():
+    report = build_earnings_deep_dive_report(
+        ticker="MSFT",
+        company="Microsoft Corporation",
+        quarter="FY2026 Q1",
+        language="en",
+        metrics=FinancialMetrics(
+            transcript_source="Google Search Transcript",
+            investor_relations_url="https://www.microsoft.com/en-us/investor",
+            company_website="https://www.microsoft.com",
+        ),
+        transcript_url="https://www.microsoft.com/en-us/investor/events/fy-2026/earnings-fy-2026-q1",
+    )
+
+    text = report.model_dump_json()
+
+    assert "Candidate Transcript Source - Seeking Alpha" in text
+    assert "https://seekingalpha.com/symbol/MSFT/earnings/transcripts" in text
+    assert "Transcript - Google Search Transcript" in text
+    assert "https://www.microsoft.com/en-us/investor/events/fy-2026/earnings-fy-2026-q1" in text
+    assert "Official Investor Relations" in text
+    assert "https://www.microsoft.com/en-us/investor" in text
+    assert "GE Vernova" not in text
+    assert "https://www.gevernova.com/investors" not in text
+
+
+def test_mapper_preserves_duckduckgo_transcript_source_label():
+    report = build_earnings_deep_dive_report(
+        ticker="AMD",
+        company="Advanced Micro Devices",
+        quarter="FY2026 Q1",
+        language="en",
+        metrics=FinancialMetrics(
+            transcript_source="DuckDuckGo Transcript Search",
+            company_website="https://www.amd.com",
+        ),
+        transcript_url="https://example.com/amd-earnings-call-transcript",
+    )
+
+    text = report.model_dump_json()
+
+    assert "Transcript - DuckDuckGo Transcript Search" in text
+    assert "https://example.com/amd-earnings-call-transcript" in text
+
+
 def test_mapper_prefers_codex_generated_section_tables_over_sparse_metrics():
     report = build_earnings_deep_dive_report(
         ticker="MSFT",
@@ -144,7 +209,7 @@ def test_mapper_uses_donnee_non_disponible_for_missing_metrics():
         assert section.table.rows
         for row in section.table.rows:
             assert all(cell.strip() for cell in row.cells)
-            assert "DONNÉE NON DISPONIBLE" in row.cells
+            assert any(label in row.cells for label in ("データ未取得", "開示なし", "該当なし", "計算不可"))
 
 
 def test_render_model_validation_rejects_pdf_placeholders():
@@ -159,4 +224,58 @@ def test_render_model_validation_rejects_pdf_placeholders():
 
     issues = validate_render_model(report)
 
-    assert any("Forbidden marker" in issue for issue in issues)
+    assert any("Missing transcript/source URL" in issue for issue in issues)
+
+
+def test_mapper_never_generates_generic_section_takeaways():
+    report = build_earnings_deep_dive_report(
+        ticker="MSFT",
+        company="Microsoft Corporation",
+        quarter="FY2026 Q1",
+        language="en",
+        metrics=FinancialMetrics(
+            eps_estimate=3.10,
+            eps_actual=3.46,
+            revenue_estimate=80_000_000_000,
+            revenue_actual=82_900_000_000,
+            revenue_yoy=0.183,
+            operating_cash_flow=95_000_000_000,
+            capex=23_400_000_000,
+            free_cash_flow=71_600_000_000,
+        ),
+        transcript_url="https://example.com/msft-transcript",
+    )
+
+    text = report.model_dump_json()
+
+    assert "is assessed from available sourced data" not in text
+    assert "EPS & Revenue is assessed" not in text
+    assert "Cash Flow is assessed" not in text
+    assert any("beat" in section.summary.lower() or "revenue" in section.summary.lower() for section in report.sections)
+
+
+def test_japanese_template_outputs_nami_style_explanation_markers():
+    report = build_earnings_deep_dive_report(
+        ticker="MSFT",
+        company="Microsoft Corporation",
+        quarter="FY2026 Q1",
+        language="jp",
+        metrics=FinancialMetrics(
+            eps_actual=3.46,
+            revenue_actual=82_900_000_000,
+            revenue_yoy=0.183,
+            free_cash_flow=71_600_000_000,
+        ),
+        transcript_url="https://example.com/msft-transcript",
+    )
+
+    highlights = next(section for section in report.sections if section.key == "Highlights")
+    rendered = "\n".join(highlights.analysis + [highlights.summary])
+
+    assert "🌟 ハイライト（良かった点）" in rendered
+    assert "⚠️ ローライト（懸念点）" in rendered
+    assert "🧠 総合評価（Namiさん向け）" in rendered
+    assert "🎯 投資視点の一言" in rendered
+    assert "👉" in rendered
+    assert "●" in rendered
+    assert "①" in rendered
