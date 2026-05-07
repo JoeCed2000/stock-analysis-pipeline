@@ -209,7 +209,7 @@ def _styles(fonts: PdfFontSet) -> dict[str, ParagraphStyle]:
 
 
 def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
-    """Replace emoji with ASCII fallbacks. Only strip to Latin-1 for non-CJK fonts."""
+    """Replace emoji with clean fallbacks. Only strip to Latin-1 for non-CJK fonts."""
     value = str(text)
     for source, replacement in _GLYPH_FALLBACKS.items():
         value = value.replace(source, replacement)
@@ -245,8 +245,12 @@ def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragr
 
 
 def _section_title(section, *, font_name: str = "Helvetica") -> str:
+    """Return section title. Skip emoji prefix for CJK fonts (can't render emoji)."""
     prefix = _SECTION_PREFIXES.get(section.key)
     if not prefix:
+        return _glyph_safe(section.title, font_name=font_name)
+    # CJK fonts can't render emoji — use clean title without prefix
+    if font_name in ("MS-PGothic", "HeiseiMin-W3"):
         return _glyph_safe(section.title, font_name=font_name)
     return _glyph_safe(f"{prefix} {section.title}", font_name=font_name)
 
@@ -291,10 +295,10 @@ def _earnings_documents_story(
             transcript_label = source.label
             transcript_url = source.url
             break
-    # Fallback: if no transcript source found, use generic Seeking Alpha link
+    # Fallback: if no transcript source found, use stockanalysis.com listing
     if not transcript_label:
-        transcript_label = "Earnings Transcript — Seeking Alpha"
-        transcript_url = f"https://seekingalpha.com/symbol/{report.ticker}/earnings/transcripts"
+        transcript_label = "Earnings Transcript — StockAnalysis"
+        transcript_url = f"https://stockanalysis.com/stocks/{report.ticker.lower()}/transcripts/"
 
     ir_value = _source_note(report, "investor relations")
     press_release_value = _source_note(report, "press release")
@@ -342,7 +346,7 @@ def _earnings_documents_story(
         },
     )()
     story = [Paragraph("Earnings Documents", styles["section"]), _table(section, styles, fonts)]
-    story.extend(_paragraph_md(line, styles["body"], font_name=fonts.regular) for line in analysis)
+    # Skip AI instruction text (analysis) — not part of the final report
     story.append(PageBreak())
     return story
 
@@ -453,26 +457,19 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
     story.extend(_earnings_documents_story(report, styles, fonts))
 
     for index, section in enumerate(report.sections):
-        story.append(Paragraph(escape(_section_title(section)), styles["section"]))
-        if section.question:
-            story.append(_paragraph(section.question, styles["question"], font_name=fonts.regular))
+        story.append(Paragraph(escape(_section_title(section, font_name=fonts.regular)), styles["section"]))
+        # section.question is an AI instruction, NOT part of the final report — skip it
         story.append(_table(section, styles, fonts))
         if section.analysis:
             for paragraph in section.analysis:
                 story.append(_paragraph_md(paragraph, styles["body"], font_name=fonts.regular))
-        continuation = _section_continuation(section, report)
-        if continuation:
-            # Use spacer instead of unconditional PageBreak — ReportLab
-            # handles page flow naturally. Only break if needed.
-            story.append(Spacer(1, 0.18 * inch))
-            story.append(Paragraph(escape(f"{_section_title(section)} - continued"), styles["section"]))
-            for paragraph in continuation:
-                story.append(_paragraph_md(paragraph, styles["body"], font_name=fonts.regular))
+        # AI instruction continuations hidden — not part of final report
+        continuation = []
         # Summary as a styled sub-heading + body text on separate lines
         story.append(Spacer(1, 0.12 * inch))
         story.append(Paragraph(
             f"<b>{escape(section.summary_label)}</b>",
-            styles["question"],
+            styles["body"],
         ))
         story.append(_paragraph_md(
             section.summary.strip() if section.summary.strip() else "Not available.",

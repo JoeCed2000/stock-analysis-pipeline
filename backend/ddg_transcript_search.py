@@ -51,21 +51,23 @@ def search_transcripts_ddg(ticker: str, company: str | None = None, limit: int =
 
     transcripts = []
     for url in urls:
-        text = _fetch_page_text(url)
+        # Resolve stockanalysis.com listing pages to specific transcript links
+        resolved_url = _resolve_stockanalysis_url(url, ticker_clean)
+        text = _fetch_page_text(resolved_url)
         if not _looks_like_transcript(text, ticker_clean):
             continue
         transcripts.append({
             "source": "DuckDuckGo Web Search",
             "type": "earnings_transcript",
             "title": f"{ticker_clean} Earnings Call Transcript",
-            "url": url,
+            "url": resolved_url,
             "text": text,
             "text_length": len(text),
             "quarter": _extract_quarter(text),
             "date": _extract_date(text),
             "id": "",
         })
-        logger.info(f"DuckDuckGo transcript: {len(text)} chars for {ticker_clean} from {url[:80]}")
+        logger.info(f"DuckDuckGo transcript: {len(text)} chars for {ticker_clean} from {resolved_url[:80]}")
         break
 
     return transcripts
@@ -108,6 +110,44 @@ class _TextExtractor(HTMLParser):
     def handle_data(self, data):
         if not self.skip:
             self.parts.append(data)
+
+
+def _resolve_stockanalysis_url(url: str, ticker: str) -> str:
+    """If url is a stockanalysis.com listing page, extract the first specific transcript link.
+    
+    Example: /stocks/msft/transcripts/ → /stocks/msft/transcripts/547930-q3-2026/
+    """
+    ticker_lower = ticker.lower()
+    # Only match listing pages: /stocks/{ticker}/transcripts/ with nothing after
+    listing_pattern = re.compile(
+        rf"https?://stockanalysis\.com/stocks/{re.escape(ticker_lower)}/transcripts/?$",
+        re.IGNORECASE,
+    )
+    if not listing_pattern.search(url):
+        return url
+
+    try:
+        resp = http.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            timeout=20,
+            follow_redirects=True,
+        )
+        if resp.status_code != 200:
+            return url
+        # Find first earnings-call transcript link (exclude "status-update", "m-a-announcement", etc.)
+        # Earnings calls follow pattern: {id}-q{quarter}-{year} or {id}-{fiscal}-{year}
+        specific = re.search(
+            rf'href="(/stocks/{re.escape(ticker_lower)}/transcripts/\d+-[^"]+/)"',
+            resp.text,
+        )
+        if specific:
+            resolved = f"https://stockanalysis.com{specific.group(1)}"
+            logger.info(f"Resolved stockanalysis.com listing → {resolved}")
+            return resolved
+    except Exception as exc:
+        logger.warning(f"Failed to resolve stockanalysis.com listing: {exc}")
+    return url
 
 
 def _fetch_page_text(url: str) -> str:

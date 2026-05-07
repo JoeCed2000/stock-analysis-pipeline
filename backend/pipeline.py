@@ -226,6 +226,110 @@ def _normalize_report_language(language: str) -> str:
     return "jp" if language in ("jp", "ja") else "en"
 
 
+def _quarterly_comparison_keys() -> list[str]:
+    metrics = ("roe", "rotce", "roa", "roic", "buybacks", "dividends")
+    keys: list[str] = []
+    for metric in metrics:
+        keys.extend([metric, f"{metric}_prior_year", f"{metric}_yoy"])
+    return keys
+
+
+def _empty_quarterly_comparison() -> Dict[str, Optional[float]]:
+    return {key: None for key in _quarterly_comparison_keys()}
+
+
+def _statement_value(statement: Any, labels: tuple[str, ...], column_index: int) -> Optional[float]:
+    if statement is None or getattr(statement, "empty", True):
+        return None
+    columns = getattr(statement, "columns", [])
+    if len(columns) <= column_index:
+        return None
+
+    for label in labels:
+        if label not in statement.index:
+            continue
+        value = statement.loc[label].iloc[column_index]
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        if number != number:
+            return None
+        return number
+    return None
+
+
+def _ratio(numerator: Optional[float], denominator: Optional[float]) -> Optional[float]:
+    if numerator is None or denominator in (None, 0):
+        return None
+    return numerator / denominator
+
+
+def _yoy_change(current: Optional[float], prior: Optional[float]) -> Optional[float]:
+    if current is None or prior in (None, 0):
+        return None
+    return (current / prior - 1) * 100
+
+
+def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
+    """Extract current quarter vs same quarter last year capital efficiency metrics."""
+    result = _empty_quarterly_comparison()
+    try:
+        import yfinance as yf
+    except ImportError:
+        return result
+
+    try:
+        ticker_obj = yf.Ticker(ticker)
+        financials = ticker_obj.quarterly_financials
+        balance_sheet = ticker_obj.quarterly_balance_sheet
+        cashflow = ticker_obj.quarterly_cashflow
+
+        def net_income(column_index: int) -> Optional[float]:
+            return _statement_value(
+                financials,
+                ("Net Income", "Net Income Common Stockholders"),
+                column_index,
+            )
+
+        def balance_value(labels: tuple[str, ...], column_index: int) -> Optional[float]:
+            return _statement_value(balance_sheet, labels, column_index)
+
+        def cashflow_value(labels: tuple[str, ...], column_index: int) -> Optional[float]:
+            value = _statement_value(cashflow, labels, column_index)
+            return abs(value) if value is not None else None
+
+        current_net_income = net_income(0)
+        prior_net_income = net_income(4)
+
+        current_values = {
+            "roe": _ratio(current_net_income, balance_value(("Stockholders Equity", "Common Stock Equity"), 0)),
+            "rotce": _ratio(current_net_income, balance_value(("Tangible Book Value",), 0)),
+            "roa": _ratio(current_net_income, balance_value(("Total Assets",), 0)),
+            "roic": _ratio(current_net_income, balance_value(("Invested Capital",), 0)),
+            "buybacks": cashflow_value(("Repurchase Of Capital Stock", "Repurchase Of Common Stock"), 0),
+            "dividends": cashflow_value(("Cash Dividends Paid", "Common Stock Dividend Paid"), 0),
+        }
+        prior_values = {
+            "roe": _ratio(prior_net_income, balance_value(("Stockholders Equity", "Common Stock Equity"), 4)),
+            "rotce": _ratio(prior_net_income, balance_value(("Tangible Book Value",), 4)),
+            "roa": _ratio(prior_net_income, balance_value(("Total Assets",), 4)),
+            "roic": _ratio(prior_net_income, balance_value(("Invested Capital",), 4)),
+            "buybacks": cashflow_value(("Repurchase Of Capital Stock", "Repurchase Of Common Stock"), 4),
+            "dividends": cashflow_value(("Cash Dividends Paid", "Common Stock Dividend Paid"), 4),
+        }
+
+        for metric, current in current_values.items():
+            prior = prior_values[metric]
+            result[metric] = current
+            result[f"{metric}_prior_year"] = prior
+            result[f"{metric}_yoy"] = _yoy_change(current, prior)
+        return result
+    except Exception as exc:
+        logger.warning("Failed to extract quarterly comparison for %s: %s", ticker, exc)
+        return result
+
+
 def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> FinancialMetrics:
     """Map existing dossier metrics into the earnings deep-dive schema."""
     fin_data = yf_data.get("financials", {}) if isinstance(yf_data, dict) else {}
@@ -249,6 +353,11 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
         or (yf_data.get("ticker") if isinstance(yf_data, dict) else None)
         or ""
     )
+    quarterly_comparison = _extract_quarterly_comparison(ticker_for_segments) if ticker_for_segments else {}
+
+    def comparison_pick(name: str, fallback: Any = None) -> Any:
+        value = quarterly_comparison.get(name)
+        return value if value is not None else fallback
 
     return FinancialMetrics(
         eps_estimate=pick("eps_estimate"),
@@ -266,17 +375,29 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
         operating_cash_flow=pick("operating_cash_flow"),
         capex=pick("capex"),
         net_debt=pick("net_debt"),
-        roic=pick("roic"),
-        roe=pick("roe"),
+        roic=comparison_pick("roic", pick("roic")),
+        roe=comparison_pick("roe", pick("roe")),
+        roe_prior_year=quarterly_comparison.get("roe_prior_year"),
+        roe_yoy=quarterly_comparison.get("roe_yoy"),
         # v2.5 — new yfinance-extracted fields
         gross_profit=pick("gross_profit"),
         opex=pick("opex"),
-        rotce=pick("rotce"),
-        roa=pick("roa"),
+        rotce=comparison_pick("rotce", pick("rotce")),
+        rotce_prior_year=quarterly_comparison.get("rotce_prior_year"),
+        rotce_yoy=quarterly_comparison.get("rotce_yoy"),
+        roa=comparison_pick("roa", pick("roa")),
+        roa_prior_year=quarterly_comparison.get("roa_prior_year"),
+        roa_yoy=quarterly_comparison.get("roa_yoy"),
+        roic_prior_year=quarterly_comparison.get("roic_prior_year"),
+        roic_yoy=quarterly_comparison.get("roic_yoy"),
         total_assets=pick("total_assets"),
         equity=pick("equity"),
-        buybacks=pick("buybacks"),
-        dividends=pick("dividends"),
+        buybacks=comparison_pick("buybacks", pick("buybacks")),
+        buybacks_prior_year=quarterly_comparison.get("buybacks_prior_year"),
+        buybacks_yoy=quarterly_comparison.get("buybacks_yoy"),
+        dividends=comparison_pick("dividends", pick("dividends")),
+        dividends_prior_year=quarterly_comparison.get("dividends_prior_year"),
+        dividends_yoy=quarterly_comparison.get("dividends_yoy"),
         pe_forward=(
             (getattr(valuation, "pe_forward", None) if valuation else None)
             or (yf_data.get("pe_forward") if isinstance(yf_data, dict) else None)

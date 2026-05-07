@@ -27,7 +27,7 @@ NOT_CALCULABLE_EN = "Not calculable"
 
 
 def _language(value: str) -> TemplateLanguage:
-    return "jp" if value == "jp" else "en"
+    return "jp" if value in ("jp", "ja") else "en"
 
 
 def _metric_url(metrics: FinancialMetrics, *keys: str) -> str | None:
@@ -111,6 +111,32 @@ def _multiple(value: Any) -> str:
         return f"{float(value):.2f}x"
     except (TypeError, ValueError):
         return str(value)
+
+
+def _yoy_pct(value: Any) -> str:
+    """Format a YoY percentage value that is already in percentage points (e.g., -4.4, 9.5)."""
+    if not _has(value):
+        return MISSING
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    sign = "+" if number > 0 else ""
+    return f"{sign}{number:.1f}%"
+
+
+def _yoy_comment(value: Any) -> str:
+    if not _has(value):
+        return MISSING
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return MISSING
+    if number > 0:
+        return "improvement"
+    if number < 0:
+        return "decline"
+    return "flat"
 
 
 def _variance(actual: Any, estimate: Any, explicit: Any = None) -> str:
@@ -263,14 +289,60 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
 
     if section_key == "Capital Efficiency":
         rows = (
-            (row_labels[0], _pct(metrics.roe), metrics.roe),
-            (row_labels[1], _pct(metrics.rotce), metrics.rotce),
-            (row_labels[2], _pct(metrics.roa), metrics.roa),
-            (row_labels[3], _pct(metrics.roic), metrics.roic),
-            (row_labels[4], _money(metrics.buybacks), metrics.buybacks),
-            (row_labels[5], _money(metrics.dividends), metrics.dividends),
+            (
+                row_labels[0],
+                _pct(metrics.roe),
+                _pct(getattr(metrics, "roe_prior_year", None)),
+                _yoy_pct(getattr(metrics, "roe_yoy", None)),
+                _yoy_comment(getattr(metrics, "roe_yoy", None)),
+                metrics.roe,
+            ),
+            (
+                row_labels[1],
+                _pct(metrics.rotce),
+                _pct(getattr(metrics, "rotce_prior_year", None)),
+                _yoy_pct(getattr(metrics, "rotce_yoy", None)),
+                _yoy_comment(getattr(metrics, "rotce_yoy", None)),
+                metrics.rotce,
+            ),
+            (
+                row_labels[2],
+                _pct(metrics.roa),
+                _pct(getattr(metrics, "roa_prior_year", None)),
+                _yoy_pct(getattr(metrics, "roa_yoy", None)),
+                _yoy_comment(getattr(metrics, "roa_yoy", None)),
+                metrics.roa,
+            ),
+            (
+                row_labels[3],
+                _pct(metrics.roic),
+                _pct(getattr(metrics, "roic_prior_year", None)),
+                _yoy_pct(getattr(metrics, "roic_yoy", None)),
+                _yoy_comment(getattr(metrics, "roic_yoy", None)),
+                metrics.roic,
+            ),
+            (
+                row_labels[4],
+                _money(metrics.buybacks),
+                _money(getattr(metrics, "buybacks_prior_year", None)),
+                _yoy_pct(getattr(metrics, "buybacks_yoy", None)),
+                _yoy_comment(getattr(metrics, "buybacks_yoy", None)),
+                metrics.buybacks,
+            ),
+            (
+                row_labels[5],
+                _money(metrics.dividends),
+                _money(getattr(metrics, "dividends_prior_year", None)),
+                _yoy_pct(getattr(metrics, "dividends_yoy", None)),
+                _yoy_comment(getattr(metrics, "dividends_yoy", None)),
+                metrics.dividends,
+            ),
         )
-        return [[label, value, MISSING, MISSING, MISSING, _source(raw)] for label, value, raw in rows]
+        result = [[label, value, prior, yoy, comment, _source(raw)] for label, value, prior, yoy, comment, raw in rows]
+        # If ALL metrics are unavailable (Finnhub free tier limitation), show 1 informative row
+        if all(not _has(raw) for _, _, _, _, _, raw in rows):
+            return [["Capital Efficiency metrics", "Finnhub free tier limit", MISSING, MISSING, MISSING, MISSING]]
+        return result
 
     if section_key == "Segments":
         return _extract_segment_rows(metrics, row_labels)
@@ -291,11 +363,14 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
 
     if section_key == "Guidance":
         guidance = metrics.guidance if _has(metrics.guidance) else MISSING
-        return [
-            [row_labels[0], guidance, MISSING, MISSING, _source(metrics.guidance)],
+        guidance_source = _source(metrics.guidance)
+        rows = [
+            [row_labels[0], guidance, MISSING, MISSING, guidance_source],
             [row_labels[1], MISSING, MISSING, MISSING, MISSING],
             [row_labels[2], MISSING, MISSING, MISSING, MISSING],
         ]
+        # Filter out rows with no data at all (common with Finnhub free tier)
+        return [r for r in rows if r[1] != MISSING] if len([r for r in rows if r[1] != MISSING]) > 0 else rows[:1]
 
     if section_key == "Verdict":
         return [[label, MISSING, MISSING, MISSING, MISSING] for label in row_labels]
