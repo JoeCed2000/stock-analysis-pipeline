@@ -370,6 +370,8 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
         if isinstance(info, dict):
             result["pe_forward"] = info.get("forwardPE")
             result["pe_trailing"] = info.get("trailingPE")
+            result["investor_relations_url"] = info.get("irWebsite")
+            result["company_website"] = info.get("website")
             forward_eps = info.get("forwardEps")
             if forward_eps:
                 result["eps_estimate"] = forward_eps / 4.0
@@ -525,6 +527,8 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
             or (yf_data.get("pe_current") if isinstance(yf_data, dict) else None)
         ),
         guidance=str(guidance_value) if guidance_value is not None else None,
+        investor_relations_url=comparison_pick("investor_relations_url"),
+        company_website=comparison_pick("company_website"),
         segments=_extract_segments(ticker_for_segments, guidance_value) if ticker_for_segments else {},
     )
 

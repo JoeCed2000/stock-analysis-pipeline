@@ -277,7 +277,13 @@ def _source_note(report: EarningsDeepDiveReport, *labels: str) -> str:
     for source in report.sources:
         label = source.label.lower()
         if any(expected in label for expected in lowered):
-            return source.url or source.note or "N/A"
+            if source.url:
+                return source.url
+            note = source.note or ""
+            # Translate Japanese missing marker when rendering English PDF
+            if report.language != "jp" and note == "データ未取得":
+                return "Not available"
+            return note or "N/A"
     return "N/A"
 
 

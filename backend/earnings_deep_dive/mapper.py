@@ -25,6 +25,23 @@ NOT_APPLICABLE_EN = "N/A"
 NOT_CALCULABLE = "計算不可"
 NOT_CALCULABLE_EN = "Not calculable"
 
+_PLACEHOLDER_PATTERNS = {
+    "?", "N/A", "NA", "Not available", "データ未取得",
+    "該当なし", "開示なし", "計算不可",
+    "-", "--", "—", "–", "…", "...",
+}
+
+# Regex to strip parenthetical suffixes from labels:
+# "Operating Cash Flow (OCF)" → "Operating Cash Flow"
+# "EPS (adjusted)" → "EPS"
+_PAREN_STRIP_RE = re.compile(r"\s*\([^)]*\)\s*")
+
+
+def _is_placeholder(cell: str) -> bool:
+    """Return True if a table cell is a placeholder that should be replaced with yfinance data."""
+    stripped = cell.strip()
+    return not stripped or stripped in _PLACEHOLDER_PATTERNS
+
 
 def _language(value: str) -> TemplateLanguage:
     return "jp" if value in ("jp", "ja") else "en"
@@ -454,6 +471,94 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
     return [[label, *([MISSING] * 4)] for label in row_labels]
 
 
+def _enrich_codex_table(
+    codex_table: RenderedTable,
+    section_key: str,
+    section_rows: tuple[str, ...],
+    metrics: FinancialMetrics,
+) -> RenderedTable:
+    """Enrich an LLM-generated table by replacing placeholder cells with yfinance data.
+
+    The LLM often knows narrative values (Actual from transcript) but leaves Prior Year
+    and YoY as ``?`` / ``—``.  This function merges the deterministic yfinance rows from
+    ``_rows_for_section`` into the LLM table, cell by cell, wherever the LLM cell is a
+    placeholder.
+
+    Handles Japanese templates by also mapping JP row labels → EN labels so that
+    yfinance data (always keyed by Japanese labels from the JP template) can match
+    English labels typically produced by the LLM.
+    """
+    yf_rows = _rows_for_section(section_key, section_rows, metrics)
+    if not yf_rows:
+        return codex_table
+
+    # Build lookup keyed by both the original label AND its English equivalent.
+    jp_to_en = {
+        "売上高": "revenue",
+        "粗利益": "gross profit",
+        "粗利益率": "gross margin",
+        "営業費用": "opex",
+        "営業利益": "operating income",
+        "営業利益率": "operating margin",
+        "純利益": "net income",
+        "営業キャッシュフロー": "operating cash flow",
+        "設備投資": "capex",
+        "フリーキャッシュフロー": "free cash flow",
+        "純負債": "net debt",
+        "自社株買い": "buybacks",
+        "配当": "dividends",
+    }
+    yf_lookup: dict[str, list[str]] = {}
+    for row in yf_rows:
+        original = row[0].strip()
+        key = original.lower()
+        yf_lookup[key] = row[1:]
+        en = jp_to_en.get(original) or jp_to_en.get(key)
+        if en:
+            yf_lookup[en] = row[1:]
+
+    # Fallback enrichment: common LLM-added labels that may appear in any section.
+    # Matches are added only when the section-level lookup misses.
+    def _add_fallback(label: str, fmt, raw, prior, yoy) -> None:
+        if label not in yf_lookup:
+            yf_lookup[label] = [fmt(raw), fmt(prior), _yoy_pct(yoy), _source(raw, prior, yoy)]
+
+    _add_fallback("revenue", _money, getattr(metrics, "revenue_actual", None),
+                  getattr(metrics, "revenue_quarterly_prior_year", None),
+                  getattr(metrics, "revenue_yoy", None))
+    _add_fallback("eps", _eps, getattr(metrics, "eps_actual", None),
+                  getattr(metrics, "eps_prior_year", None),
+                  getattr(metrics, "eps_yoy", None))
+
+    def _label_key(raw: str) -> str:
+        """Normalise a row label: lowercase, strip parentheticals, collapse whitespace."""
+        base = raw.strip().lower()
+        # Strip parenthetical like "EPS (adjusted)" → "eps"
+        base = _PAREN_STRIP_RE.sub("", base).strip()
+        return base
+
+    enriched_rows: list[RenderedTableRow] = []
+    for llm_row in codex_table.rows:
+        llm_key = _label_key(llm_row.label)
+        yf_cells = yf_lookup.get(llm_key)
+
+        if yf_cells is None:
+            enriched_rows.append(llm_row)
+            continue
+
+        merged_cells: list[str] = []
+        for idx, llm_cell in enumerate(llm_row.cells):
+            yf_cell = yf_cells[idx] if idx < len(yf_cells) else None
+            if _is_placeholder(llm_cell) and yf_cell is not None and not _is_placeholder(yf_cell):
+                merged_cells.append(yf_cell)
+            else:
+                merged_cells.append(llm_cell)
+
+        enriched_rows.append(RenderedTableRow(label=llm_row.label, cells=merged_cells))
+
+    return RenderedTable(columns=list(codex_table.columns), rows=enriched_rows)
+
+
 def _summary(language: TemplateLanguage, ticker: str, section_key: str, metrics: FinancialMetrics) -> str:
     revenue = _money(metrics.revenue_actual)
     revenue_yoy = _pct(metrics.revenue_yoy)
@@ -563,7 +668,7 @@ def build_earnings_deep_dive_report(
         analysis_text = analysis_by_key.get(section.key) or analysis_by_key.get(section.title)
         codex_table = _extract_markdown_table(analysis_text, section.table_columns) if analysis_text else None
         if codex_table:
-            table = codex_table
+            table = _enrich_codex_table(codex_table, section.key, section.table_rows, metrics)
             analysis_items = [text for text in (_analysis_without_table(analysis_text),) if text]
         else:
             rows = _rows_for_section(section.key, section.table_rows, metrics)
