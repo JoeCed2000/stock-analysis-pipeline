@@ -16,11 +16,40 @@ from backend.earnings_deep_dive.schemas import FinancialMetrics
 from backend.earnings_deep_dive.template import TemplateLanguage, get_earnings_template
 
 
-MISSING = "—"
+MISSING = "データ未取得"
+NOT_DISCLOSED = "開示なし"
+NOT_APPLICABLE = "該当なし"
+NOT_CALCULABLE = "計算不可"
 
 
 def _language(value: str) -> TemplateLanguage:
     return "jp" if value == "jp" else "en"
+
+
+def _metric_url(metrics: FinancialMetrics, *keys: str) -> str | None:
+    extra = getattr(metrics, "model_extra", {}) or {}
+    for key in keys:
+        value = getattr(metrics, key, None)
+        if value is None:
+            value = extra.get(key)
+        if isinstance(value, str) and value.strip().startswith(("http://", "https://")):
+            return value.strip()
+    return None
+
+
+def _seeking_alpha_transcripts_url(ticker: str) -> str:
+    return f"https://seekingalpha.com/symbol/{ticker.strip().upper()}/earnings/transcripts"
+
+
+def _metric_text(metrics: FinancialMetrics, *keys: str) -> str | None:
+    extra = getattr(metrics, "model_extra", {}) or {}
+    for key in keys:
+        value = getattr(metrics, key, None)
+        if value is None:
+            value = extra.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
 
 
 def _has(value: Any) -> bool:
@@ -28,7 +57,7 @@ def _has(value: Any) -> bool:
 
 
 def _source(*values: Any) -> str:
-    return "Supplied metrics" if any(_has(value) for value in values) else MISSING
+    return "会社開示 / 計算ベース" if any(_has(value) for value in values) else MISSING
 
 
 def _money(value: Any) -> str:
@@ -91,7 +120,7 @@ def _variance(actual: Any, estimate: Any, explicit: Any = None) -> str:
     except (TypeError, ValueError):
         return MISSING
     if estimate_number == 0:
-        return MISSING
+        return NOT_CALCULABLE
     return _pct((actual_number - estimate_number) / abs(estimate_number))
 
 
@@ -249,9 +278,11 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         ]
 
     if section_key == "Backlog":
+        backlog_value = _money(metrics.backlog) if _has(metrics.backlog) else NOT_APPLICABLE
+        backlog_source = _source(metrics.backlog) if _has(metrics.backlog) else "事業特性 / 開示資料"
         return [
-            [row_labels[0], _money(metrics.backlog), MISSING, MISSING, _source(metrics.backlog)],
-            [row_labels[1], MISSING, MISSING, MISSING, MISSING],
+            [row_labels[0], backlog_value, MISSING, "受注残が主要KPIでない場合は該当なし", backlog_source],
+            [row_labels[1], NOT_DISCLOSED if _has(metrics.backlog) else NOT_APPLICABLE, MISSING, MISSING, backlog_source],
         ]
 
     if section_key == "Guidance":
@@ -268,10 +299,90 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
     return [[label, *([MISSING] * 4)] for label in row_labels]
 
 
-def _summary(language: TemplateLanguage, ticker: str, section_key: str) -> str:
+def _summary(language: TemplateLanguage, ticker: str, section_key: str, metrics: FinancialMetrics) -> str:
+    revenue = _money(metrics.revenue_actual)
+    revenue_yoy = _pct(metrics.revenue_yoy)
+    eps = _eps(metrics.eps_actual)
+    fcf = _money(metrics.free_cash_flow)
+    pe = _multiple(metrics.pe_forward)
+
     if language == "jp":
-        return f"{ticker}の{section_key}は、利用可能なソース済みデータに基づき評価しています。"
-    return f"{ticker} {section_key} is assessed from available sourced data."
+        summaries = {
+            "EPS & Revenue": f"👉 EPSは{eps}、売上高は{revenue}。予想比と前年比の両方を見て、成長の質を判断する局面です。",
+            "Highlights": "👉 良い点と懸念点を分けて見ると、数字で確認できる成長が最重要です。",
+            "Operating Metrics": f"👉 売上高は{revenue}、前年比は{revenue_yoy}。利益率の変化が次の評価ポイントです。",
+            "Cash Flow": f"👉 FCFは{fcf}。利益が現金に変わっているかを最優先で確認します。",
+            "Capital Efficiency": "👉 ROE/ROICは資本効率を見る指標です。高い数値でもレバレッジや自社株買いの影響を分けて評価します。",
+            "Segments": "👉 どのセグメントが成長を支えているかを見ると、次の四半期の注目点が見えます。",
+            "Forward P/E": f"👉 予想PERは{pe}。成長率で正当化できるかが投資判断の分かれ目です。",
+            "Backlog": "👉 受注残は事業によって重要度が違います。該当なし・開示なしの場合は無理に評価しません。",
+            "Guidance": "👉 ガイダンスは次の期待値です。売上、利益率、EPSを分けて確認します。",
+            "Verdict": "👉 最終判断は、成長率・利益率・キャッシュ創出・バリュエーションのバランスで見ます。",
+        }
+        return summaries.get(section_key, f"👉 {ticker}の決算は、確認できる数字と未開示項目を分けて評価します。")
+
+    summaries = {
+        "EPS & Revenue": f"{ticker} reported EPS of {eps} and revenue of {revenue}; the key investor question is whether the beat/miss is broad-based or one-off.",
+        "Highlights": f"{ticker}'s quarter should be read through specific positives and risks, each tied to reported numbers or management commentary.",
+        "Operating Metrics": f"Revenue was {revenue} with YoY growth of {revenue_yoy}; margin direction determines the quality of the growth.",
+        "Cash Flow": f"Free cash flow was {fcf}; cash conversion and capex intensity show whether earnings are translating into owner cash.",
+        "Capital Efficiency": "ROE, ROIC, and related returns indicate whether growth is creating value or simply consuming capital.",
+        "Segments": "Segment trends identify which business lines are driving the quarter and where risk is concentrated.",
+        "Forward P/E": f"Forward P/E is {pe}; valuation only works if growth and margin durability support it.",
+        "Backlog": "Backlog is evaluated only when economically relevant and disclosed; otherwise it is marked not applicable or not disclosed.",
+        "Guidance": "Guidance matters because it resets expectations for revenue, margin, EPS, and medium-term demand.",
+        "Verdict": "The investor verdict weighs earnings quality, growth durability, cash generation, and valuation risk together.",
+    }
+    return summaries.get(section_key, f"{ticker}'s section conclusion is based on concrete reported metrics and source traceability.")
+
+
+def _default_highlights_analysis(language: TemplateLanguage, metrics: FinancialMetrics) -> list[str]:
+    revenue = _money(metrics.revenue_actual)
+    revenue_yoy = _pct(metrics.revenue_yoy)
+    fcf = _money(metrics.free_cash_flow)
+    margin = _pct(metrics.operating_margin)
+    if language == "jp":
+        return [
+            "\n".join(
+                [
+                    "🌟 ハイライト（良かった点）",
+                    "",
+                    "① 売上成長の確認",
+                    f"● 売上高: {revenue} / 前年比: {revenue_yoy}",
+                    "👉 成長が数字で確認できる場合、投資家は持続性と利益率への波及を見ます。",
+                    "",
+                    "② キャッシュ創出力",
+                    f"● フリーキャッシュフロー: {fcf}",
+                    "👉 利益が現金に変わっているかは、決算の質を見る重要ポイントです。",
+                    "",
+                    "⚠️ ローライト（懸念点）",
+                    "",
+                    "① 利益率の確認",
+                    f"● 営業利益率: {margin}",
+                    "👉 売上が伸びても利益率が弱い場合、株価評価は伸びにくくなります。",
+                    "",
+                    "② 未開示データ",
+                    "● 未取得または未開示の項目は表で明示しています。",
+                    "👉 空欄でごまかさず、次に確認すべき資料を明確にします。",
+                    "",
+                    "🧠 総合評価（Namiさん向け）",
+                    "👉 まず売上、利益率、キャッシュの3点を見れば、この決算が本当に強いか判断しやすいです。",
+                    "",
+                    "🎯 投資視点の一言",
+                    "👉 良い決算でも、次のガイダンスとバリュエーションが合わなければ追いかけすぎに注意です。",
+                ]
+            )
+        ]
+    return [
+        "\n".join(
+            [
+                "Highlights / Lowlights",
+                f"① Revenue signal: {revenue} with YoY growth of {revenue_yoy}.",
+                f"● Free cash flow: {fcf}.",
+                "👉 Investor read: focus on whether growth converts into durable cash and margin expansion.",
+            ]
+        )
+    ]
 
 
 def build_earnings_deep_dive_report(
@@ -303,9 +414,14 @@ def build_earnings_deep_dive_report(
             rows = _rows_for_section(section.key, section.table_rows, metrics)
             table = RenderedTable(
                 columns=list(section.table_columns),
-                rows=[RenderedTableRow(label=row[0], cells=[str(cell) for cell in row]) for row in rows],
+                rows=[RenderedTableRow(label=str(row[0]), cells=[str(cell) for cell in row[1:]]) for row in rows],
             )
-            analysis_items = [analysis_text] if analysis_text else []
+            if analysis_text:
+                analysis_items = [analysis_text]
+            elif section.key == "Highlights":
+                analysis_items = _default_highlights_analysis(report_language, metrics)
+            else:
+                analysis_items = []
         sections.append(
             RenderedSection(
                 key=section.key,
@@ -314,17 +430,45 @@ def build_earnings_deep_dive_report(
                 table=table,
                 analysis=analysis_items,
                 summary_label=section.summary_label,
-                summary=_summary(report_language, ticker_clean, section.key),
+                summary=_summary(report_language, ticker_clean, section.key, metrics),
             )
         )
 
-    sources = [
-        SourceRef(
-            label="Transcript",
-            url=transcript_url,
-            note="Earnings transcript source" if transcript_url else MISSING,
+    investor_relations_url = _metric_url(
+        metrics,
+        "investor_relations_url",
+        "investors_url",
+        "ir_url",
+    )
+    company_website_url = _metric_url(metrics, "company_website", "website", "weburl", "official_website")
+    transcript_source = _metric_text(metrics, "transcript_source", "transcript_provider") or "Transcript"
+    # Build transcript source entry — use the real source name and URL.
+    # If no transcript was actually obtained, omit this source row entirely.
+    sources = []
+    if transcript_url or transcript_source not in ("Transcript", ""):
+        transcript_label = f"Earnings Transcript — {transcript_source}"
+        transcript_display_url = transcript_url or (
+            f"https://seekingalpha.com/symbol/{ticker_clean}/earnings/transcripts"
+            if "seeking alpha" in transcript_source.lower() else None
         )
-    ]
+        sources.append(SourceRef(
+            label=transcript_label,
+            url=transcript_display_url,
+            note="Primary earnings transcript source" if transcript_display_url else MISSING,
+        ))
+    sources.append(SourceRef(
+        label="Official Investor Relations",
+        url=investor_relations_url,
+        note="Press release / earnings presentation source" if investor_relations_url else MISSING,
+    ))
+    if company_website_url and company_website_url != investor_relations_url:
+        sources.append(SourceRef(label="Official Website", url=company_website_url))
+    press_release_url = _metric_url(metrics, "press_release_url")
+    if press_release_url:
+        sources.append(SourceRef(label="Press Release", url=press_release_url))
+    presentation_url = _metric_url(metrics, "earnings_presentation_url", "presentation_url")
+    if presentation_url:
+        sources.append(SourceRef(label="Earnings Call Presentation", url=presentation_url))
 
     return EarningsDeepDiveReport(
         ticker=ticker_clean,

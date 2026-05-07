@@ -1,5 +1,6 @@
 """Synchronous orchestrator for earnings call deep-dive generation."""
 import json
+import logging
 import os
 import re
 from datetime import datetime, timezone
@@ -24,6 +25,8 @@ from backend.earnings_deep_dive.validators import (
 from backend.codex_provider import _codex_chat as codex_chat
 from backend.kimi_provider import kimi_chat as _kimi_provider_chat
 from backend.transcript_finder import find_transcripts
+
+logger = logging.getLogger(__name__)
 
 
 MAX_CODEX_TOKENS = 2000
@@ -248,11 +251,13 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
             warnings.append(f"{status.name}: {status.error or 'section unavailable'}")
 
     transcript_url = request.transcript_url or transcript_meta.get("url") or transcript_meta.get("transcript_url")
+    transcript_source = transcript_meta.get("primary_source") or transcript_meta.get("source") or ""
     company_website = _company_website_from_metrics(metrics)
     report_markdown = _append_sources_section(
         assemble_final_report(sections, warnings=warnings, company_website=company_website),
         transcript_url,
         company_website,
+        transcript_source=transcript_source,
     )
     markdown_path, meta_path = _save_outputs(
         output_dir=output_dir,
@@ -264,6 +269,7 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
         warnings=warnings,
         transcript_meta=transcript_meta,
         transcript_url=transcript_url,
+        transcript_text=transcript_text,
     )
 
     return DeepDiveResponse(
@@ -509,14 +515,16 @@ def _append_sources_section(
     report_markdown: str,
     transcript_url: str | None,
     company_website: str | None = None,
+    transcript_source: str | None = None,
 ) -> str:
     if not transcript_url and not company_website:
         return report_markdown
     lines = [report_markdown.rstrip(), "", "## Sources", ""]
     if transcript_url:
-        lines.append(f"- Transcript: {transcript_url}")
+        source_label = transcript_source or "Earnings Call Transcript"
+        lines.append(f"- **Transcript:** [{source_label}]({transcript_url})")
     if company_website:
-        lines.append(f"- Official Website: {company_website}")
+        lines.append(f"- **Official Website:** {company_website}")
     return "\n".join(lines) + "\n"
 
 
@@ -531,6 +539,7 @@ def _save_outputs(
     warnings: List[str],
     transcript_meta: Dict[str, Any],
     transcript_url: str | None,
+    transcript_text: str = "",
 ) -> Tuple[str, str]:
     report_dir = os.path.join(output_dir, "07_final_report")
     os.makedirs(report_dir, exist_ok=True)
@@ -560,5 +569,48 @@ def _save_outputs(
     }
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2, ensure_ascii=False, default=str)
+    
+    # Save verbatim transcript with source citation in 04_transcripts_and_management
+    if transcript_text.strip():
+        source_name = transcript_meta.get("primary_source") or transcript_meta.get("source") or "Unknown"
+        source_url = transcript_url or ""
+        _save_verbatim_transcript(
+            output_dir=output_dir,
+            ticker=request.ticker,
+            transcript_text=transcript_text,
+            source_name=source_name,
+            source_url=source_url,
+        )
 
     return markdown_path, meta_path
+
+
+def _save_verbatim_transcript(
+    output_dir: str,
+    ticker: str,
+    transcript_text: str,
+    source_name: str,
+    source_url: str,
+) -> str:
+    """Save the verbatim earnings call transcript with source citation."""
+    trans_dir = os.path.join(output_dir, "04_transcripts_and_management")
+    os.makedirs(trans_dir, exist_ok=True)
+    
+    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+    # Sanitize source name for filename
+    safe_source = re.sub(r"[^a-zA-Z0-9]", "_", source_name)[:30]
+    filename = f"transcript_{ticker}_{safe_source}_{date_str}.txt"
+    filepath = os.path.join(trans_dir, filename)
+    
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(f"# {ticker} — Earnings Call Transcript\n\n")
+        f.write(f"**Source:** {source_name}\n")
+        f.write(f"**URL:** {source_url}\n")
+        f.write(f"**Ticker:** {ticker}\n")
+        f.write(f"**Retrieved:** {datetime.now(timezone.utc).isoformat()}\n\n")
+        f.write("---\n\n")
+        f.write("## Verbatim Transcript\n\n")
+        f.write(transcript_text)
+    
+    logger.info(f"Verbatim transcript saved: {filepath} ({len(transcript_text)} chars, source={source_name})")
+    return filepath

@@ -785,6 +785,9 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
             # Copy original dir to temp
             shutil.copytree(analysis_dir, work_dir, dirs_exist_ok=True)
             for fpath in sorted(work_dir.rglob("*.txt")):
+                # NEVER translate transcripts — source documents stay in original English
+                if "04_transcripts_and_management" in str(fpath):
+                    continue
                 try:
                     translated = translate_text(fpath.read_text(encoding="utf-8"), translation_language, strict=True)
                     fpath.write_text(translated, encoding="utf-8")
@@ -793,6 +796,9 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
                     raise
             for fpath in sorted(work_dir.rglob("*.md")):
                 if fpath.name != "README.md":
+                    # NEVER translate transcripts — source documents stay in original English
+                    if "04_transcripts_and_management" in str(fpath):
+                        continue
                     try:
                         translated = translate_text(fpath.read_text(encoding="utf-8"), translation_language, strict=True)
                         fpath.write_text(translated, encoding="utf-8")
@@ -838,14 +844,20 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
                 rel_parts = fpath.relative_to(source_dir).parts
                 if rel_parts and rel_parts[0] in ("en", "jp") and rel_parts[0] != dossier_language:
                     continue
-                # Only PDF + XLSX + README.txt in the deliverable ZIP
+                # Only PDF + XLSX + README.txt + transcript verbatim .txt in the deliverable ZIP
                 if fpath.suffix in ('.json', '.csv', '.md'):
                     continue
-                if fpath.suffix == '.txt' and fpath.name != 'README.txt':
-                    continue
+                if fpath.suffix == '.txt':
+                    if fpath.name == 'README.txt':
+                        pass  # always include
+                    elif '04_transcripts_and_management' in str(fpath) and 'transcript_' in fpath.name:
+                        pass  # verbatim transcript — always include
+                    else:
+                        continue
                 arcname = fpath.relative_to(source_dir)
                 zf.write(fpath, arcname)
                 included_dirs.add(str(arcname.parent))
+        
         
         # Ensure ALL 7 directories are represented
         for folder in ["01_official_company_sources", "02_sec_or_regulatory_filings",
@@ -1027,10 +1039,11 @@ async def analyze(request: TickerRequest, lang: str = "en"):
     # Log each ticker search for near-real-time monitoring
     duration_ms = (time.time() - t_start) * 1000
     ua = request.headers.get("user-agent", "") if hasattr(request, 'headers') else ""
+    client_ip = request.client.host if request.client else "unknown"
     for r_item in results_list:
-        log_search(r_item["ticker"], "completed", duration_ms, user_agent=ua)
+        log_search(r_item["ticker"], "completed", duration_ms, user_agent=ua, client_ip=client_ip)
     for ticker_err in errors_list:
-        log_search(ticker_err, "failed", duration_ms, error=ticker_err, user_agent=ua)
+        log_search(ticker_err, "failed", duration_ms, error=ticker_err, user_agent=ua, client_ip=client_ip)
     
     return JSONResponse({
         "status": "completed" if not batch["errors"] else "partial",

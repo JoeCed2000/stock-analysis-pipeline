@@ -93,30 +93,45 @@ export default function SearchMonitor({ t }) {
             <div
               key={`${s.timestamp}-${s.ticker}-${i}`}
               style={{
-                display: 'flex', alignItems: 'center', gap: 6,
+                display: 'flex', flexDirection: 'column',
                 padding: '4px 12px',
                 borderBottom: i < searches.length - 1 ? '1px solid #21262d' : 'none',
                 animation: 'slideIn 0.2s ease',
               }}
             >
-              <span style={{ color: '#484f58', fontSize: 10, minWidth: 56, fontVariantNumeric: 'tabular-nums' }}>
-                {formatTime(s.timestamp)}
-              </span>
-              <span style={{ fontWeight: 600, fontSize: 12, minWidth: 48 }}>
-                {s.ticker}
-              </span>
-              <span style={{ color: statusColor(s.status), fontSize: 13 }}>
-                {statusIcon(s.status)}
-              </span>
-              {s.duration_ms > 0 && (
-                <span style={{ color: '#8b949e', fontSize: 10, marginLeft: 'auto' }}>
-                  {formatDuration(s.duration_ms)}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ color: '#484f58', fontSize: 10, minWidth: 56, fontVariantNumeric: 'tabular-nums' }}>
+                  {formatTime(s.timestamp)}
                 </span>
-              )}
-              {s.error && (
-                <span style={{ color: '#f85149', fontSize: 9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 60 }}>
-                  {s.error}
+                <span style={{ fontWeight: 600, fontSize: 12, minWidth: 48 }}>
+                  {s.ticker}
                 </span>
+                <span style={{ color: statusColor(s.status), fontSize: 13 }}>
+                  {statusIcon(s.status)}
+                </span>
+                {s.duration_ms > 0 && (
+                  <span style={{ color: '#8b949e', fontSize: 10, marginLeft: 'auto' }}>
+                    {formatDuration(s.duration_ms)}
+                  </span>
+                )}
+                {s.error && (
+                  <span style={{ color: '#f85149', fontSize: 9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 60 }}>
+                    {s.error}
+                  </span>
+                )}
+              </div>
+              {/* Trace row: IP + UA */}
+              {(s.client_ip || s.user_agent) && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 2, fontSize: 9, color: '#484f58' }}>
+                  {s.client_ip && (
+                    <span title={s.client_ip}>🌐 {s.client_ip}</span>
+                  )}
+                  {s.user_agent && (
+                    <span title={s.user_agent} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
+                      🖥 {s.user_agent.length > 40 ? s.user_agent.slice(0, 40) + '…' : s.user_agent}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           ))}

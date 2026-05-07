@@ -33,17 +33,34 @@ _GRID = colors.HexColor("#B8B8B8")
 _TEXT = colors.HexColor("#111111")
 _MUTED = colors.HexColor("#5D5D5D")
 _REGISTERED_FONTS: set[str] = set()
+_GLYPH_FALLBACKS = {
+    "🌟": "★",
+    "⚠️": "⚠",
+    "🧠": "◎",
+    "🎯": "◉",
+    "📊": "▦",
+    "💵": "$",
+    "💰": "$",
+    "🏦": "◍",
+    "🧩": "◇",
+    "📈": "↗",
+    "📦": "▣",
+    "🔭": "➤",
+    "🔮": "✶",
+    "🏆": "✪",
+    "👉": "➤",
+}
 _SECTION_PREFIXES = {
-    "EPS & Revenue": "[EPS]",
-    "Highlights": "[Highlights] [Lowlights]",
-    "Operating Metrics": "[Operating]",
-    "Cash Flow": "[Cash]",
-    "Capital Efficiency": "[Capital]",
-    "Segments": "[Segments]",
-    "Forward P/E": "[Valuation]",
-    "Backlog": "[Backlog]",
-    "Guidance": "[Guidance]",
-    "Verdict": "[Verdict]",
+    "EPS & Revenue": "📊",
+    "Highlights": "🌟 ⚠️",
+    "Operating Metrics": "🧠",
+    "Cash Flow": "💵",
+    "Capital Efficiency": "🏦",
+    "Segments": "🧩",
+    "Forward P/E": "📈",
+    "Backlog": "📦",
+    "Guidance": "🔭",
+    "Verdict": "🎯",
 }
 
 
@@ -189,8 +206,15 @@ def _styles(fonts: PdfFontSet) -> dict[str, ParagraphStyle]:
     }
 
 
+def _glyph_safe(text: str) -> str:
+    value = str(text)
+    for source, replacement in _GLYPH_FALLBACKS.items():
+        value = value.replace(source, replacement)
+    return value
+
+
 def _paragraph(text: str, style: ParagraphStyle, *, font_name: str) -> Paragraph:
-    escaped = escape(str(text))
+    escaped = escape(_glyph_safe(str(text)))
     return Paragraph(escaped, style)
 
 
@@ -206,7 +230,7 @@ def _format_markdown(text: str) -> str:
 
 def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragraph:
     """Paragraph with markdown formatting support (bold/italic)."""
-    formatted = _format_markdown(str(text))
+    formatted = _format_markdown(_glyph_safe(str(text)))
     escaped = escape(formatted)
     # Unescape the XML tags we intentionally added
     escaped = escaped.replace('&lt;b&gt;', '<b>').replace('&lt;/b&gt;', '</b>')
@@ -217,8 +241,8 @@ def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragr
 def _section_title(section) -> str:
     prefix = _SECTION_PREFIXES.get(section.key)
     if not prefix:
-        return section.title
-    return f"{prefix} {section.title}"
+        return _glyph_safe(section.title)
+    return _glyph_safe(f"{prefix} {section.title}")
 
 
 def _official_website(report: EarningsDeepDiveReport) -> str | None:
@@ -229,12 +253,132 @@ def _official_website(report: EarningsDeepDiveReport) -> str | None:
     return None
 
 
+def _source_url(report: EarningsDeepDiveReport, *labels: str) -> str | None:
+    lowered = tuple(label.lower() for label in labels)
+    for source in report.sources:
+        label = source.label.lower()
+        if source.url and any(expected in label for expected in lowered):
+            return source.url
+    return None
+
+
+def _source_note(report: EarningsDeepDiveReport, *labels: str) -> str:
+    lowered = tuple(label.lower() for label in labels)
+    for source in report.sources:
+        label = source.label.lower()
+        if any(expected in label for expected in lowered):
+            return source.url or source.note or MISSING
+    return MISSING
+
+
+def _earnings_documents_story(
+    report: EarningsDeepDiveReport,
+    styles: dict[str, ParagraphStyle],
+    fonts: PdfFontSet,
+) -> list:
+    # Look for the actual transcript source in the report's sources list
+    transcript_label = None
+    transcript_url = None
+    for source in report.sources:
+        label_lower = source.label.lower()
+        if "transcript" in label_lower:
+            transcript_label = source.label
+            transcript_url = source.url
+            break
+    # Fallback: if no transcript source found, use generic Seeking Alpha link
+    if not transcript_label:
+        transcript_label = "Earnings Transcript — Seeking Alpha"
+        transcript_url = f"https://seekingalpha.com/symbol/{report.ticker}/earnings/transcripts"
+
+    ir_value = _source_note(report, "investor relations")
+    press_release_value = _source_note(report, "press release")
+    presentation_value = _source_note(report, "presentation")
+    if report.language == "jp":
+        rows = [
+            (transcript_label, transcript_url or "N/A", "Earning Call Transcript source"),
+            ("Official Investor Relations", ir_value, "Press Release / Earning Call Presentation"),
+            ("Press Release", press_release_value, "会社開示データの一次ソース"),
+            ("Earning Call Presentation", presentation_value, "補足KPI・セグメント・ガイダンス確認"),
+        ]
+        analysis = [
+            "General Questions for Earnings",
+            "赤字プロンプト相当の質問は、PDFへ直接コピーせず、Transcript・Press Release・Presentationから構造化データを抽出するために使います。",
+            f"👉 会社名やリンクはモデル例ではなく、対象企業 {report.company} ({report.ticker}) のソースに置き換えます。",
+        ]
+    else:
+        rows = [
+            (transcript_label, transcript_url or "N/A", "Earning Call Transcript source"),
+            ("Official Investor Relations", ir_value, "Press Release / Earning Call Presentation"),
+            ("Press Release", press_release_value, "Primary company-reported earnings source"),
+            ("Earning Call Presentation", presentation_value, "Supplemental KPIs, segments, and guidance"),
+        ]
+        analysis = [
+            "General Questions for Earnings",
+            "The red prompt blocks in the model are treated as structured extraction prompts, not as final prose.",
+            f"👉 Company names and links are replaced with target-company sources for {report.company} ({report.ticker}).",
+        ]
+
+    section = type(
+        "DocumentsSection",
+        (),
+        {
+            "table": type(
+                "DocumentsTable",
+                (),
+                {
+                    "columns": ["Document / Source", "Target-company URL or status", "Used for"],
+                    "rows": [
+                        type("DocumentsRow", (), {"label": label, "cells": [value, used_for]})
+                        for label, value, used_for in rows
+                    ],
+                },
+            )()
+        },
+    )()
+    story = [Paragraph("Earnings Documents", styles["section"]), _table(section, styles, fonts)]
+    story.extend(_paragraph_md(line, styles["body"], font_name=fonts.regular) for line in analysis)
+    story.append(PageBreak())
+    return story
+
+
+def _section_continuation(section, report: EarningsDeepDiveReport) -> list[str]:
+    if report.language == "jp":
+        return {
+            "Highlights": [
+                f"👉 {report.company} ({report.ticker}) の良い点と懸念点は、必ず表の数値・Transcript・Press Releaseに戻して確認します。",
+                "● 例示企業の数字は使わず、対象企業の実績・前年比・ガイダンスだけで判断します。",
+            ],
+            "Operating Metrics": [
+                "🧠 Namiさん向け補足",
+                "👉 売上、粗利、営業利益、純利益は同じ会計基準・同じ期間で比較し、成長の質を確認します。",
+            ],
+            "Cash Flow": [
+                "📌 FCF = OCF - CapEx",
+                "👉 キャッシュフローは会計上の利益が現金に変わっているかを見るため、決算の信頼度チェックに使います。",
+            ],
+        }.get(section.key, [])
+    return {
+        "Highlights": [
+            f"For Nami-san: {report.company} ({report.ticker}) positives and risks must tie back to this company's sourced metrics, transcript, press release, or presentation.",
+            "Model example company figures are never reused for another ticker.",
+        ],
+        "Operating Metrics": [
+            "For Nami-san: revenue, gross profit, operating income, and net income must be compared on a consistent period and accounting basis.",
+        ],
+        "Cash Flow": [
+            "FCF = OCF - CapEx.",
+            "Cash flow is used to verify whether accounting earnings are turning into owner cash.",
+        ],
+    }.get(section.key, [])
+
+
 def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Table:
     data = [
         [_paragraph(column, styles["small_bold"], font_name=fonts.bold) for column in section.table.columns]
     ]
     for row in section.table.rows:
-        data.append([_paragraph(cell, styles["small"], font_name=fonts.regular) for cell in row.cells])
+        row_values = [row.label, *row.cells]
+        data.append([_paragraph(cell, styles["small"], font_name=fonts.regular) for cell in row_values])
 
     available_width = LETTER[0] - (1.35 * inch)
     col_count = max(1, len(section.table.columns))
@@ -300,12 +444,21 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
     website = _official_website(report)
     if website:
         story.append(Paragraph(escape(f"Official Website: {website}"), styles["meta"]))
+    story.extend(_earnings_documents_story(report, styles, fonts))
 
     for index, section in enumerate(report.sections):
         story.append(Paragraph(escape(_section_title(section)), styles["section"]))
+        if section.question:
+            story.append(_paragraph(section.question, styles["question"], font_name=fonts.regular))
         story.append(_table(section, styles, fonts))
         if section.analysis:
             for paragraph in section.analysis:
+                story.append(_paragraph_md(paragraph, styles["body"], font_name=fonts.regular))
+        continuation = _section_continuation(section, report)
+        if continuation:
+            story.append(PageBreak())
+            story.append(Paragraph(escape(f"{_section_title(section)} - continued"), styles["section"]))
+            for paragraph in continuation:
                 story.append(_paragraph_md(paragraph, styles["body"], font_name=fonts.regular))
         # Summary as a styled sub-heading + body text on separate lines
         story.append(Spacer(1, 0.12 * inch))

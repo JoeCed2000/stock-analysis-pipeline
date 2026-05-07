@@ -15,6 +15,7 @@ def log_search(
     duration_ms: float = 0.0,
     cache_hit: bool = False,
     user_agent: str = "",
+    client_ip: str = "",
     error: str = "",
 ):
     """Append a search event to the JSONL log file AND SQLite (dual write)."""
@@ -29,6 +30,7 @@ def log_search(
         "duration_ms": round(duration_ms),
         "cache_hit": cache_hit,
         "user_agent": user_agent[:200] if user_agent else "",
+        "client_ip": client_ip[:45] if client_ip else "",
         "error": error[:500] if error else "",
     }
 
@@ -39,7 +41,7 @@ def log_search(
     # SQLite (queryable, for stats & admin dashboard)
     try:
         from backend.search_db import log_search_sqlite
-        log_search_sqlite(ticker, status, duration_ms, cache_hit, user_agent, error)
+        log_search_sqlite(ticker, status, duration_ms, cache_hit, user_agent, client_ip, error)
     except Exception:
         pass  # SQLite failure must never block JSONL write
 

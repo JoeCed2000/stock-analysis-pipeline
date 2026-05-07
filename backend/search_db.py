@@ -25,6 +25,7 @@ def _ensure_db():
             duration_ms INTEGER DEFAULT 0,
             cache_hit INTEGER DEFAULT 0,
             user_agent TEXT DEFAULT '',
+            client_ip TEXT DEFAULT '',
             error TEXT DEFAULT ''
         )
     """)
@@ -41,13 +42,19 @@ def log_search_sqlite(
     duration_ms: float = 0.0,
     cache_hit: bool = False,
     user_agent: str = "",
+    client_ip: str = "",
     error: str = "",
 ):
     """Insert a search event into SQLite."""
     _ensure_db()
+    # Add client_ip column if missing (migration from older schema)
     conn = sqlite3.connect(str(DB_PATH))
+    try:
+        conn.execute("ALTER TABLE searches ADD COLUMN client_ip TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass  # column already exists
     conn.execute(
-        "INSERT INTO searches (timestamp, ticker, status, duration_ms, cache_hit, user_agent, error) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO searches (timestamp, ticker, status, duration_ms, cache_hit, user_agent, client_ip, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (
             datetime.now(timezone.utc).isoformat(),
             ticker.upper(),
@@ -55,6 +62,7 @@ def log_search_sqlite(
             round(duration_ms),
             1 if cache_hit else 0,
             user_agent[:200] if user_agent else "",
+            client_ip[:45] if client_ip else "",
             error[:500] if error else "",
         ),
     )
@@ -70,12 +78,12 @@ def read_recent_sqlite(limit: int = 50, status_filter: str = "all") -> list:
     
     if status_filter == "all":
         rows = conn.execute(
-            "SELECT timestamp, ticker, status, duration_ms, cache_hit, user_agent, error FROM searches ORDER BY id DESC LIMIT ?",
+            "SELECT timestamp, ticker, status, duration_ms, cache_hit, user_agent, client_ip, error FROM searches ORDER BY id DESC LIMIT ?",
             (limit,),
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT timestamp, ticker, status, duration_ms, cache_hit, user_agent, error FROM searches WHERE status = ? ORDER BY id DESC LIMIT ?",
+            "SELECT timestamp, ticker, status, duration_ms, cache_hit, user_agent, client_ip, error FROM searches WHERE status = ? ORDER BY id DESC LIMIT ?",
             (status_filter, limit),
         ).fetchall()
     
