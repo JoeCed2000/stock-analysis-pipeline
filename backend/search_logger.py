@@ -17,7 +17,7 @@ def log_search(
     user_agent: str = "",
     error: str = "",
 ):
-    """Append a search event to the JSONL log file."""
+    """Append a search event to the JSONL log file AND SQLite (dual write)."""
     log_dir = Path(__file__).parent / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / "searches.jsonl"
@@ -32,8 +32,16 @@ def log_search(
         "error": error[:500] if error else "",
     }
 
+    # JSONL (durable, append-only)
     with open(log_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    # SQLite (queryable, for stats & admin dashboard)
+    try:
+        from backend.search_db import log_search_sqlite
+        log_search_sqlite(ticker, status, duration_ms, cache_hit, user_agent, error)
+    except Exception:
+        pass  # SQLite failure must never block JSONL write
 
 
 def read_recent(limit: int = 50, status_filter: str = "all") -> list:

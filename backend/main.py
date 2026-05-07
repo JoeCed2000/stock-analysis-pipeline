@@ -1246,6 +1246,16 @@ async def recent_searches(limit: int = 50, status: str = "all"):
     
     Returns {searches: [{timestamp, ticker, status, duration_ms, cache_hit, user_agent}]}
     """
-    from backend.search_logger import read_recent
-    results = read_recent(limit=max(1, min(limit, 200)), status_filter=status)
+    from backend.search_db import read_recent_sqlite
+    results = read_recent_sqlite(limit=max(1, min(limit, 200)), status_filter=status)
     return JSONResponse({"searches": results})
+
+
+@app.get("/api/admin/search-stats")
+async def search_stats():
+    """Get aggregate search statistics for the admin dashboard.
+    
+    Returns {total, success_rate, avg_duration_ms, top_tickers, recent_errors, last_24h}
+    """
+    from backend.search_db import get_stats
+    return JSONResponse(get_stats())

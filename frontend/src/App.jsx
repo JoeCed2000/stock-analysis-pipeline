@@ -8,6 +8,7 @@ import SmartLoader from './components/SmartLoader.jsx';
 import SkeletonCard from './components/SkeletonCard.jsx';
 import LanguageSelector from './components/LanguageSelector.jsx';
 import SearchMonitor from './components/SearchMonitor.jsx';
+import AdminPage from './components/AdminPage.jsx';
 import { analyzeTickers } from './api.js';
 import translations from './i18n.js';
 
@@ -20,6 +21,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [reportResult, setReportResult] = useState(null);
   const [progress, setProgress] = useState({ current: 0, total: 0, ticker: '' });
+  const [showAdmin, setShowAdmin] = useState(false);
   const [lang, setLang] = useState(() => {
     // Persist language across refreshes
     if (typeof window !== 'undefined') {
@@ -79,9 +81,21 @@ export default function App() {
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
-      {/* Header — centered */}
+      {showAdmin ? (
+        <AdminPage t={t} onClose={() => setShowAdmin(false)} />
+      ) : (
+      <>{/* Header — centered */}
       <div style={{ marginBottom: 24, textAlign: 'center' }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <button
+            onClick={() => setShowAdmin(true)}
+            style={{
+              padding: '4px 12px', fontSize: 11, background: '#21262d',
+              color: '#8b949e', border: '1px solid #30363d', borderRadius: 4, cursor: 'pointer',
+            }}
+          >
+            📊 Admin
+          </button>
           <LanguageSelector lang={lang} onLanguageChange={handleLanguageChange} />
         </div>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: '#e1e4e8', marginBottom: 4 }}>
@@ -205,6 +219,7 @@ export default function App() {
           100% { opacity: 1; transform: translateY(0); }
         }
       `}</style>
+      </>)}
     </div>
   );
 }
