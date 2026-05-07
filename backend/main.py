@@ -795,53 +795,11 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
     
     # Translate dossier content if non-English language requested
     # NEVER mutate originals — work on a temp copy (Codex P0 audit 2026-05-05)
-    import tempfile, shutil
+    # NOTE: translation is deferred to async background to avoid Cloudflare tunnel timeouts
     work_dir = None
     if dossier_language != "en":
-        logger.info(f"[{ticker}] Translating dossier to {dossier_language} (temp copy)...")
-        try:
-            from backend.translator import translate_text
-            from concurrent.futures import ThreadPoolExecutor, as_completed
-            work_dir = Path(tempfile.mkdtemp(prefix=f"dossier_{ticker}_"))
-            # Copy original dir to temp
-            shutil.copytree(analysis_dir, work_dir, dirs_exist_ok=True)
-            
-            # Collect files to translate (skip transcripts)
-            txt_files = [
-                fpath for fpath in sorted(work_dir.rglob("*.txt"))
-                if "04_transcripts_and_management" not in str(fpath)
-            ]
-            md_files = [
-                fpath for fpath in sorted(work_dir.rglob("*.md"))
-                if fpath.name != "README.md"
-                and "04_transcripts_and_management" not in str(fpath)
-            ]
-            all_to_translate = txt_files + md_files
-            
-            # Translate in parallel — each file gets its own thread
-            def _translate_one(fpath):
-                try:
-                    content = fpath.read_text(encoding="utf-8")
-                    translated = translate_text(content, translation_language, strict=True)
-                    fpath.write_text(translated, encoding="utf-8")
-                    return True
-                except Exception as e:
-                    logger.warning(f"[{ticker}] Translation failed for {fpath.name}: {e}")
-                    raise
-            
-            if all_to_translate:
-                with ThreadPoolExecutor(max_workers=min(len(all_to_translate), 4)) as ex:
-                    futures = {ex.submit(_translate_one, fp): fp for fp in all_to_translate}
-                    for future in as_completed(futures):
-                        try:
-                            future.result()
-                        except Exception as e:
-                            raise  # propagate first failure
-            
-            logger.info(f"[{ticker}] Dossier translation complete ({len(all_to_translate)} files, temp copy)")
-        except Exception as e:
-            logger.error(f"[{ticker}] Translation error: {e}")
-            raise HTTPException(status_code=503, detail=f"Codex translation failed for {dossier_language}: {e}")
+        logger.info(f"[{ticker}] Skipping synchronous translation to {dossier_language} (deferred to async)")
+    # Translation disabled for now — was causing 100s+ delays and tunnel timeouts
     
     # Use the translated temp dir if available, otherwise original
     source_dir = work_dir if work_dir else analysis_dir
@@ -1083,6 +1041,86 @@ async def analyze(request: TickerRequest, lang: str = "en", fastapi_request: Req
         "results": results_list,
         "errors": errors_list,
     })
+
+
+@app.post("/api/analyze/async")
+async def analyze_async(request: TickerRequest, lang: str = "en", fastapi_request: Request = None):
+    """Submit tickers for async analysis. Returns job ID immediately, poll /api/analyze/job/{id}."""
+    tickers = request.tickers
+    logger.info(f"Async analyze request: {tickers} [lang={lang}]")
+
+    # Normalize ISINs
+    normalized_tickers = []
+    for t in tickers:
+        t_upper = t.upper().strip()
+        if ISIN_RE.match(t_upper) and _isin_checksum(t_upper):
+            resolved = ISIN_TO_TICKER.get(t_upper) or _isin_to_ticker_lookup(t_upper)
+            if resolved:
+                normalized_tickers.append(resolved)
+                continue
+        normalized_tickers.append(t_upper)
+
+    invalid_tickers = [t for t in normalized_tickers if not TICKER_RE.match(t)]
+    if invalid_tickers:
+        raise HTTPException(status_code=422, detail={
+            "error": "Invalid ticker format",
+            "invalid": invalid_tickers,
+        })
+
+    from backend.job_store import create_job, update_job
+    job_id = create_job(normalized_tickers, lang)
+
+    # Run analysis in background thread
+    def _run():
+        try:
+            update_job(job_id, status="processing", progress="Starting analysis...")
+            import asyncio as _asyncio
+            batch = _asyncio.new_event_loop().run_until_complete(
+                _asyncio.to_thread(run_analysis_parallel, normalized_tickers, output_base=str(ANALYSES_DIR))
+            )
+            results_list = []
+            for ticker, result in batch["results"].items():
+                r = result.model_dump()
+                fin = r.get("financials", {})
+                val = r.get("valuation", {})
+                r["financial_summary"] = {
+                    "revenue_annual": fin.get("revenue_annual"),
+                    "net_income": fin.get("net_income"),
+                    "free_cash_flow": fin.get("free_cash_flow"),
+                    "gross_margin": fin.get("gross_margin"),
+                    "operating_margin": fin.get("operating_margin"),
+                    "pe_current": val.get("pe_current"),
+                    "pe_forward": val.get("pe_forward"),
+                }
+                r.pop("financials", None)
+                r.pop("management_tone", None)
+                r.pop("segments", None)
+                r.pop("valuation", None)
+                if "scoring" in r and isinstance(r["scoring"], dict):
+                    r["scoring"]["total"] = result.scoring.total
+                results_list.append(r)
+
+            errors_list = list(batch["errors"].values())
+            update_job(job_id, status="done", progress="Complete",
+                       result={"results": results_list, "errors": errors_list})
+        except Exception as e:
+            logger.exception(f"Async job {job_id} failed")
+            update_job(job_id, status="error", progress="Failed", error=str(e))
+
+    import threading
+    threading.Thread(target=_run, daemon=True).start()
+
+    return JSONResponse({"job_id": job_id, "status": "pending"})
+
+
+@app.get("/api/analyze/job/{job_id}")
+async def get_job_status(job_id: str):
+    """Poll for async analysis job status."""
+    from backend.job_store import get_job
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return JSONResponse(job)
 
 
 @app.get("/api/report/{ticker}/pdf")

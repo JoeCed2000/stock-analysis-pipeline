@@ -101,15 +101,39 @@ def get_dossier_status(ticker: str) -> dict:
     
     # Prefer directories that have actual analysis content (report.md/report.pdf)
     # over dummy UPLOADED directories created by the upload endpoint
+    # ALSO prefer directories where deep_dive validation PASSED
     best_match = None
+    validated_match = None
     for m in matches:
         has_report = (m / "07_final_report" / "report.md").exists() or \
-                     (m / "07_final_report" / "report.pdf").exists()
-        if has_report:
+                     (m / "07_final_report" / "report.pdf").exists() or \
+                     (m / "07_final_report" / "earnings_deep_dive.pdf").exists()
+        if not has_report:
+            continue
+        
+        # Check validation — prefer PASSED dirs
+        validation_file = m / "07_final_report" / "deep_dive_validation.json"
+        validation_passed = False
+        if validation_file.exists():
+            try:
+                vdata = json.loads(validation_file.read_text())
+                validation_passed = vdata.get("passed", False)
+            except Exception:
+                pass
+        
+        if best_match is None:
             best_match = m
-            break
-    if not best_match:
-        best_match = matches[0]  # fallback
+        if validation_passed and validated_match is None:
+            validated_match = m
+        
+        if validated_match:
+            break  # Found a validated dir — stop searching
+    
+    # Prefer a validated directory, fall back to any with a report
+    if validated_match:
+        best_match = validated_match
+    elif best_match is None:
+        best_match = matches[0]  # ultimate fallback
     
     dossier_dir = best_match
     files = _list_dossier_files(dossier_dir)

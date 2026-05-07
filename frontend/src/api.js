@@ -5,9 +5,10 @@ const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const NGROK_HEADER = { 'ngrok-skip-browser-warning': 'true' };
 
 export async function analyzeTickers(tickers, lang = 'en') {
-  // 900s timeout — analysis with deep-dive can take 3-8 min
+  // 90s timeout — Cloudflare tunnel kills connections at ~100s.
+  // For slow analyses, caller should use analyzeTickersAsync instead.
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 900000);
+  const timeoutId = setTimeout(() => controller.abort(), 90000);
   const res = await fetch(`${API_BASE}/analyze?lang=${lang}`, {
     method: 'POST',
     headers: { ...NGROK_HEADER, 'Content-Type': 'application/json' },
@@ -22,6 +23,30 @@ export async function analyzeTickers(tickers, lang = 'en') {
     err.body = body;
     throw err;
   }
+  return res.json();
+}
+
+/** Submit analysis via async endpoint — returns job_id immediately. Never times out. */
+export async function analyzeTickersAsync(tickers, lang = 'en') {
+  const res = await fetch(`${API_BASE}/analyze/async?lang=${lang}`, {
+    method: 'POST',
+    headers: { ...NGROK_HEADER, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tickers }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body?.detail?.error || `Async analysis error: ${res.status}`);
+    err.status = res.status;
+    err.body = body;
+    throw err;
+  }
+  return res.json(); // { job_id, status: "pending" }
+}
+
+/** Poll async job status. Returns { job_id, status, progress, result, error }. */
+export async function getJobStatus(jobId) {
+  const res = await fetch(`${API_BASE}/analyze/job/${jobId}`, { headers: NGROK_HEADER });
+  if (!res.ok) throw new Error(`Job status error: ${res.status}`);
   return res.json();
 }
 

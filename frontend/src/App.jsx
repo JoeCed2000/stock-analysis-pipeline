@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import TickerInput from './components/TickerInput.jsx';
 import BatchAnalysis from './components/BatchAnalysis.jsx';
 import AnalysisCard from './components/AnalysisCard.jsx';
@@ -8,7 +8,7 @@ import SmartLoader from './components/SmartLoader.jsx';
 import SkeletonCard from './components/SkeletonCard.jsx';
 import LanguageSelector from './components/LanguageSelector.jsx';
 import AdminPage from './components/AdminPage.jsx';
-import { analyzeTickers } from './api.js';
+import { analyzeTickersAsync, getJobStatus } from './api.js';
 import translations from './i18n.js';
 
 const ESTIMATED_SEC_PER_TICKER = 22;
@@ -42,7 +42,6 @@ export default function App() {
       localStorage.setItem('lang', newLang);
     }
   };
-  const progressRef = useRef(null);
 
   const t = (key) => translations[lang]?.[key] || translations.en[key] || key;
 
@@ -58,19 +57,42 @@ export default function App() {
     const total = tickers.length;
     setProgress({ current: 0, total, ticker: tickers[0] || '' });
 
+    // Fake progress ticker while polling
     let current = 0;
     const intervalMs = (ESTIMATED_SEC_PER_TICKER * 1000) / total;
-    progressRef.current = setInterval(() => {
+    const progressTimer = setInterval(() => {
       current = Math.min(current + 1, total);
-      setProgress({ current, total, ticker: tickers[current] || '' });
+      setProgress(p => ({ ...p, current }));
     }, intervalMs);
 
     try {
-      const data = await analyzeTickers(tickers, lang);
-      if (data.errors?.length > 0) {
-        setError(`Errors: ${data.errors.join(', ')}`);
+      // Submit async job — returns immediately with job_id
+      const { job_id } = await analyzeTickersAsync(tickers, lang);
+
+      // Poll until done (max 10 min)
+      const MAX_POLLS = 200; // 200 * 3s = 10 min
+      for (let i = 0; i < MAX_POLLS; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const job = await getJobStatus(job_id);
+
+        if (job.status === 'done') {
+          const data = job.result;
+          if (data?.errors?.length > 0) {
+            setError(`Errors: ${data.errors.join(', ')}`);
+          }
+          setResults(data?.results || []);
+          setProgress({ current: total, total, ticker: '' });
+          break;
+        }
+        if (job.status === 'error') {
+          setError(job.error || 'Analysis failed');
+          break;
+        }
+        // Still processing — update progress text
+        if (job.progress) {
+          setProgress(p => ({ ...p, ticker: job.progress }));
+        }
       }
-      setResults(data.results || []);
     } catch (e) {
       if (e.status === 422 && e.body) {
         setError(e.body?.detail?.message || e.message);
@@ -78,9 +100,8 @@ export default function App() {
         setError(e.message);
       }
     } finally {
-      clearInterval(progressRef.current);
+      clearInterval(progressTimer);
       setLoading(false);
-      setProgress({ current: total, total, ticker: '' });
     }
   };
 
