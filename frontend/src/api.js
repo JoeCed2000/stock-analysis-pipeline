@@ -147,3 +147,9 @@ export async function generateDeepDive(ticker, quarter, lang = 'en') {
   if (!res.ok) throw new Error(`Deep-dive failed: ${res.status}`);
   return res.json();
 }
+
+export async function fetchRecentSearches(limit = 50) {
+  const res = await fetch(`${API_BASE}/admin/recent-searches?limit=${limit}`, { headers: NGROK_HEADER });
+  if (!res.ok) return { searches: [] };
+  return res.json();
+}

@@ -7,6 +7,7 @@ import AboutSection from './components/AboutSection.jsx';
 import SmartLoader from './components/SmartLoader.jsx';
 import SkeletonCard from './components/SkeletonCard.jsx';
 import LanguageSelector from './components/LanguageSelector.jsx';
+import SearchMonitor from './components/SearchMonitor.jsx';
 import { analyzeTickers } from './api.js';
 import translations from './i18n.js';
 
@@ -194,6 +195,9 @@ export default function App() {
       {reportResult && (
         <ReportView ticker={reportResult.ticker} result={reportResult} onClose={() => setReportResult(null)} t={t} lang={lang} />
       )}
+
+      {/* Live search monitor — fixed bottom-right */}
+      <SearchMonitor t={t} />
 
       <style>{`
         @keyframes fadeInUp {

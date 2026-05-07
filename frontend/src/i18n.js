@@ -69,6 +69,7 @@ const translations = {
     
     // Messages
     loading: "Loading…",
+    searchMonitorTitle: "🔍 Live Searches",
     analysisDuration: "This takes 3-5 minutes — fetching financials, SEC filings, and deep-dive scoring. Please wait…",
     step_fetching: "Fetching financial data…",
     step_ratios: "Processing ratios & metrics…",
@@ -193,6 +194,7 @@ const translations = {
     
     // Messages
     loading: "読み込み中…",
+    searchMonitorTitle: "🔍 リアルタイム検索",
     analysisDuration: "分析には3〜5分かかります — 財務データ、SEC提出書類、詳細スコアリングを実行中です。しばらくお待ちください…",
     step_fetching: "財務データ取得中…",
     step_ratios: "比率・指標を処理中…",

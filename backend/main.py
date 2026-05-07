@@ -61,6 +61,7 @@ from backend.models import TickerRequest, AnalysisResult
 from backend.orchestrator import run_analysis_parallel
 from backend.earnings_deep_dive import DeepDiveRequest, DeepDiveResponse, generate_deep_dive
 from backend.sources_collector import list_available_quarters, get_yahoo_data_for_quarter
+from backend.search_logger import log_search
 
 # Setup logging with our custom configuration
 from backend.logging_config import setup_logging, get_logger
@@ -474,10 +475,13 @@ async def batch_status(job_id: str):
             for ticker in j["tickers"]:
                 if ticker in result["results"]:
                     j["results"][ticker] = result["results"][ticker]
+                    log_search(ticker, "completed", 0.0, user_agent="batch")
                 elif ticker in result.get("errors", {}):
                     j["errors"][ticker] = result["errors"][ticker]
+                    log_search(ticker, "failed", 0.0, error=str(result["errors"][ticker]), user_agent="batch")
                 else:
                     j["errors"][ticker] = "Unknown error"
+                    log_search(ticker, "failed", 0.0, error="Unknown error", user_agent="batch")
                 j["completed"] += 1
             j["status"] = "completed" if not j["errors"] else "partial"
             return j
@@ -1019,6 +1023,15 @@ async def analyze(request: TickerRequest, lang: str = "en"):
         results_list.append(r)
 
     logger.info(f"Analyze complete: {len(results_list)} tickers, {len(errors_list)} errors [{time.time()-t_start:.1f}s, lang={lang}]")
+    
+    # Log each ticker search for near-real-time monitoring
+    duration_ms = (time.time() - t_start) * 1000
+    ua = request.headers.get("user-agent", "") if hasattr(request, 'headers') else ""
+    for r_item in results_list:
+        log_search(r_item["ticker"], "completed", duration_ms, user_agent=ua)
+    for ticker_err in errors_list:
+        log_search(ticker_err, "failed", duration_ms, error=ticker_err, user_agent=ua)
+    
     return JSONResponse({
         "status": "completed" if not batch["errors"] else "partial",
         "results": results_list,
@@ -1221,3 +1234,18 @@ async def list_analyses():
         })
     
     return JSONResponse({"analyses": analyses})
+
+
+@app.get("/api/admin/recent-searches")
+async def recent_searches(limit: int = 50, status: str = "all"):
+    """Get recent search events for near-real-time monitoring.
+    
+    Query params:
+    - limit: max number of events (default 50)
+    - status: "all", "completed", or "failed" (default "all")
+    
+    Returns {searches: [{timestamp, ticker, status, duration_ms, cache_hit, user_agent}]}
+    """
+    from backend.search_logger import read_recent
+    results = read_recent(limit=max(1, min(limit, 200)), status_filter=status)
+    return JSONResponse({"searches": results})
