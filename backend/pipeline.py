@@ -174,6 +174,26 @@ def _company_website(yf_data: Dict[str, Any], fh_data: Optional[Dict[str, Any]] 
     return None
 
 
+def _investor_relations_url(yf_data: Dict[str, Any], fh_data: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    candidates = [
+        yf_data.get("investor_relations_url"),
+        yf_data.get("investors_url"),
+        yf_data.get("ir_url"),
+    ]
+    if isinstance(fh_data, dict):
+        profile = fh_data.get("profile")
+        if isinstance(profile, dict):
+            candidates.extend([
+                profile.get("investor_relations_url"),
+                profile.get("investors_url"),
+                profile.get("ir_url"),
+            ])
+    for value in candidates:
+        if isinstance(value, str) and value.startswith(("http://", "https://")):
+            return value
+    return None
+
+
 def _copy_non_report_sections_to_language_dirs(output_dir: str) -> None:
     for language in ("en", "jp"):
         language_dir = os.path.join(output_dir, language)
@@ -230,6 +250,11 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
     guidance_value = pick("guidance")
     if guidance_value is None:
         guidance_value = pick("guidance_official")
+    ticker_for_segments = (
+        getattr(result, "ticker", None)
+        or (yf_data.get("ticker") if isinstance(yf_data, dict) else None)
+        or ""
+    )
 
     return FinancialMetrics(
         eps_estimate=pick("eps_estimate"),
@@ -262,7 +287,8 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
             (getattr(valuation, "pe_forward", None) if valuation else None)
             or (yf_data.get("pe_forward") if isinstance(yf_data, dict) else None)
         ),
-        segments=_extract_segments(ticker, guidance_value),
+        guidance=str(guidance_value) if guidance_value is not None else None,
+        segments=_extract_segments(ticker_for_segments, guidance_value) if ticker_for_segments else {},
     )
 
 
@@ -297,6 +323,11 @@ def _add_earnings_deep_dive_if_transcript(
         sources = transcript_results.get("sources", []) if isinstance(transcript_results, dict) else []
         transcript_text, transcript_source = _best_transcript_source(sources)
         transcript_url = _transcript_url(transcript_source)
+        transcript_source_name = str(
+            transcript_source.get("source")
+            or transcript_source.get("title")
+            or "Transcript"
+        ).strip()
         if not transcript_text:
             logger.info(f"[{ticker}] Earnings deep-dive proceeding without usable transcript")
 
@@ -309,8 +340,13 @@ def _add_earnings_deep_dive_if_transcript(
         # If transcript is for a specific quarter, use quarter-specific yfinance data
         deep_dive_metrics = _deep_dive_metrics(result, yf_data)
         website = company_website or _company_website(yf_data)
+        investor_relations = _investor_relations_url(yf_data)
         if website:
             deep_dive_metrics = deep_dive_metrics.model_copy(update={"company_website": website})
+        if investor_relations:
+            deep_dive_metrics = deep_dive_metrics.model_copy(update={"investor_relations_url": investor_relations})
+        if transcript_source_name:
+            deep_dive_metrics = deep_dive_metrics.model_copy(update={"transcript_source": transcript_source_name})
         if re.search(r"(?:FY)?20\d{2}\s*Q[1-4]|20\d{2}Q[1-4]", transcript_quarter, re.IGNORECASE):
             from backend.sources_collector import get_yahoo_data_for_quarter
             q_yf = get_yahoo_data_for_quarter(ticker, transcript_quarter)
@@ -318,6 +354,10 @@ def _add_earnings_deep_dive_if_transcript(
                 deep_dive_metrics = _deep_dive_metrics(result, q_yf)
                 if website:
                     deep_dive_metrics = deep_dive_metrics.model_copy(update={"company_website": website})
+                if investor_relations:
+                    deep_dive_metrics = deep_dive_metrics.model_copy(update={"investor_relations_url": investor_relations})
+                if transcript_source_name:
+                    deep_dive_metrics = deep_dive_metrics.model_copy(update={"transcript_source": transcript_source_name})
 
         response = generate_deep_dive(
             DeepDiveRequest(

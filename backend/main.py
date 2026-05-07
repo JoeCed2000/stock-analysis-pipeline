@@ -686,7 +686,23 @@ async def earnings_deep_dive(request: DeepDiveRequest):
             )
             request.metrics = _deep_dive_metrics(dummy, q_data)
     try:
-        return generate_deep_dive(request)
+        response = generate_deep_dive(request)
+        
+        # Post-generation validation — write result so dossier download gate can check
+        try:
+            from backend.earnings_deep_dive.deep_dive_validator import validate_deep_dive
+            md_path = response.markdown_path
+            if md_path and os.path.exists(md_path):
+                md_passed, issues = validate_deep_dive(md_path)
+                validation = {"passed": md_passed, "issues": issues, "checked_at": datetime.now(timezone.utc).isoformat()}
+                val_path = os.path.join(os.path.dirname(md_path), "deep_dive_validation.json")
+                with open(val_path, "w") as f:
+                    json.dump(validation, f, indent=2)
+                logger.info(f"[{request.ticker}] Deep-dive validation: {'PASSED' if md_passed else 'FAILED'} ({len(issues)} issues)")
+        except Exception as ve:
+            logger.warning(f"[{request.ticker}] Deep-dive validation error: {ve}")
+        
+        return response
     except Exception as e:
         logger.error(f"[{request.ticker}] Earnings deep-dive generation failed: {e}")
         raise HTTPException(status_code=500, detail=f"Earnings deep-dive generation failed: {str(e)}")
@@ -781,31 +797,44 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
         logger.info(f"[{ticker}] Translating dossier to {dossier_language} (temp copy)...")
         try:
             from backend.translator import translate_text
+            from concurrent.futures import ThreadPoolExecutor, as_completed
             work_dir = Path(tempfile.mkdtemp(prefix=f"dossier_{ticker}_"))
             # Copy original dir to temp
             shutil.copytree(analysis_dir, work_dir, dirs_exist_ok=True)
-            for fpath in sorted(work_dir.rglob("*.txt")):
-                # NEVER translate transcripts — source documents stay in original English
-                if "04_transcripts_and_management" in str(fpath):
-                    continue
+            
+            # Collect files to translate (skip transcripts)
+            txt_files = [
+                fpath for fpath in sorted(work_dir.rglob("*.txt"))
+                if "04_transcripts_and_management" not in str(fpath)
+            ]
+            md_files = [
+                fpath for fpath in sorted(work_dir.rglob("*.md"))
+                if fpath.name != "README.md"
+                and "04_transcripts_and_management" not in str(fpath)
+            ]
+            all_to_translate = txt_files + md_files
+            
+            # Translate in parallel — each file gets its own thread
+            def _translate_one(fpath):
                 try:
-                    translated = translate_text(fpath.read_text(encoding="utf-8"), translation_language, strict=True)
+                    content = fpath.read_text(encoding="utf-8")
+                    translated = translate_text(content, translation_language, strict=True)
                     fpath.write_text(translated, encoding="utf-8")
+                    return True
                 except Exception as e:
-                    logger.warning(f"[{ticker}] TXT translation failed for {fpath}: {e}")
+                    logger.warning(f"[{ticker}] Translation failed for {fpath.name}: {e}")
                     raise
-            for fpath in sorted(work_dir.rglob("*.md")):
-                if fpath.name != "README.md":
-                    # NEVER translate transcripts — source documents stay in original English
-                    if "04_transcripts_and_management" in str(fpath):
-                        continue
-                    try:
-                        translated = translate_text(fpath.read_text(encoding="utf-8"), translation_language, strict=True)
-                        fpath.write_text(translated, encoding="utf-8")
-                    except Exception as e:
-                        logger.warning(f"[{ticker}] MD translation failed for {fpath}: {e}")
-                        raise
-            logger.info(f"[{ticker}] Dossier translation complete (temp copy)")
+            
+            if all_to_translate:
+                with ThreadPoolExecutor(max_workers=min(len(all_to_translate), 4)) as ex:
+                    futures = {ex.submit(_translate_one, fp): fp for fp in all_to_translate}
+                    for future in as_completed(futures):
+                        try:
+                            future.result()
+                        except Exception as e:
+                            raise  # propagate first failure
+            
+            logger.info(f"[{ticker}] Dossier translation complete ({len(all_to_translate)} files, temp copy)")
         except Exception as e:
             logger.error(f"[{ticker}] Translation error: {e}")
             raise HTTPException(status_code=503, detail=f"Codex translation failed for {dossier_language}: {e}")
@@ -962,7 +991,7 @@ async def dossier_upload(
 
 
 @app.post("/api/analyze")
-async def analyze(request: TickerRequest, lang: str = "en"):
+async def analyze(request: TickerRequest, lang: str = "en", fastapi_request: Request = None):
     """Submit tickers for analysis. Runs sequentially, returns results immediately.
     Use ?lang=ja for Japanese labels."""
     tickers = request.tickers
@@ -1038,8 +1067,8 @@ async def analyze(request: TickerRequest, lang: str = "en"):
     
     # Log each ticker search for near-real-time monitoring
     duration_ms = (time.time() - t_start) * 1000
-    ua = request.headers.get("user-agent", "") if hasattr(request, 'headers') else ""
-    client_ip = request.client.host if request.client else "unknown"
+    ua = fastapi_request.headers.get("user-agent", "") if fastapi_request else ""
+    client_ip = fastapi_request.client.host if fastapi_request and fastapi_request.client else "unknown"
     for r_item in results_list:
         log_search(r_item["ticker"], "completed", duration_ms, user_agent=ua, client_ip=client_ip)
     for ticker_err in errors_list:

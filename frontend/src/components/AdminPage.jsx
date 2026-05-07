@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import SearchMonitor from './SearchMonitor.jsx';
 
 const POLL_MS = 5000;
 const API = '/api';
@@ -105,6 +106,7 @@ export default function AdminPage({ t, onClose }) {
                 <th style={thStyle}>Ticker</th>
                 <th style={thStyle}>Status</th>
                 <th style={thStyle}>Duration</th>
+                <th style={thStyle}>IP</th>
                 <th style={thStyle}>User Agent</th>
                 <th style={thStyle}>Error</th>
               </tr>
@@ -124,6 +126,9 @@ export default function AdminPage({ t, onClose }) {
                     </span>
                   </td>
                   <td style={{ ...tdStyle, color: '#8b949e' }}>{formatMs(s.duration_ms)}</td>
+                  <td style={{ ...tdStyle, color: '#8b949e', fontFamily: 'monospace', fontSize: 11 }}>
+                    {s.client_ip || '-'}
+                  </td>
                   <td style={{ ...tdStyle, color: '#8b949e', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {s.user_agent?.slice(0, 40) || '-'}
                   </td>
@@ -135,7 +140,10 @@ export default function AdminPage({ t, onClose }) {
             </tbody>
           </table>
         </div>
-      </div>
+        </div>
+
+      {/* Live search monitor — fixed bottom-right */}
+      <SearchMonitor t={t} />
     </div>
   );
 }

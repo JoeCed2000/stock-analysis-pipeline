@@ -364,10 +364,23 @@ def _section_metrics(section: str, metrics: Dict[str, Any]) -> Dict[str, Any]:
 
 def _load_transcript(request: DeepDiveRequest) -> Tuple[str, Dict[str, Any]]:
     if request.transcript_text and request.transcript_text.strip():
+        # Extract source name from URL or fall back to generic label
+        source_name = "Earnings Call Transcript"
+        source_url = request.transcript_url or ""
+        if source_url:
+            from urllib.parse import urlparse
+            domain = urlparse(source_url).netloc.replace("www.", "")
+            domain_map = {
+                "fool.com": "The Motley Fool",
+                "seekingalpha.com": "Seeking Alpha",
+                "alphavantage.co": "Alpha Vantage",
+            }
+            source_name = domain_map.get(domain, domain.split(".")[0].title())
         return request.transcript_text.strip(), {
             "found": True,
-            "source": "request.transcript_text",
-            "url": request.transcript_url,
+            "source": source_name,
+            "primary_source": source_name,
+            "url": source_url,
         }
 
     try:

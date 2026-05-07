@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import TickerInput from './components/TickerInput.jsx';
 import BatchAnalysis from './components/BatchAnalysis.jsx';
 import AnalysisCard from './components/AnalysisCard.jsx';
@@ -7,7 +7,6 @@ import AboutSection from './components/AboutSection.jsx';
 import SmartLoader from './components/SmartLoader.jsx';
 import SkeletonCard from './components/SkeletonCard.jsx';
 import LanguageSelector from './components/LanguageSelector.jsx';
-import SearchMonitor from './components/SearchMonitor.jsx';
 import AdminPage from './components/AdminPage.jsx';
 import { analyzeTickers } from './api.js';
 import translations from './i18n.js';
@@ -21,7 +20,13 @@ export default function App() {
   const [error, setError] = useState(null);
   const [reportResult, setReportResult] = useState(null);
   const [progress, setProgress] = useState({ current: 0, total: 0, ticker: '' });
-  const [showAdmin, setShowAdmin] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(() => window.location.hash === '#admin');
+
+  useEffect(() => {
+    const onHashChange = () => setShowAdmin(window.location.hash === '#admin');
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
   const [lang, setLang] = useState(() => {
     // Persist language across refreshes
     if (typeof window !== 'undefined') {
@@ -82,20 +87,11 @@ export default function App() {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
       {showAdmin ? (
-        <AdminPage t={t} onClose={() => setShowAdmin(false)} />
+        <AdminPage t={t} onClose={() => { window.location.hash = ''; }} />
       ) : (
       <>{/* Header — centered */}
       <div style={{ marginBottom: 24, textAlign: 'center' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <button
-            onClick={() => setShowAdmin(true)}
-            style={{
-              padding: '4px 12px', fontSize: 11, background: '#21262d',
-              color: '#8b949e', border: '1px solid #30363d', borderRadius: 4, cursor: 'pointer',
-            }}
-          >
-            📊 Admin
-          </button>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 8 }}>
           <LanguageSelector lang={lang} onLanguageChange={handleLanguageChange} />
         </div>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: '#e1e4e8', marginBottom: 4 }}>
@@ -209,9 +205,6 @@ export default function App() {
       {reportResult && (
         <ReportView ticker={reportResult.ticker} result={reportResult} onClose={() => setReportResult(null)} t={t} lang={lang} />
       )}
-
-      {/* Live search monitor — fixed bottom-right */}
-      <SearchMonitor t={t} />
 
       <style>{`
         @keyframes fadeInUp {

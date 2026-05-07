@@ -322,7 +322,8 @@ Required analysis format:
 ① EPS: beat/miss, YoY direction, and exact source.
 ② Revenue: beat/miss, YoY direction, and exact source.
 ③ Quality of the beat/miss: explain whether both top line and profit moved together.
-For Nami-san: explain in plain investor terms whether this is a high-quality surprise or not.""",
+For Nami-san: explain in plain investor terms whether this is a high-quality surprise or not.
+> One-line summary: [your one-line summary here]""",
     "Highlights": """Required table:
 {table_header}
 |---|---|---|---|---|---|
@@ -345,7 +346,8 @@ Required analysis format:
 ③ ...
 
 Essential insight for Nami-san: grade the quarter in one concise line.
-Investment takeaway: state the core takeaway without investment advice.""",
+Investment takeaway: state the core takeaway without investment advice.
+> One-line summary: [your one-line summary here]""",
     "Operating Metrics": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -364,7 +366,8 @@ Required analysis format:
 ③ OpEx and net income: cost investment, tax/other effects, and sustainability.
 Operating structure: summarize revenue growth x margins x cost structure.
 Essential insight for Nami-san: explain whether earnings quality is high or fragile.
-Caution: list the next 2 checks.""",
+Caution: list the next 2 checks.
+> One-line summary: [your one-line summary here]""",
     "Cash Flow": """Required table:
 {table_header}
 |---|---|---|---|---|---|
@@ -380,7 +383,8 @@ Required analysis format:
 Cash structure: compare cash generation versus reinvestment needs.
 Essential insight for Nami-san: explain whether the company creates cash efficiently or burns cash.
 💰 Cash use: buybacks, dividends, debt paydown — state actual amounts.
-Caution for Nami-san: mention one-off working-capital or future investment risks.""",
+Caution for Nami-san: mention one-off working-capital or future investment risks.
+> One-line summary: [your one-line summary here]""",
     "Capital Efficiency": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -396,7 +400,8 @@ Supporting calculation data: list net income, assets, equity, invested capital i
 ② ROTCE / ROTE and ROA: core efficiency and asset productivity.
 ③ ROIC: the most important capital-return read-through versus cost of capital.
 For Nami-san: state whether capital efficiency is excellent, normal, or weak.
-Caution: distinguish financial engineering from business-model strength.""",
+Caution: distinguish financial engineering from business-model strength.
+> One-line summary: [your one-line summary here]""",
     "Segments": """Required tables:
 {table_header}
 |---|---|---|---|---|---|
@@ -419,7 +424,8 @@ Regional points:
 ③ Mature-market stability or weakness
 Overall structure: revenue mix and concentration.
 Essential insight for Nami-san: short / medium / long-term segment thesis.
-Caution: concentration and future segment dependency.""",
+Caution: concentration and future segment dependency.
+> One-line summary: [your one-line summary here]""",
     "Forward P/E": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -433,7 +439,8 @@ Required analysis format:
 ② Comparison: sector, history, peers — use available context.
 ③ Justification: whether growth, margins, cash, backlog, or guidance support the multiple.
 For Nami-san: explain if valuation looks supported, stretched, or not assessable.
-Caution: do not invent consensus numbers; mark missing data.""",
+Caution: do not invent consensus numbers; mark missing data.
+> One-line summary: [your one-line summary here]""",
     "Backlog": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -449,7 +456,8 @@ Conclusion: quantity and quality in one line.
 ③ Why quality is high/low: demand duration, customer commitment, supply constraints.
 ④ Caution: pricing, cancellation, coverage, and burn-down risk.
 ⑤ Backlog quality in one phrase.
-Essential insight for Nami-san: explain what visibility changed and list next questions.""",
+Essential insight for Nami-san: explain what visibility changed and list next questions.
+> One-line summary: [your one-line summary here]""",
     "Guidance": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -472,7 +480,8 @@ Medium-term implications:
 ② Margin direction
 ③ Stabilizing or risk factors
 Caution: whether guidance is too strong, price dependent, or cyclical.
-Essential insight for Nami-san: what the guide means and what to monitor next.""",
+Essential insight for Nami-san: what the guide means and what to monitor next.
+> One-line summary: [your one-line summary here]""",
     "Verdict": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -488,7 +497,8 @@ Required analysis format:
 ③ What matters next: the 2-3 monitor items for the next quarter.
 Investment takeaway: summarize the thesis without making buy/sell advice.
 Caution: cite only sourced risks.
-Essential insight: explain the quality of the quarter in simple terms.""",
+Essential insight: explain the quality of the quarter in simple terms.
+> One-line summary: [your one-line summary here]""",
 }
 
 

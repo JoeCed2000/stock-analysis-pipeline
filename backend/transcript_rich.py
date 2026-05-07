@@ -146,7 +146,7 @@ def _try_web_search_transcript(ticker: str) -> tuple:
 
 
 def _save_transcript(result: Dict, ticker: str, output_dir: str, source: str) -> Dict:
-    """Save transcript text to file."""
+    """Save transcript text to file with prominent source citation."""
     trans_dir = os.path.join(output_dir, "04_transcripts_and_management")
     os.makedirs(trans_dir, exist_ok=True)
 
@@ -154,13 +154,25 @@ def _save_transcript(result: Dict, ticker: str, output_dir: str, source: str) ->
     filename = f"transcript_{ticker}_{source}_{date_str}.txt"
     local_path = os.path.join(trans_dir, filename)
 
+    source_url = result["url"]
+    source_label = {
+        "alphavantage": "Alpha Vantage Earnings API",
+        "web_search": "Web Search (Seeking Alpha / Motley Fool / Earnings Call Transcripts)",
+        "seeking_alpha": "Seeking Alpha",
+        "motley_fool": "Motley Fool",
+        "manual": "Manual Upload",
+    }.get(source, source)
+
     with open(local_path, "w") as f:
-        f.write(f"Source: {result['url']}\n")
-        f.write(f"Ticker: {ticker}\n")
-        f.write(f"Date: {datetime.now(timezone.utc).isoformat()}\n")
-        f.write(f"{'='*60}\n\n")
+        f.write(f"# {ticker} — Earnings Call Transcript\n\n")
+        f.write(f"**Source:** {source_label}\n")
+        f.write(f"**URL:** {source_url}\n")
+        f.write(f"**Ticker:** {ticker}\n")
+        f.write(f"**Retrieved:** {datetime.now(timezone.utc).isoformat()}\n\n")
+        f.write(f"---\n\n")
+        f.write(f"## Verbatim Transcript\n\n")
         f.write(result["text"])
 
     result["local_path"] = local_path
-    logger.info(f"Transcript saved: {local_path} ({len(result['text'])} chars)")
+    logger.info(f"Transcript saved: {local_path} ({len(result['text'])} chars, source={source_label})")
     return result

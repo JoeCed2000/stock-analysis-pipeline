@@ -42,6 +42,11 @@ class FinancialMetrics(BaseModel):
     pe_forward: Optional[float] = None
     backlog: Optional[float] = None
     guidance: Optional[str] = None
+    company_website: Optional[str] = None
+    investor_relations_url: Optional[str] = None
+    press_release_url: Optional[str] = None
+    earnings_presentation_url: Optional[str] = None
+    transcript_source: Optional[str] = None
     segments: Dict[str, Any] = Field(default_factory=dict)
 
 
