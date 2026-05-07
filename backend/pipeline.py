@@ -549,7 +549,7 @@ def _add_earnings_deep_dive_if_transcript(
         return False
 
 
-def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult:
+def analyze_ticker(ticker: str, output_base: str = "analyses", language: str = "en") -> AnalysisResult:
     """
     Execute the full pipeline for a single ticker.
     Delegates to analyze_ticker_fast (the unified implementation).
@@ -557,7 +557,7 @@ def analyze_ticker(ticker: str, output_base: str = "analyses") -> AnalysisResult
     Kept for backward compatibility — _run_backlog.py and run_daily_backlog.py
     use this function name. Both paths now produce identical output.
     """
-    return analyze_ticker_fast(ticker, output_base)
+    return analyze_ticker_fast(ticker, output_base, language=language)
 def _assess_risks(yf_data: Dict, fh_data: Dict, ticker: str) -> List[RiskItem]:
     """Identify risks from available data."""
     risks = []
@@ -953,7 +953,7 @@ def _decision_rationale(sc: Scoring) -> str:
     return ". ".join(parts) if parts else "Balanced profile with no extreme strengths or weaknesses."
 
 
-def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisResult:
+def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: str = "en") -> AnalysisResult:
     """
     Fast-path analysis: returns result in <5s.
     Skips heavy file I/O (PDF/Excel/10-K conversion) — those run in background.
@@ -1300,6 +1300,7 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses") -> AnalysisR
         output_dir=output_dir,
         result=result,
         yf_data=yf_data,
+        language=language,
         company_website=_company_website(yf_data, fh_data),
     )
     

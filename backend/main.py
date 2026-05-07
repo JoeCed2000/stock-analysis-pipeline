@@ -736,7 +736,7 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
         logger.info(f"[{ticker}] Dossier not ready — generating synchronously... [lang={lang}]")
         try:
             from backend.pipeline import analyze_ticker
-            result = analyze_ticker(ticker, output_base=str(ANALYSES_DIR))
+            result = analyze_ticker(ticker, output_base=str(ANALYSES_DIR), language=dossier_language)
             logger.info(f"[{ticker}] Dossier generated — {result.decision} ({result.scoring.total}/40)")
         except Exception as e:
             logger.error(f"[{ticker}] Dossier generation failed: {e}")
@@ -986,7 +986,7 @@ async def analyze(request: TickerRequest, lang: str = "en", fastapi_request: Req
 
     try:
         import asyncio as _asyncio
-        batch = await _asyncio.to_thread(run_analysis_parallel, normalized_tickers, output_base=str(ANALYSES_DIR))
+        batch = await _asyncio.to_thread(run_analysis_parallel, normalized_tickers, output_base=str(ANALYSES_DIR), language=lang)
     except Exception as e:
         logger.exception("Batch analysis failed")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1076,7 +1076,7 @@ async def analyze_async(request: TickerRequest, lang: str = "en", fastapi_reques
             update_job(job_id, status="processing", progress="Starting analysis...")
             import asyncio as _asyncio
             batch = _asyncio.new_event_loop().run_until_complete(
-                _asyncio.to_thread(run_analysis_parallel, normalized_tickers, output_base=str(ANALYSES_DIR))
+                _asyncio.to_thread(run_analysis_parallel, normalized_tickers, output_base=str(ANALYSES_DIR), language=lang)
             )
             results_list = []
             for ticker, result in batch["results"].items():

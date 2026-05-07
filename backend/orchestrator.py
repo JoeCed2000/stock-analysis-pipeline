@@ -37,6 +37,7 @@ def run_analysis_parallel(
     tickers: List[str],
     output_base: str = "analyses",
     max_workers: int | None = None,
+    language: str = "en",
 ) -> Dict[str, Any]:
     """Run multiple ticker analyses concurrently with per-ticker timeout."""
     results: Dict[str, AnalysisResult] = {}
@@ -46,11 +47,11 @@ def run_analysis_parallel(
 
     worker_count = max_workers or min(len(tickers), 4)
     worker_count = max(1, min(worker_count, len(tickers)))
-    logger.info(f"Analyzing {len(tickers)} tickers in parallel (workers={worker_count})")
+    logger.info(f"Analyzing {len(tickers)} tickers in parallel (workers={worker_count}, lang={language})")
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
         futures = {
-            executor.submit(analyze_ticker_fast, ticker, output_base): ticker
+            executor.submit(analyze_ticker_fast, ticker, output_base, language): ticker
             for ticker in tickers
         }
         pending = set(futures)
