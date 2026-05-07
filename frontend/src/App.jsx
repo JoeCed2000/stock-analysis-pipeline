@@ -71,27 +71,38 @@ export default function App() {
 
       // Poll until done (max 10 min)
       const MAX_POLLS = 200; // 200 * 3s = 10 min
+      let timedOut = true;
       for (let i = 0; i < MAX_POLLS; i++) {
         await new Promise(r => setTimeout(r, 3000));
-        const job = await getJobStatus(job_id);
+        try {
+          const job = await getJobStatus(job_id);
 
-        if (job.status === 'done') {
-          const data = job.result;
-          if (data?.errors?.length > 0) {
-            setError(`Errors: ${data.errors.join(', ')}`);
+          if (job.status === 'done') {
+            const data = job.result;
+            if (data?.errors?.length > 0) {
+              setError(`Errors: ${data.errors.join(', ')}`);
+            }
+            setResults(data?.results || []);
+            setProgress({ current: total, total, ticker: '' });
+            timedOut = false;
+            break;
           }
-          setResults(data?.results || []);
-          setProgress({ current: total, total, ticker: '' });
-          break;
+          if (job.status === 'error') {
+            setError(job.error || 'Analysis failed');
+            timedOut = false;
+            break;
+          }
+          // Still processing — update progress text
+          if (job.progress) {
+            setProgress(p => ({ ...p, ticker: job.progress }));
+          }
+        } catch (pollErr) {
+          // Transient network error during poll — keep trying
+          console.warn('Poll error:', pollErr.message);
         }
-        if (job.status === 'error') {
-          setError(job.error || 'Analysis failed');
-          break;
-        }
-        // Still processing — update progress text
-        if (job.progress) {
-          setProgress(p => ({ ...p, ticker: job.progress }));
-        }
+      }
+      if (timedOut) {
+        setError('Analysis timed out after 10 minutes. The data may still be processing — try again or check back later.');
       }
     } catch (e) {
       if (e.status === 422 && e.body) {
