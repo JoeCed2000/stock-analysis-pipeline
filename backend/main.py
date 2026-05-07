@@ -772,7 +772,7 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
                 metrics = _deep_dive_metrics(dummy, q_data)
                 from backend.earnings_deep_dive.generator import generate_deep_dive
 
-                generate_deep_dive(DeepDiveRequest(
+                response = generate_deep_dive(DeepDiveRequest(
                     ticker=ticker,
                     company=q_data.get("company_name", ticker),
                     quarter=quarter,
@@ -781,6 +781,35 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
                     metrics=metrics,
                 ))
                 logger.info(f"[{ticker}] Deep-dive regenerated for {quarter}")
+                
+                # Render PDF and validate (mirrors _add_earnings_deep_dive_if_transcript)
+                from backend.earnings_deep_dive.mapper import build_earnings_deep_dive_report
+                from backend.earnings_deep_dive.pdf_renderer import render_earnings_deep_dive_pdf
+                from backend.earnings_deep_dive.deep_dive_validator import validate_deep_dive, validate_render_model
+                import json as _json
+                
+                pdf_path = os.path.join(str(analysis_dir), "07_final_report", "earnings_deep_dive.pdf")
+                report_model = build_earnings_deep_dive_report(
+                    ticker=ticker,
+                    company=q_data.get("company_name", ticker),
+                    quarter=quarter,
+                    language=dossier_language,
+                    metrics=metrics,
+                    transcript_url=response.transcript_url or "",
+                    section_analysis=response.sections,
+                )
+                render_earnings_deep_dive_pdf(report_model, pdf_path)
+                
+                # Validate
+                md_passed, issues = validate_deep_dive(response.markdown_path)
+                render_issues = validate_render_model(report_model)
+                passed = md_passed and not render_issues
+                val_result = {"passed": passed, "issues": issues + render_issues,
+                              "checked_at": datetime.now(timezone.utc).isoformat()}
+                val_path = os.path.join(str(analysis_dir), "07_final_report", "deep_dive_validation.json")
+                with open(val_path, "w") as f:
+                    _json.dump(val_result, f, indent=2)
+                logger.info(f"[{ticker}] Deep-dive PDF rendered + validated (passed={passed})")
         except Exception as e:
             logger.warning(f"[{ticker}] Deep-dive regeneration for {quarter} failed: {e}")
 

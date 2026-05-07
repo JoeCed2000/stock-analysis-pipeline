@@ -208,18 +208,19 @@ def _styles(fonts: PdfFontSet) -> dict[str, ParagraphStyle]:
     }
 
 
-def _glyph_safe(text: str) -> str:
-    """Replace emoji with ASCII fallbacks, then strip to Latin-1 for Arial."""
+def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
+    """Replace emoji with ASCII fallbacks. Only strip to Latin-1 for non-CJK fonts."""
     value = str(text)
     for source, replacement in _GLYPH_FALLBACKS.items():
         value = value.replace(source, replacement)
-    # Encode to Latin-1 (ISO-8859-1), replacing unsupported chars with '?'
-    # Arial reliably covers all of Latin-1 (U+0000–U+00FF)
-    return value.encode("latin-1", errors="replace").decode("latin-1")
+    # Only strip to Latin-1 for fonts that don't support CJK
+    if font_name not in ("MS-PGothic", "HeiseiMin-W3"):
+        return value.encode("latin-1", errors="replace").decode("latin-1")
+    return value
 
 
 def _paragraph(text: str, style: ParagraphStyle, *, font_name: str) -> Paragraph:
-    escaped = escape(_glyph_safe(str(text)))
+    escaped = escape(_glyph_safe(str(text), font_name=font_name))
     return Paragraph(escaped, style)
 
 
@@ -235,7 +236,7 @@ def _format_markdown(text: str) -> str:
 
 def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragraph:
     """Paragraph with markdown formatting support (bold/italic)."""
-    formatted = _format_markdown(_glyph_safe(str(text)))
+    formatted = _format_markdown(_glyph_safe(str(text), font_name=font_name))
     escaped = escape(formatted)
     # Unescape the XML tags we intentionally added
     escaped = escaped.replace('&lt;b&gt;', '<b>').replace('&lt;/b&gt;', '</b>')
@@ -243,11 +244,11 @@ def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragr
     return Paragraph(escaped, style)
 
 
-def _section_title(section) -> str:
+def _section_title(section, *, font_name: str = "Helvetica") -> str:
     prefix = _SECTION_PREFIXES.get(section.key)
     if not prefix:
-        return _glyph_safe(section.title)
-    return _glyph_safe(f"{prefix} {section.title}")
+        return _glyph_safe(section.title, font_name=font_name)
+    return _glyph_safe(f"{prefix} {section.title}", font_name=font_name)
 
 
 def _official_website(report: EarningsDeepDiveReport) -> str | None:
