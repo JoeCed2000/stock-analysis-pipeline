@@ -626,7 +626,7 @@ def _sanitize_table(table: RenderedTable) -> RenderedTable:
     
     # Patterns that indicate a purely placeholder cell
     _PURE_Q_RE = _re.compile(r'^[?？\s]+$')  # Pure ? or ？ or spaces
-    _PURE_DASH_RE = _re.compile(r'^[—–\-\s]+$')  # Pure dashes
+    _PURE_DASH_RE = _re.compile(r'^[–\-\s]+$')  # Pure dashes (— intentionally kept as valid em dash)
     _JP_PLACEHOLDER_RE = _re.compile(r'[データ未取得開示該当計算不可なし]+')
     _GARBAGE_RE = _re.compile(r'[?？]{3,}')
     _JP_GARBAGE_RE = _re.compile(r'[\u3040-\u30ff\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]{3,}')
