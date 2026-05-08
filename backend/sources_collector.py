@@ -775,7 +775,15 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
 
     # Forward-looking metrics from info
     financials["eps_estimate"] = info.get("forwardEps")
-    financials["revenue_estimate"] = info.get("revenueEstimate")
+    # revenue_estimate from yfinance analyst consensus (info dict doesn't have it)
+    try:
+        rev_est = stock.revenue_estimate
+        if rev_est is not None and not rev_est.empty:
+            financials["revenue_estimate"] = rev_est.iloc[0]["avg"]  # 0q = current quarter avg estimate
+        else:
+            financials["revenue_estimate"] = None
+    except Exception:
+        financials["revenue_estimate"] = None
     financials["pe_forward"] = info.get("forwardPE")
     financials["guidance"] = info.get("earningsGrowth") or info.get("revenueGrowth")
     financials["backlog"] = info.get("backlog")
@@ -883,7 +891,7 @@ def get_yahoo_data_for_quarter(ticker: str, quarter: str) -> Optional[Dict[str, 
         "revenue_quarterly": None, "revenue_yoy_growth": None,
         "revenue_annual": None, "revenue_annual_growth": None,
         "eps_actual": None, "eps_estimate": None, "eps_yoy": None,
-        "revenue_estimate": None,
+        "revenue_estimate": (lambda s: s.revenue_estimate.iloc[0]["avg"] if s.revenue_estimate is not None and not s.revenue_estimate.empty else None)(stock),
         "gross_margin": info.get("grossMargins"),
         "operating_margin": info.get("operatingMargins"),
         "net_income": None, "free_cash_flow": None,
