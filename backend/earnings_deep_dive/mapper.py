@@ -240,12 +240,6 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
     _GARBLED_EXACT = {"Sep", "Total"}
     _GARBLED_CONTAINS = ["generally", "consistent", "reportable", "As of", "than a year", "revenue of",
                          "September", "months ended", "fiscal year", "ended", "filing", "period"]
-    # Known segment names by position index. The edgar_extractor returns segments
-    # ordered by revenue (largest first) for most US companies.
-    _SEGMENT_POSITION_NAMES: tuple[str, ...] = (
-        "iPhone", "Mac", "iPad",
-        "Wearables, Home and Accessories", "Services",
-    )
     def _is_garbled(name: str) -> bool:
         n = str(name)
         if n in _GARBLED_EXACT:
@@ -255,13 +249,11 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
                 return True
         return False
 
-    def _segment_display_name(xbrl_name: str, index: int, fallback_label: str) -> str:
-        """Return a human-readable segment name, preferring known names over XBRL garbage."""
+    def _segment_display_name(xbrl_name: str, fallback_label: str) -> str:
+        """Return the real XBRL segment name, or template fallback if garbled."""
         if not _is_garbled(str(xbrl_name)):
             return str(xbrl_name) if xbrl_name else fallback_label
-        # XBRL name is garbled — use known position name if available
-        if index < len(_SEGMENT_POSITION_NAMES):
-            return _SEGMENT_POSITION_NAMES[index]
+        # XBRL name is garbled SEC text — use the generic template label
         return fallback_label
 
     for index, row_label in enumerate(labels):
@@ -282,7 +274,7 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
                 except (TypeError, ValueError, ZeroDivisionError):
                     pass
         driver = data.get("driver") if isinstance(data, dict) else None
-        display_name = _segment_display_name(str(name), index, row_label)
+        display_name = _segment_display_name(str(name), row_label)
         rows.append([
             display_name,
             _money(revenue),
