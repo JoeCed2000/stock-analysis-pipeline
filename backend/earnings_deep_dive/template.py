@@ -84,7 +84,7 @@ EARNINGS_TEMPLATE: tuple[ReportSectionTemplate, ...] = (
         title="Forward P/E",
         question="Please explain the forward P/E and valuation signal implied by the quarter.",
         table_columns=("Metric", "Value", "Reference", "Interpretation", "Source"),
-        table_rows=("Forward P/E", "Valuation signal"),
+        table_rows=("Forward P/E", "Forward EPS basis"),
         summary_label="Valuation takeaway",
     ),
     ReportSectionTemplate(
@@ -168,7 +168,7 @@ JAPANESE_EARNINGS_TEMPLATE: tuple[ReportSectionTemplate, ...] = (
         title="予想PER",
         question="以下の予想PERとバリュエーション上の示唆を説明してください。",
         table_columns=("指標", "値", "参照", "解釈", "出所"),
-        table_rows=("予想PER", "バリュエーションシグナル"),
+        table_rows=("予想PER", "Forward EPS basis"),
         summary_label="バリュエーション要点",
     ),
     ReportSectionTemplate(

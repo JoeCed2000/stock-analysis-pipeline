@@ -31,6 +31,7 @@ _PLACEHOLDER_PATTERNS = {
     "?", "N/A", "NA", "Not available", "データ未取得",
     "該当なし", "開示なし", "計算不可",
     "-", "--", "—", "–", "…", "...",
+    "Consensus / company guide",
 }
 
 # Regex to strip parenthetical suffixes from labels:
