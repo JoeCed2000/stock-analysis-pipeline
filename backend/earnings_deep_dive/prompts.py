@@ -143,7 +143,7 @@ Required analysis format:
     "Highlights": """Required table:
 {table_header}
 |---|---|---|---|---|---|
-| 🌟 Highlight | ① | ... | ... | ... | — |
+| 🌟 Highlight | ① | ... | ... | ... | Low / Medium / High |
 | ⚠️ Lowlight | ① | ... | ... | ... | Low / Medium / High |
 
 Required analysis format:
@@ -327,7 +327,7 @@ For Nami-san: explain in plain investor terms whether this is a high-quality sur
     "Highlights": """Required table:
 {table_header}
 |---|---|---|---|---|---|
-| 🌟 Highlight | ① | ... | ... | ... | — |
+| 🌟 Highlight | ① | ... | ... | ... | Low / Medium / High |
 | ⚠️ Lowlight | ① | ... | ... | ... | Low / Medium / High |
 
 Required analysis format:
