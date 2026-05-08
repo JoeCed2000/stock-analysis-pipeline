@@ -637,7 +637,7 @@ def _sanitize_table(table: RenderedTable) -> RenderedTable:
             return MISSING_EN
         # Exact matches
         exact_map = {
-            "?": MISSING_EN, "—": MISSING_EN, "–": MISSING_EN, "-": MISSING_EN,
+            "?": MISSING_EN, "–": MISSING_EN, "-": MISSING_EN,
             "データ未取得": MISSING_EN, "開示なし": NOT_DISCLOSED_EN,
             "該当なし": NOT_APPLICABLE_EN, "計算不可": NOT_CALCULABLE_EN,
         }
