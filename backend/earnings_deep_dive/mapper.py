@@ -240,6 +240,14 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
         data = raw if isinstance(raw, dict) else {}
         revenue = data.get("revenue") if isinstance(data, dict) else None
         yoy = data.get("yoy") if isinstance(data, dict) else None
+        # Compute YoY from revenue and prior year if not explicitly provided
+        if not _has(yoy) and revenue is not None and isinstance(data, dict):
+            prior = data.get("revenue_q_prior_year")
+            if prior and revenue:
+                try:
+                    yoy = ((float(revenue) - float(prior)) / float(prior)) * 100
+                except (TypeError, ValueError, ZeroDivisionError):
+                    pass
         driver = data.get("driver") if isinstance(data, dict) else None
         rows.append([
             str(name) if name else row_label,
@@ -454,7 +462,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 pass
         fwd_eps_display = _eps(eps_annual) if eps_annual else NOT_DISCLOSED_EN
         return [
-            [row_labels[0], _multiple(metrics.pe_forward), _multiple(trailing_pe), MISSING, _source(metrics.pe_forward)],
+            [row_labels[0], _multiple(metrics.pe_forward), _multiple(trailing_pe), "—", _source(metrics.pe_forward)],
             [row_labels[1], fwd_eps_display, _eps(getattr(metrics, "eps_estimate", None)), _yoy_pct(getattr(metrics, "eps_yoy", None)), _source(metrics.eps_estimate)],
         ]
 
@@ -470,7 +478,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         guidance = metrics.guidance if _has(metrics.guidance) else MISSING_EN
         guidance_source = _source(metrics.guidance)
         rows = [
-            [row_labels[0], guidance, "QoQ not available", "Next quarter outlook", guidance_source],
+            [row_labels[0], guidance, "—", "Next quarter outlook", guidance_source],
             [row_labels[1], "Not guided", "N/A", "Margin guidance not provided", guidance_source],
             [row_labels[2], "Not guided", "N/A", "EPS guidance not provided", guidance_source],
         ]
