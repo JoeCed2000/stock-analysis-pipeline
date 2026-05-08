@@ -938,7 +938,7 @@ def _summary(language: TemplateLanguage, ticker: str, section_key: str, metrics:
     if language == "jp":
         summaries = {
             "EPS & Revenue": f"👉 EPSは{eps}、売上高は{revenue}。予想比と前年比の両方を見て、成長の質を判断する局面です。",
-            "Highlights": "👉 良い点と懸念点を分けて見ると、数字で確認できる成長が最重要です。",
+            "Highlights": f"👉 {ticker} 売上高{revenue}（{revenue_yoy}前年比）、EPS{eps}。成長がキャッシュと利益率に波及しているかが焦点です。",
             "Operating Metrics": f"👉 売上高は{revenue}、前年比は{revenue_yoy}。利益率の変化が次の評価ポイントです。",
             "Cash Flow": f"👉 FCFは{fcf}。利益が現金に変わっているかを最優先で確認します。",
             "Capital Efficiency": "👉 ROE/ROICは資本効率を見る指標です。高い数値でもレバレッジや自社株買いの影響を分けて評価します。",
@@ -952,7 +952,7 @@ def _summary(language: TemplateLanguage, ticker: str, section_key: str, metrics:
 
     summaries = {
         "EPS & Revenue": f"{ticker} reported EPS of {eps} and revenue of {revenue}; the key investor question is whether the beat/miss is broad-based or one-off.",
-        "Highlights": f"{ticker}'s quarter should be read through specific positives and risks, each tied to reported numbers or management commentary.",
+        "Highlights": f"{ticker} Q: revenue {revenue} ({revenue_yoy} YoY), EPS {eps}. Focus on whether revenue growth converts into durable cash flow and margin expansion.",
         "Operating Metrics": f"Revenue was {revenue} with YoY growth of {revenue_yoy}; margin direction determines the quality of the growth.",
         "Cash Flow": f"Free cash flow was {fcf}; cash conversion and capex intensity show whether earnings are translating into owner cash.",
         "Capital Efficiency": "ROE, ROIC, and related returns indicate whether growth is creating value or simply consuming capital.",
