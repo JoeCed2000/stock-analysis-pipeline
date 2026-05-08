@@ -618,6 +618,22 @@ def _sanitize_table(table: RenderedTable) -> RenderedTable:
     return RenderedTable(columns=list(table.columns), rows=sanitized_rows)
 
 
+def _to_pct_num(value: Any) -> float:
+    """Normalize a raw yfinance value to a percentage number.
+    
+    yfinance returns ratios (0.7321 = 73.21%).  If the value is between
+    -1 and 1 (exclusive), multiply by 100 to get percentage points.
+    Otherwise assume it is already in percentage points.
+    """
+    if not _has(value):
+        return 0.0
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return num * 100.0 if -1.0 < num < 1.0 else num
+
+
 def _highlights_rows(metrics: FinancialMetrics, row_labels: tuple[str, ...]) -> list[list[str]]:
     """Generate data-driven Highlights table rows from actual metrics."""
     revenue = _money(metrics.revenue_actual)
@@ -629,16 +645,10 @@ def _highlights_rows(metrics: FinancialMetrics, row_labels: tuple[str, ...]) -> 
     pe = _multiple(metrics.pe_forward)
 
     # Determine signal directions from actual numbers
-    rev_yoy_num = metrics.revenue_yoy
-    try:
-        rev_yoy_num = float(rev_yoy_num) if rev_yoy_num is not None else 0
-    except (TypeError, ValueError):
-        rev_yoy_num = 0
-
-    eps_vs_est = metrics.eps_vs_estimate
+    rev_yoy_num = _to_pct_num(metrics.revenue_yoy)
     eps_beat = False
     try:
-        eps_beat = float(eps_vs_est) > 0 if eps_vs_est is not None else False
+        eps_beat = float(metrics.eps_vs_estimate) > 0 if metrics.eps_vs_estimate is not None else False
     except (TypeError, ValueError):
         pass
 
@@ -725,10 +735,7 @@ def _verdict_rows(metrics: FinancialMetrics, row_labels: tuple[str, ...]) -> lis
     eq_assessment = "Solid — earnings backed by cash flow" if (eps_beat and cash_quality == "Strong") else "Adequate"
 
     # ---- Growth durability ----
-    try:
-        rev_yoy_num = float(metrics.revenue_yoy) if metrics.revenue_yoy is not None else 0
-    except (TypeError, ValueError):
-        rev_yoy_num = 0
+    rev_yoy_num = _to_pct_num(metrics.revenue_yoy)
     try:
         margin_num = float(metrics.operating_margin) if metrics.operating_margin is not None else None
     except (TypeError, ValueError):
@@ -806,10 +813,7 @@ def _compute_final_verdict(ticker: str, metrics: FinancialMetrics) -> str:
         eps_beat = float(metrics.eps_vs_estimate) > 0 if metrics.eps_vs_estimate is not None else False
     except (TypeError, ValueError):
         eps_beat = False
-    try:
-        rev_yoy_num = float(metrics.revenue_yoy) if metrics.revenue_yoy is not None else 0
-    except (TypeError, ValueError):
-        rev_yoy_num = 0
+    rev_yoy_num = _to_pct_num(metrics.revenue_yoy)
     try:
         ocf_num = float(metrics.operating_cash_flow) if metrics.operating_cash_flow is not None else 0
     except (TypeError, ValueError):
@@ -891,10 +895,7 @@ def _compute_final_verdict_jp(ticker: str, metrics: FinancialMetrics) -> str:
         eps_beat = float(metrics.eps_vs_estimate) > 0 if metrics.eps_vs_estimate is not None else False
     except (TypeError, ValueError):
         eps_beat = False
-    try:
-        rev_yoy_num = float(metrics.revenue_yoy) if metrics.revenue_yoy is not None else 0
-    except (TypeError, ValueError):
-        rev_yoy_num = 0
+    rev_yoy_num = _to_pct_num(metrics.revenue_yoy)
     try:
         ocf_num = float(metrics.operating_cash_flow) if metrics.operating_cash_flow is not None else 0
     except (TypeError, ValueError):
