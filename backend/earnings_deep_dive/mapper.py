@@ -1194,9 +1194,10 @@ def build_earnings_deep_dive_report(
                     for i, item in enumerate(analysis_items):
                         if not item:
                             continue
-                        # Strip common LLM false claims about missing forward P/E
+                        # Strip common LLM false claims about missing forward P/E.
+                        # Handle markdown bold (**Not disclosed**) and plain variants.
                         item = _re2.sub(
-                            r'(?i)(the\s+)?forward\s+p/?e\s+(ratio\s+)?is\s+(not\s+(provided|disclosed|available|calculable|assessable|computable)[^.]*\.)',
+                            r'(?i)(the\s+)?forward\s+p/?e\s+(ratio\s+)?is\s+\*{0,2}(not\s+(provided|disclosed|available|calculable|assessable|computable))\*{0,2}[^.]*\.',
                             pe_fact,
                             item,
                         )
@@ -1205,11 +1206,17 @@ def build_earnings_deep_dive_report(
                             pe_fact,
                             item,
                         )
-                        # Also inject at the start if no match was replaced
+                        # Also catch "The forward P/E ratio is not provided" with any formatting
+                        item = _re2.sub(
+                            r'(?i)the\s+forward\s+p/?e\s+(?:ratio\s+)?(?:is\s+)?\*{0,2}not\s+(provided|disclosed|available)\*{0,2}[^.]*\.',
+                            pe_fact,
+                            item,
+                        )
+                        # If after all replacements, no pe_fact yet, inject at start
                         if pe_fact not in item:
                             item = pe_fact + " " + item
                         analysis_items[i] = item
-                    # Also append the validated note
+                    # Also append the validated source note
                     pe_note = f"[Source: yfinance forwardPE = {pe_val}]"
                     analysis_items[-1] = analysis_items[-1] + "\n\n" + pe_note
         sections.append(
