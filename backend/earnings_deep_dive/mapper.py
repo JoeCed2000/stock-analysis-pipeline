@@ -229,7 +229,16 @@ def _analysis_without_table(markdown: str) -> str:
 def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) -> list[list[str]]:
     rows: list[list[str]] = []
     segments = metrics.segments if isinstance(metrics.segments, dict) else {}
-    segment_items = list(segments.items())[: len(labels)]
+    # Filter out metadata keys (non-dict values, known meta fields)
+    _META_KEYS = {"product_segments", "total_revenue_quarterly", "deferred_revenue_1yr_pct", "source", "filing_date"}
+    segment_entries = [
+        (k, v) for k, v in segments.items()
+        if isinstance(v, dict) and k not in _META_KEYS
+    ]
+    segment_items = segment_entries[: len(labels)]
+    # Detect garbled XBRL names: long phrases with spaces (SEC text fragments)
+    def _is_garbled(name: str) -> bool:
+        return len(name) > 30 and " " in name
 
     for index, row_label in enumerate(labels):
         if index >= len(segment_items):
@@ -249,8 +258,10 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
                 except (TypeError, ValueError, ZeroDivisionError):
                     pass
         driver = data.get("driver") if isinstance(data, dict) else None
+        # Use template label if XBRL name is garbled SEC text fragment
+        display_name = row_label if _is_garbled(str(name)) else (str(name) if name else row_label)
         rows.append([
-            str(name) if name else row_label,
+            display_name,
             _money(revenue),
             _pct(yoy),
             str(driver) if _has(driver) else "Segment revenue contribution",
