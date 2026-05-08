@@ -1124,7 +1124,11 @@ def build_earnings_deep_dive_report(
     
     # Sections where the LLM table is unreliable — use yfinance data directly.
     # The LLM analysis text is still used for prose below the table.
+    # EPS & Revenue and Forward P/E added 2026-05-08 because LLM
+    # hallucinates — even with correct metrics in the prompt, it fills
+    # the table cells with placeholders.
     _DATA_DRIVEN_SECTIONS = {
+        "EPS & Revenue", "Forward P/E",
         "Operating Metrics", "Cash Flow", "Capital Efficiency",
         "Segments", "Guidance", "Backlog", "Verdict",
     }
