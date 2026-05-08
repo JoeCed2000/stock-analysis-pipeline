@@ -272,11 +272,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         ]
 
     if section_key == "Highlights":
-        return [
-            [row_labels[0], MISSING, MISSING, MISSING, MISSING],
-            [row_labels[1], MISSING, MISSING, MISSING, MISSING],
-            [row_labels[2], MISSING, MISSING, MISSING, MISSING],
-        ]
+        return _highlights_rows(metrics, row_labels)
 
     if section_key == "Operating Metrics":
         rows = (
@@ -480,7 +476,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         return [r for r in rows if r[1] != MISSING_EN] if len([r for r in rows if r[1] != MISSING_EN]) > 0 else rows[:1]
 
     if section_key == "Verdict":
-        return [[label, MISSING, MISSING, MISSING, MISSING] for label in row_labels]
+        return _verdict_rows(metrics, row_labels)
 
     return [[label, *([MISSING] * 4)] for label in row_labels]
 
@@ -622,6 +618,315 @@ def _sanitize_table(table: RenderedTable) -> RenderedTable:
     return RenderedTable(columns=list(table.columns), rows=sanitized_rows)
 
 
+def _highlights_rows(metrics: FinancialMetrics, row_labels: tuple[str, ...]) -> list[list[str]]:
+    """Generate data-driven Highlights table rows from actual metrics."""
+    revenue = _money(metrics.revenue_actual)
+    revenue_yoy_str = _yoy_pct(metrics.revenue_yoy)
+    eps_val = _eps(metrics.eps_actual)
+    fcf = _money(metrics.free_cash_flow)
+    margin = _pct(metrics.operating_margin)
+    gross_margin = _pct(metrics.gross_margin)
+    pe = _multiple(metrics.pe_forward)
+
+    # Determine signal directions from actual numbers
+    rev_yoy_num = metrics.revenue_yoy
+    try:
+        rev_yoy_num = float(rev_yoy_num) if rev_yoy_num is not None else 0
+    except (TypeError, ValueError):
+        rev_yoy_num = 0
+
+    eps_vs_est = metrics.eps_vs_estimate
+    eps_beat = False
+    try:
+        eps_beat = float(eps_vs_est) > 0 if eps_vs_est is not None else False
+    except (TypeError, ValueError):
+        pass
+
+    # Top positive: revenue growth + cash generation signal
+    positive_signal = (
+        f"Revenue {revenue}, {revenue_yoy_str} YoY"
+    )
+    positive_evidence = (
+        f"EPS {eps_val}{' (beat)' if eps_beat else ''}, FCF {fcf}"
+    )
+    positive_impact = (
+        "Revenue growth converting to cash flow — favorable"
+        if rev_yoy_num > 0 and metrics.free_cash_flow and metrics.free_cash_flow > 0
+        else "Revenue strength with monitored cash conversion"
+    )
+
+    # Top risk: margins or valuation
+    if margin and margin != MISSING and not margin.startswith("データ"):
+        risk_signal = f"Operating margin: {margin}"
+    elif gross_margin and gross_margin != MISSING and not gross_margin.startswith("データ"):
+        risk_signal = f"Gross margin: {gross_margin}"
+    else:
+        risk_signal = "Margin data not disclosed"
+    try:
+        margin_num = float(metrics.operating_margin) if metrics.operating_margin is not None else None
+    except (TypeError, ValueError):
+        margin_num = None
+    risk_evidence = (
+        f"Margin {margin}, {'below 15% threshold' if margin_num and margin_num < 15 else 'within healthy range'}"
+        if margin_num is not None
+        else f"PE Forward {pe}" if pe and pe != MISSING else "Watch valuation multiple"
+    )
+    risk_impact = (
+        "Margin compression risk if costs rise faster than revenue"
+        if margin_num is not None and margin_num < 15
+        else "Valuation risk if growth decelerates"
+    )
+
+    # Management tone: guidance and outlook
+    guidance = getattr(metrics, "guidance", None)
+    tone_signal = "Guidance provided" if guidance else "No specific guidance issued"
+    tone_evidence = str(guidance)[:120] if guidance else "Refer to earnings call transcript"
+    tone_impact = "Confidence in outlook" if guidance else "Neutral — await next guidance update"
+
+    return [
+        [row_labels[0], positive_signal, positive_evidence, positive_impact, SOURCE_COMPANY],
+        [row_labels[1], risk_signal, risk_evidence, risk_impact, SOURCE_COMPANY],
+        [row_labels[2], tone_signal, tone_evidence, tone_impact, SOURCE_COMPANY if guidance else "Earnings call transcript"],
+    ]
+
+
+def _verdict_rows(metrics: FinancialMetrics, row_labels: tuple[str, ...]) -> list[list[str]]:
+    """Generate data-driven Verdict table from all available metrics."""
+    revenue = _money(metrics.revenue_actual)
+    revenue_yoy = _pct(metrics.revenue_yoy)
+    eps_val = _eps(metrics.eps_actual)
+    fcf = _money(metrics.free_cash_flow)
+    ocf = _money(metrics.operating_cash_flow)
+    margin = _pct(metrics.operating_margin)
+    roe = _pct(metrics.roe)
+    roic = _pct(metrics.roic)
+    pe = _multiple(metrics.pe_forward)
+    net_debt = _money(metrics.net_debt)
+
+    # ---- Earnings quality ----
+    eps_beat = False
+    try:
+        eps_beat = float(metrics.eps_vs_estimate) > 0 if metrics.eps_vs_estimate is not None else False
+    except (TypeError, ValueError):
+        pass
+    rev_num = metrics.revenue_actual
+    try:
+        rev_num = float(rev_num) if rev_num is not None else 0
+    except (TypeError, ValueError):
+        rev_num = 0
+    ocf_num = metrics.operating_cash_flow
+    try:
+        ocf_num = float(ocf_num) if ocf_num is not None else 0
+    except (TypeError, ValueError):
+        ocf_num = 0
+    cash_quality = "Strong" if ocf_num > 0 and rev_num > 0 else "Monitor"
+    eq_positive = f"EPS {eps_val}{' beat' if eps_beat else ''}"
+    eq_negative = "No material earnings red flags in reported data" if eps_beat else "EPS did not beat consensus"
+    eq_assessment = "Solid — earnings backed by cash flow" if (eps_beat and cash_quality == "Strong") else "Adequate"
+
+    # ---- Growth durability ----
+    try:
+        rev_yoy_num = float(metrics.revenue_yoy) if metrics.revenue_yoy is not None else 0
+    except (TypeError, ValueError):
+        rev_yoy_num = 0
+    try:
+        margin_num = float(metrics.operating_margin) if metrics.operating_margin is not None else None
+    except (TypeError, ValueError):
+        margin_num = None
+    gd_positive = f"Revenue {revenue}, {revenue_yoy} YoY"
+    gd_negative = (
+        f"Margin {margin} — watch for compression"
+        if margin_num is not None and margin_num < 15
+        else "Growth rate sustainability needs monitoring"
+    )
+    gd_assessment = (
+        "Strong — revenue growth with margin support"
+        if rev_yoy_num > 10 and (margin_num is None or margin_num >= 15)
+        else "Moderate — growth present but margin/quality questions remain"
+        if rev_yoy_num > 0
+        else "Weak — declining revenue YoY"
+    )
+
+    # ---- Valuation ----
+    try:
+        pe_num = float(metrics.pe_forward) if metrics.pe_forward is not None else None
+    except (TypeError, ValueError):
+        pe_num = None
+    val_positive = f"Forward P/E: {pe}" if pe_num is not None else "Valuation multiple not available"
+    val_negative = (
+        "Above 25x — growth must justify premium"
+        if pe_num is not None and pe_num > 25
+        else "Valuation appears reasonable for growth profile"
+        if pe_num is not None
+        else "Insufficient data for valuation assessment"
+    )
+    val_assessment = (
+        "Rich — requires sustained high growth"
+        if pe_num is not None and pe_num > 25
+        else "Fair — growth-adjusted valuation is reasonable"
+        if pe_num is not None
+        else "Undetermined"
+    )
+
+    # ---- Overall verdict ----
+    # Simple scoring: 0-5 scale
+    score = 0
+    if eps_beat:
+        score += 1
+    if rev_yoy_num > 5:
+        score += 1
+    if rev_yoy_num > 15:
+        score += 1
+    if ocf_num > 0 and metrics.free_cash_flow and metrics.free_cash_flow > 0:
+        score += 1
+    if pe_num is not None and pe_num < 20:
+        score += 1
+    verdict = "BUY" if score >= 4 else "HOLD" if score >= 2 else "SELL"
+
+    return [
+        [row_labels[0], eq_positive, eq_negative, eq_assessment, SOURCE_COMPANY],
+        [row_labels[1], gd_positive, gd_negative, gd_assessment, SOURCE_COMPANY],
+        [row_labels[2], val_positive, val_negative, val_assessment, SOURCE_COMPANY],
+        [row_labels[3], f"Score: {score}/5", "See component assessments above", f"→ {verdict}", "Model + metrics"],
+    ]
+
+
+def _compute_final_verdict(ticker: str, metrics: FinancialMetrics) -> str:
+    """Compute a concrete, data-driven final verdict sentence (English)."""
+    revenue = _money(metrics.revenue_actual)
+    revenue_yoy = _pct(metrics.revenue_yoy)
+    eps_val = _eps(metrics.eps_actual)
+    fcf = _money(metrics.free_cash_flow)
+    margin = _pct(metrics.operating_margin)
+    pe = _multiple(metrics.pe_forward)
+
+    # Score
+    score = 0
+    try:
+        eps_beat = float(metrics.eps_vs_estimate) > 0 if metrics.eps_vs_estimate is not None else False
+    except (TypeError, ValueError):
+        eps_beat = False
+    try:
+        rev_yoy_num = float(metrics.revenue_yoy) if metrics.revenue_yoy is not None else 0
+    except (TypeError, ValueError):
+        rev_yoy_num = 0
+    try:
+        ocf_num = float(metrics.operating_cash_flow) if metrics.operating_cash_flow is not None else 0
+    except (TypeError, ValueError):
+        ocf_num = 0
+    try:
+        pe_num = float(metrics.pe_forward) if metrics.pe_forward is not None else None
+    except (TypeError, ValueError):
+        pe_num = None
+
+    if eps_beat: score += 1
+    if rev_yoy_num > 5: score += 1
+    if rev_yoy_num > 15: score += 1
+    if ocf_num > 0 and metrics.free_cash_flow and metrics.free_cash_flow > 0: score += 1
+    if pe_num is not None and pe_num < 20: score += 1
+
+    verdict = "BUY" if score >= 4 else "HOLD" if score >= 2 else "SELL"
+
+    parts = [f"{ticker} reported revenue of {revenue}"]
+    if rev_yoy_num != 0:
+        parts.append(f"({revenue_yoy} YoY)")
+    parts.append(f"with EPS of {eps_val}")
+
+    if eps_beat:
+        parts.append("and beat estimates.")
+    else:
+        parts.append(".")
+
+    if fcf and fcf != MISSING:
+        parts.append(f"Free cash flow was {fcf}")
+
+    if margin and margin != MISSING:
+        parts.append(f"and operating margin {margin}")
+
+    if pe and pe != MISSING:
+        parts.append(f"with forward P/E at {pe}.")
+
+    # Combine evidence
+    evidence = " ".join(parts)
+
+    # Risk/reward synthesis
+    strengths = []
+    concerns = []
+    if eps_beat: strengths.append("EPS beat")
+    if rev_yoy_num > 10: strengths.append("strong revenue growth")
+    if ocf_num > 0: strengths.append("positive cash flow")
+    if pe_num is not None and pe_num < 20: strengths.append("reasonable valuation")
+
+    try:
+        margin_num = float(metrics.operating_margin) if metrics.operating_margin is not None else None
+    except (TypeError, ValueError):
+        margin_num = None
+    if margin_num is not None and margin_num < 15: concerns.append("margin below 15%")
+    if pe_num is not None and pe_num > 25: concerns.append("premium valuation")
+    if rev_yoy_num <= 0: concerns.append("declining revenue")
+
+    strength_str = ", ".join(strengths) if strengths else "no clear positives"
+    concern_str = ", ".join(concerns) if concerns else "no major red flags"
+
+    return (
+        f"{evidence}\n\n"
+        f"{ticker}'s Q shows {strength_str}. "
+        f"Key watch items: {concern_str}. "
+        f"Risk/reward is {'favorable' if verdict == 'BUY' else 'neutral' if verdict == 'HOLD' else 'unfavorable'} "
+        f"at current levels → **{verdict}**."
+    )
+
+
+def _compute_final_verdict_jp(ticker: str, metrics: FinancialMetrics) -> str:
+    """Compute a concrete, data-driven final verdict sentence (Japanese)."""
+    revenue = _money(metrics.revenue_actual)
+    revenue_yoy = _pct(metrics.revenue_yoy)
+    eps_val = _eps(metrics.eps_actual)
+    fcf = _money(metrics.free_cash_flow)
+    margin = _pct(metrics.operating_margin)
+    pe = _multiple(metrics.pe_forward)
+
+    score = 0
+    try:
+        eps_beat = float(metrics.eps_vs_estimate) > 0 if metrics.eps_vs_estimate is not None else False
+    except (TypeError, ValueError):
+        eps_beat = False
+    try:
+        rev_yoy_num = float(metrics.revenue_yoy) if metrics.revenue_yoy is not None else 0
+    except (TypeError, ValueError):
+        rev_yoy_num = 0
+    try:
+        ocf_num = float(metrics.operating_cash_flow) if metrics.operating_cash_flow is not None else 0
+    except (TypeError, ValueError):
+        ocf_num = 0
+    try:
+        pe_num = float(metrics.pe_forward) if metrics.pe_forward is not None else None
+    except (TypeError, ValueError):
+        pe_num = None
+
+    if eps_beat: score += 1
+    if rev_yoy_num > 5: score += 1
+    if rev_yoy_num > 15: score += 1
+    if ocf_num > 0 and metrics.free_cash_flow and metrics.free_cash_flow > 0: score += 1
+    if pe_num is not None and pe_num < 20: score += 1
+
+    verdict = "BUY" if score >= 4 else "HOLD" if score >= 2 else "SELL"
+
+    growth = "強い成長" if rev_yoy_num > 10 else "成長" if rev_yoy_num > 0 else "減収"
+    cash = "堅調なキャッシュ創出" if ocf_num > 0 else "キャッシュ要確認"
+    valuation = "割安" if pe_num is not None and pe_num < 20 else "妥当" if pe_num is not None and pe_num < 25 else "割高"
+    risks = []
+    if pe_num is not None and pe_num > 25: risks.append("高PER")
+    if rev_yoy_num <= 0: risks.append("減収リスク")
+    risk_str = "、".join(risks) if risks else "特になし"
+
+    return (
+        f"{ticker} 売上高{revenue}（{revenue_yoy}前年比）、EPS{eps_val}。"
+        f"スコア{score}/5: {growth}、{cash}、バリュエーション{valuation}。"
+        f"リスク: {risk_str}。→ **{verdict}**"
+    )
+
+
 def _summary(language: TemplateLanguage, ticker: str, section_key: str, metrics: FinancialMetrics) -> str:
     revenue = _money(metrics.revenue_actual)
     revenue_yoy = _pct(metrics.revenue_yoy)
@@ -640,7 +945,7 @@ def _summary(language: TemplateLanguage, ticker: str, section_key: str, metrics:
             "Forward P/E": f"👉 予想PERは{pe}。成長率で正当化できるかが投資判断の分かれ目です。",
             "Backlog": "👉 受注残は事業によって重要度が違います。該当なし・開示なしの場合は無理に評価しません。",
             "Guidance": "👉 ガイダンスは次の期待値です。売上、利益率、EPSを分けて確認します。",
-            "Verdict": "👉 最終判断は、成長率・利益率・キャッシュ創出・バリュエーションのバランスで見ます。",
+            "Verdict": f"👉 {_compute_final_verdict_jp(ticker, metrics)}",
         }
         return summaries.get(section_key, f"👉 {ticker}の決算は、確認できる数字と未開示項目を分けて評価します。")
 
@@ -654,7 +959,7 @@ def _summary(language: TemplateLanguage, ticker: str, section_key: str, metrics:
         "Forward P/E": f"Forward P/E is {pe}; valuation only works if growth and margin durability support it.",
         "Backlog": "Backlog is evaluated only when economically relevant and disclosed; otherwise it is marked not applicable or not disclosed.",
         "Guidance": "Guidance matters because it resets expectations for revenue, margin, EPS, and medium-term demand.",
-        "Verdict": "The investor verdict weighs earnings quality, growth durability, cash generation, and valuation risk together.",
+        "Verdict": _compute_final_verdict(ticker, metrics),
     }
     return summaries.get(section_key, f"{ticker}'s section conclusion is based on concrete reported metrics and source traceability.")
 
