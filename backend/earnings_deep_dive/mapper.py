@@ -236,13 +236,14 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
         if isinstance(v, dict) and k not in _META_KEYS
     ]
     segment_items = segment_entries[: len(labels)]
-    # Detect garbled XBRL names: long SEC text fragments, short abbreviations, date fragments
-    _GARBLED_PATTERNS = ["generally", "consistent", "reportable", "As of", "than a year", "revenue of"]
+    # Detect garbled XBRL names: SEC text fragments, month abbreviations
+    _GARBLED_EXACT = {"Sep", "Total"}
+    _GARBLED_CONTAINS = ["generally", "consistent", "reportable", "As of", "than a year", "revenue of"]
     def _is_garbled(name: str) -> bool:
         n = str(name)
-        if len(n) < 3:
-            return True  # Too short to be a real segment name
-        for pat in _GARBLED_PATTERNS:
+        if n in _GARBLED_EXACT:
+            return True
+        for pat in _GARBLED_CONTAINS:
             if pat.lower() in n.lower():
                 return True
         return False
