@@ -570,23 +570,31 @@ def _enrich_codex_table(
 
 
 def _number_highlights_rows(table: RenderedTable) -> RenderedTable:
-    """Replace ? in the Number column of Highlights tables with sequential numbers.
+    """Replace placeholder values in the Number column of Highlights tables with sequential numbers.
     
-    The LLM fills the Number column with ? because it doesn't know the sequence.
-    This post-processing replaces them with 1, 2, 3, ...
+    The LLM fills the Number column with circled digits (①, ②), ?, or ?? because it doesn't
+    know the sequence. This post-processing replaces any non-numeric placeholder with 1, 2, 3, ...
     """
+    import re
+    
     # Detect Highlights table by column headers
     cols = [c.lower().strip() for c in table.columns]
     if "number" not in cols:
         return table
     number_idx = cols.index("number")
     
+    # Match any placeholder: ?, ??, ?, circled digits (①-⑳, ㉑-㉟), or other non-numeric
+    _CIRCLED_DIGITS_RE = re.compile(r'^[①-⑳㉑-㉟⓵-⓾🄋-🄐?？?\s]+$')
+    
     numbered_rows = []
     counter = 1
     for row in table.rows:
         cells = list(row.cells)
-        if number_idx < len(cells) and cells[number_idx].strip() in ("?", "？？", "?"):
-            cells[number_idx] = str(counter)
+        if number_idx < len(cells):
+            cell_val = cells[number_idx].strip()
+            # Replace if it's a placeholder or if it's purely non-numeric
+            if _CIRCLED_DIGITS_RE.match(cell_val) or (cell_val and not cell_val.replace('.','').replace('-','').isdigit()):
+                cells[number_idx] = str(counter)
         numbered_rows.append(RenderedTableRow(label=row.label, cells=cells))
         counter += 1
     return RenderedTable(columns=list(table.columns), rows=numbered_rows)
