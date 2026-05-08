@@ -107,16 +107,16 @@ SECTION_QUESTIONS: Dict[str, Dict[str, str]] = {
         "jp": "ROE / ROTCE（ROTE）/ ROA / ROICなどはどうでしたか？",
     },
     "Segments": {
-        "en": "What were the results by segment?",
-        "jp": "セグメント別の業績はどうでしたか？",
+        "en": "What are the key business segments and geographic regions for {company} ({ticker}) in {quarter}? What were their results, growth rates, and drivers?",
+        "jp": "{company} ({ticker}) の{quarter}における主要な事業セグメントと地域別の業績、成長率、要因は何ですか？",
     },
     "Forward P/E": {
-        "en": "What is the forward P/E ratio?",
-        "jp": "Forward P/Eはどうなっていますか？",
+        "en": "What is the forward P/E ratio for {company} ({ticker})? How does it compare to the sector, historical average, and growth outlook?",
+        "jp": "{company} ({ticker}) の予想PERはどうなっていますか？セクター平均や過去の水準、成長見通しと比較してどうですか？",
     },
     "Backlog": {
-        "en": "How is the quality and quantity of the backlog? (Applicable for only certain companies)",
-        "jp": "バックログの質と量はどうですか？",
+        "en": "Does {company} ({ticker}) report a traditional order backlog? If YES, analyze its quantity, quality, and revenue visibility. If NO (e.g., consumer tech, retailers), clearly state 'Not applicable' and skip this section.",
+        "jp": "{company} ({ticker}) は従来型の受注残を開示していますか？YESの場合、その量・質・収益可視性を分析してください。NOの場合（例：消費者向けテクノロジー、小売業）、「該当なし」と明記してこのセクションをスキップしてください。",
     },
     "Guidance": {
         "en": "What is the guidance for the upcoming quarters and beyond?",
@@ -510,41 +510,48 @@ def system_prompt(language: str, sector: str = "", industry: str = "") -> str:
             sector_line += f" ({industry})"
         sector_line += "."
 
-    sector_guidance = _sector_guidance(sector, industry)
+    sector_guidance = ""
+    sector_lower = sector.lower() if sector else ""
+    ind_lower = (industry or "").lower()
+    if "technology" in sector_lower or "electronic" in sector_lower or "semiconductor" in ind_lower:
+        sector_guidance = ("For tech/electronics: focus on product cycles, gross margins by segment, Services/software mix, installed base growth, supply chain constraints, R&D intensity.")
+    elif "financial" in sector_lower or "bank" in sector_lower:
+        sector_guidance = ("For financials: focus on NIM, loan/deposit growth, credit quality, CET1 ratio, ROE/ROTCE, and rate sensitivity.")
+    elif "healthcare" in sector_lower or "pharma" in sector_lower or "biotech" in sector_lower:
+        sector_guidance = ("For healthcare/pharma: focus on drug pipeline, patent cliffs, R&D efficiency, regulatory catalysts, pricing power.")
+    elif "consumer" in sector_lower or "retail" in sector_lower:
+        sector_guidance = ("For consumer/retail: focus on same-store sales, e-commerce growth, inventory turns, gross margin, customer acquisition cost.")
+    elif "industrial" in sector_lower or "aerospace" in sector_lower or "defense" in sector_lower:
+        sector_guidance = ("For industrials/aerospace/defense: focus on backlog/book-to-bill, operating leverage, aftermarket revenue mix, long-term contracts.")
+    elif "energy" in sector_lower:
+        sector_guidance = ("For energy: focus on production volumes, realized prices, capex discipline, FCF yield, reserve replacement, break-even costs.")
 
     en_system = (
         f"You are a senior buy-side equity analyst writing an earnings deep-dive for Nami-san, "
         f"a fund manager who needs actionable, sector-specific insight.{sector_line}\n"
         f"{sector_guidance}\n\n"
-        "THINK LIKE AN ANALYST — NOT A FORM FILLER:\n"
-        "- Identify the 3-5 metrics that truly matter for THIS company in THIS sector. "
-        "Do not mechanically list every metric in the supplied data.\n"
-        "- When the company does NOT report a metric (e.g., backlog for Apple), "
-        "say so clearly instead of forcing a table.\n"
+        "THINK LIKE AN ANALYST -- NOT A FORM FILLER:\n"
+        "- Identify the 3-5 metrics that truly matter for THIS company in THIS sector.\n"
+        "- When the company does NOT report a metric, say so clearly instead of forcing a table.\n"
         "- Adapt your analysis depth to what the transcript reveals.\n"
         "- Use markdown tables where they add clarity, with columns that make sense for the sector.\n\n"
-        "STRUCTURE:\n"
-        "- Start each section with ## Section Name\n"
-        "- Use numbered analysis ①②③ for key points\n"
-        "- Include a 'Nami-san takeaway' line\n"
-        "- End with > One-line summary: [concise verdict]\n\n"
+        "STRUCTURE: ## Section Name, numbered analysis (1)(2)(3), 'Nami-san takeaway', > One-line summary.\n\n"
         "DATA RULES:\n"
         "- Every number must be sourced: (Transcript, CEO remarks) or (yfinance, quarterly data)\n"
         "- Never invent data. When a number is unavailable, explain WHY.\n"
-        "- Do NOT use 'Not available' or 'Supplied metrics' as filler sources.\n"
+        "- Do NOT use 'Not available' or 'Supplied metrics' as filler.\n"
         "- Write in ENGLISH only. No Japanese characters, no CJK."
     )
 
     jp_system = (
         f"あなたはバイサイドのシニアアナリストで、Namiさん向けに決算分析を書いています。{sector_line}\n"
         f"{sector_guidance}\n\n"
-        "型にはまったフォーム記入ではなく、アナリストとして考えてください：\n"
+        "型にはまったフォーム記入ではなく、アナリストとして考えてください。\n"
         "- この企業・このセクターで本当に重要な3〜5の指標を特定してください。\n"
         "- 企業が指標を開示していない場合、「該当なし」と明確に述べてください。\n"
         "- 決算トランスクリプトで経営陣が強調しているテーマに合わせて分析の深さを調整。\n\n"
         "構造：## セクション名, ①②③, Namiさん向け解釈, > 一言まとめ\n\n"
-        "データルール：すべての数字に出所を明記。数値が入手できない場合は理由を説明。\n"
-        "埋め草（Not available/Supplied metrics）を使用しない。日本語で記述。"
+        "データルール：すべての数字に出所を明記。数値が入手できない場合は理由を説明。埋め草（Not available/Supplied metrics）を使用しない。日本語で記述。"
     )
 
     if language == "en":
@@ -552,41 +559,36 @@ def system_prompt(language: str, sector: str = "", industry: str = "") -> str:
     return jp_system
 
 
-def _sector_guidance(sector: str, industry: str) -> str:
-    """Return sector-specific analysis guidance."""
-    s = sector.lower() if sector else ""
-    i = (industry or "").lower()
-    if "technology" in s or "electronic" in s or "semiconductor" in i:
-        return ("For tech/electronics: focus on product cycles, gross margins by segment, "
-                "Services/software mix, installed base growth, supply chain constraints, R&D intensity.")
-    if "financial" in s or "bank" in s:
-        return ("For financials: focus on NIM, loan/deposit growth, credit quality, "
-                "CET1 ratio, ROE/ROTCE, and rate sensitivity.")
-    if "healthcare" in s or "pharma" in s or "biotech" in s:
-        return ("For healthcare/pharma: focus on drug pipeline, patent cliffs, "
-                "R&D efficiency, regulatory catalysts, pricing power.")
-    if "consumer" in s or "retail" in s:
-        return ("For consumer/retail: focus on same-store sales, e-commerce growth, "
-                "inventory turns, gross margin, customer acquisition cost.")
-    if "industrial" in s or "aerospace" in s or "defense" in s:
-        return ("For industrials/aerospace/defense: focus on backlog/book-to-bill, "
-                "operating leverage, aftermarket revenue mix, long-term contracts.")
-    if "energy" in s:
-        return ("For energy: focus on production volumes, realized prices, "
-                "capex discipline, FCF yield, reserve replacement, break-even costs.")
-    return ""
-
-
-def _fmt_metrics(metrics: Dict[str, Any]) -> str:
+def _fmt_metrics(metrics: Dict[str, Any], sector: str = "", industry: str = "") -> str:
+    """Format metrics grouped by category, with sector context first."""
     if not metrics:
         return ""
     parts = []
-    for key in sorted(metrics):
-        value = metrics[key]
-        if value is None or value == "" or value == "Not disclosed":
-            continue  # skip missing values
-        parts.append(f"{key}={value}")
-    return " | ".join(parts) if parts else ""
+    if sector:
+        parts.append(f"SECTOR: {sector}")
+    if industry:
+        parts.append(f"INDUSTRY: {industry}")
+
+    categories = {
+        "EARNINGS": [k for k in metrics if k.startswith(("eps_", "revenue_")) and metrics[k] is not None],
+        "PROFITABILITY": [k for k in metrics if k.startswith(("gross_", "operating_", "net_income", "opex")) and metrics[k] is not None],
+        "CASH_FLOW": [k for k in metrics if k.startswith(("operating_cash", "free_cash", "capex", "net_debt")) and metrics[k] is not None],
+        "EFFICIENCY": [k for k in metrics if k.startswith(("roe", "roa", "roic", "rotce")) and metrics[k] is not None],
+        "VALUATION": [k for k in metrics if k.startswith("pe_") and metrics[k] is not None],
+        "SEGMENTS": [k for k in metrics if k == "segments" and metrics[k]],
+    }
+    for label, keys in categories.items():
+        if keys:
+            vals = [f"{k}={metrics[k]}" for k in sorted(keys)]
+            parts.append(f"{label}: {' | '.join(vals)}")
+
+    used = {k for keys in categories.values() for k in keys}
+    remaining = [k for k in sorted(metrics) if k not in used and metrics[k] is not None and metrics[k] != "" and metrics[k] != "Not disclosed"]
+    if remaining:
+        vals = [f"{k}={metrics[k]}" for k in remaining]
+        parts.append(f"OTHER: {' | '.join(vals)}")
+
+    return "\n".join(parts)
 
 
 def _canonical_section(section: str) -> str:
@@ -782,25 +784,7 @@ def segments_prompt(language: str, ticker: str, company: str, quarter: str, metr
 
 
 def forward_pe_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    # Explicitly surface pe_forward to prevent LLM hallucination.
-    # Despite being present in the Metrics line, the LLM often claims
-    # "not provided in supplied metrics" and fills the table with —.
-    pe_val = metrics.get("pe_forward")
-    eps_val = metrics.get("eps_estimate")
-    extra = ""
-    if pe_val is not None:
-        try:
-            pe_str = f"{float(pe_val):.2f}x"
-        except (TypeError, ValueError):
-            pe_str = str(pe_val)
-        extra += f"\n\n⚠️  MANDATORY: The forward P/E is {pe_str}. Use this exact value in the table's Current column for the Forward P/E row. Do NOT write — or claim it is unavailable."
-    if eps_val is not None:
-        try:
-            eps_annual = float(eps_val) * 4.0
-            extra += f"\n⚠️  Forward EPS basis (annualized consensus): ${eps_annual:.2f} ({float(eps_val):.2f} × 4 quarters). Use this in the Forward EPS basis row."
-        except (TypeError, ValueError):
-            pass
-    base = _base_prompt(
+    return _base_prompt(
         section="Forward P/E",
         language=language,
         ticker=ticker,
@@ -809,31 +793,9 @@ def forward_pe_prompt(language: str, ticker: str, company: str, quarter: str, me
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
     )
-    return base + extra
 
 
 def backlog_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    # If the company does not report backlog data (e.g., Apple, most tech),
-    # explicitly instruct the LLM to write a short "Not applicable" response
-    # instead of creating a — filled table.
-    backlog_val = metrics.get("backlog")
-    if backlog_val is None or backlog_val == "" or backlog_val == "Not disclosed":
-        extra = (
-            f"\n\n⚠️  NOT APPLICABLE: {company} does NOT report backlog data. "
-            f"Do NOT create a table. Write exactly one sentence: "
-            f"\"Backlog is not applicable for {company} — the company does not report backlog or order book data.\" "
-            f"Then briefly explain why in 1-2 sentences (e.g., consumer electronics business model, direct sales). "
-            f"End with > One-line summary: Not applicable for {company}."
-        )
-        return _base_prompt(
-            section="Backlog",
-            language=language,
-            ticker=ticker,
-            company=company,
-            quarter=quarter,
-            metrics=metrics,
-            transcript_excerpt=transcript_excerpt,
-        ) + extra
     return _base_prompt(
         section="Backlog",
         language=language,
