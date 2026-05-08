@@ -111,12 +111,20 @@ SECTION_QUESTIONS: Dict[str, Dict[str, str]] = {
         "jp": "セグメント別の業績はどうでしたか？",
     },
     "Forward P/E": {
-        "en": "What is the forward P/E ratio?",
-        "jp": "Forward P/Eはどうなっていますか？",
+        "en": (
+            "What is the forward P/E ratio for {company} ({ticker})? "
+            "State the current multiple, compare it to the sector and historical range, "
+            "and explain whether growth, margins, and cash flows justify this valuation level."
+        ),
+        "jp": "{company} ({ticker}) のForward P/Eはどうなっていますか？現在の倍率、セクターや過去との比較、成長・利益率・キャッシュフローがバリュエーションを正当化するか説明してください。",
     },
     "Backlog": {
-        "en": "How is the quality and quantity of the backlog? (Applicable for only certain companies)",
-        "jp": "バックログの質と量はどうですか？",
+        "en": (
+            "How is the quality and quantity of the order backlog for {company} ({ticker})? "
+            "If the company does not disclose a backlog (common for consumer/tech companies), "
+            "state 'Not applicable' and explain why."
+        ),
+        "jp": "{company} ({ticker}) の受注残の質と量はどうですか？開示がない場合は「該当なし」と明記し、理由を説明してください。",
     },
     "Guidance": {
         "en": "What is the guidance for the upcoming quarters and beyond?",
@@ -793,7 +801,14 @@ def forward_pe_prompt(language: str, ticker: str, company: str, quarter: str, me
             pe_str = f"{float(pe_val):.2f}x"
         except (TypeError, ValueError):
             pe_str = str(pe_val)
-        extra += f"\n\n⚠️  MANDATORY: The forward P/E is {pe_str}. Use this exact value in the table's Current column for the Forward P/E row. Do NOT write — or claim it is unavailable."
+        extra += (
+            f"\n\n🔴 CRITICAL OVERRIDE: The forward P/E ratio IS {pe_str} "
+            f"(from yfinance, key=pe_forward). This value EXISTS in the Metrics line above. "
+            f"Your FIRST sentence MUST state: \"The forward P/E is {pe_str}.\" "
+            f"Do NOT claim it is missing, not provided, not disclosed, or unavailable — "
+            f"that would be factually incorrect. "
+            f"Put {pe_str} in the Current column of the table."
+        )
     if eps_val is not None:
         try:
             eps_annual = float(eps_val) * 4.0
