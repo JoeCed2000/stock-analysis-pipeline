@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 CACHE_DIR = Path(__file__).parent / ".cache"
 CACHE_TTL_SECONDS = 3600  # 1 hour
-CACHE_VERSION = 3  # bump to invalidate old cache entries (v2: Finnhub+yfinance merged, v3: +8 deep-dive fields)
+CACHE_VERSION = 4  # bump to invalidate old cache entries (v4: revenue_estimate from yfinance consensus)
 YF_CACHE_TTL = 600  # 10 min — yfinance data pushed by cron (refreshed every 2 min)
 
 
