@@ -685,6 +685,24 @@ async def earnings_deep_dive(request: DeepDiveRequest):
                 sector=q_data.get("sector"),
             )
             request.metrics = _deep_dive_metrics(dummy, q_data)
+    else:
+        # Latest quarter — fetch fresh yfinance data with revenue_estimate etc.
+        try:
+            q_data = get_yahoo_data(request.ticker)
+            if q_data:
+                from backend.pipeline import _deep_dive_metrics
+                from backend.models import AnalysisResult
+                dummy = AnalysisResult(
+                    ticker=request.ticker,
+                    company_name=q_data.get("company_name", request.ticker),
+                    retrieved_at=datetime.now(timezone.utc).isoformat(),
+                    price=q_data.get("price"),
+                    currency=q_data.get("currency", "USD"),
+                    sector=q_data.get("sector"),
+                )
+                request.metrics = _deep_dive_metrics(dummy, q_data)
+        except Exception:
+            logger.warning(f"[{request.ticker}] Failed to enrich latest-quarter metrics")
     try:
         from backend.earnings_deep_dive.generator import generate_deep_dive
 
