@@ -1091,7 +1091,7 @@ def build_earnings_deep_dive_report(
     # The LLM analysis text is still used for prose below the table.
     _DATA_DRIVEN_SECTIONS = {
         "Operating Metrics", "Cash Flow", "Capital Efficiency",
-        "Segments", "Guidance", "Backlog",
+        "Segments", "Guidance", "Backlog", "Verdict",
     }
     
     for section in template:
