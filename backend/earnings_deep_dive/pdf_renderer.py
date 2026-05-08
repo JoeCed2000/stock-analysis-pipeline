@@ -35,21 +35,23 @@ _TEXT = colors.HexColor("#111111")
 _MUTED = colors.HexColor("#5D5D5D")
 _REGISTERED_FONTS: set[str] = set()
 _GLYPH_FALLBACKS = {
-    "🌟": "*",
-    "⚠️": "!!",
-    "🧠": ">>",
-    "🎯": ">>",
-    "📊": "::",
-    "💵": "$",
-    "💰": "$",
-    "🏦": "::",
-    "🧩": "::",
-    "📈": "^^",
-    "📦": "[]",
-    "🔭": ">>",
-    "🔮": "**",
-    "🏆": "**",
-    "👉": "->",
+    # Emoji are decorative — drop silently when font lacks glyph support.
+    # Clean labels avoid markdown-artifact pollution (::, >>, ^^, !!, **, [])
+    "🌟": "",
+    "⚠️": "",
+    "🧠": "",
+    "🎯": "",
+    "📊": "",
+    "💵": "",
+    "💰": "",
+    "🏦": "",
+    "🧩": "",
+    "📈": "",
+    "📦": "",
+    "🔭": "",
+    "🔮": "",
+    "🏆": "",
+    "👉": "\u25b6",  # ▶ right-pointing triangle
 }
 _SECTION_PREFIXES = {
     "EPS & Revenue": "📊",
