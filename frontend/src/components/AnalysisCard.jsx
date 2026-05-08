@@ -262,21 +262,38 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
           📄 {t('viewFullReport')}
         </button>
         {downloadReady ? (
-          <a
-            href={getTickerDownloadUrl(ticker, lang, selectedQuarter)}
-            download
+          <button
+            onClick={async () => {
+              const url = getTickerDownloadUrl(ticker, lang, selectedQuarter);
+              try {
+                const resp = await fetch(url);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const blob = await resp.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = `${ticker}_dossier.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+              } catch (err) {
+                console.error('Download failed:', err);
+                alert('Download failed. Please try again.');
+              }
+            }}
             style={{
               flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500,
               background: '#238636', border: '1px solid #2ea043',
               borderRadius: 5, color: '#fff', cursor: 'pointer',
               textDecoration: 'none', textAlign: 'center',
-              transition: 'background 0.15s',
+              transition: 'background 0.15s', fontFamily: 'inherit',
             }}
             onMouseEnter={e => e.target.style.background = '#2ea043'}
             onMouseLeave={e => e.target.style.background = '#238636'}
           >
             📥 {t('downloadDossier')} ({dossierStatus?.sectionsReady ?? '?'}/7)
-          </a>
+          </button>
         ) : verificationBlocked ? (
           <div style={{
             flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500,

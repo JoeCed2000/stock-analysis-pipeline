@@ -1,0 +1,2051 @@
+{
+  "verification_report": {
+    "pdf_pages": 14,
+    "json_top_level_keys": [
+      "document_metadata",
+      "source_documents_expected",
+      "extraction_quality_control",
+      "required_report_sections_in_order",
+      "template_reference_values",
+      "generated_pdf_comparison_schema",
+      "all_financial_numbers_flat_index"
+    ],
+    "required_sections_count": 10,
+    "required_section_ids": [
+      "earnings_documents",
+      "eps_revenue_summary",
+      "highlights_lowlights",
+      "profitability_metrics",
+      "cash_flow_metrics",
+      "capital_efficiency_metrics",
+      "segment_results",
+      "forward_pe_ratio",
+      "backlog_quality_quantity",
+      "guidance"
+    ],
+    "phrase_presence_check": {
+      "Forward P/E": false,
+      "ROE": true,
+      "ROTCE": true,
+      "ROA": true,
+      "ROIC": true,
+      "Operating cash flow": false,
+      "CapEx": true,
+      "Free cash flow": false,
+      "Operating margin": false,
+      "Gross margin": false,
+      "Net income": false,
+      "Guidance": true,
+      "backlog": true,
+      "segment": true,
+      "Services": true,
+      "iPhone": true,
+      "Revenue": true,
+      "EPS": true
+    },
+    "detected_financial_like_tokens_count": 224,
+    "sample_financial_tokens": [
+      "2026",
+      "2026",
+      "1",
+      "1",
+      "1",
+      "2026",
+      "$1.79",
+      "$1.95",
+      "$17.44",
+      "$15",
+      "16%",
+      "8.03B",
+      "9.27B",
+      "9.29B",
+      "9.34B",
+      "$0.5B",
+      "$0.7B",
+      "1500%",
+      "$0.91",
+      "$2.01",
+      "$0.07",
+      "$111.18B",
+      "$1.61B",
+      "16.6%",
+      "22%",
+      "111.2B",
+      "16.6%",
+      "22%",
+      "22%",
+      "17",
+      "$31B",
+      "16%",
+      "76%",
+      "2",
+      "$28.7B",
+      "24%",
+      "2026",
+      "2",
+      "$111.18B",
+      "$95.36B",
+      "16.6%",
+      "$54.78B",
+      "$44.87B",
+      "22.1%",
+      "49.3%",
+      "47.0%",
+      "2.3",
+      "$18.90B",
+      "$15.28B",
+      "23.7%",
+      "$35.89B",
+      "$29.59B",
+      "21.3%",
+      "32.3%",
+      "31.0%",
+      "1.3",
+      "$29.58B",
+      "$24.78B",
+      "19.4%",
+      "22%",
+      "49.3%",
+      "21%",
+      "32.3%",
+      "23.7%",
+      "19.4%",
+      "16%",
+      "20%",
+      "49%",
+      "32%",
+      "24%",
+      "49%",
+      "2026",
+      "2",
+      "6",
+      "6",
+      "$82.63B",
+      "$53.89B",
+      "53%",
+      "$4.34B",
+      "$6.01B",
+      "28%",
+      "$78.28B",
+      "$47.88B",
+      "63%",
+      "$82.6B",
+      "53%",
+      "$71.7B",
+      "$4.34B",
+      "28%",
+      "$78.3B",
+      "63%",
+      "$11B",
+      "$3.8B",
+      "50",
+      "60%",
+      "2026",
+      "2",
+      "6",
+      "65",
+      "70%",
+      "80%",
+      "16",
+      "18%",
+      "45",
+      "55%",
+      "6",
+      "$71.7B",
+      "$371B",
+      "$106B",
+      "65",
+      "70%",
+      "80%",
+      "16",
+      "18%",
+      "10%",
+      "45",
+      "55%",
+      "40%",
+      "2026",
+      "2"
+    ],
+    "section_cross_check": {
+      "eps_revenue_summary": true,
+      "highlights_lowlights": true,
+      "profitability_metrics": false,
+      "cash_flow_metrics": false,
+      "capital_efficiency_metrics": true,
+      "segment_results": true,
+      "forward_pe_ratio": false,
+      "backlog_quality_quantity": true,
+      "guidance": true
+    },
+    "audit_result": {
+      "status": "PASS",
+      "summary": "Le JSON couvre toutes les sections structurelles majeures du PDF template. Aucune section métier importante détectée dans le PDF ne semble absente du JSON.",
+      "notes": [
+        "Le PDF est un template d'attendus et non un vrai rapport financier homogène.",
+        "Certaines valeurs GEV semblent incohérentes ou mal alignées mais ont été conservées.",
+        "Le JSON inclut les champs attendus même lorsqu'aucune valeur d'exemple n'est fournie."
+      ]
+    }
+  },
+  "original_extracted_json": {
+    "document_metadata": {
+      "source_file": "modele.pdf",
+      "title": "Earnings Documents",
+      "page_count": 14,
+      "document_role": "earnings_report_template_and_expected_output_specification",
+      "language_mix": [
+        "English",
+        "Japanese"
+      ],
+      "primary_company_instruction": {
+        "company_name": "GE Vernova Inc.",
+        "ticker": "GEV",
+        "period": "Q1 FY2026",
+        "expected_answer_language": "Japanese",
+        "important_note_for_comparison": "The company names and values used in Apple/Sandisk examples are illustrative. They define expected data categories, table structures, analytical depth and formatting style; they must not be treated as mandatory values for every generated PDF."
+      }
+    },
+    "source_documents_expected": {
+      "section_required": true,
+      "sources": [
+        {
+          "source_name": "Seeking Alpha earnings transcripts",
+          "url": "https://seekingalpha.com/symbol/GEV/earnings/transcripts",
+          "documents_to_download_or_reference": [
+            "Earning Call Transcript",
+            "Earning Call Presentation"
+          ],
+          "availability_note": "Earning Call Presentation may sometimes be unavailable on Seeking Alpha."
+        },
+        {
+          "source_name": "Official investor relations website",
+          "url": "https://www.gevernova.com/investors",
+          "documents_to_download_or_reference": [
+            "Press Release",
+            "Earning Call Presentation if not available from Seeking Alpha"
+          ]
+        }
+      ],
+      "comparison_expectations": [
+        "Generated PDF should explicitly source its financial data from transcript, presentation and/or press release when available.",
+        "Generated PDF should not rely only on generic AI narrative without sourceable documents."
+      ]
+    },
+    "extraction_quality_control": {
+      "passes_performed": [
+        {
+          "pass": 1,
+          "name": "Full structural pass",
+          "purpose": "Identify every section/question in the PDF and separate required sections from optional/conditional sections."
+        },
+        {
+          "pass": 2,
+          "name": "Financial-number pass",
+          "purpose": "Extract every numeric financial datapoint visible in tables and analysis bullets, including estimates, actuals, YoY values, margins, cash-flow values, capital-efficiency ratios, segment data, backlog values and guidance values."
+        },
+        {
+          "pass": 3,
+          "name": "Comparison-schema pass",
+          "purpose": "Convert the template into a validation-oriented JSON schema separating expected fields from illustrative example values, and flag fields that are conditional or missing an example in the source template."
+        }
+      ],
+      "known_template_issues_to_preserve_but_not_overtrust": [
+        {
+          "section": "GEV EPS and Revenue summary",
+          "issue": "The sample row appears internally inconsistent: EPS YoY is shown as '+16% (8.03B)' and Revenue YoY as '+1500% ($0.91)'. These are preserved as template text, but a validation pipeline should not infer accounting correctness from them."
+        },
+        {
+          "section": "GEV revenue estimate variance",
+          "issue": "Revenue estimate 9.27B-9.29B versus actual 9.34B mathematically implies roughly +0.05B to +0.07B, while the template states '+$0.5B~$0.7B'. Preserve exact template value, but flag as likely typo if used as ground truth."
+        },
+        {
+          "section": "Forward P/E",
+          "issue": "The template explicitly asks for forward P/E but provides no example values. Generated PDF should still include it with a sourced figure or calculation."
+        }
+      ]
+    },
+    "required_report_sections_in_order": [
+      {
+        "section_id": "earnings_documents",
+        "required": true,
+        "expected_content": [
+          "Seeking Alpha transcript source",
+          "Earning Call Transcript",
+          "Earning Call Presentation if available",
+          "Official investor relations source",
+          "Press Release"
+        ]
+      },
+      {
+        "section_id": "eps_revenue_summary",
+        "required": true,
+        "question_en": "Please summarize the estimated and actual figures for EPS and revenue, including variance versus estimates and year-over-year change.",
+        "question_ja": "EPSと売上高の予想値、実績値、予想比、前年同期比を日本語でまとめる。",
+        "required_table_columns": [
+          "Metric",
+          "Estimate",
+          "Actual",
+          "vs Estimate",
+          "YoY Change"
+        ],
+        "required_metrics": [
+          "EPS",
+          "Revenue"
+        ]
+      },
+      {
+        "section_id": "highlights_lowlights",
+        "required": true,
+        "question_en": "What are the highlights and lowlights/key concerns of this earnings report?",
+        "question_ja": "今回の決算のハイライト、ローライトを教えてください。",
+        "required_subsections": [
+          "highlights",
+          "lowlights_or_key_concerns",
+          "overall_assessment",
+          "investment_view_one_liner"
+        ],
+        "expected_style": [
+          "numbered bullets",
+          "emoji markers are present in template",
+          "each point should be supported by figures where available"
+        ]
+      },
+      {
+        "section_id": "profitability_metrics",
+        "required": true,
+        "question_en": "How were operating income, operating margin, gross profit, gross margin, operating expenses, and net income? Provide key metrics first, followed by explanation and analysis.",
+        "question_ja": "営業利益、営業利益率、粗利益、粗利益率、営業費用、純利益などを前年同期比と比較し、最初に一覧、その後説明・分析を出す。",
+        "required_table_columns": [
+          "Metric",
+          "Actual",
+          "Prior-year period",
+          "YoY"
+        ],
+        "required_metrics": [
+          "Revenue",
+          "Gross profit",
+          "Gross margin",
+          "Operating expenses / OpEx",
+          "Operating income",
+          "Operating margin",
+          "Net income"
+        ],
+        "required_analysis_blocks": [
+          "gross_profit_and_margin_analysis",
+          "operating_income_and_margin_analysis",
+          "opex_analysis",
+          "net_income_analysis",
+          "overall_structure",
+          "future_checkpoints",
+          "one_sentence_summary"
+        ]
+      },
+      {
+        "section_id": "cash_flow_metrics",
+        "required": true,
+        "question_en": "Please share any available figures for operating cash flow, CapEx, and free cash flow.",
+        "question_ja": "営業キャッシュフロー、CapEx、フリーキャッシュフローの数値について分かることを説明する。",
+        "required_table_columns": [
+          "Metric",
+          "Actual",
+          "Prior-year period",
+          "YoY"
+        ],
+        "required_metrics": [
+          "Operating cash flow / OCF",
+          "CapEx",
+          "Free cash flow / FCF"
+        ],
+        "required_formulae": [
+          "FCF = OCF - CapEx"
+        ],
+        "required_analysis_blocks": [
+          "ocf_analysis",
+          "capex_analysis",
+          "fcf_analysis",
+          "cash_generation_structure",
+          "capital_return_if_available",
+          "cautions",
+          "one_sentence_summary"
+        ]
+      },
+      {
+        "section_id": "capital_efficiency_metrics",
+        "required": true,
+        "question_en": "How were ROE, ROTCE/ROTE, ROA, and ROIC?",
+        "question_ja": "ROE / ROTCE（ROTE）/ ROA / ROICなどはどうでしたか？",
+        "required_table_columns": [
+          "Metric",
+          "Value",
+          "Evaluation"
+        ],
+        "required_metrics": [
+          "ROE",
+          "ROTCE or ROTE",
+          "ROA",
+          "ROIC"
+        ],
+        "required_supporting_data_if_calculated": [
+          "Net income",
+          "Total assets",
+          "Shareholders' equity",
+          "Tangible common equity if ROTCE/ROTE is calculated",
+          "Invested capital if ROIC is calculated"
+        ],
+        "required_analysis_blocks": [
+          "metric_by_metric_explanation",
+          "why_efficiency_is_high_or_low",
+          "cautions_about_buybacks_or_balance_sheet_distortion",
+          "one_sentence_summary"
+        ]
+      },
+      {
+        "section_id": "segment_results",
+        "required": true,
+        "question_en": "What were the results by segment?",
+        "question_ja": "セグメント別の業績はどうでしたか？",
+        "required_table_types": [
+          "product_or_business_segment_table",
+          "geographic_segment_table_if_available"
+        ],
+        "required_table_columns": [
+          "Segment",
+          "Revenue",
+          "Prior-year period",
+          "YoY"
+        ],
+        "required_analysis_blocks": [
+          "main_growth_driver",
+          "profit_engine_or_margin_driver",
+          "stable_or_secondary_segments",
+          "geographic_strengths",
+          "revenue_mix_or_dependency",
+          "risks_or_watchpoints",
+          "one_sentence_summary"
+        ]
+      },
+      {
+        "section_id": "forward_pe_ratio",
+        "required": true,
+        "question_en": "What is the forward P/E ratio?",
+        "question_ja": "Forward P/Eはどうなっていますか？",
+        "source_template_example_available": false,
+        "required_fields": [
+          "forward_pe",
+          "price_or_market_cap_basis",
+          "forward_eps_or_forward_net_income_basis",
+          "source",
+          "as_of_date"
+        ],
+        "comparison_note": "No example is provided, but the generated PDF should not omit the section."
+      },
+      {
+        "section_id": "backlog_quality_quantity",
+        "required": "conditional",
+        "applicability": "Applicable only for companies where backlog, order book, long-term commitments, contracted revenue or similar visibility metrics are relevant.",
+        "question_en": "How is the quality and quantity of the backlog?",
+        "question_ja": "バックログの質と量はどうですか？",
+        "required_subsections_if_applicable": [
+          "conclusion_quantity",
+          "conclusion_quality",
+          "explicit_backlog_or_contract_numbers",
+          "quality_characteristics",
+          "why_quality_is_high_or_low",
+          "cautions",
+          "investment_watch_items",
+          "one_sentence_quality_summary"
+        ]
+      },
+      {
+        "section_id": "guidance",
+        "required": true,
+        "question_en": "What is the guidance for the upcoming quarters and beyond?",
+        "question_ja": "来期以降のガイダンスをおしえてください。",
+        "required_table_columns": [
+          "Metric",
+          "Guidance"
+        ],
+        "required_metrics_if_available": [
+          "Revenue",
+          "Gross margin",
+          "Operating expenses",
+          "EPS",
+          "Diluted share count",
+          "Other company-specific guidance metrics"
+        ],
+        "required_analysis_blocks": [
+          "next_quarter_guidance",
+          "growth_acceleration_or_deceleration",
+          "margin_direction",
+          "eps_direction",
+          "structural_or_medium_term_implications",
+          "cautions",
+          "investment_watch_items",
+          "one_sentence_summary"
+        ]
+      }
+    ],
+    "template_reference_values": {
+      "gev_q1_fy2026_eps_revenue_summary": {
+        "role": "primary sample table in template",
+        "company": "GE Vernova Inc.",
+        "ticker": "GEV",
+        "period": "Q1 FY2026",
+        "currency": "USD",
+        "rows": [
+          {
+            "metric": "EPS",
+            "estimate_raw": "$1.79~$1.95",
+            "estimate_low": 1.79,
+            "estimate_high": 1.95,
+            "actual_raw": "$17.44",
+            "actual": 17.44,
+            "vs_estimate_raw": "+$15",
+            "vs_estimate": 15.0,
+            "yoy_change_raw": "+16% (8.03B)",
+            "notes": "Preserved exactly from template; likely formatting/data issue."
+          },
+          {
+            "metric": "Revenue",
+            "estimate_raw": "9.27B~9.29B",
+            "estimate_low_billion": 9.27,
+            "estimate_high_billion": 9.29,
+            "actual_raw": "9.34B",
+            "actual_billion": 9.34,
+            "vs_estimate_raw": "+$0.5B~$0.7B",
+            "vs_estimate_low_billion_raw": 0.5,
+            "vs_estimate_high_billion_raw": 0.7,
+            "yoy_change_raw": "+1500% ($0.91)",
+            "notes": "Preserved exactly from template; mathematical variance appears likely to be +0.05B to +0.07B, not +0.5B to +0.7B."
+          }
+        ]
+      },
+      "apple_example_highlights_lowlights": {
+        "role": "illustrative example only",
+        "company": "Apple",
+        "ticker": "AAPL",
+        "period": "Q2 FY2026 in example",
+        "highlights": [
+          {
+            "point": "Revenue and EPS beat expectations",
+            "figures": {
+              "eps_actual": "$2.01",
+              "eps_beat": "+$0.07",
+              "revenue_actual": "$111.18B",
+              "revenue_beat": "+$1.61B"
+            }
+          },
+          {
+            "point": "High growth in revenue and EPS",
+            "figures": {
+              "revenue_actual_rounded": "$111.2B",
+              "revenue_yoy": "+16.6%",
+              "eps_yoy": "+22%"
+            }
+          },
+          {
+            "point": "iPhone stronger than expected",
+            "figures": {
+              "iphone_revenue_yoy": "+22%"
+            }
+          },
+          {
+            "point": "Services growth and high profitability",
+            "figures": {
+              "services_revenue": "$31B",
+              "services_revenue_yoy": "+16%",
+              "services_gross_margin": "approx. 76%"
+            }
+          },
+          {
+            "point": "All regions grew double digits",
+            "figures": {
+              "regions": "China and India included; no precise table value in this bullet"
+            }
+          },
+          {
+            "point": "Cash generation strong",
+            "figures": {
+              "operating_cash_flow_quarter": "$28.7B"
+            }
+          }
+        ],
+        "lowlights": [
+          {
+            "point": "Supply constraints",
+            "figures": {
+              "affected_products": "iPhone / Mac"
+            }
+          },
+          {
+            "point": "Memory cost inflation risk",
+            "figures": {
+              "gross_margin_pressure": "qualitative"
+            }
+          },
+          {
+            "point": "OpEx rose materially",
+            "figures": {
+              "opex_yoy": "+24%",
+              "main_driver": "R&D / AI investment"
+            }
+          },
+          {
+            "point": "Hardware dependency increased",
+            "figures": {
+              "main_growth_driver": "iPhone"
+            }
+          },
+          {
+            "point": "CEO transition uncertainty",
+            "figures": {
+              "transition": "Tim Cook -> John Ternus"
+            }
+          }
+        ],
+        "overall_assessment": {
+          "rating_text": "Very strong earnings / A-class",
+          "short_term_view": "Almost perfect / demand extremely strong",
+          "medium_term_risk": "Memory cost increase",
+          "investment_one_liner": "Demand is near record levels, but cost is the next theme."
+        }
+      },
+      "apple_example_profitability_metrics": {
+        "role": "illustrative example only",
+        "company": "Apple",
+        "ticker": "AAPL",
+        "period": "Q2 FY2026 in example",
+        "currency": "USD",
+        "table": [
+          {
+            "metric": "Revenue",
+            "actual": "$111.18B",
+            "prior_year_period": "$95.36B",
+            "yoy": "+16.6%"
+          },
+          {
+            "metric": "Gross profit",
+            "actual": "$54.78B",
+            "prior_year_period": "$44.87B",
+            "yoy": "+22.1%"
+          },
+          {
+            "metric": "Gross margin",
+            "actual": "49.3%",
+            "prior_year_period": "approx. 47.0%",
+            "yoy_or_delta": "+approx. 2.3pt"
+          },
+          {
+            "metric": "Operating expenses / OpEx",
+            "actual": "$18.90B",
+            "prior_year_period": "$15.28B",
+            "yoy": "+23.7%"
+          },
+          {
+            "metric": "Operating income",
+            "actual": "$35.89B",
+            "prior_year_period": "$29.59B",
+            "yoy": "+21.3%"
+          },
+          {
+            "metric": "Operating margin",
+            "actual": "32.3%",
+            "prior_year_period": "approx. 31.0%",
+            "yoy_or_delta": "+approx. 1.3pt"
+          },
+          {
+            "metric": "Net income",
+            "actual": "$29.58B",
+            "prior_year_period": "$24.78B",
+            "yoy": "+19.4%"
+          }
+        ],
+        "analysis_numbers": {
+          "gross_profit_yoy_rounded": "+22%",
+          "gross_margin_rounded": "49.3% / about 49%",
+          "operating_income_yoy_rounded": "+21%",
+          "operating_margin_rounded": "32.3% / about 32%",
+          "opex_yoy": "+23.7% / about +24%",
+          "net_income_yoy": "+19.4%",
+          "revenue_growth_rounded": "+16%",
+          "profit_growth_rounded": "+20%"
+        },
+        "expected_analytical_claims": [
+          "Revenue growth exceeded cost growth, supporting margin improvement.",
+          "OpEx growth is high and should be explained, especially R&D/AI investment if relevant.",
+          "A high-quality earnings result should connect growth, margins and investment spending."
+        ]
+      },
+      "apple_example_cash_flow_metrics": {
+        "role": "illustrative example only",
+        "company": "Apple",
+        "ticker": "AAPL",
+        "period": "Q2 FY2026 in example",
+        "cash_flow_period_basis": "6-month cumulative figures in example",
+        "currency": "USD",
+        "table": [
+          {
+            "metric": "Operating cash flow / OCF",
+            "actual": "$82.63B",
+            "prior_year_period": "$53.89B",
+            "yoy": "+53%"
+          },
+          {
+            "metric": "CapEx",
+            "actual": "$4.34B",
+            "prior_year_period": "$6.01B",
+            "yoy": "-28%"
+          },
+          {
+            "metric": "Free cash flow / FCF",
+            "actual": "$78.28B",
+            "prior_year_period": "$47.88B",
+            "yoy": "+63%"
+          }
+        ],
+        "formula": "FCF = OCF - CapEx",
+        "analysis_numbers": {
+          "ocf_rounded": "$82.6B",
+          "ocf_yoy": "+53%",
+          "net_income_6_months": "$71.7B",
+          "capex": "$4.34B",
+          "capex_yoy": "-28%",
+          "fcf_rounded": "$78.3B",
+          "fcf_yoy": "+63%",
+          "buybacks_quarter": "$11B",
+          "dividends": "$3.8B",
+          "sustainability_caution_growth_range": "+50% to +60% growth may not be sustainable"
+        },
+        "expected_analytical_claims": [
+          "Distinguish accounting profit from cash generation.",
+          "Explain whether CapEx intensity is high or low for the business model.",
+          "Explain capital returns if buybacks/dividends are disclosed.",
+          "Flag one-off working-capital effects when cash-flow growth looks unusually strong."
+        ]
+      },
+      "apple_example_capital_efficiency_metrics": {
+        "role": "illustrative example only",
+        "company": "Apple",
+        "ticker": "AAPL",
+        "period_basis": "Q2 FY2026 example, estimated from latest 6 months and latest quarter, annualized",
+        "table": [
+          {
+            "metric": "ROE",
+            "value_raw": "approx. 65-70%",
+            "value_low_percent": 65,
+            "value_high_percent": 70,
+            "evaluation": "★★★★★ / extremely high"
+          },
+          {
+            "metric": "ROTCE / ROTE",
+            "value_raw": "around 80%",
+            "value_percent_approx": 80,
+            "evaluation": "★★★★★ / ultra-efficient"
+          },
+          {
+            "metric": "ROA",
+            "value_raw": "approx. 16-18%",
+            "value_low_percent": 16,
+            "value_high_percent": 18,
+            "evaluation": "★★★★☆"
+          },
+          {
+            "metric": "ROIC",
+            "value_raw": "approx. 45-55%",
+            "value_low_percent": 45,
+            "value_high_percent": 55,
+            "evaluation": "★★★★★"
+          }
+        ],
+        "supporting_calculation_data": {
+          "net_income_6_months": "$71.7B",
+          "total_assets": "approx. $371B",
+          "shareholders_equity": "approx. $106B",
+          "roic_excellence_threshold_mentioned": "over 40%"
+        },
+        "expected_analytical_claims": [
+          "Explain if high ROE is partly caused by buybacks reducing equity.",
+          "Prefer ROIC for assessing underlying business quality when equity is distorted.",
+          "Connect high returns to brand, ecosystem, low CapEx model or company-specific drivers."
+        ]
+      },
+      "apple_example_segment_results": {
+        "role": "illustrative example only",
+        "company": "Apple",
+        "ticker": "AAPL",
+        "period": "Q2 FY2026 in example",
+        "currency": "USD",
+        "product_category_table": [
+          {
+            "segment": "iPhone",
+            "revenue": "$56.99B",
+            "prior_year_period": "$46.84B",
+            "yoy": "+21.7%"
+          },
+          {
+            "segment": "Mac",
+            "revenue": "$8.40B",
+            "prior_year_period": "$7.95B",
+            "yoy": "+5.7%"
+          },
+          {
+            "segment": "iPad",
+            "revenue": "$6.91B",
+            "prior_year_period": "$6.40B",
+            "yoy": "+8.0%"
+          },
+          {
+            "segment": "Wearables etc.",
+            "revenue": "$7.90B",
+            "prior_year_period": "$7.52B",
+            "yoy": "+5.0%"
+          },
+          {
+            "segment": "Services",
+            "revenue": "$30.98B",
+            "prior_year_period": "$26.65B",
+            "yoy": "+16.3%"
+          },
+          {
+            "segment": "Total",
+            "revenue": "$111.18B",
+            "prior_year_period": "$95.36B",
+            "yoy": "+16.6%"
+          }
+        ],
+        "geographic_table": [
+          {
+            "region": "Americas",
+            "revenue": "$45.09B",
+            "prior_year_period": "$40.32B",
+            "yoy": "+11.9%"
+          },
+          {
+            "region": "Europe",
+            "revenue": "$28.06B",
+            "prior_year_period": "$24.45B",
+            "yoy": "+14.7%"
+          },
+          {
+            "region": "Greater China",
+            "revenue": "$20.50B",
+            "prior_year_period": "$16.00B",
+            "yoy": "+28.1%"
+          },
+          {
+            "region": "Japan",
+            "revenue": "$8.40B",
+            "prior_year_period": "$7.30B",
+            "yoy": "+15.1%"
+          },
+          {
+            "region": "APAC excluding China",
+            "revenue": "$9.14B",
+            "prior_year_period": "$7.29B",
+            "yoy": "+25.3%"
+          }
+        ],
+        "analysis_numbers": {
+          "iphone_revenue_rounded": "$57B",
+          "iphone_yoy_rounded": "+22%",
+          "iphone_revenue_mix": "about 51% / over 50%",
+          "services_revenue_rounded": "$31B",
+          "services_yoy_rounded": "+16%",
+          "services_gross_margin": "approx. 76%",
+          "services_revenue_mix": "about 28%",
+          "other_revenue_mix": "about 21%",
+          "mac_yoy_rounded": "+6%",
+          "ipad_yoy_rounded": "+8%",
+          "wearables_yoy_rounded": "+5%",
+          "china_growth_rounded": "+28%",
+          "apac_growth_rounded": "+25%",
+          "us_americas_growth_rounded": "+12%"
+        }
+      },
+      "forward_pe_ratio": {
+        "role": "required section with no example in template",
+        "source_template_example_available": false,
+        "must_extract_or_compute_in_generated_report": true,
+        "expected_fields": {
+          "forward_pe_ratio": null,
+          "share_price_or_market_cap_used": null,
+          "forward_eps_or_forward_net_income_used": null,
+          "date_time_basis": null,
+          "source": null,
+          "calculation_note": "If calculated: Forward P/E = current share price / expected forward EPS, or market cap / expected forward net income."
+        }
+      },
+      "sandisk_example_backlog_quality_quantity": {
+        "role": "illustrative example only, conditional section",
+        "company": "Sandisk",
+        "conclusion": {
+          "quantity": "Very large / unprecedented level",
+          "quality": "Very high / exceptional for memory industry"
+        },
+        "explicit_numbers": {
+          "nbm_minimum_guaranteed_revenue": "approx. $42B",
+          "q3_revenue": "$5.95B",
+          "equivalent_quarters_of_q3_revenue": "more than 7 quarters",
+          "financial_guarantees": "$11B+",
+          "contract_length": "up to 5 years",
+          "contracted_coverage_ratio": "approx. 1/3",
+          "watch_target_coverage_ratio": "1/3 -> 50%"
+        },
+        "backlog_quality_characteristics": [
+          "quantity commitments",
+          "financial guarantees",
+          "multi-year contract structure",
+          "partially fixed pricing"
+        ],
+        "weak_backlog_characteristics_for_contrast": [
+          "variable pricing",
+          "cancellable orders",
+          "no real guarantee"
+        ],
+        "risks_and_cautions": [
+          "Not 100% fixed",
+          "Long-term pricing can vary",
+          "Only around one third is contracted",
+          "Absorption speed is untested",
+          "Behavior in a down-cycle is unknown"
+        ],
+        "investment_watch_items": [
+          "Whether the $42B grows further",
+          "Whether backlog coverage rises from about 1/3 toward 50%",
+          "Whether the backlog holds if prices decline"
+        ]
+      },
+      "sandisk_example_guidance": {
+        "role": "illustrative example only",
+        "company": "Sandisk",
+        "period": "Q4 FY2026 guidance in example",
+        "currency": "USD",
+        "table": [
+          {
+            "metric": "Revenue",
+            "guidance": "$7.75B to $8.25B",
+            "low_billion": 7.75,
+            "high_billion": 8.25
+          },
+          {
+            "metric": "Gross margin (Non-GAAP)",
+            "guidance": "79% to 81%",
+            "low_percent": 79,
+            "high_percent": 81
+          },
+          {
+            "metric": "Operating expenses (Non-GAAP)",
+            "guidance": "$480M to $500M",
+            "low_million": 480,
+            "high_million": 500
+          },
+          {
+            "metric": "EPS (Non-GAAP)",
+            "guidance": "$30.00 to $33.00",
+            "low": 30.0,
+            "high": 33.0
+          },
+          {
+            "metric": "Diluted shares",
+            "guidance": "approx. 158M shares",
+            "approx_million": 158
+          }
+        ],
+        "analysis_numbers": {
+          "q3_revenue": "$5.95B",
+          "q4_guidance_max_revenue": "$8.25B",
+          "qoq_revenue_growth": "+30% to +40%",
+          "q3_gross_margin": "78.4%",
+          "q4_gross_margin_guidance": "79% to 81%",
+          "q3_eps": "$23.41",
+          "q4_eps_guidance": "$30 to $33",
+          "qoq_eps_growth": "over +30%",
+          "medium_term_revenue_growth_direction": "double-digit growth assumed/implied",
+          "fy27_contract_coverage": "1/3 contracted",
+          "gross_margin_peak_reference": "80% is historically high"
+        },
+        "expected_analytical_claims": [
+          "Guidance should be interpreted not only as next-quarter numbers but also as signal of margin and demand structure.",
+          "If management implies structural change, distinguish explicit numerical guidance from qualitative medium-term signals.",
+          "Flag if guidance appears unusually strong or near cyclical peak."
+        ],
+        "investment_watch_items": [
+          "Can the company maintain performance after Q1?",
+          "Can gross margin around 80% persist?",
+          "How much does NBM coverage expand?"
+        ]
+      }
+    },
+    "generated_pdf_comparison_schema": {
+      "scoring_intent": "Use this to compare a generated earnings PDF against the template without requiring the generated PDF to contain the same Apple/Sandisk example values.",
+      "minimum_required_sections": [
+        "eps_revenue_summary",
+        "highlights_lowlights",
+        "profitability_metrics",
+        "cash_flow_metrics",
+        "capital_efficiency_metrics",
+        "segment_results",
+        "forward_pe_ratio",
+        "guidance"
+      ],
+      "conditional_sections": [
+        "backlog_quality_quantity"
+      ],
+      "must_have_numeric_fields": [
+        {
+          "json_path": "eps_revenue_summary.rows[EPS].estimate",
+          "metric": "EPS estimate",
+          "required": true
+        },
+        {
+          "json_path": "eps_revenue_summary.rows[EPS].actual",
+          "metric": "EPS actual",
+          "required": true
+        },
+        {
+          "json_path": "eps_revenue_summary.rows[EPS].vs_estimate",
+          "metric": "EPS variance versus estimate",
+          "required": true
+        },
+        {
+          "json_path": "eps_revenue_summary.rows[EPS].yoy_change",
+          "metric": "EPS YoY change",
+          "required": true
+        },
+        {
+          "json_path": "eps_revenue_summary.rows[Revenue].estimate",
+          "metric": "Revenue estimate",
+          "required": true
+        },
+        {
+          "json_path": "eps_revenue_summary.rows[Revenue].actual",
+          "metric": "Revenue actual",
+          "required": true
+        },
+        {
+          "json_path": "eps_revenue_summary.rows[Revenue].vs_estimate",
+          "metric": "Revenue variance versus estimate",
+          "required": true
+        },
+        {
+          "json_path": "eps_revenue_summary.rows[Revenue].yoy_change",
+          "metric": "Revenue YoY change",
+          "required": true
+        },
+        {
+          "json_path": "profitability_metrics.revenue",
+          "metric": "Revenue",
+          "required": true
+        },
+        {
+          "json_path": "profitability_metrics.gross_profit",
+          "metric": "Gross profit",
+          "required": true
+        },
+        {
+          "json_path": "profitability_metrics.gross_margin",
+          "metric": "Gross margin",
+          "required": true
+        },
+        {
+          "json_path": "profitability_metrics.opex",
+          "metric": "Operating expenses / OpEx",
+          "required": true
+        },
+        {
+          "json_path": "profitability_metrics.operating_income",
+          "metric": "Operating income",
+          "required": true
+        },
+        {
+          "json_path": "profitability_metrics.operating_margin",
+          "metric": "Operating margin",
+          "required": true
+        },
+        {
+          "json_path": "profitability_metrics.net_income",
+          "metric": "Net income",
+          "required": true
+        },
+        {
+          "json_path": "cash_flow_metrics.operating_cash_flow",
+          "metric": "Operating cash flow",
+          "required": true
+        },
+        {
+          "json_path": "cash_flow_metrics.capex",
+          "metric": "CapEx",
+          "required": true
+        },
+        {
+          "json_path": "cash_flow_metrics.free_cash_flow",
+          "metric": "Free cash flow",
+          "required": true
+        },
+        {
+          "json_path": "capital_efficiency_metrics.roe",
+          "metric": "ROE",
+          "required": true
+        },
+        {
+          "json_path": "capital_efficiency_metrics.rotce_or_rote",
+          "metric": "ROTCE/ROTE",
+          "required": true
+        },
+        {
+          "json_path": "capital_efficiency_metrics.roa",
+          "metric": "ROA",
+          "required": true
+        },
+        {
+          "json_path": "capital_efficiency_metrics.roic",
+          "metric": "ROIC",
+          "required": true
+        },
+        {
+          "json_path": "segment_results.business_segments[*].revenue",
+          "metric": "Business/product segment revenue",
+          "required": true
+        },
+        {
+          "json_path": "segment_results.business_segments[*].yoy",
+          "metric": "Business/product segment YoY",
+          "required": true
+        },
+        {
+          "json_path": "segment_results.geographic_segments[*].revenue",
+          "metric": "Geographic segment revenue",
+          "required": "if_disclosed"
+        },
+        {
+          "json_path": "segment_results.geographic_segments[*].yoy",
+          "metric": "Geographic segment YoY",
+          "required": "if_disclosed"
+        },
+        {
+          "json_path": "valuation.forward_pe",
+          "metric": "Forward P/E",
+          "required": true
+        },
+        {
+          "json_path": "guidance.revenue",
+          "metric": "Guided revenue",
+          "required": "if_guided"
+        },
+        {
+          "json_path": "guidance.gross_margin",
+          "metric": "Guided gross margin",
+          "required": "if_guided"
+        },
+        {
+          "json_path": "guidance.opex",
+          "metric": "Guided OpEx",
+          "required": "if_guided"
+        },
+        {
+          "json_path": "guidance.eps",
+          "metric": "Guided EPS",
+          "required": "if_guided"
+        },
+        {
+          "json_path": "guidance.diluted_shares",
+          "metric": "Guided diluted shares",
+          "required": "if_guided"
+        },
+        {
+          "json_path": "backlog.quantity",
+          "metric": "Backlog/order book quantity",
+          "required": "conditional"
+        },
+        {
+          "json_path": "backlog.quality",
+          "metric": "Backlog/order book quality",
+          "required": "conditional"
+        },
+        {
+          "json_path": "backlog.guarantees_or_commitments",
+          "metric": "Financial guarantees or customer commitments",
+          "required": "conditional"
+        }
+      ],
+      "qualitative_but_required_fields": [
+        "At least 3-6 highlights with numeric evidence where possible",
+        "At least 3-5 lowlights/key concerns with numeric evidence where possible",
+        "Overall earnings assessment/rating",
+        "Investment-view one-liner",
+        "Explanation after each major metrics table",
+        "Future checkpoints/watch items",
+        "Cautions when figures may be temporary or cyclical",
+        "Clear separation between actual disclosed values, estimates, calculations and management commentary"
+      ],
+      "comparison_red_flags": [
+        "Missing EPS/revenue estimate versus actual table",
+        "Narrative says earnings are strong but does not show EPS/revenue/YoY numbers",
+        "Missing profitability table with gross profit, operating income, margins, OpEx and net income",
+        "Missing cash-flow section or missing FCF formula",
+        "Missing ROE/ROA/ROIC/ROTE even when enough balance-sheet data exists",
+        "Segment section only gives generic comments without segment table",
+        "Forward P/E omitted because the source template has no example",
+        "Backlog section included for irrelevant company without saying not applicable",
+        "Backlog section omitted for a company where backlog/order book is central",
+        "Guidance section lacks next-quarter numeric ranges when disclosed",
+        "Generated report reuses Apple/Sandisk example values for another company",
+        "Generated report includes unsourced or unverifiable numbers",
+        "Generated report provides filler one-line summaries that do not add analysis"
+      ]
+    },
+    "all_financial_numbers_flat_index": [
+      {
+        "context": "GEV EPS summary",
+        "label": "EPS estimate low",
+        "value": 1.79,
+        "raw": "$1.79",
+        "unit": "USD/share"
+      },
+      {
+        "context": "GEV EPS summary",
+        "label": "EPS estimate high",
+        "value": 1.95,
+        "raw": "$1.95",
+        "unit": "USD/share"
+      },
+      {
+        "context": "GEV EPS summary",
+        "label": "EPS actual",
+        "value": 17.44,
+        "raw": "$17.44",
+        "unit": "USD/share"
+      },
+      {
+        "context": "GEV EPS summary",
+        "label": "EPS vs estimate",
+        "value": 15,
+        "raw": "+$15",
+        "unit": "USD/share"
+      },
+      {
+        "context": "GEV EPS summary",
+        "label": "EPS YoY",
+        "value": 16,
+        "raw": "+16% (8.03B)",
+        "unit": "%",
+        "note": "Raw text includes '(8.03B)'"
+      },
+      {
+        "context": "GEV revenue summary",
+        "label": "Revenue estimate low",
+        "value": 9.27,
+        "raw": "9.27B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "GEV revenue summary",
+        "label": "Revenue estimate high",
+        "value": 9.29,
+        "raw": "9.29B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "GEV revenue summary",
+        "label": "Revenue actual",
+        "value": 9.34,
+        "raw": "9.34B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "GEV revenue summary",
+        "label": "Revenue vs estimate low raw",
+        "value": 0.5,
+        "raw": "+$0.5B",
+        "unit": "USD billion",
+        "note": "Likely template typo; preserved."
+      },
+      {
+        "context": "GEV revenue summary",
+        "label": "Revenue vs estimate high raw",
+        "value": 0.7,
+        "raw": "+$0.7B",
+        "unit": "USD billion",
+        "note": "Likely template typo; preserved."
+      },
+      {
+        "context": "GEV revenue summary",
+        "label": "Revenue YoY",
+        "value": 1500,
+        "raw": "+1500% ($0.91)",
+        "unit": "%",
+        "note": "Likely formatting/data issue; preserved."
+      },
+      {
+        "context": "Apple highlights",
+        "label": "EPS actual",
+        "value": 2.01,
+        "raw": "$2.01",
+        "unit": "USD/share"
+      },
+      {
+        "context": "Apple highlights",
+        "label": "EPS estimate beat",
+        "value": 0.07,
+        "raw": "+$0.07",
+        "unit": "USD/share"
+      },
+      {
+        "context": "Apple highlights",
+        "label": "Revenue actual",
+        "value": 111.18,
+        "raw": "$111.18B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple highlights",
+        "label": "Revenue beat",
+        "value": 1.61,
+        "raw": "+$1.61B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple highlights",
+        "label": "Revenue YoY",
+        "value": 16.6,
+        "raw": "+16.6%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple highlights",
+        "label": "EPS YoY",
+        "value": 22,
+        "raw": "+22%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple highlights",
+        "label": "iPhone revenue YoY",
+        "value": 22,
+        "raw": "+22%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple highlights",
+        "label": "Services revenue",
+        "value": 31,
+        "raw": "$31B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple highlights",
+        "label": "Services revenue YoY",
+        "value": 16,
+        "raw": "+16%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple highlights",
+        "label": "Services gross margin",
+        "value": 76,
+        "raw": "approx. 76%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple highlights",
+        "label": "Operating cash flow",
+        "value": 28.7,
+        "raw": "$28.7B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple lowlights",
+        "label": "OpEx YoY",
+        "value": 24,
+        "raw": "+24%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "Revenue actual",
+        "value": 111.18,
+        "raw": "$111.18B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "Revenue prior year",
+        "value": 95.36,
+        "raw": "$95.36B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "Revenue YoY",
+        "value": 16.6,
+        "raw": "+16.6%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "Gross profit actual",
+        "value": 54.78,
+        "raw": "$54.78B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "Gross profit prior year",
+        "value": 44.87,
+        "raw": "$44.87B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "Gross profit YoY",
+        "value": 22.1,
+        "raw": "+22.1%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "Gross margin actual",
+        "value": 49.3,
+        "raw": "49.3%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "Gross margin prior year approx",
+        "value": 47.0,
+        "raw": "approx. 47.0%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "Gross margin delta",
+        "value": 2.3,
+        "raw": "+approx. 2.3pt",
+        "unit": "percentage points"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "OpEx actual",
+        "value": 18.9,
+        "raw": "$18.90B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "OpEx prior year",
+        "value": 15.28,
+        "raw": "$15.28B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "OpEx YoY",
+        "value": 23.7,
+        "raw": "+23.7%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "Operating income actual",
+        "value": 35.89,
+        "raw": "$35.89B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "Operating income prior year",
+        "value": 29.59,
+        "raw": "$29.59B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "Operating income YoY",
+        "value": 21.3,
+        "raw": "+21.3%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "Operating margin actual",
+        "value": 32.3,
+        "raw": "32.3%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "Operating margin prior year approx",
+        "value": 31.0,
+        "raw": "approx. 31.0%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "Operating margin delta",
+        "value": 1.3,
+        "raw": "+approx. 1.3pt",
+        "unit": "percentage points"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "Net income actual",
+        "value": 29.58,
+        "raw": "$29.58B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "Net income prior year",
+        "value": 24.78,
+        "raw": "$24.78B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple profitability table",
+        "label": "Net income YoY",
+        "value": 19.4,
+        "raw": "+19.4%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple cash flow table",
+        "label": "OCF actual",
+        "value": 82.63,
+        "raw": "$82.63B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple cash flow table",
+        "label": "OCF prior year",
+        "value": 53.89,
+        "raw": "$53.89B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple cash flow table",
+        "label": "OCF YoY",
+        "value": 53,
+        "raw": "+53%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple cash flow table",
+        "label": "CapEx actual",
+        "value": 4.34,
+        "raw": "$4.34B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple cash flow table",
+        "label": "CapEx prior year",
+        "value": 6.01,
+        "raw": "$6.01B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple cash flow table",
+        "label": "CapEx YoY",
+        "value": -28,
+        "raw": "-28%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple cash flow table",
+        "label": "FCF actual",
+        "value": 78.28,
+        "raw": "$78.28B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple cash flow table",
+        "label": "FCF prior year",
+        "value": 47.88,
+        "raw": "$47.88B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple cash flow table",
+        "label": "FCF YoY",
+        "value": 63,
+        "raw": "+63%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple capital efficiency",
+        "label": "ROE low",
+        "value": 65,
+        "raw": "approx. 65-70%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple capital efficiency",
+        "label": "ROE high",
+        "value": 70,
+        "raw": "approx. 65-70%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple capital efficiency",
+        "label": "ROTCE/ROTE approx",
+        "value": 80,
+        "raw": "around 80%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple capital efficiency",
+        "label": "ROA low",
+        "value": 16,
+        "raw": "approx. 16-18%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple capital efficiency",
+        "label": "ROA high",
+        "value": 18,
+        "raw": "approx. 16-18%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple capital efficiency",
+        "label": "ROIC low",
+        "value": 45,
+        "raw": "approx. 45-55%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple capital efficiency",
+        "label": "ROIC high",
+        "value": 55,
+        "raw": "approx. 45-55%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple capital efficiency",
+        "label": "Net income 6 months",
+        "value": 71.7,
+        "raw": "$71.7B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple capital efficiency",
+        "label": "Total assets",
+        "value": 371,
+        "raw": "approx. $371B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple capital efficiency",
+        "label": "Shareholders equity",
+        "value": 106,
+        "raw": "approx. $106B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple capital efficiency",
+        "label": "ROIC high-quality threshold",
+        "value": 40,
+        "raw": "over 40%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple segment table",
+        "label": "iPhone revenue",
+        "value": 56.99,
+        "raw": "$56.99B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple segment table",
+        "label": "iPhone prior year revenue",
+        "value": 46.84,
+        "raw": "$46.84B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple segment table",
+        "label": "iPhone YoY",
+        "value": 21.7,
+        "raw": "+21.7%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple segment table",
+        "label": "Mac revenue",
+        "value": 8.4,
+        "raw": "$8.40B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple segment table",
+        "label": "Mac prior year revenue",
+        "value": 7.95,
+        "raw": "$7.95B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple segment table",
+        "label": "Mac YoY",
+        "value": 5.7,
+        "raw": "+5.7%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple segment table",
+        "label": "iPad revenue",
+        "value": 6.91,
+        "raw": "$6.91B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple segment table",
+        "label": "iPad prior year revenue",
+        "value": 6.4,
+        "raw": "$6.40B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple segment table",
+        "label": "iPad YoY",
+        "value": 8.0,
+        "raw": "+8.0%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple segment table",
+        "label": "Wearables revenue",
+        "value": 7.9,
+        "raw": "$7.90B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple segment table",
+        "label": "Wearables prior year revenue",
+        "value": 7.52,
+        "raw": "$7.52B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple segment table",
+        "label": "Wearables YoY",
+        "value": 5.0,
+        "raw": "+5.0%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple segment table",
+        "label": "Services revenue",
+        "value": 30.98,
+        "raw": "$30.98B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple segment table",
+        "label": "Services prior year revenue",
+        "value": 26.65,
+        "raw": "$26.65B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple segment table",
+        "label": "Services YoY",
+        "value": 16.3,
+        "raw": "+16.3%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple segment table",
+        "label": "Total revenue",
+        "value": 111.18,
+        "raw": "$111.18B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple segment table",
+        "label": "Total prior year revenue",
+        "value": 95.36,
+        "raw": "$95.36B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple segment table",
+        "label": "Total YoY",
+        "value": 16.6,
+        "raw": "+16.6%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple geography table",
+        "label": "Americas revenue",
+        "value": 45.09,
+        "raw": "$45.09B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple geography table",
+        "label": "Americas prior year revenue",
+        "value": 40.32,
+        "raw": "$40.32B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple geography table",
+        "label": "Americas YoY",
+        "value": 11.9,
+        "raw": "+11.9%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple geography table",
+        "label": "Europe revenue",
+        "value": 28.06,
+        "raw": "$28.06B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple geography table",
+        "label": "Europe prior year revenue",
+        "value": 24.45,
+        "raw": "$24.45B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple geography table",
+        "label": "Europe YoY",
+        "value": 14.7,
+        "raw": "+14.7%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple geography table",
+        "label": "Greater China revenue",
+        "value": 20.5,
+        "raw": "$20.50B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple geography table",
+        "label": "Greater China prior year revenue",
+        "value": 16.0,
+        "raw": "$16.00B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple geography table",
+        "label": "Greater China YoY",
+        "value": 28.1,
+        "raw": "+28.1%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple geography table",
+        "label": "Japan revenue",
+        "value": 8.4,
+        "raw": "$8.40B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple geography table",
+        "label": "Japan prior year revenue",
+        "value": 7.3,
+        "raw": "$7.30B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple geography table",
+        "label": "Japan YoY",
+        "value": 15.1,
+        "raw": "+15.1%",
+        "unit": "%"
+      },
+      {
+        "context": "Apple geography table",
+        "label": "APAC excluding China revenue",
+        "value": 9.14,
+        "raw": "$9.14B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple geography table",
+        "label": "APAC excluding China prior year revenue",
+        "value": 7.29,
+        "raw": "$7.29B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Apple geography table",
+        "label": "APAC excluding China YoY",
+        "value": 25.3,
+        "raw": "+25.3%",
+        "unit": "%"
+      },
+      {
+        "context": "Sandisk backlog",
+        "label": "NBM minimum guaranteed revenue",
+        "value": 42,
+        "raw": "approx. $42B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Sandisk backlog",
+        "label": "Q3 revenue",
+        "value": 5.95,
+        "raw": "$5.95B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Sandisk backlog",
+        "label": "Equivalent quarters",
+        "value": 7,
+        "raw": "more than 7 quarters",
+        "unit": "quarters"
+      },
+      {
+        "context": "Sandisk backlog",
+        "label": "Financial guarantees",
+        "value": 11,
+        "raw": "$11B+",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Sandisk backlog",
+        "label": "Contract length max",
+        "value": 5,
+        "raw": "up to 5 years",
+        "unit": "years"
+      },
+      {
+        "context": "Sandisk backlog",
+        "label": "Contracted coverage",
+        "value": 33.3333,
+        "raw": "approx. 1/3",
+        "unit": "%"
+      },
+      {
+        "context": "Sandisk backlog",
+        "label": "Coverage watch target",
+        "value": 50,
+        "raw": "50%",
+        "unit": "%"
+      },
+      {
+        "context": "Sandisk guidance",
+        "label": "Revenue guidance low",
+        "value": 7.75,
+        "raw": "$7.75B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Sandisk guidance",
+        "label": "Revenue guidance high",
+        "value": 8.25,
+        "raw": "$8.25B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Sandisk guidance",
+        "label": "Gross margin guidance low",
+        "value": 79,
+        "raw": "79%",
+        "unit": "%"
+      },
+      {
+        "context": "Sandisk guidance",
+        "label": "Gross margin guidance high",
+        "value": 81,
+        "raw": "81%",
+        "unit": "%"
+      },
+      {
+        "context": "Sandisk guidance",
+        "label": "OpEx guidance low",
+        "value": 480,
+        "raw": "$480M",
+        "unit": "USD million"
+      },
+      {
+        "context": "Sandisk guidance",
+        "label": "OpEx guidance high",
+        "value": 500,
+        "raw": "$500M",
+        "unit": "USD million"
+      },
+      {
+        "context": "Sandisk guidance",
+        "label": "EPS guidance low",
+        "value": 30.0,
+        "raw": "$30.00",
+        "unit": "USD/share"
+      },
+      {
+        "context": "Sandisk guidance",
+        "label": "EPS guidance high",
+        "value": 33.0,
+        "raw": "$33.00",
+        "unit": "USD/share"
+      },
+      {
+        "context": "Sandisk guidance",
+        "label": "Diluted shares",
+        "value": 158,
+        "raw": "approx. 158M shares",
+        "unit": "million shares"
+      },
+      {
+        "context": "Sandisk guidance",
+        "label": "Q3 revenue",
+        "value": 5.95,
+        "raw": "$5.95B",
+        "unit": "USD billion"
+      },
+      {
+        "context": "Sandisk guidance",
+        "label": "QoQ revenue growth low",
+        "value": 30,
+        "raw": "+30%",
+        "unit": "%"
+      },
+      {
+        "context": "Sandisk guidance",
+        "label": "QoQ revenue growth high",
+        "value": 40,
+        "raw": "+40%",
+        "unit": "%"
+      },
+      {
+        "context": "Sandisk guidance",
+        "label": "Q3 gross margin",
+        "value": 78.4,
+        "raw": "78.4%",
+        "unit": "%"
+      },
+      {
+        "context": "Sandisk guidance",
+        "label": "Q3 EPS",
+        "value": 23.41,
+        "raw": "$23.41",
+        "unit": "USD/share"
+      },
+      {
+        "context": "Sandisk guidance",
+        "label": "QoQ EPS growth minimum",
+        "value": 30,
+        "raw": "over +30%",
+        "unit": "%"
+      },
+      {
+        "context": "Sandisk guidance",
+        "label": "FY27 contracted coverage",
+        "value": 33.3333,
+        "raw": "1/3 contracted",
+        "unit": "%"
+      },
+      {
+        "context": "Sandisk guidance",
+        "label": "Historic gross margin level",
+        "value": 80,
+        "raw": "80%",
+        "unit": "%"
+      }
+    ]
+  }
+}

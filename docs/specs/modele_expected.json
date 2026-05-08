@@ -1,0 +1,93 @@
+{
+  "_note": "Expected structure extracted from Nami template (modele.pdf). Sections and fields that MUST be present in generated PDF.",
+  "sections": {
+    "highlights_lowlights": {
+      "title": "🌟 Highlights & ⚠️ Lowlights",
+      "fields": [
+        "eps_vs_estimate", "revenue_vs_estimate", "revenue_yoy", "eps_yoy",
+        "key_product_performance", "services_growth", "geographic_strength",
+        "cash_generation", "supply_constraints", "cost_pressures", "competitive_risks"
+      ],
+      "format": "numbered_bullets_jp"
+    },
+    "eps_revenue_summary": {
+      "title": "EPS & Revenue Summary",
+      "fields": ["eps_estimate", "eps_actual", "eps_vs_estimate", "eps_yoy",
+                  "revenue_estimate", "revenue_actual", "revenue_vs_estimate", "revenue_yoy"],
+      "format": "table",
+      "columns": ["Metric", "Estimate", "Actual", "vs Estimate", "YoY Change"]
+    },
+    "key_metrics": {
+      "title": "📊 Key Financial Metrics",
+      "fields": ["revenue", "gross_profit", "gross_margin", "operating_expenses",
+                  "operating_income", "operating_margin", "net_income"],
+      "format": "table",
+      "columns": ["Metric", "Actual", "Prior Year", "YoY"]
+    },
+    "profitability_analysis": {
+      "title": "Profitability Analysis",
+      "fields": ["gross_margin_trend", "operating_margin_trend", "opex_growth",
+                  "net_income_trend", "margin_quality_assessment"],
+      "format": "prose_bullets_jp"
+    },
+    "growth_quality": {
+      "title": "Growth & Quality Assessment",
+      "fields": ["revenue_growth_rate", "earnings_growth_rate", "margin_level",
+                  "investment_level", "overall_quality_verdict"],
+      "format": "prose_jp"
+    },
+    "cash_flow": {
+      "title": "💰 Cash Flow Analysis",
+      "fields": ["operating_cash_flow", "capex", "free_cash_flow",
+                  "ocf_yoy", "capex_yoy", "fcf_yoy"],
+      "format": "table",
+      "columns": ["Metric", "Actual", "Prior Year", "YoY"]
+    },
+    "capital_efficiency": {
+      "title": "Capital Efficiency",
+      "fields": ["roe", "roa", "roic", "roe_yoy", "roa_yoy", "roic_yoy",
+                  "equity", "total_assets", "invested_capital"],
+      "format": "table_prose_jp"
+    },
+    "segment_performance": {
+      "title": "📊 Segment Performance",
+      "fields": ["iphone_revenue", "mac_revenue", "ipad_revenue",
+                  "wearables_revenue", "services_revenue",
+                  "segment_yoy_changes", "geographic_revenue"],
+      "format": "table",
+      "columns": ["Segment", "Revenue", "Prior Year", "YoY"]
+    },
+    "guidance": {
+      "title": "Guidance & Forward Outlook",
+      "fields": ["revenue_guidance", "gross_margin_guidance", "eps_guidance",
+                  "opex_guidance", "management_commentary"],
+      "format": "table_prose_jp"
+    },
+    "verdict": {
+      "title": "Final Verdict",
+      "fields": ["one_line_summary", "bull_case", "bear_case", "rating"],
+      "format": "prose_jp"
+    },
+    "forward_pe_qa": {
+      "title": "Forward P/E & Q&A",
+      "fields": ["forward_pe", "pe_context", "backlog_quality", "key_questions"],
+      "format": "prose_jp"
+    }
+  },
+  "required_data_points": [
+    "eps_actual", "eps_estimate", "eps_yoy", "eps_vs_estimate",
+    "revenue_actual", "revenue_estimate", "revenue_yoy", "revenue_vs_estimate",
+    "gross_profit", "gross_margin", "operating_expenses", "operating_income",
+    "operating_margin", "net_income",
+    "operating_cash_flow", "capex", "free_cash_flow",
+    "roe", "roa", "roic",
+    "segment_revenues", "geographic_revenues",
+    "guidance_revenue", "guidance_eps", "guidance_gross_margin",
+    "forward_pe"
+  ],
+  "forbidden_placeholders": [
+    "Not available", "DATA NOT AVAILABLE", "データ未取得",
+    "?", "??", "???", "N/A", "Not disclosed", "Not guided",
+    "—", "None", "null", "undefined"
+  ]
+}

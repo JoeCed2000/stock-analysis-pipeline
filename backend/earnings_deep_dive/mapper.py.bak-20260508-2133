@@ -238,14 +238,7 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
     segment_items = segment_entries[: len(labels)]
     # Detect garbled XBRL names: SEC text fragments, month abbreviations
     _GARBLED_EXACT = {"Sep", "Total"}
-    _GARBLED_CONTAINS = ["generally", "consistent", "reportable", "As of", "than a year", "revenue of",
-                         "September", "months ended", "fiscal year", "ended", "filing", "period"]
-    # Known segment names by position index. The edgar_extractor returns segments
-    # ordered by revenue (largest first) for most US companies.
-    _SEGMENT_POSITION_NAMES: tuple[str, ...] = (
-        "iPhone", "Mac", "iPad",
-        "Wearables, Home and Accessories", "Services",
-    )
+    _GARBLED_CONTAINS = ["generally", "consistent", "reportable", "As of", "than a year", "revenue of"]
     def _is_garbled(name: str) -> bool:
         n = str(name)
         if n in _GARBLED_EXACT:
@@ -254,15 +247,6 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
             if pat.lower() in n.lower():
                 return True
         return False
-
-    def _segment_display_name(xbrl_name: str, index: int, fallback_label: str) -> str:
-        """Return a human-readable segment name, preferring known names over XBRL garbage."""
-        if not _is_garbled(str(xbrl_name)):
-            return str(xbrl_name) if xbrl_name else fallback_label
-        # XBRL name is garbled — use known position name if available
-        if index < len(_SEGMENT_POSITION_NAMES):
-            return _SEGMENT_POSITION_NAMES[index]
-        return fallback_label
 
     for index, row_label in enumerate(labels):
         if index >= len(segment_items):
@@ -282,7 +266,8 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
                 except (TypeError, ValueError, ZeroDivisionError):
                     pass
         driver = data.get("driver") if isinstance(data, dict) else None
-        display_name = _segment_display_name(str(name), index, row_label)
+        # Use template label if XBRL name is garbled SEC text fragment
+        display_name = row_label if _is_garbled(str(name)) else (str(name) if name else row_label)
         rows.append([
             display_name,
             _money(revenue),
@@ -693,7 +678,7 @@ def _sanitize_table(table: RenderedTable) -> RenderedTable:
     sanitized_rows: list[RenderedTableRow] = []
     for row in table.rows:
         new_cells = [_sanitize_cell(cell) for cell in row.cells]
-        clean_label = _GARBAGE_RE.sub('—', row.label)
+        clean_label = _GARBAGE_RE.sub('—', _JP_GARBAGE_RE.sub('', row.label))
         sanitized_rows.append(RenderedTableRow(label=clean_label, cells=new_cells))
     return RenderedTable(columns=list(table.columns), rows=sanitized_rows)
 
@@ -1121,9 +1106,8 @@ def build_earnings_deep_dive_report(
             return text
         # Replace runs of 3+ question marks with "—"
         text = _GARBAGE_RE.sub('—', text)
-        # Replace runs of 3+ JP/fullwidth chars (garbled leakage) with "" only for English mode
-        if report_language == "en":
-            text = _JP_GARBAGE_RE.sub('', text)
+        # Replace runs of 3+ JP/fullwidth chars (garbled leakage) with ""
+        text = _JP_GARBAGE_RE.sub('', text)
         # Clean up resulting empty lines or double dashes
         text = _re.sub(r'\n\s*—\s*\n', '\n', text)
         return text
@@ -1150,7 +1134,7 @@ def build_earnings_deep_dive_report(
             table = RenderedTable(
                 columns=list(section.table_columns),
                 rows=[RenderedTableRow(
-                    label=str(row[0]),
+                    label=_GARBAGE_RE.sub('—', _JP_GARBAGE_RE.sub('', str(row[0]))),
                     cells=[str(cell) for cell in row[1:]],
                 ) for row in rows],
             )
@@ -1166,7 +1150,7 @@ def build_earnings_deep_dive_report(
             table = RenderedTable(
                 columns=list(section.table_columns),
                 rows=[RenderedTableRow(
-                    label=str(row[0]),
+                    label=_GARBAGE_RE.sub('—', _JP_GARBAGE_RE.sub('', str(row[0]))),
                     cells=[str(cell) for cell in row[1:]],
                 ) for row in rows],
             )
@@ -1177,25 +1161,6 @@ def build_earnings_deep_dive_report(
                 analysis_items = _default_highlights_analysis(report_language, metrics)
             else:
                 analysis_items = []
-        # ── Data annotation injection: force LLM commentary to use table values ──
-        if section.key in ("EPS & Revenue", "Forward P/E") and rows:
-            value_col_idx = 2 if section.key == "EPS & Revenue" else 1  # "Actual" or "Current"
-            if section.key == "EPS & Revenue" and len(rows) > 0 and len(rows[0]) > value_col_idx:
-                eps_actual = rows[0][value_col_idx]
-                if eps_actual and eps_actual not in (MISSING, MISSING_EN, NOT_APPLICABLE, NOT_APPLICABLE_EN, NOT_DISCLOSED, NOT_DISCLOSED_EN):
-                    eps_note = f"[VALIDATED DATA: EPS actual = {eps_actual}]"
-                    if analysis_items:
-                        analysis_items[-1] = analysis_items[-1] + "\n\n" + eps_note
-                    else:
-                        analysis_items = [eps_note]
-            elif section.key == "Forward P/E" and len(rows) > 0 and len(rows[0]) > value_col_idx:
-                pe_val = rows[0][value_col_idx]
-                if pe_val and pe_val not in (MISSING, MISSING_EN, NOT_APPLICABLE, NOT_APPLICABLE_EN, NOT_DISCLOSED, NOT_DISCLOSED_EN, "—"):
-                    pe_note = f"[VALIDATED DATA: Forward P/E = {pe_val}]"
-                    if analysis_items:
-                        analysis_items[-1] = analysis_items[-1] + "\n\n" + pe_note
-                    else:
-                        analysis_items = [pe_note]
         sections.append(
             RenderedSection(
                 key=section.key,
