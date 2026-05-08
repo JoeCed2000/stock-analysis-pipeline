@@ -883,6 +883,10 @@ PROMPT_BUILDERS: Dict[str, Callable[[str, str, str, str, Dict[str, Any], str], s
 }
 
 
-def build_prompt(section: str, language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    """Build a PDF-aligned prompt for one earnings deep-dive section."""
+def build_prompt(section: str, language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str, **kwargs: Any) -> str:
+    """Build a PDF-aligned prompt for one earnings deep-dive section.
+    
+    Accepts optional sector/industry kwargs for forward-compatibility;
+    sector context is primarily delivered via the system prompt.
+    """
     return PROMPT_BUILDERS[_canonical_section(section)](language, ticker, company, quarter, metrics, transcript_excerpt)
