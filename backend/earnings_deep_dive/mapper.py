@@ -441,9 +441,22 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         trailing_pe = getattr(metrics, "pe_trailing", None)
         if trailing_pe is None:
             trailing_pe = getattr(metrics, "pe_current", None)
+        # Forward EPS basis: annual EPS estimate used for the forward P/E
+        fwd_eps_basis = _money(getattr(metrics, "eps_estimate", None))
+        if not _has(metrics.eps_estimate) and _has(metrics.pe_forward) and _has(getattr(metrics, "price", None)):
+            # Derive from P/E * price if we had price — use eps_estimate * 4 instead
+            pass
+        # Try to show the annualized estimate
+        eps_annual = None
+        if _has(metrics.eps_estimate):
+            try:
+                eps_annual = float(metrics.eps_estimate) * 4.0
+            except (TypeError, ValueError):
+                pass
+        fwd_eps_display = _eps(eps_annual) if eps_annual else NOT_DISCLOSED_EN
         return [
             [row_labels[0], _multiple(metrics.pe_forward), _multiple(trailing_pe), MISSING, _source(metrics.pe_forward)],
-            [row_labels[1], MISSING, MISSING, MISSING, MISSING],
+            [row_labels[1], fwd_eps_display, _eps(getattr(metrics, "eps_estimate", None)), _yoy_pct(getattr(metrics, "eps_yoy", None)), _source(metrics.eps_estimate)],
         ]
 
     if section_key == "Backlog":
@@ -559,6 +572,33 @@ def _enrich_codex_table(
     return RenderedTable(columns=list(codex_table.columns), rows=enriched_rows)
 
 
+def _sanitize_table(table: RenderedTable) -> RenderedTable:
+    """Replace remaining placeholder cells with English equivalents.
+    
+    This runs AFTER _enrich_codex_table. Any cell still containing ``?``,
+    ``—``, or ``データ未取得`` means neither yfinance nor the LLM could fill it.
+    Replace with "Not available" for clarity.
+    """
+    SANTIZE_MAP = {
+        "?": MISSING_EN,
+        "—": MISSING_EN,
+        "–": MISSING_EN,
+        "-": MISSING_EN,
+        "データ未取得": MISSING_EN,
+        "開示なし": NOT_DISCLOSED_EN,
+        "該当なし": NOT_APPLICABLE_EN,
+        "計算不可": NOT_CALCULABLE_EN,
+    }
+    sanitized_rows: list[RenderedTableRow] = []
+    for row in table.rows:
+        new_cells: list[str] = []
+        for cell in row.cells:
+            stripped = cell.strip()
+            new_cells.append(SANTIZE_MAP.get(stripped, cell))
+        sanitized_rows.append(RenderedTableRow(label=row.label, cells=new_cells))
+    return RenderedTable(columns=list(table.columns), rows=sanitized_rows)
+
+
 def _summary(language: TemplateLanguage, ticker: str, section_key: str, metrics: FinancialMetrics) -> str:
     revenue = _money(metrics.revenue_actual)
     revenue_yoy = _pct(metrics.revenue_yoy)
@@ -669,6 +709,7 @@ def build_earnings_deep_dive_report(
         codex_table = _extract_markdown_table(analysis_text, section.table_columns) if analysis_text else None
         if codex_table:
             table = _enrich_codex_table(codex_table, section.key, section.table_rows, metrics)
+            table = _sanitize_table(table)
             analysis_items = [text for text in (_analysis_without_table(analysis_text),) if text]
         else:
             rows = _rows_for_section(section.key, section.table_rows, metrics)
@@ -676,6 +717,7 @@ def build_earnings_deep_dive_report(
                 columns=list(section.table_columns),
                 rows=[RenderedTableRow(label=str(row[0]), cells=[str(cell) for cell in row[1:]]) for row in rows],
             )
+            table = _sanitize_table(table)
             if analysis_text:
                 analysis_items = [analysis_text]
             elif section.key == "Highlights":

@@ -882,6 +882,8 @@ def get_yahoo_data_for_quarter(ticker: str, quarter: str) -> Optional[Dict[str, 
     financials: Dict[str, Any] = {
         "revenue_quarterly": None, "revenue_yoy_growth": None,
         "revenue_annual": None, "revenue_annual_growth": None,
+        "eps_actual": None, "eps_estimate": None, "eps_yoy": None,
+        "revenue_estimate": None,
         "gross_margin": info.get("grossMargins"),
         "operating_margin": info.get("operatingMargins"),
         "net_income": None, "free_cash_flow": None,
@@ -913,6 +915,13 @@ def get_yahoo_data_for_quarter(ticker: str, quarter: str) -> Optional[Dict[str, 
                 curr_rev = financials["revenue_quarterly"]
                 if prev_rev and curr_rev and prev_rev > 0:
                     financials["revenue_yoy_growth"] = round((curr_rev - prev_rev) / prev_rev, 4)
+                # EPS extraction
+                if "Diluted EPS" in qf.index:
+                    eps_curr = _safe_float(qf.loc["Diluted EPS", target_col])
+                    financials["eps_actual"] = eps_curr
+                    prev_eps = _safe_float(qf.loc["Diluted EPS", col])
+                    if prev_eps and eps_curr and prev_eps != 0:
+                        financials["eps_yoy"] = round((eps_curr - prev_eps) / abs(prev_eps), 4)
                 break
     except Exception:
         pass
@@ -959,6 +968,11 @@ def get_yahoo_data_for_quarter(ticker: str, quarter: str) -> Optional[Dict[str, 
                 financials["net_debt"] = total_debt - cash_eq
         except Exception:
             pass
+
+    # EPS estimate from forwardEps (annual, divide by 4 for quarterly)
+    forward_eps = info.get("forwardEps")
+    if forward_eps:
+        financials["eps_estimate"] = forward_eps / 4.0
 
     result = {
         "ticker": ticker,

@@ -456,12 +456,12 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
         return value if value is not None else fallback
 
     return FinancialMetrics(
-        eps_estimate=pick("eps_estimate"),
-        eps_actual=pick("eps_actual"),
+        eps_estimate=comparison_pick("eps_estimate", pick("eps_estimate")),
+        eps_actual=comparison_pick("eps_actual", pick("eps_actual")),
         eps_vs_estimate=pick("eps_vs_estimate"),
-        eps_yoy=pick("eps_yoy"),
-        revenue_estimate=pick("revenue_estimate"),
-        revenue_actual=pick("revenue_quarterly"),
+        eps_yoy=comparison_pick("eps_yoy", pick("eps_yoy")),
+        revenue_estimate=comparison_pick("revenue_estimate", pick("revenue_estimate")),
+        revenue_actual=comparison_pick("revenue_actual", pick("revenue_quarterly")),
         revenue_yoy=pick("revenue_yoy_growth"),
         gross_margin=comparison_pick("gross_margin", pick("gross_margin")),
         operating_margin=comparison_pick("operating_margin", pick("operating_margin")),
