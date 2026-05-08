@@ -543,10 +543,14 @@ def _segment_metrics_shape(segment_data: Dict[str, Any]) -> Dict[str, Any]:
     _GARBAGE_NAME_WORDS = {
         "september", "reportable segment", "in note", "revenue of",
         "than a year", "as of", "generally consistent", "for each",
+        "months ended", "fiscal year", "ended", "filing", "period",
     }
+    _GARBAGE_EXACT = {"Sep", "Total", ""}
 
     def _is_garbage_name(name: str) -> bool:
         """Heuristic: detect XBRL parsing artifacts that leak footnote/filing text."""
+        if not name or name in _GARBAGE_EXACT:
+            return True
         if len(name) > 40:
             return True
         lower = name.lower()
