@@ -56,10 +56,25 @@ def _cache_set(ticker: str, data: Dict[str, Any]) -> None:
             "data": data,
         }
         with open(_cache_path(ticker), "w") as f:
-            json.dump(entry, f)
+            json.dump(entry, f, default=_json_serializable)
         logger.info(f"Cache SET for {ticker}")
     except Exception as e:
         logger.warning(f"Cache SET failed for {ticker}: {e}")
+
+
+def _json_serializable(obj: Any) -> Any:
+    """Convert numpy types to native Python for JSON serialization."""
+    try:
+        import numpy as np
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        if isinstance(obj, (np.floating,)):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+    except ImportError:
+        pass
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 # ---------------------------------------------------------------------------
 # YFinance cache — populated by cron (fill_dossiers.py) every 2 min
