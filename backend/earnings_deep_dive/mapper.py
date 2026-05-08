@@ -579,23 +579,45 @@ def _sanitize_table(table: RenderedTable) -> RenderedTable:
     ``—``, or ``データ未取得`` means neither yfinance nor the LLM could fill it.
     Replace with "Not available" for clarity.
     """
-    SANTIZE_MAP = {
-        "?": MISSING_EN,
-        "—": MISSING_EN,
-        "–": MISSING_EN,
-        "-": MISSING_EN,
-        "データ未取得": MISSING_EN,
-        "開示なし": NOT_DISCLOSED_EN,
-        "該当なし": NOT_APPLICABLE_EN,
-        "計算不可": NOT_CALCULABLE_EN,
-    }
+    import re as _re
+    
+    # Patterns that indicate a purely placeholder cell
+    _PURE_Q_RE = _re.compile(r'^[?？\s]+$')  # Pure ? or ？ or spaces
+    _PURE_DASH_RE = _re.compile(r'^[—–\-\s]+$')  # Pure dashes
+    _JP_PLACEHOLDER_RE = _re.compile(r'[データ未取得開示該当計算不可なし]+')
+    _GARBAGE_RE = _re.compile(r'[?？]{3,}')
+    _JP_GARBAGE_RE = _re.compile(r'[\u3040-\u30ff\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]{3,}')
+    
+    def _sanitize_cell(cell: str) -> str:
+        stripped = cell.strip()
+        if not stripped:
+            return MISSING_EN
+        # Exact matches
+        exact_map = {
+            "?": MISSING_EN, "—": MISSING_EN, "–": MISSING_EN, "-": MISSING_EN,
+            "データ未取得": MISSING_EN, "開示なし": NOT_DISCLOSED_EN,
+            "該当なし": NOT_APPLICABLE_EN, "計算不可": NOT_CALCULABLE_EN,
+        }
+        if stripped in exact_map:
+            return exact_map[stripped]
+        # Pure ? sequence (??? → Not available)
+        if _PURE_Q_RE.match(stripped):
+            return MISSING_EN
+        # Pure — sequence
+        if _PURE_DASH_RE.match(stripped):
+            return MISSING_EN
+        # Cell that is mostly Japanese placeholder chars + ?
+        jp_chars = len(_JP_PLACEHOLDER_RE.findall(stripped))
+        q_chars = stripped.count('?') + stripped.count('？')
+        if jp_chars >= 3 or (q_chars >= 3 and jp_chars >= 1):
+            return MISSING_EN
+        return cell
+    
     sanitized_rows: list[RenderedTableRow] = []
     for row in table.rows:
-        new_cells: list[str] = []
-        for cell in row.cells:
-            stripped = cell.strip()
-            new_cells.append(SANTIZE_MAP.get(stripped, cell))
-        sanitized_rows.append(RenderedTableRow(label=row.label, cells=new_cells))
+        new_cells = [_sanitize_cell(cell) for cell in row.cells]
+        clean_label = _GARBAGE_RE.sub('—', _JP_GARBAGE_RE.sub('', row.label))
+        sanitized_rows.append(RenderedTableRow(label=clean_label, cells=new_cells))
     return RenderedTable(columns=list(table.columns), rows=sanitized_rows)
 
 
@@ -703,9 +725,26 @@ def build_earnings_deep_dive_report(
     template = get_earnings_template(report_language)
     analysis_by_key = section_analysis or {}
 
+    # Sanitize prose: remove garbage ???? patterns and JP leakage from LLM output
+    import re as _re
+    _GARBAGE_RE = _re.compile(r'[?？]{3,}')
+    _JP_GARBAGE_RE = _re.compile(r'[\u3040-\u30ff\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]{3,}')
+    def _clean_prose(text: str) -> str:
+        if not text:
+            return text
+        # Replace runs of 3+ question marks with "—"
+        text = _GARBAGE_RE.sub('—', text)
+        # Replace runs of 3+ JP/fullwidth chars (garbled leakage) with ""
+        text = _JP_GARBAGE_RE.sub('', text)
+        # Clean up resulting empty lines or double dashes
+        text = _re.sub(r'\n\s*—\s*\n', '\n', text)
+        return text
+
     sections: list[RenderedSection] = []
     for section in template:
         analysis_text = analysis_by_key.get(section.key) or analysis_by_key.get(section.title)
+        if analysis_text:
+            analysis_text = _clean_prose(analysis_text)
         codex_table = _extract_markdown_table(analysis_text, section.table_columns) if analysis_text else None
         if codex_table:
             table = _enrich_codex_table(codex_table, section.key, section.table_rows, metrics)
@@ -715,7 +754,10 @@ def build_earnings_deep_dive_report(
             rows = _rows_for_section(section.key, section.table_rows, metrics)
             table = RenderedTable(
                 columns=list(section.table_columns),
-                rows=[RenderedTableRow(label=str(row[0]), cells=[str(cell) for cell in row[1:]]) for row in rows],
+                rows=[RenderedTableRow(
+                    label=_GARBAGE_RE.sub('—', _JP_GARBAGE_RE.sub('', str(row[0]))),
+                    cells=[str(cell) for cell in row[1:]],
+                ) for row in rows],
             )
             table = _sanitize_table(table)
             if analysis_text:
