@@ -530,6 +530,8 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
         investor_relations_url=comparison_pick("investor_relations_url"),
         company_website=comparison_pick("company_website"),
         segments=_extract_segments(ticker_for_segments, guidance_value) if ticker_for_segments else {},
+        sector=(yf_data.get("sector") if isinstance(yf_data, dict) else None),
+        industry=(yf_data.get("industry") if isinstance(yf_data, dict) else None),
     )
 
 

@@ -181,7 +181,9 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
         batch_warnings: List[str] = []
         
         for section in secs:
-            sys_prompt = system_prompt(request.language)
+            sector = str(metrics.get("sector", "") or "")
+            industry = str(metrics.get("industry", "") or "")
+            sys_prompt = system_prompt(request.language, sector, industry)
             last_error = ""
             ok = False
             
@@ -190,6 +192,8 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
                     section, request.language, request.ticker, company,
                     request.quarter, _section_metrics(section, metrics),
                     excerpts[section],
+                    sector=sector,
+                    industry=industry,
                 )
                 if attempt == 2:
                     prompt += (
@@ -297,7 +301,10 @@ def _generate_section(
     has_transcript: bool,
 ) -> Tuple[str, SectionStatus]:
     last_error = ""
-    sys_prompt = system_prompt(request.language)
+    # Extract sector/industry for sector-aware prompting
+    sector = str(metrics.get("sector", "") or "")
+    industry = str(metrics.get("industry", "") or "")
+    sys_prompt = system_prompt(request.language, sector, industry)
 
     for attempt in (1, 2):
         prompt = build_prompt(
@@ -308,6 +315,8 @@ def _generate_section(
             request.quarter,
             _section_metrics(section, metrics),
             transcript_excerpt,
+            sector=sector,
+            industry=industry,
         )
         if attempt == 2:
             prompt += (
