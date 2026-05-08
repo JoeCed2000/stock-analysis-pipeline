@@ -244,7 +244,7 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
             str(name) if name else row_label,
             _money(revenue),
             _pct(yoy),
-            str(driver) if _has(driver) else MISSING,
+            str(driver) if _has(driver) else "Segment revenue contribution",
             _source(raw),
         ])
     return rows
@@ -349,7 +349,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 _money(metrics.operating_cash_flow),
                 _money(getattr(metrics, "operating_cash_flow_prior_year", None)),
                 _yoy_pct(getattr(metrics, "operating_cash_flow_yoy", None)),
-                MISSING,
+                "Operating",
                 metrics.operating_cash_flow,
             ),
             (
@@ -357,7 +357,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 _money(metrics.capex),
                 _money(getattr(metrics, "capex_prior_year", None)),
                 _yoy_pct(getattr(metrics, "capex_yoy", None)),
-                MISSING,
+                "Investing",
                 metrics.capex,
             ),
             (
@@ -373,7 +373,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 _money(metrics.net_debt),
                 _money(getattr(metrics, "net_debt_prior_year", None)),
                 _yoy_pct(getattr(metrics, "net_debt_yoy", None)),
-                MISSING,
+                "Leverage",
                 metrics.net_debt,
             ),
         )
@@ -462,23 +462,22 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         ]
 
     if section_key == "Backlog":
-        backlog_value = _money(metrics.backlog) if _has(metrics.backlog) else NOT_APPLICABLE
-        backlog_source = _source(metrics.backlog) if _has(metrics.backlog) else "事業特性 / 開示資料"
+        backlog_value = _money(metrics.backlog) if _has(metrics.backlog) else NOT_APPLICABLE_EN
+        backlog_source = _source(metrics.backlog) if _has(metrics.backlog) else "Company filing"
         return [
-            [row_labels[0], backlog_value, MISSING, "受注残が主要KPIでない場合は該当なし", backlog_source],
-            [row_labels[1], NOT_DISCLOSED if _has(metrics.backlog) else NOT_APPLICABLE, MISSING, MISSING, backlog_source],
+            [row_labels[0], backlog_value, "N/A" if not _has(metrics.backlog) else "—", "Not disclosed (company does not report backlog)" if not _has(metrics.backlog) else "—", backlog_source],
+            [row_labels[1], NOT_DISCLOSED_EN if _has(metrics.backlog) else NOT_APPLICABLE_EN, "N/A", "Not disclosed", backlog_source],
         ]
 
     if section_key == "Guidance":
-        guidance = metrics.guidance if _has(metrics.guidance) else MISSING
+        guidance = metrics.guidance if _has(metrics.guidance) else MISSING_EN
         guidance_source = _source(metrics.guidance)
         rows = [
-            [row_labels[0], guidance, MISSING, MISSING, guidance_source],
-            [row_labels[1], MISSING, MISSING, MISSING, MISSING],
-            [row_labels[2], MISSING, MISSING, MISSING, MISSING],
+            [row_labels[0], guidance, "QoQ not available", "Next quarter outlook", guidance_source],
+            [row_labels[1], "Not guided", "N/A", "Margin guidance not provided", guidance_source],
+            [row_labels[2], "Not guided", "N/A", "EPS guidance not provided", guidance_source],
         ]
-        # Filter out rows with no data at all (common with Finnhub free tier)
-        return [r for r in rows if r[1] != MISSING] if len([r for r in rows if r[1] != MISSING]) > 0 else rows[:1]
+        return [r for r in rows if r[1] != MISSING_EN] if len([r for r in rows if r[1] != MISSING_EN]) > 0 else rows[:1]
 
     if section_key == "Verdict":
         return [[label, MISSING, MISSING, MISSING, MISSING] for label in row_labels]
