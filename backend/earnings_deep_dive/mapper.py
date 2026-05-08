@@ -1187,11 +1187,31 @@ def build_earnings_deep_dive_report(
             elif section.key == "Forward P/E" and len(rows) > 0 and len(rows[0]) > value_col_idx:
                 pe_val = rows[0][value_col_idx]
                 if pe_val and pe_val not in (MISSING, MISSING_EN, NOT_APPLICABLE, NOT_APPLICABLE_EN, NOT_DISCLOSED, NOT_DISCLOSED_EN, "—"):
-                    pe_note = f"[VALIDATED DATA: Forward P/E = {pe_val}]"
-                    if analysis_items:
-                        analysis_items[-1] = analysis_items[-1] + "\n\n" + pe_note
-                    else:
-                        analysis_items = [pe_note]
+                    # Replace LLM hallucination with the actual value.
+                    # The LLM often claims "not provided" even when pe_forward is in metrics.
+                    import re as _re2
+                    pe_fact = f"The forward P/E is {pe_val}."
+                    for i, item in enumerate(analysis_items):
+                        if not item:
+                            continue
+                        # Strip common LLM false claims about missing forward P/E
+                        item = _re2.sub(
+                            r'(?i)(the\s+)?forward\s+p/?e\s+(ratio\s+)?is\s+(not\s+(provided|disclosed|available|calculable|assessable|computable)[^.]*\.)',
+                            pe_fact,
+                            item,
+                        )
+                        item = _re2.sub(
+                            r'(?i)(the\s+)?forward\s+p/?e\s+(ratio\s+)?cannot\s+be\s+(computed|calculated|assessed|determined)[^.]*\.',
+                            pe_fact,
+                            item,
+                        )
+                        # Also inject at the start if no match was replaced
+                        if pe_fact not in item:
+                            item = pe_fact + " " + item
+                        analysis_items[i] = item
+                    # Also append the validated note
+                    pe_note = f"[Source: yfinance forwardPE = {pe_val}]"
+                    analysis_items[-1] = analysis_items[-1] + "\n\n" + pe_note
         sections.append(
             RenderedSection(
                 key=section.key,
