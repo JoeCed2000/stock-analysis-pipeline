@@ -226,6 +226,80 @@ def _analysis_without_table(markdown: str) -> str:
     return "\n".join(kept).strip()
 
 
+def _parse_segments_from_prose(analysis_text: str) -> dict[str, dict]:
+    """Extract segment revenue mentions from LLM analysis text.
+
+    Parses patterns like:
+    - "iPhone revenue of $57.0B grew 22%"
+    - "Services revenue was $31.0B, up 16%"
+    - "Mac contributed $8.4B (+6% YoY)"
+
+    Returns dict of {segment_name: {revenue: float, yoy: float or None}}.
+    """
+    import re as _re3
+    segments: dict[str, dict] = {}
+
+    # Pattern: SegmentName revenue (of/was/at) $XX.X B/billion/M/million
+    # Capture: name, amount, unit, optional YoY
+    _REVENUE_RE = _re3.compile(
+        r'(?P<name>[A-Z][\w\s&/\-]{2,30}?)\s+'
+        r'(?:revenue|sales|contributed)\s+(?:of|was|at|reached|totaled)?\s*'
+        r'\$?(?P<amount>[\d,.]+)\s*'
+        r'(?P<unit>[BMK]|billion|million|thousand)',
+        _re3.IGNORECASE,
+    )
+
+    _YOY_RE = _re3.compile(
+        r'(?:up|down|grew|fell|increased|decreased)\s+(?P<yoy>[\d.]+)\s*%|'
+        r'\(\s*[+]?(?P<yoy2>[\d.]+)\s*%\s*(?:YoY|year.over.year)?\)',
+        _re3.IGNORECASE,
+    )
+
+    for match in _REVENUE_RE.finditer(analysis_text):
+        name = match.group('name').strip().rstrip(',').strip()
+        # Filter garbage names
+        if len(name) < 2 or name.lower() in {'the', 'total', 'overall', 'combined', 'and'}:
+            continue
+        try:
+            amount = float(match.group('amount').replace(',', ''))
+        except ValueError:
+            continue
+        unit = match.group('unit').lower()
+        if unit in ('b', 'billion'):
+            amount *= 1e9
+        elif unit in ('m', 'million'):
+            amount *= 1e6
+        elif unit in ('k', 'thousand'):
+            amount *= 1e3
+
+        # Try to find YoY near this match
+        search_start = max(0, match.start() - 20)
+        search_end = min(len(analysis_text), match.end() + 80)
+        context = analysis_text[search_start:search_end]
+        yoy = None
+        yoy_match = _YOY_RE.search(context)
+        if yoy_match:
+            yoy_str = yoy_match.group('yoy') or yoy_match.group('yoy2')
+            if yoy_str:
+                try:
+                    yoy = float(yoy_str)
+                except ValueError:
+                    pass
+
+        # Keep largest revenue for each segment name
+        name_lower = name.lower()
+        if name_lower not in segments or amount > (segments[name_lower].get('revenue', 0) or 0):
+            segments[name_lower] = {
+                'name': name,
+                'revenue': amount,
+                'revenue_quarterly': amount,
+                'yoy': yoy,
+                'source': 'Transcript / LLM analysis',
+            }
+
+    return segments
+
+
 def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) -> list[list[str]]:
     rows: list[list[str]] = []
     segments = metrics.segments if isinstance(metrics.segments, dict) else {}
@@ -1170,6 +1244,36 @@ def build_earnings_deep_dive_report(
             )
             table = _sanitize_table(table)
             analysis_items = [_analysis_without_table(analysis_text)] if analysis_text else []
+            # ── Segments fallback: when XBRL is garbage (all rows NA), parse LLM prose ──
+            if section.key == "Segments" and analysis_text:
+                all_na = all(
+                    all(str(c).lower() in ("not available", "—", "", "n/a") for c in row.cells)
+                    for row in table.rows
+                )
+                if all_na:
+                    parsed = _parse_segments_from_prose(analysis_text)
+                    if parsed:
+                        # Use LLM-extracted segments, capped at label count
+                        segment_names = list(parsed.keys())[:len(section.table_rows)]
+                        yf_rows = []
+                        for idx, seg_name in enumerate(segment_names):
+                            seg = parsed[seg_name]
+                            label = section.table_rows[idx] if idx < len(section.table_rows) else seg.get('name', seg_name)
+                            yf_rows.append([
+                                label,
+                                _money(seg.get('revenue')),
+                                _pct(seg.get('yoy')),
+                                seg.get('driver', 'Segment revenue'),
+                                seg.get('source', 'LLM transcript analysis'),
+                            ])
+                        # Fill remaining labels with NA
+                        for idx in range(len(segment_names), len(section.table_rows)):
+                            yf_rows.append([section.table_rows[idx], NOT_APPLICABLE_EN, NOT_APPLICABLE_EN, NOT_APPLICABLE_EN, NOT_APPLICABLE_EN])
+                        table = RenderedTable(
+                            columns=list(section.table_columns),
+                            rows=[RenderedTableRow(label=str(r[0]), cells=[str(c) for c in r[1:]]) for r in yf_rows],
+                        )
+                        table = _sanitize_table(table)
         elif codex_table:
             table = _enrich_codex_table(codex_table, section.key, section.table_rows, metrics)
             table = _number_highlights_rows(table)
