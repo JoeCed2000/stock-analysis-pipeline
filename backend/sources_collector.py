@@ -802,6 +802,10 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
     financials["pe_forward"] = info.get("forwardPE")
     financials["guidance"] = info.get("earningsGrowth") or info.get("revenueGrowth")
     financials["backlog"] = info.get("backlog")
+    # Analyst consensus data
+    financials["analyst_consensus"] = info.get("recommendationKey")  # "buy", "strong_buy", "hold"
+    financials["analyst_target"] = info.get("targetMeanPrice")
+    financials["analyst_count"] = info.get("numberOfAnalystOpinions")
     if info.get("sector") or info.get("industry"):
         financials["segments"] = {
             "sector": info.get("sector"),
@@ -826,6 +830,9 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
         "52w_high": info.get("fiftyTwoWeekHigh"),
         "52w_low": info.get("fiftyTwoWeekLow"),
         "description": info.get("longBusinessSummary"),
+        "analyst_consensus": info.get("recommendationKey"),
+        "analyst_target": info.get("targetMeanPrice"),
+        "analyst_count": info.get("numberOfAnalystOpinions"),
     }
 
     # Save to cache

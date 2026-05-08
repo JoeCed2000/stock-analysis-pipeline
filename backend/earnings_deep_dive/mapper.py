@@ -487,8 +487,26 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
             except (TypeError, ValueError):
                 pass
         fwd_eps_display = _eps(eps_annual) if eps_annual else NOT_DISCLOSED_EN
+        # Build enriched context column with trailing PE + analyst consensus
+        context_parts = []
+        if _has(trailing_pe):
+            context_parts.append(f"Trailing: {_multiple(trailing_pe)}")
+        consensus = getattr(metrics, "analyst_consensus", None)
+        target = getattr(metrics, "analyst_target", None)
+        count = getattr(metrics, "analyst_count", None)
+        if consensus and isinstance(consensus, str) and consensus not in ("—", ""):
+            consensus_label = consensus.replace("_", " ").title()
+            if count:
+                try:
+                    consensus_label += f" ({int(count)} analysts)"
+                except (TypeError, ValueError):
+                    pass
+            context_parts.append(f"Consensus: {consensus_label}")
+        if _has(target):
+            context_parts.append(f"Target: {_money(target)}")
+        context = " | ".join(context_parts) if context_parts else "—"
         return [
-            [row_labels[0], _multiple(metrics.pe_forward), _multiple(trailing_pe), "—", _source(metrics.pe_forward)],
+            [row_labels[0], _multiple(metrics.pe_forward), context, "—", _source(metrics.pe_forward)],
             [row_labels[1], fwd_eps_display, _eps(getattr(metrics, "eps_estimate", None)), _yoy_pct(getattr(metrics, "eps_yoy", None)), _source(metrics.eps_estimate)],
         ]
 

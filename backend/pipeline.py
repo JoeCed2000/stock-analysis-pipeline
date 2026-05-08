@@ -526,6 +526,15 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
             (getattr(valuation, "pe_current", None) if valuation else None)
             or (yf_data.get("pe_current") if isinstance(yf_data, dict) else None)
         ),
+        analyst_consensus=(
+            (yf_data.get("analyst_consensus") if isinstance(yf_data, dict) else None)
+        ),
+        analyst_target=(
+            (yf_data.get("analyst_target") if isinstance(yf_data, dict) else None)
+        ),
+        analyst_count=(
+            (yf_data.get("analyst_count") if isinstance(yf_data, dict) else None)
+        ),
         guidance=str(guidance_value) if guidance_value is not None else None,
         investor_relations_url=comparison_pick("investor_relations_url"),
         company_website=comparison_pick("company_website"),

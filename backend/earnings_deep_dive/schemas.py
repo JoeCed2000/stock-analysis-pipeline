@@ -40,6 +40,10 @@ class FinancialMetrics(BaseModel):
     buybacks: Optional[float] = None
     dividends: Optional[float] = None
     pe_forward: Optional[float] = None
+    pe_trailing: Optional[float] = None
+    analyst_consensus: Optional[str] = None
+    analyst_target: Optional[float] = None
+    analyst_count: Optional[int] = None
     backlog: Optional[float] = None
     guidance: Optional[str] = None
     company_website: Optional[str] = None
