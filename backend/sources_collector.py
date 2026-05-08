@@ -137,7 +137,7 @@ def get_stock_data(ticker: str) -> Dict[str, Any]:
             fin_cached = cached.get("financials", {})
             enriched = False
             for key in ["revenue_quarterly", "revenue_annual", "net_income",
-                       "free_cash_flow", "net_debt"]:
+                       "free_cash_flow", "net_debt", "revenue_estimate", "eps_estimate"]:
                 if fin_cached.get(key) is None and yf_fin.get(key) is not None:
                     fin_cached[key] = yf_fin[key]
                     enriched = True
@@ -223,7 +223,7 @@ def get_stock_data(ticker: str) -> Dict[str, Any]:
             yf_fin = yf_data.get("financials", {})
             # Only overwrite if Finnhub returned None — preserve Finnhub's ratios
             for key in ["revenue_quarterly", "revenue_annual", "revenue_annual_growth",
-                        "net_income", "free_cash_flow", "net_debt"]:
+                        "net_income", "free_cash_flow", "net_debt", "revenue_estimate", "eps_estimate"]:
                 if result["financials"].get(key) is None:
                     result["financials"][key] = yf_fin.get(key)
             # Merge PE ratios if Finnhub didn't have them
