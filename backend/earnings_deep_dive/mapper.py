@@ -569,6 +569,29 @@ def _enrich_codex_table(
     return RenderedTable(columns=list(codex_table.columns), rows=enriched_rows)
 
 
+def _number_highlights_rows(table: RenderedTable) -> RenderedTable:
+    """Replace ? in the Number column of Highlights tables with sequential numbers.
+    
+    The LLM fills the Number column with ? because it doesn't know the sequence.
+    This post-processing replaces them with 1, 2, 3, ...
+    """
+    # Detect Highlights table by column headers
+    cols = [c.lower().strip() for c in table.columns]
+    if "number" not in cols:
+        return table
+    number_idx = cols.index("number")
+    
+    numbered_rows = []
+    counter = 1
+    for row in table.rows:
+        cells = list(row.cells)
+        if number_idx < len(cells) and cells[number_idx].strip() in ("?", "？？", "?"):
+            cells[number_idx] = str(counter)
+        numbered_rows.append(RenderedTableRow(label=row.label, cells=cells))
+        counter += 1
+    return RenderedTable(columns=list(table.columns), rows=numbered_rows)
+
+
 def _sanitize_table(table: RenderedTable) -> RenderedTable:
     """Replace remaining placeholder cells with English equivalents.
     
@@ -1077,6 +1100,7 @@ def build_earnings_deep_dive_report(
             analysis_items = [_analysis_without_table(analysis_text)] if analysis_text else []
         elif codex_table:
             table = _enrich_codex_table(codex_table, section.key, section.table_rows, metrics)
+            table = _number_highlights_rows(table)
             table = _sanitize_table(table)
             analysis_items = [text for text in (_analysis_without_table(analysis_text),) if text]
         else:
