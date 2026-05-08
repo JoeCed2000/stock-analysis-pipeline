@@ -24,6 +24,8 @@ NOT_APPLICABLE = "該当なし"
 NOT_APPLICABLE_EN = "N/A"
 NOT_CALCULABLE = "計算不可"
 NOT_CALCULABLE_EN = "Not calculable"
+SOURCE_COMPANY = "Company filing / Calculated"
+SOURCE_YFINANCE = "yfinance quarterly"
 
 _PLACEHOLDER_PATTERNS = {
     "?", "N/A", "NA", "Not available", "データ未取得",
@@ -78,7 +80,7 @@ def _has(value: Any) -> bool:
 
 
 def _source(*values: Any) -> str:
-    return "会社開示 / 計算ベース" if any(_has(value) for value in values) else MISSING
+    return SOURCE_COMPANY if any(_has(value) for value in values) else MISSING_EN
 
 
 def _money(value: Any) -> str:
@@ -741,12 +743,34 @@ def build_earnings_deep_dive_report(
         return text
 
     sections: list[RenderedSection] = []
+    
+    # Sections where the LLM table is unreliable — use yfinance data directly.
+    # The LLM analysis text is still used for prose below the table.
+    _DATA_DRIVEN_SECTIONS = {
+        "Operating Metrics", "Cash Flow", "Capital Efficiency",
+        "Segments", "Guidance", "Backlog",
+    }
+    
     for section in template:
         analysis_text = analysis_by_key.get(section.key) or analysis_by_key.get(section.title)
         if analysis_text:
             analysis_text = _clean_prose(analysis_text)
         codex_table = _extract_markdown_table(analysis_text, section.table_columns) if analysis_text else None
-        if codex_table:
+        
+        # For data-driven sections, ignore the LLM table and use yfinance rows directly.
+        # The LLM prose is kept as analysis_items.
+        if section.key in _DATA_DRIVEN_SECTIONS:
+            rows = _rows_for_section(section.key, section.table_rows, metrics)
+            table = RenderedTable(
+                columns=list(section.table_columns),
+                rows=[RenderedTableRow(
+                    label=_GARBAGE_RE.sub('—', _JP_GARBAGE_RE.sub('', str(row[0]))),
+                    cells=[str(cell) for cell in row[1:]],
+                ) for row in rows],
+            )
+            table = _sanitize_table(table)
+            analysis_items = [_analysis_without_table(analysis_text)] if analysis_text else []
+        elif codex_table:
             table = _enrich_codex_table(codex_table, section.key, section.table_rows, metrics)
             table = _sanitize_table(table)
             analysis_items = [text for text in (_analysis_without_table(analysis_text),) if text]
