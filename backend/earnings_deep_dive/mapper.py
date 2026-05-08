@@ -574,6 +574,9 @@ def _number_highlights_rows(table: RenderedTable) -> RenderedTable:
     
     The LLM fills the Number column with circled digits (①, ②), ?, or ?? because it doesn't
     know the sequence. This post-processing replaces any non-numeric placeholder with 1, 2, 3, ...
+    
+    CRITICAL: _extract_markdown_table stores the first column (Type) as row.label, so
+    cells[0] corresponds to columns[1]. We must account for this label offset.
     """
     import re
     
@@ -581,7 +584,7 @@ def _number_highlights_rows(table: RenderedTable) -> RenderedTable:
     cols = [c.lower().strip() for c in table.columns]
     if "number" not in cols:
         return table
-    number_idx = cols.index("number")
+    number_idx = cols.index("number")  # index in table.columns
     
     # Match any placeholder: ?, ??, ?, circled digits (①-⑳, ㉑-㉟), or other non-numeric
     _CIRCLED_DIGITS_RE = re.compile(r'^[①-⑳㉑-㉟⓵-⓾🄋-🄐?？?\s]+$')
@@ -590,11 +593,14 @@ def _number_highlights_rows(table: RenderedTable) -> RenderedTable:
     counter = 1
     for row in table.rows:
         cells = list(row.cells)
-        if number_idx < len(cells):
-            cell_val = cells[number_idx].strip()
+        # _extract_markdown_table stores column[0] as row.label; cells are columns[1:]
+        # So the cell index for column N is N-1 in the cells array
+        cell_idx = number_idx - 1
+        if 0 <= cell_idx < len(cells):
+            cell_val = cells[cell_idx].strip()
             # Replace if it's a placeholder or if it's purely non-numeric
             if _CIRCLED_DIGITS_RE.match(cell_val) or (cell_val and not cell_val.replace('.','').replace('-','').isdigit()):
-                cells[number_idx] = str(counter)
+                cells[cell_idx] = str(counter)
         numbered_rows.append(RenderedTableRow(label=row.label, cells=cells))
         counter += 1
     return RenderedTable(columns=list(table.columns), rows=numbered_rows)
