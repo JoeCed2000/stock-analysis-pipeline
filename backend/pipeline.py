@@ -540,6 +540,21 @@ def _segment_metrics_shape(segment_data: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(segment_data, dict):
         return {}
 
+    _GARBAGE_NAME_WORDS = {
+        "september", "reportable segment", "in note", "revenue of",
+        "than a year", "as of", "generally consistent", "for each",
+    }
+
+    def _is_garbage_name(name: str) -> bool:
+        """Heuristic: detect XBRL parsing artifacts that leak footnote/filing text."""
+        if len(name) > 40:
+            return True
+        lower = name.lower()
+        for word in _GARBAGE_NAME_WORDS:
+            if word in lower:
+                return True
+        return False
+
     shaped: Dict[str, Any] = {}
     product_segments = segment_data.get("product_segments")
     if isinstance(product_segments, list):
@@ -547,7 +562,7 @@ def _segment_metrics_shape(segment_data: Dict[str, Any]) -> Dict[str, Any]:
             if not isinstance(segment, dict):
                 continue
             name = str(segment.get("name") or "").strip()
-            if not name:
+            if not name or _is_garbage_name(name):
                 continue
             revenue = segment.get("revenue_quarterly")
             shaped[name] = {
