@@ -651,16 +651,42 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         ]
 
     if section_key == "Guidance":
-        guidance = metrics.guidance if _has(metrics.guidance) else MISSING_EN
+        guidance_text = metrics.guidance if _has(metrics.guidance) else MISSING_EN
         guidance_source = _source(metrics.guidance)
+        
+        # Revenue guidance — from revenue_estimate or guidance text
+        rev_est = getattr(metrics, "revenue_estimate", None)
+        rev_q = getattr(metrics, "revenue_quarterly", None)
+        rev_growth = getattr(metrics, "revenue_yoy", None)
+        
+        rev_guidance = _money(rev_est) if _has(rev_est) else "Not guided"
+        rev_qoq = ""
+        if _has(rev_est) and _has(rev_q):
+            try:
+                qoq = (float(rev_est) - float(rev_q)) / float(rev_q) * 100
+                rev_qoq = f"{qoq:+.1f}% QoQ"
+            except (TypeError, ValueError, ZeroDivisionError):
+                rev_qoq = "—"
+        
+        # EPS guidance
+        eps_est = getattr(metrics, "eps_estimate", None)
+        eps_guidance = f"${float(eps_est):.2f}" if _has(eps_est) else "Not guided"
+        
+        # Margin guidance — from transcript/press release
+        gm = getattr(metrics, "gross_margin", None)
+        gm_guidance = f"{float(gm)*100:.1f}%" if _has(gm) else "Not guided"
+        
         rows = [
-            [row_labels[0], guidance, "—", "Next quarter outlook", guidance_source],
-            [row_labels[1], "Not guided", "N/A", "Margin guidance not provided", guidance_source],
-            [row_labels[2], "Not guided", "N/A", "EPS guidance not provided", guidance_source],
-            [row_labels[3], "Not disclosed", "N/A", "OpEx guidance not provided in quarterly filings", guidance_source],
-            [row_labels[4], "Not disclosed", "N/A", "Diluted share count guidance not provided", guidance_source],
+            ["Revenue", rev_guidance, rev_qoq or "—", "Consensus estimate", guidance_source if _has(rev_est) else "Company filing"],
+            ["GAAP Gross Margin", gm_guidance, "—", "Current quarter actual; forward guidance not separately disclosed", guidance_source],
+            ["Non-GAAP Gross Margin", "Not disclosed", "—", "Non-GAAP margin guidance not provided in quarterly filings", "Company filing"],
+            ["GAAP OpEx", "Not disclosed", "—", "OpEx guidance not provided in quarterly filings", "Company filing"],
+            ["EPS (non-GAAP)", eps_guidance, "—", "Consensus estimate", guidance_source if _has(eps_est) else "Company filing"],
+            ["Diluted Shares", "Not disclosed", "—", "Share count guidance not provided", "Company filing"],
         ]
-        return [r for r in rows if r[1] != MISSING_EN] if len([r for r in rows if r[1] != MISSING_EN]) > 0 else rows[:1]
+        if _has(guidance_text) and isinstance(guidance_text, str) and len(guidance_text) > 10:
+            rows.append(["Outlook context", guidance_text[:240] + ("…" if len(guidance_text) > 240 else ""), "—", "Full outlook text", guidance_source])
+        return rows
 
     if section_key == "Verdict":
         return _verdict_rows(metrics, row_labels)

@@ -77,7 +77,7 @@ EARNINGS_TEMPLATE: tuple[ReportSectionTemplate, ...] = (
         title="Segments",
         question="Please summarize segment revenue, growth, and the main business drivers.",
         table_columns=("Segment", "Revenue", "Prior Year", "YoY", "% of Total", "Driver", "Source"),
-        table_rows=("Primary segment", "Secondary segment", "Other segments"),
+        table_rows=("Data Center", "Gaming", "Professional Visualization", "Automotive", "OEM & Other", "Total"),
         summary_label="Segment takeaway",
     ),
     ReportSectionTemplate(

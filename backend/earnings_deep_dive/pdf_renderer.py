@@ -451,29 +451,41 @@ def _section_continuation(section, report: EarningsDeepDiveReport) -> list[str]:
 
 
 def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Table:
+    """Build a ReportLab Table. Cells >250 chars are truncated with ellipsis."""
+    MAX_CELL_CHARS = 250
+    
     data = [
         [_paragraph(column, styles["small_bold"], font_name=fonts.bold) for column in section.table.columns]
     ]
     for row in section.table.rows:
         row_values = [row.label, *row.cells]
-        # Use plain strings instead of Paragraphs to avoid absurd cell heights (896pt bug)
-        data.append([_glyph_safe(str(cell), font_name=fonts.regular) for cell in row_values])
+        # Truncate long cells to prevent absurd cell heights and text overlap
+        truncated = []
+        for cell in row_values:
+            s = str(cell).strip()
+            if len(s) > MAX_CELL_CHARS:
+                s = s[:MAX_CELL_CHARS - 1] + "…"
+            truncated.append(_glyph_safe(s, font_name=fonts.regular))
+        data.append(truncated)
 
     available_width = LETTER[0] - (1.35 * inch)
     col_count = max(1, len(section.table.columns))
+    # Wider minimum column width to prevent text-wrapping explosions
+    MIN_COL = 1.10 * inch
     if col_count == 7:
-        # Segments: Segment, Revenue, Prior Year, YoY, % of Total, Driver, Source
-        # Padding 7*8=56; usable = 514.8 - 56 = 458.8
-        col_widths = [0.95 * inch, 0.80 * inch, 0.80 * inch, 0.70 * inch, 0.60 * inch, 0.80 * inch, 0.92 * inch]
+        col_widths = [1.10 * inch, 0.90 * inch, 0.90 * inch, 0.75 * inch, 0.70 * inch, 0.90 * inch, 0.95 * inch]
     elif col_count == 6:
-        # Padding 6*8=48; usable = 514.8 - 48 = 466.8
-        col_widths = [1.10 * inch, 1.00 * inch, 1.00 * inch, 0.95 * inch, 0.95 * inch, 1.25 * inch]
+        col_widths = [1.20 * inch, 1.10 * inch, 1.10 * inch, 1.00 * inch, 1.00 * inch, 1.25 * inch]
     elif col_count == 5:
-        # Account for 8pt padding per column (4L+4R): total_padding = 5*8 = 40
-        # Frame width = LETTER[0] - 1.35*inch = 514.8; usable = 514.8 - 40 = 474.8
-        col_widths = [1.15 * inch, 1.15 * inch, 1.15 * inch, 1.30 * inch, 1.35 * inch]
+        col_widths = [1.25 * inch, 1.25 * inch, 1.25 * inch, 1.35 * inch, 1.40 * inch]
+    elif col_count == 4:
+        col_widths = [1.50 * inch, 1.50 * inch, 1.50 * inch, 1.50 * inch]
+    elif col_count == 3:
+        col_widths = [1.80 * inch, 1.80 * inch, 2.00 * inch]
+    elif col_count == 2:
+        col_widths = [2.20 * inch, 3.20 * inch]
     else:
-        col_widths = [available_width / col_count] * col_count
+        col_widths = [max(MIN_COL, available_width / col_count)] * col_count
 
     table = Table(data, colWidths=col_widths, splitByRow=1, hAlign="LEFT")
     table.setStyle(
