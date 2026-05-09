@@ -237,8 +237,9 @@ def _register_symbola() -> bool:
         _REGISTERED_FONTS.add("Symbola")
         return True
     try:
-        if _SYMBOLA_PATH.exists():
-            pdfmetrics.registerFont(TTFont("Symbola", str(_SYMBOLA_PATH)))
+        symbola_path = _first_existing_font("Symbola.ttf") or Path("/home/ced/.fonts/Symbola.ttf")
+        if symbola_path.exists():
+            pdfmetrics.registerFont(TTFont("Symbola", str(symbola_path)))
             _REGISTERED_FONTS.add("Symbola")
             return True
     except Exception:
