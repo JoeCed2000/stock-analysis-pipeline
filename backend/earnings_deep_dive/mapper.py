@@ -1311,6 +1311,7 @@ def build_earnings_deep_dive_report(
         "EPS & Revenue", "Forward P/E",
         "Operating Metrics", "Cash Flow", "Capital Efficiency",
         "Segments", "Geographic Segments", "Guidance", "Backlog", "Verdict",
+        "Highlights",  # Prose-only — LLM table is suppressed, rich prose kept
     }
     
     for section in template:

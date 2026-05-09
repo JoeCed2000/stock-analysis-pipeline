@@ -617,7 +617,12 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             emoji_size=20,
         ))
 
-        story.append(_table(section, styles, fonts))
+        # Prose-only sections (Highlights, Backlog when not applicable) skip the table
+        if section.key == "Highlights":
+            # Render Highlights as structured prose — no table
+            pass
+        else:
+            story.append(_table(section, styles, fonts))
         if section.analysis:
             for paragraph in section.analysis:
                 story.append(_paragraph_md(paragraph, styles["body"], font_name=fonts.regular))
