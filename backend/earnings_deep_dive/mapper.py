@@ -1517,6 +1517,21 @@ def build_earnings_deep_dive_report(
     if presentation_url:
         sources.append(SourceRef(label="Earnings Call Presentation", url=presentation_url))
 
+    # Filter: skip Geographic Segments (never reported in quarterly filings)
+    # and any truly empty sections
+    def _skip_section(section) -> bool:
+        if section.key == "Geographic Segments":
+            return True
+        rows = getattr(section.table, 'rows', [])
+        if len(rows) == 0:
+            return True
+        if len(rows) == 1:
+            cells = getattr(rows[0], 'cells', [])
+            if all(str(c).strip() in ('', '-', '\u2014', 'No backlog', 'Not available', 'N/A')
+                   for c in cells):
+                return True
+        return False
+
     return EarningsDeepDiveReport(
         ticker=ticker_clean,
         company=company_name,
@@ -1524,6 +1539,6 @@ def build_earnings_deep_dive_report(
         language=report_language,
         generated_at=generated_at or datetime.now(timezone.utc).isoformat(),
         title=f"{company_name} ({ticker_clean}) - Earnings Deep-Dive",
-        sections=sections,
+        sections=[s for s in sections if not _skip_section(s)],
         sources=sources,
     )
