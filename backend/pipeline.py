@@ -520,11 +520,11 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
         pe_forward=comparison_pick(
             "pe_forward",
             (getattr(valuation, "pe_forward", None) if valuation else None)
-            or (yf_data.get("pe_forward") if isinstance(yf_data, dict) else None),
+            or pick("pe_forward"),
         ),
         pe_trailing=(
             (getattr(valuation, "pe_current", None) if valuation else None)
-            or (yf_data.get("pe_current") if isinstance(yf_data, dict) else None)
+            or pick("pe_trailing")
         ),
         analyst_consensus=(
             (yf_data.get("analyst_consensus") if isinstance(yf_data, dict) else None)

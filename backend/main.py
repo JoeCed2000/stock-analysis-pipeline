@@ -60,7 +60,7 @@ def _should_convert_dossier_text_to_pdf(fpath: Path, *, refresh_pdf: bool) -> bo
 from backend.models import TickerRequest, AnalysisResult
 from backend.orchestrator import run_analysis_parallel
 from backend.earnings_deep_dive.schemas import DeepDiveRequest, DeepDiveResponse
-from backend.sources_collector import list_available_quarters, get_yahoo_data_for_quarter
+from backend.sources_collector import list_available_quarters, get_yahoo_data, get_yahoo_data_for_quarter
 from backend.search_logger import log_search
 
 # Setup logging with our custom configuration
