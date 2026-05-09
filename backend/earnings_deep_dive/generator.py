@@ -56,7 +56,11 @@ SECTION_METRIC_KEYS = {
     },
     "Highlights": {
         "eps_actual",
+        "eps_estimate",
+        "eps_vs_estimate",
         "revenue_actual",
+        "revenue_estimate",
+        "revenue_vs_estimate",
         "revenue_yoy",
         "gross_margin",
         "operating_margin",

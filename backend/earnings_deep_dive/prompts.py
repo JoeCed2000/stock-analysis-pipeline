@@ -717,7 +717,31 @@ def eps_revenue_prompt(language: str, ticker: str, company: str, quarter: str, m
 
 
 def highlights_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    return _base_prompt(
+    # CRITICAL OVERRIDE: the LLM must know whether EPS/Revenue beat or missed
+    # before classifying highlights. Without this it will hallucinate "Revenue beat"
+    # when the EPS & Revenue table shows a miss.
+    eps_actual = metrics.get("eps_actual")
+    eps_est = metrics.get("eps_estimate")
+    rev_actual = metrics.get("revenue_actual")
+    rev_est = metrics.get("revenue_estimate")
+    extra = ""
+    # Compute vs_estimate from actual/estimate (revenue_vs_estimate not in schema)
+    def _vs(actual, estimate):
+        try:
+            return (float(actual) - float(estimate)) / float(estimate)
+        except (TypeError, ValueError, ZeroDivisionError):
+            return None
+    eps_vs = _vs(eps_actual, eps_est) if eps_actual is not None and eps_est is not None else None
+    if eps_vs is not None:
+        pct = eps_vs * 100
+        direction = "BEAT" if pct > 0 else "MISSED"
+        extra += f"\n\n🔴 CRITICAL OVERRIDE: EPS {direction} consensus estimates by {abs(pct):.1f}% (actual=${eps_actual}, estimate=${eps_est}). Frame highlights consistent with this result."
+    rev_vs = _vs(rev_actual, rev_est) if rev_actual is not None and rev_est is not None else None
+    if rev_vs is not None:
+        pct = rev_vs * 100
+        direction = "BEAT" if pct > 0 else "MISSED"
+        extra += f"\n⚠️  Revenue {direction} consensus estimates by {abs(pct):.1f}% (actual=${rev_actual}B, estimate=${rev_est}B). Frame highlights consistent with this result."
+    base = _base_prompt(
         section="Highlights",
         language=language,
         ticker=ticker,
@@ -726,6 +750,7 @@ def highlights_prompt(language: str, ticker: str, company: str, quarter: str, me
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
     )
+    return base + extra
 
 
 def operating_metrics_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
