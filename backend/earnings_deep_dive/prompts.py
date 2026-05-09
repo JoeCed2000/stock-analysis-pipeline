@@ -62,7 +62,7 @@ SECTION_KEYWORDS: Dict[str, List[str]] = {
     "Verdict": ["priority", "risk", "opportunity", "guidance", "demand", "margin", "cash"],
 }
 
-TABLE_SECTIONS = set(s for s in SECTION_ORDER if s[0] != "Backlog")  # Backlog is optional — not all companies report it
+TABLE_SECTIONS = set(s for s in SECTION_ORDER if s != "Backlog")  # Backlog is optional — not all companies report it
 
 TABLE_REQUIREMENTS: Dict[str, str] = {
     "EPS & Revenue": "| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |",
