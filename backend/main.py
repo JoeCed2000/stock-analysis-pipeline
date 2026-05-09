@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile, Header, Form, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import math
 
@@ -1392,3 +1393,12 @@ async def search_stats():
     """
     from backend.search_db import get_stats
     return JSONResponse(get_stats())
+
+
+# ── Serve React SPA (after all API routes — mono-origin architecture) ──
+_frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+if _frontend_dist.exists():
+    app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")
+    logger.info("Frontend mounted from %s", str(_frontend_dist))
+else:
+    logger.warning("Frontend dist/ not found at %s — API-only mode", str(_frontend_dist))
