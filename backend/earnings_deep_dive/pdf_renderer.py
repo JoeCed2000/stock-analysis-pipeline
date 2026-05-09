@@ -69,16 +69,17 @@ _GLYPH_FALLBACKS = {
     "👉": "\u25b6",  # ▶ right-pointing triangle
 }
 _SECTION_PREFIXES = {
-    "EPS & Revenue": "📊",
-    "Highlights": "🌟 ⚠️",
-    "Operating Metrics": "🧠",
-    "Cash Flow": "💵",
-    "Capital Efficiency": "🏦",
-    "Segments": "🧩",
-    "Forward P/E": "📈",
-    "Backlog": "📦",
-    "Guidance": "🔭",
-    "Verdict": "🎯",
+    # BMP-safe Unicode symbols (DejaVu/Arial compatible — no emoji codepoints)
+    "EPS & Revenue": "\u25b8",        # ▸
+    "Highlights": "\u2605 \u26a0",    # ★ ⚠
+    "Operating Metrics": "\u25c6",    # ◆
+    "Cash Flow": "$",                  # $
+    "Capital Efficiency": "\u25c8",   # ◈
+    "Segments": "\u25eb",             # ◫
+    "Forward P/E": "\u25b2",          # ▲
+    "Backlog": "\u25a0",              # ■
+    "Guidance": "\u25c7",             # ◇
+    "Verdict": "\u265b",              # ♛
 }
 
 
@@ -213,12 +214,13 @@ def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
         value = value.replace(source, replacement)
     # Only strip to Latin-1 for fonts that don't support CJK
     if font_name not in ("MS-PGothic", "HeiseiMin-W3"):
-        # Preserve emoji chars (they will be wrapped in Symbola font by _wrap_emoji)
+        # Strip emoji-range characters (U+1F300-U+1F9FF) — replaced by BMP-safe symbols
         safe = []
         for ch in value:
-            if _EMOJI_PATTERN.match(ch):
-                safe.append(ch)  # Keep emoji intact for Symbola rendering
-            elif ord(ch) < 256:
+            cp = ord(ch)
+            if 0x1F300 <= cp <= 0x1F9FF:
+                continue  # Strip emoji — BMP-safe equivalents used instead
+            elif cp < 256:
                 safe.append(ch)
             else:
                 safe.append('?')
@@ -227,8 +229,8 @@ def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
 
 
 def _wrap_emoji(text: str) -> str:
-    """Wrap emoji characters in <font face='Symbola'> so they render via Symbola TTF."""
-    return _EMOJI_PATTERN.sub(r'<font face="Symbola">\g<0></font>', text)
+    """DISABLED: Symbola font is broken — BMP-safe symbols used instead. Return text as-is."""
+    return text  # no-op: emoji codepoints are already replaced by _SECTION_PREFIXES
 
 
 def _register_symbola() -> bool:
@@ -469,7 +471,8 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
     output.parent.mkdir(parents=True, exist_ok=True)
 
     fonts = resolve_pdf_fonts(report.language)
-    _register_symbola()  # Enable emoji rendering via Symbola TTF
+    # _register_symbola() — DISABLED: Symbola font maps emojis to Greek glyphs (broken)
+    # BMP-safe Unicode symbols used instead in _SECTION_PREFIXES
     styles = _styles(fonts)
     doc = SimpleDocTemplate(
         str(output),
