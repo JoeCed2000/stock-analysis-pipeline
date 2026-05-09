@@ -29,7 +29,6 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from backend.earnings_deep_dive.mapper import MISSING
 from backend.earnings_deep_dive.report_model import EarningsDeepDiveReport
 
 
@@ -148,9 +147,6 @@ def _first_existing_font(filename: str) -> Path | None:
         if candidate.exists():
             return candidate
     return None
-
-
-_EMOJI_FONT = None  # re-initialised by _get_emoji_font() above
 
 
 def _register_ttf(font_name: str, path: Path, *, subfont_index: int | None = None) -> bool:
