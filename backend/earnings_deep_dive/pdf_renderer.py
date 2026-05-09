@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 import os
 from pathlib import Path
+import re
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
@@ -34,23 +35,37 @@ _GRID = colors.HexColor("#B8B8B8")
 _TEXT = colors.HexColor("#111111")
 _MUTED = colors.HexColor("#5D5D5D")
 _REGISTERED_FONTS: set[str] = set()
+
+def _font_candidates(filename: str) -> list[Path]:
+    configured = os.getenv("PDF_FONT_DIR")
+    roots = [
+        Path(configured) if configured else None,
+        Path("assets/fonts"),
+        Path("backend/assets/fonts"),
+        Path("C:/Windows/Fonts"),
+        Path("/mnt/c/Windows/Fonts"),
+    ]
+    return [root / filename for root in roots if root is not None]
+
+
+def _first_existing_font(filename: str) -> Path | None:
+    for candidate in _font_candidates(filename):
+        if candidate.exists():
+            return candidate
+    return None
+
+_REGISTERED_FONTS: set[str] = set()
+_EMOJI_PATTERN = re.compile(
+    "[\U0001F300-\U0001F9FF\u2600-\u27BF\u2B50\u2705\u26A0\u274C\u2714"
+    "\u26AB\u26AA\u2B06\u2B07\u23F0\u23F3\u267B\u2695\u26A1\u26D4"
+    "\u2708\u2709\u270C\u270F\u2712\u2716\u2728\u2733\u2734\u2744"
+    "\u2753\u2755\u2757\u2763\u2764\u2795\u2796\u2797\u2934\u2935"
+    "\u3030\u303D\u3297\u3299]"
+    "|\u00A9|\u00AE|\u2122|\uFE0F|\uFE0E"  # Variation selectors, copyright, TM
+)
 _GLYPH_FALLBACKS = {
-    # Emoji are decorative — drop silently when font lacks glyph support.
+    # Emoji are now rendered via Symbola font — keep them intact (no stripping).
     # Clean labels avoid markdown-artifact pollution (::, >>, ^^, !!, **, [])
-    "🌟": "",
-    "⚠️": "",
-    "🧠": "",
-    "🎯": "",
-    "📊": "",
-    "💵": "",
-    "💰": "",
-    "🏦": "",
-    "🧩": "",
-    "📈": "",
-    "📦": "",
-    "🔭": "",
-    "🔮": "",
-    "🏆": "",
     "👉": "\u25b6",  # ▶ right-pointing triangle
 }
 _SECTION_PREFIXES = {
@@ -71,25 +86,6 @@ _SECTION_PREFIXES = {
 class PdfFontSet:
     regular: str
     bold: str
-
-
-def _font_candidates(filename: str) -> list[Path]:
-    configured = os.getenv("PDF_FONT_DIR")
-    roots = [
-        Path(configured) if configured else None,
-        Path("assets/fonts"),
-        Path("backend/assets/fonts"),
-        Path("C:/Windows/Fonts"),
-        Path("/mnt/c/Windows/Fonts"),
-    ]
-    return [root / filename for root in roots if root is not None]
-
-
-def _first_existing_font(filename: str) -> Path | None:
-    for candidate in _font_candidates(filename):
-        if candidate.exists():
-            return candidate
-    return None
 
 
 def _register_ttf(font_name: str, path: Path, *, subfont_index: int | None = None) -> bool:
@@ -217,13 +213,42 @@ def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
         value = value.replace(source, replacement)
     # Only strip to Latin-1 for fonts that don't support CJK
     if font_name not in ("MS-PGothic", "HeiseiMin-W3"):
-        return value.encode("latin-1", errors="replace").decode("latin-1")
+        # Preserve emoji chars (they will be wrapped in Symbola font by _wrap_emoji)
+        safe = []
+        for ch in value:
+            if _EMOJI_PATTERN.match(ch):
+                safe.append(ch)  # Keep emoji intact for Symbola rendering
+            elif ord(ch) < 256:
+                safe.append(ch)
+            else:
+                safe.append('?')
+        return ''.join(safe)
     return value
 
 
+def _wrap_emoji(text: str) -> str:
+    """Wrap emoji characters in <font face='Symbola'> so they render via Symbola TTF."""
+    return _EMOJI_PATTERN.sub(r'<font face="Symbola">\g<0></font>', text)
+
+
+def _register_symbola() -> bool:
+    """Register Symbola font with ReportLab if available."""
+    if "Symbola" in _REGISTERED_FONTS or "Symbola" in pdfmetrics.getRegisteredFontNames():
+        _REGISTERED_FONTS.add("Symbola")
+        return True
+    try:
+        if _SYMBOLA_PATH.exists():
+            pdfmetrics.registerFont(TTFont("Symbola", str(_SYMBOLA_PATH)))
+            _REGISTERED_FONTS.add("Symbola")
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def _paragraph(text: str, style: ParagraphStyle, *, font_name: str) -> Paragraph:
-    escaped = escape(_glyph_safe(str(text), font_name=font_name))
-    return Paragraph(escaped, style)
+    safe = _glyph_safe(str(text), font_name=font_name)
+    return Paragraph(escape(_wrap_emoji(safe)), style)
 
 
 def _format_markdown(text: str) -> str:
@@ -238,8 +263,9 @@ def _format_markdown(text: str) -> str:
 
 def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragraph:
     """Paragraph with markdown formatting support (bold/italic)."""
-    formatted = _format_markdown(_glyph_safe(str(text), font_name=font_name))
-    escaped = escape(formatted)
+    safe = _glyph_safe(str(text), font_name=font_name)
+    formatted = _format_markdown(safe)
+    escaped = escape(_wrap_emoji(formatted))
     # Unescape the XML tags we intentionally added
     escaped = escaped.replace('&lt;b&gt;', '<b>').replace('&lt;/b&gt;', '</b>')
     escaped = escaped.replace('&lt;i&gt;', '<i>').replace('&lt;/i&gt;', '</i>')
@@ -250,11 +276,11 @@ def _section_title(section, *, font_name: str = "Helvetica") -> str:
     """Return section title. Skip emoji prefix for CJK fonts (can't render emoji)."""
     prefix = _SECTION_PREFIXES.get(section.key)
     if not prefix:
-        return _glyph_safe(section.title, font_name=font_name)
+        return _wrap_emoji(_glyph_safe(section.title, font_name=font_name))
     # CJK fonts can't render emoji — use clean title without prefix
     if font_name in ("MS-PGothic", "HeiseiMin-W3"):
         return _glyph_safe(section.title, font_name=font_name)
-    return _glyph_safe(f"{prefix} {section.title}", font_name=font_name)
+    return _wrap_emoji(_glyph_safe(f"{prefix} {section.title}", font_name=font_name))
 
 
 def _official_website(report: EarningsDeepDiveReport) -> str | None:
@@ -442,6 +468,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
     output.parent.mkdir(parents=True, exist_ok=True)
 
     fonts = resolve_pdf_fonts(report.language)
+    _register_symbola()  # Enable emoji rendering via Symbola TTF
     styles = _styles(fonts)
     doc = SimpleDocTemplate(
         str(output),
@@ -465,7 +492,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
     story.extend(_earnings_documents_story(report, styles, fonts))
 
     for index, section in enumerate(report.sections):
-        story.append(Paragraph(escape(_section_title(section, font_name=fonts.regular)), styles["section"]))
+        story.append(Paragraph(_section_title(section, font_name=fonts.regular), styles["section"]))
         # section.question is an AI instruction, NOT part of the final report — skip it
         story.append(_table(section, styles, fonts))
         if section.analysis:
