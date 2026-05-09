@@ -441,9 +441,9 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
                 return value
         return fallback
 
-    # Guidance: ONLY from press release (yfinance "guidance" was EPS growth, not revenue guidance).
-    # _apply_press_release_metrics fills real revenue guidance text if press release is available.
-    guidance_value = None
+    guidance_value = pick("guidance")
+    if guidance_value is None:
+        guidance_value = pick("guidance_official")
     ticker_for_segments = (
         getattr(result, "ticker", None)
         or (yf_data.get("ticker") if isinstance(yf_data, dict) else None)
