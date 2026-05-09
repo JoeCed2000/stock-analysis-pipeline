@@ -462,7 +462,7 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
         eps_yoy=comparison_pick("eps_yoy", pick("eps_yoy")),
         revenue_estimate=comparison_pick("revenue_estimate", pick("revenue_estimate")),
         revenue_actual=comparison_pick("revenue_actual", pick("revenue_quarterly")),
-        revenue_yoy=pick("revenue_yoy_growth"),
+        revenue_yoy=comparison_pick("revenue_yoy", pick("revenue_yoy_growth")),
         gross_margin=comparison_pick("gross_margin", pick("gross_margin")),
         operating_margin=comparison_pick("operating_margin", pick("operating_margin")),
         operating_income=comparison_pick("operating_income", pick("operating_income")),
