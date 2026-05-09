@@ -274,9 +274,21 @@ def _styles(fonts: PdfFontSet) -> dict[str, ParagraphStyle]:
 
 
 # ── Glyph safety (simplified — emojis no longer flow through text) ──────
+# ── Circled digit → plain text mapping (DejaVu lacks glyphs for U+2460-U+2473) ─
+_CIRCLED_DIGIT_MAP = str.maketrans({
+    '\u2460': '(1)', '\u2461': '(2)', '\u2462': '(3)', '\u2463': '(4)',
+    '\u2464': '(5)', '\u2465': '(6)', '\u2466': '(7)', '\u2467': '(8)',
+    '\u2468': '(9)', '\u2469': '(10)', '\u246a': '(11)', '\u246b': '(12)',
+    '\u246c': '(13)', '\u246d': '(14)', '\u246e': '(15)', '\u246f': '(16)',
+    '\u2470': '(17)', '\u2471': '(18)', '\u2472': '(19)', '\u2473': '(20)',
+})
+
+
 def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
     """Keep characters renderable by standard PDF fonts. Strip the rest silently."""
     value = str(text)
+    # Replace circled digits with parenthesized numbers — DejaVu has no glyphs
+    value = value.translate(_CIRCLED_DIGIT_MAP)
     # CJK fonts can handle their character ranges natively
     if font_name in ("MS-PGothic", "HeiseiMin-W3"):
         return value
@@ -287,7 +299,6 @@ def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
         if (cp < 256                                              # Latin-1
             or (0x2000 <= cp <= 0x206F)                           # General Punctuation (—–•…'')
             or (0x25A0 <= cp <= 0x26FF)                           # Geometric Shapes + Misc Symbols
-            or (0x2460 <= cp <= 0x24FF)                           # Enclosed Alphanumerics (①②③④)
             or (0x2650 <= cp <= 0x265F)):                         # Chess symbols
             safe.append(ch)
         else:

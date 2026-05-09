@@ -52,3 +52,4 @@ cookie_*
 RENDER_ENV_*
 SSH_SETUP.txt
 .vercel
+.bak
