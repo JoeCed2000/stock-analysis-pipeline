@@ -451,11 +451,15 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
     col_count = max(1, len(section.table.columns))
     if col_count == 7:
         # Segments: Segment, Revenue, Prior Year, YoY, % of Total, Driver, Source
-        col_widths = [1.0 * inch, 0.9 * inch, 0.85 * inch, 0.75 * inch, 0.65 * inch, 0.85 * inch, 1.0 * inch]
+        # Padding 7*8=56; usable = 514.8 - 56 = 458.8
+        col_widths = [0.95 * inch, 0.80 * inch, 0.80 * inch, 0.70 * inch, 0.60 * inch, 0.80 * inch, 0.92 * inch]
     elif col_count == 6:
-        col_widths = [1.2 * inch, 1.1 * inch, 1.1 * inch, 1.0 * inch, 1.1 * inch, 1.65 * inch]
+        # Padding 6*8=48; usable = 514.8 - 48 = 466.8
+        col_widths = [1.10 * inch, 1.00 * inch, 1.00 * inch, 0.95 * inch, 0.95 * inch, 1.25 * inch]
     elif col_count == 5:
-        col_widths = [1.3 * inch, 1.3 * inch, 1.3 * inch, 1.45 * inch, 1.4 * inch]
+        # Account for 8pt padding per column (4L+4R): total_padding = 5*8 = 40
+        # Frame width = LETTER[0] - 1.35*inch = 514.8; usable = 514.8 - 40 = 474.8
+        col_widths = [1.15 * inch, 1.15 * inch, 1.15 * inch, 1.30 * inch, 1.35 * inch]
     else:
         col_widths = [available_width / col_count] * col_count
 
