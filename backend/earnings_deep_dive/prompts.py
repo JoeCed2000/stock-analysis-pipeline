@@ -729,7 +729,58 @@ def highlights_prompt(language: str, ticker: str, company: str, quarter: str, me
 
 
 def operating_metrics_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    return _base_prompt(
+    # CRITICAL OVERRIDE: the LLM frequently hallucinates the revenue value
+    # (e.g. writing $2,025,000,000 instead of $111.18B). Surface the real
+    # numbers explicitly to prevent this.
+    rev_q = metrics.get("revenue_quarterly")
+    rev_prior = metrics.get("revenue_quarterly_prior_year")
+    gross_margin = metrics.get("gross_margin")
+    op_margin = metrics.get("operating_margin")
+    op_income = metrics.get("operating_income")
+    net_income = metrics.get("net_income_quarterly") or metrics.get("net_income")
+    opex = metrics.get("opex")
+    extra = ""
+    if rev_q is not None:
+        try:
+            rev_b = float(rev_q) / 1e9
+            extra += f"\n\n🔴 CRITICAL OVERRIDE: Revenue (current quarter) = ${rev_b:.2f}B (raw={rev_q}). USE THIS EXACT VALUE in the Revenue row of the table. Do NOT invent a different revenue number."
+        except (TypeError, ValueError):
+            pass
+    if rev_prior is not None:
+        try:
+            rp_b = float(rev_prior) / 1e9
+            extra += f"\n⚠️  Revenue prior year = ${rp_b:.2f}B (raw={rev_prior}). Use in Prior Year column."
+        except (TypeError, ValueError):
+            pass
+    if gross_margin is not None:
+        try:
+            extra += f"\n⚠️  Gross Margin = {float(gross_margin)*100:.2f}% (raw={gross_margin}). Use in Gross Margin row."
+        except (TypeError, ValueError):
+            pass
+    if op_margin is not None:
+        try:
+            extra += f"\n⚠️  Operating Margin = {float(op_margin)*100:.2f}% (raw={op_margin}). Use in Operating Margin row."
+        except (TypeError, ValueError):
+            pass
+    if op_income is not None:
+        try:
+            oi_b = float(op_income) / 1e9
+            extra += f"\n⚠️  Operating Income = ${oi_b:.2f}B (raw={op_income}). Use in Operating Income row."
+        except (TypeError, ValueError):
+            pass
+    if net_income is not None:
+        try:
+            ni_b = float(net_income) / 1e9
+            extra += f"\n⚠️  Net Income = ${ni_b:.2f}B (raw={net_income}). Use in Net Income row."
+        except (TypeError, ValueError):
+            pass
+    if opex is not None:
+        try:
+            ox_b = float(opex) / 1e9
+            extra += f"\n⚠️  OpEx = ${ox_b:.2f}B (raw={opex}). Use in OpEx row."
+        except (TypeError, ValueError):
+            pass
+    base = _base_prompt(
         section="Operating Metrics",
         language=language,
         ticker=ticker,
@@ -738,6 +789,7 @@ def operating_metrics_prompt(language: str, ticker: str, company: str, quarter: 
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
     )
+    return base + extra
 
 
 def cash_flow_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
