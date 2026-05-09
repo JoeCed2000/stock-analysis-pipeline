@@ -249,7 +249,7 @@ def _register_symbola() -> bool:
 
 def _paragraph(text: str, style: ParagraphStyle, *, font_name: str) -> Paragraph:
     safe = _glyph_safe(str(text), font_name=font_name)
-    return Paragraph(escape(_wrap_emoji(safe)), style)
+    return Paragraph(_wrap_emoji(escape(safe)), style)
 
 
 def _format_markdown(text: str) -> str:
@@ -266,7 +266,7 @@ def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragr
     """Paragraph with markdown formatting support (bold/italic)."""
     safe = _glyph_safe(str(text), font_name=font_name)
     formatted = _format_markdown(safe)
-    escaped = escape(_wrap_emoji(formatted))
+    escaped = _wrap_emoji(escape(formatted))
     # Unescape the XML tags we intentionally added
     escaped = escaped.replace('&lt;b&gt;', '<b>').replace('&lt;/b&gt;', '</b>')
     escaped = escaped.replace('&lt;i&gt;', '<i>').replace('&lt;/i&gt;', '</i>')
@@ -277,11 +277,11 @@ def _section_title(section, *, font_name: str = "Helvetica") -> str:
     """Return section title. Skip emoji prefix for CJK fonts (can't render emoji)."""
     prefix = _SECTION_PREFIXES.get(section.key)
     if not prefix:
-        return _wrap_emoji(_glyph_safe(section.title, font_name=font_name))
+        return _wrap_emoji(escape(_glyph_safe(section.title, font_name=font_name)))
     # CJK fonts can't render emoji — use clean title without prefix
     if font_name in ("MS-PGothic", "HeiseiMin-W3"):
-        return _glyph_safe(section.title, font_name=font_name)
-    return _wrap_emoji(_glyph_safe(f"{prefix} {section.title}", font_name=font_name))
+        return escape(_glyph_safe(section.title, font_name=font_name))
+    return _wrap_emoji(escape(_glyph_safe(f"{prefix} {section.title}", font_name=font_name)))
 
 
 def _official_website(report: EarningsDeepDiveReport) -> str | None:
