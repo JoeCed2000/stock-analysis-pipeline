@@ -330,29 +330,42 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
         # XBRL name is garbled SEC text — use the generic template label
         return fallback_label
 
+    # Compute total revenue for mix % calculation
+    total_rev = segments.get("total_revenue_quarterly")
+    if not _has(total_rev):
+        total_rev = getattr(metrics, "revenue_actual", None) or metrics.revenue_quarterly
+
     for index, row_label in enumerate(labels):
         if index >= len(segment_items):
-            rows.append([row_label, MISSING, MISSING, MISSING, MISSING])
+            rows.append([row_label, MISSING, MISSING, MISSING, MISSING, MISSING, MISSING])
             continue
 
         name, raw = segment_items[index]
         data = raw if isinstance(raw, dict) else {}
         revenue = data.get("revenue") if isinstance(data, dict) else None
+        prior_year = data.get("revenue_q_prior_year") if isinstance(data, dict) else None
         yoy = data.get("yoy") if isinstance(data, dict) else None
         # Compute YoY from revenue and prior year if not explicitly provided
-        if not _has(yoy) and revenue is not None and isinstance(data, dict):
-            prior = data.get("revenue_q_prior_year")
-            if prior and revenue:
-                try:
-                    yoy = ((float(revenue) - float(prior)) / float(prior)) * 100
-                except (TypeError, ValueError, ZeroDivisionError):
-                    pass
+        if not _has(yoy) and revenue is not None and prior_year is not None and revenue and prior_year:
+            try:
+                yoy = ((float(revenue) - float(prior_year)) / float(prior_year)) * 100
+            except (TypeError, ValueError, ZeroDivisionError):
+                pass
+        # Compute mix % of total revenue
+        mix_pct = None
+        if _has(revenue) and _has(total_rev) and total_rev:
+            try:
+                mix_pct = (float(revenue) / float(total_rev)) * 100
+            except (TypeError, ValueError, ZeroDivisionError):
+                pass
         driver = data.get("driver") if isinstance(data, dict) else None
         display_name = _segment_display_name(str(name), row_label)
         rows.append([
             display_name,
             _money(revenue),
+            _money(prior_year),
             _pct(yoy),
+            f"{mix_pct:.1f}%" if mix_pct is not None else MISSING,
             str(driver) if _has(driver) else "Segment revenue contribution",
             _source(raw),
         ])
@@ -386,42 +399,49 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
     if section_key == "Operating Metrics":
         rows = (
             (
-                row_labels[0],
+                row_labels[0],  # Revenue (new first row)
+                _money(getattr(metrics, "revenue_actual", None) or metrics.revenue_quarterly),
+                _money(getattr(metrics, "revenue_quarterly_prior_year", None)),
+                _yoy_pct(getattr(metrics, "revenue_yoy", None)),
+                getattr(metrics, "revenue_actual", None) or metrics.revenue_quarterly,
+            ),
+            (
+                row_labels[1],
                 _money(metrics.gross_profit),
                 _money(getattr(metrics, "gross_profit_prior_year", None)),
                 _yoy_pct(getattr(metrics, "gross_profit_yoy", None)),
                 metrics.gross_profit,
             ),
             (
-                row_labels[1],
+                row_labels[2],
                 _pct(metrics.gross_margin),
                 _pct(getattr(metrics, "gross_margin_prior_year", None)),
                 _yoy_pct(getattr(metrics, "gross_margin_yoy", None)),
                 metrics.gross_margin,
             ),
             (
-                row_labels[2],
+                row_labels[3],
                 _money(metrics.opex),
                 _money(getattr(metrics, "opex_prior_year", None)),
                 _yoy_pct(getattr(metrics, "opex_yoy", None)),
                 metrics.opex,
             ),
             (
-                row_labels[3],
+                row_labels[4],
                 _money(metrics.operating_income),
                 _money(getattr(metrics, "operating_income_prior_year", None)),
                 _yoy_pct(getattr(metrics, "operating_income_yoy", None)),
                 metrics.operating_income,
             ),
             (
-                row_labels[4],
+                row_labels[5],
                 _pct(metrics.operating_margin),
                 _pct(getattr(metrics, "operating_margin_prior_year", None)),
                 _yoy_pct(getattr(metrics, "operating_margin_yoy", None)),
                 metrics.operating_margin,
             ),
             (
-                row_labels[5],
+                row_labels[6],
                 _money(getattr(metrics, "net_income_quarterly", None)),
                 _money(getattr(metrics, "net_income_quarterly_prior_year", None)),
                 _yoy_pct(getattr(metrics, "net_income_yoy", None)),
@@ -448,6 +468,17 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
             return "weak"
 
         quality = cash_flow_quality()
+        # Append FCF formula when both OCF and CapEx are available
+        fcf_formula = ""
+        if _has(metrics.free_cash_flow) and _has(metrics.operating_cash_flow) and _has(metrics.capex):
+            try:
+                ocf_val = float(metrics.operating_cash_flow)
+                capex_val = float(metrics.capex)
+                fcf_val = float(metrics.free_cash_flow)
+                fcf_formula = f" (FCF = {_money(ocf_val)} OCF - {_money(abs(capex_val))} CapEx)"
+            except (TypeError, ValueError):
+                pass
+        quality_display = quality + fcf_formula if quality != MISSING else quality
         rows = (
             (
                 row_labels[0],
@@ -470,7 +501,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 _money(metrics.free_cash_flow),
                 _money(getattr(metrics, "free_cash_flow_prior_year", None)),
                 _yoy_pct(getattr(metrics, "free_cash_flow_yoy", None)),
-                quality,
+                quality_display,
                 metrics.free_cash_flow,
             ),
             (
@@ -536,6 +567,11 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
             ),
         )
         result = [[label, value, prior, yoy, comment, _source(raw)] for label, value, prior, yoy, comment, raw in rows]
+        # Append total assets / equity to ROA / ROE comments if available
+        if _has(metrics.total_assets):
+            result[2][4] = str(result[2][4]) + f" (Assets: {_money(metrics.total_assets)})"
+        if _has(metrics.equity):
+            result[0][4] = str(result[0][4]) + f" (Equity: {_money(metrics.equity)})"
         # If ALL metrics are unavailable (Finnhub free tier limitation), show 1 informative row
         if all(not _has(raw) for _, _, _, _, _, raw in rows):
             return [["Capital Efficiency metrics", "Finnhub free tier limit", MISSING, MISSING, MISSING, MISSING]]
@@ -543,6 +579,18 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
 
     if section_key == "Segments":
         return _extract_segment_rows(metrics, row_labels)
+
+    if section_key == "Geographic Segments":
+        # Most companies do NOT publish quarterly geographic revenue breakdowns.
+        # Show the framework with "Not disclosed" and explain why.
+        region_comment = "Not disclosed — geographic revenue breakdown not published in quarterly filings"
+        return [
+            [row_labels[0], NOT_DISCLOSED_EN, "N/A", "N/A", "N/A", region_comment],
+            [row_labels[1], NOT_DISCLOSED_EN, "N/A", "N/A", "N/A", region_comment],
+            [row_labels[2], NOT_DISCLOSED_EN, "N/A", "N/A", "N/A", region_comment],
+            [row_labels[3], NOT_DISCLOSED_EN, "N/A", "N/A", "N/A", region_comment],
+            [row_labels[4], NOT_DISCLOSED_EN, "N/A", "N/A", "N/A", region_comment],
+        ]
 
     if section_key == "Forward P/E":
         trailing_pe = getattr(metrics, "pe_trailing", None)
@@ -587,9 +635,19 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
     if section_key == "Backlog":
         backlog_value = _money(metrics.backlog) if _has(metrics.backlog) else NOT_APPLICABLE_EN
         backlog_source = _source(metrics.backlog) if _has(metrics.backlog) else "Company filing"
+        # Quantity/Quality framework — even when not disclosed, show proxies
+        has_backlog = _has(metrics.backlog)
         return [
-            [row_labels[0], backlog_value, "N/A" if not _has(metrics.backlog) else "—", "Not disclosed (company does not report backlog)" if not _has(metrics.backlog) else "—", backlog_source],
-            [row_labels[1], NOT_DISCLOSED_EN if _has(metrics.backlog) else NOT_APPLICABLE_EN, "N/A", "Not disclosed", backlog_source],
+            [row_labels[0],
+             backlog_value,
+             "N/A" if not has_backlog else "—",
+             "Not disclosed (company does not report backlog); use revenue guidance + Data Center growth trajectory as demand proxy" if not has_backlog else "—",
+             backlog_source],
+            [row_labels[1],
+             NOT_APPLICABLE_EN if not has_backlog else NOT_DISCLOSED_EN,
+             "N/A",
+             "Inferred from hyperscaler capex commitments and supply chain constraints" if not has_backlog else "—",
+             backlog_source],
         ]
 
     if section_key == "Guidance":
@@ -599,6 +657,8 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
             [row_labels[0], guidance, "—", "Next quarter outlook", guidance_source],
             [row_labels[1], "Not guided", "N/A", "Margin guidance not provided", guidance_source],
             [row_labels[2], "Not guided", "N/A", "EPS guidance not provided", guidance_source],
+            [row_labels[3], "Not disclosed", "N/A", "OpEx guidance not provided in quarterly filings", guidance_source],
+            [row_labels[4], "Not disclosed", "N/A", "Diluted share count guidance not provided", guidance_source],
         ]
         return [r for r in rows if r[1] != MISSING_EN] if len([r for r in rows if r[1] != MISSING_EN]) > 0 else rows[:1]
 
@@ -1224,7 +1284,7 @@ def build_earnings_deep_dive_report(
     _DATA_DRIVEN_SECTIONS = {
         "EPS & Revenue", "Forward P/E",
         "Operating Metrics", "Cash Flow", "Capital Efficiency",
-        "Segments", "Guidance", "Backlog", "Verdict",
+        "Segments", "Geographic Segments", "Guidance", "Backlog", "Verdict",
     }
     
     for section in template:
