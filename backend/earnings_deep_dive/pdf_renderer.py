@@ -449,7 +449,10 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
 
     available_width = LETTER[0] - (1.35 * inch)
     col_count = max(1, len(section.table.columns))
-    if col_count == 6:
+    if col_count == 7:
+        # Segments: Segment, Revenue, Prior Year, YoY, % of Total, Driver, Source
+        col_widths = [1.0 * inch, 0.9 * inch, 0.85 * inch, 0.75 * inch, 0.65 * inch, 0.85 * inch, 1.0 * inch]
+    elif col_count == 6:
         col_widths = [1.2 * inch, 1.1 * inch, 1.1 * inch, 1.0 * inch, 1.1 * inch, 1.65 * inch]
     elif col_count == 5:
         col_widths = [1.3 * inch, 1.3 * inch, 1.3 * inch, 1.45 * inch, 1.4 * inch]

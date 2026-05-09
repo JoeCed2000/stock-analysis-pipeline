@@ -2,7 +2,17 @@
 import os
 import json
 import logging
+from pathlib import Path
 from typing import Optional, Dict, Any
+
+# Auto-load .env from project root (needed for direct CLI invocation)
+try:
+    from dotenv import load_dotenv
+    _ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+    if _ENV_PATH.exists():
+        load_dotenv(_ENV_PATH)
+except ImportError:
+    pass
 
 logger = logging.getLogger(__name__)
 
