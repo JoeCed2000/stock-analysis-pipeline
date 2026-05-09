@@ -55,16 +55,19 @@ def _get_emoji_font() -> ImageFont.FreeTypeFont:
 def _emoji_to_image(char: str, size: int = 16) -> RLImage:
     """Render a single emoji character as a ReportLab Image via PIL + NotoColorEmoji."""
     font = _get_emoji_font()
-    # Render at full resolution; ReportLab scales to `size` via width/height.
+    # 1. Render on transparent background to get accurate bbox
     img = PILImage.new("RGBA", (136, 136), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     draw.text((12, 8), char, font=font, embedded_color=True)
-    # Crop to content bounding box
+    # 2. Crop to emoji content only
     bbox = img.getbbox()
     if bbox:
         img = img.crop(bbox)
+    # 3. Composite onto white RGB background (no alpha → better PDF viewer compat)
+    img_rgb = PILImage.new("RGB", img.size, (255, 255, 255))
+    img_rgb.paste(img, mask=img.split()[3])
     buf = BytesIO()
-    img.save(buf, format="PNG")
+    img_rgb.save(buf, format="PNG")
     buf.seek(0)
     return RLImage(buf, width=size, height=size)
 
@@ -544,7 +547,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         story.extend(_section_title_flowables(
             section, styles,
             font_name=fonts.regular,
-            emoji_size=16,
+            emoji_size=20,
         ))
 
         story.append(_table(section, styles, fonts))
