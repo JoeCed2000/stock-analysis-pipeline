@@ -1246,36 +1246,74 @@ def build_earnings_deep_dive_report(
             )
             table = _sanitize_table(table)
             analysis_items = [_analysis_without_table(analysis_text)] if analysis_text else []
-            # ── Segments fallback: when XBRL is garbage (all rows NA), parse LLM prose ──
+            # ── Segments fallback: when XBRL is garbage (all rows NA), use LLM table ──
             if section.key == "Segments" and analysis_text:
                 all_na = all(
                     all(str(c).lower() in ("not available", "—", "", "n/a") for c in row.cells)
                     for row in table.rows
                 )
                 if all_na:
-                    parsed = _parse_segments_from_prose(analysis_text)
-                    if parsed:
-                        # Use LLM-extracted segments, capped at label count
-                        segment_names = list(parsed.keys())[:len(section.table_rows)]
-                        yf_rows = []
-                        for idx, seg_name in enumerate(segment_names):
-                            seg = parsed[seg_name]
-                            label = section.table_rows[idx] if idx < len(section.table_rows) else seg.get('name', seg_name)
-                            yf_rows.append([
-                                label,
-                                _money(seg.get('revenue')),
-                                _pct(seg.get('yoy')),
-                                seg.get('driver', 'Segment revenue'),
-                                seg.get('source', 'LLM transcript analysis'),
-                            ])
-                        # Fill remaining labels with NA
-                        for idx in range(len(segment_names), len(section.table_rows)):
-                            yf_rows.append([section.table_rows[idx], NOT_APPLICABLE_EN, NOT_APPLICABLE_EN, NOT_APPLICABLE_EN, NOT_APPLICABLE_EN])
-                        table = RenderedTable(
-                            columns=list(section.table_columns),
-                            rows=[RenderedTableRow(label=str(r[0]), cells=[str(c) for c in r[1:]]) for r in yf_rows],
-                        )
-                        table = _sanitize_table(table)
+                    # Priority 1: LLM-generated markdown table (most reliable)
+                    if codex_table and codex_table.rows:
+                        real_rows = [
+                            r for r in codex_table.rows
+                            if not r.label.strip().startswith("**")  # Skip total/bold rows
+                            and not all(str(c).strip() in ("—", "", "Data not available in transcript") for c in r.cells)
+                            and not r.label.strip().lower().startswith("total")  # Skip total rows
+                        ]
+                        if real_rows:
+                            # Remap LLM columns to template: Segment|Revenue|YoY|Driver|Source
+                            # LLM has: Segment(label)|Revenue(c0)|Prior Year(c1)|YoY(c2)|Mix(c3)|Source(c4)
+                            # Template needs: |Revenue|YoY|Driver|Source
+                            remapped = []
+                            for r in real_rows[:len(section.table_rows)]:
+                                cells = r.cells
+                                remapped.append(RenderedTableRow(
+                                    label=r.label,
+                                    cells=[
+                                        cells[0] if len(cells) > 0 else "—",       # Revenue
+                                        cells[2] if len(cells) > 2 else "—",       # YoY
+                                        cells[3] if len(cells) > 3 else "—",       # Driver/Mix
+                                        cells[4] if len(cells) > 4 else "—",       # Source
+                                    ],
+                                ))
+                            # Fill remaining slots
+                            for _ in range(len(remapped), len(section.table_rows)):
+                                remapped.append(RenderedTableRow(
+                                    label=section.table_rows[len(remapped)],
+                                    cells=[NOT_APPLICABLE_EN] * 4,
+                                ))
+                            table = RenderedTable(
+                                columns=list(section.table_columns),
+                                rows=remapped,
+                            )
+                            table = _sanitize_table(table)
+                    # Priority 2: prose parsing (regex-based)
+                    if all_na and any(
+                        str(c).lower() in ("not available", "—", "", "n/a")
+                        for row in table.rows for c in row.cells
+                    ):
+                        parsed = _parse_segments_from_prose(analysis_text)
+                        if parsed:
+                            segment_names = list(parsed.keys())[:len(section.table_rows)]
+                            yf_rows = []
+                            for idx, seg_name in enumerate(segment_names):
+                                seg = parsed[seg_name]
+                                label = section.table_rows[idx] if idx < len(section.table_rows) else seg.get('name', seg_name)
+                                yf_rows.append([
+                                    label,
+                                    _money(seg.get('revenue')),
+                                    _pct(seg.get('yoy')),
+                                    seg.get('driver', 'Segment revenue'),
+                                    seg.get('source', 'LLM transcript analysis'),
+                                ])
+                            for idx in range(len(segment_names), len(section.table_rows)):
+                                yf_rows.append([section.table_rows[idx], NOT_APPLICABLE_EN, NOT_APPLICABLE_EN, NOT_APPLICABLE_EN, NOT_APPLICABLE_EN])
+                            table = RenderedTable(
+                                columns=list(section.table_columns),
+                                rows=[RenderedTableRow(label=str(r[0]), cells=[str(c) for c in r[1:]]) for r in yf_rows],
+                            )
+                            table = _sanitize_table(table)
         elif codex_table:
             table = _enrich_codex_table(codex_table, section.key, section.table_rows, metrics)
             table = _number_highlights_rows(table)
