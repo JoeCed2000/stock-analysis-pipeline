@@ -436,7 +436,7 @@ def _earnings_documents_story(
         },
     )()
     story = [Paragraph("Earnings Documents", styles["section"]), _table(section, styles, fonts)]
-    story.append(PageBreak())
+    # Page break before sections is handled by the main render loop
     return story
 
 
