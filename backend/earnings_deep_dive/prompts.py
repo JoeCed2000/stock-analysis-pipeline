@@ -861,7 +861,36 @@ def backlog_prompt(language: str, ticker: str, company: str, quarter: str, metri
 
 
 def guidance_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    return _base_prompt(
+    # Surface eps_estimate and revenue_estimate as guidance values.
+    # Without this override, the LLM fills the guidance table with — because
+    # the raw 'guidance' field is just a growth rate (e.g. 0.218).
+    eps_q = metrics.get("eps_estimate")
+    rev = metrics.get("revenue_estimate")
+    extra = ""
+    if eps_q is not None:
+        try:
+            eps_q_f = float(eps_q)
+            eps_annual = eps_q_f * 4.0
+            extra += (
+                f"\n\n🔴 GUIDANCE OVERRIDE: EPS estimate (consensus) is ${eps_q_f:.2f}/quarter "
+                f"(${eps_annual:.2f} annualized). "
+                f"Use ${eps_q_f:.2f} in the EPS row of the Guidance table. "
+                f"Do NOT leave EPS as —."
+            )
+        except (TypeError, ValueError):
+            pass
+    if rev is not None:
+        try:
+            rev_f = float(rev)
+            rev_b = rev_f / 1e9
+            extra += (
+                f"\n⚠️  Revenue estimate (consensus) is ${rev_b:.2f}B. "
+                f"Use ${rev_b:.2f}B in the Revenue row of the Guidance table. "
+                f"Do NOT leave Revenue as —."
+            )
+        except (TypeError, ValueError):
+            pass
+    base = _base_prompt(
         section="Guidance",
         language=language,
         ticker=ticker,
@@ -870,6 +899,7 @@ def guidance_prompt(language: str, ticker: str, company: str, quarter: str, metr
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
     )
+    return base + extra
 
 
 def verdict_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
