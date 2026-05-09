@@ -530,9 +530,49 @@ def _section_is_empty(section) -> bool:
     return False
 
 
+def _validate_report(report) -> list[str]:
+    """Pre-render QA gate. Returns list of issues (empty = pass)."""
+    issues = []
+    mandatory = {
+        "EPS & Revenue", "Highlights", "Operating Metrics", "Cash Flow",
+        "Capital Efficiency", "Segments", "Geographic Segments",
+        "Forward P/E", "Backlog", "Guidance", "Verdict",
+    }
+    present = {s.key for s in report.sections}
+    missing = mandatory - present
+    if missing:
+        issues.append(f"Missing mandatory sections: {', '.join(sorted(missing))}")
+
+    for section in report.sections:
+        for row in section.table.rows:
+            for cell in [row.label, *row.cells]:
+                s = str(cell).strip()
+                if len(s) > 250:
+                    issues.append(f"Cell >250 chars in {section.key}: '{s[:80]}...' ({len(s)} chars)")
+                if s.endswith(",") or s.endswith(" and") or (s.endswith(".") and not s.endswith("...") and len(s.split()[-1]) < 3):
+                    pass  # not a reliable truncation check
+
+        # Check for "Not disclosed" + unsourced affirmative claim
+        analysis_text = " ".join(section.analysis) if section.analysis else ""
+        has_not_disclosed = "Not disclosed" in analysis_text or "not disclosed" in analysis_text
+        has_affirmative = any(phrase in analysis_text.lower() for phrase in
+            ["strongest region", "largest market", "dominant in", "clearly the"])
+        if has_not_disclosed and has_affirmative:
+            issues.append(f"Geographic: 'Not disclosed' + affirmative claim in {section.key}")
+
+    return issues
+
+
 # ── Main entry point ────────────────────────────────────────────────────
 def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: str | Path) -> str:
     """Render a structured earnings deep-dive report to an extractable PDF."""
+    # ── QA gate ──
+    validation_issues = _validate_report(report)
+    if validation_issues:
+        for issue in validation_issues:
+            print(f"[QA WARNING] {issue}", file=__import__('sys').stderr)
+        # Non-blocking for now — log warnings but don't abort
+
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
 

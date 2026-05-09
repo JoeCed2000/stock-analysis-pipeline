@@ -44,8 +44,8 @@ EARNINGS_TEMPLATE: tuple[ReportSectionTemplate, ...] = (
         key="Highlights",
         title="Highlights",
         question="Please identify the main positive and negative points from the quarter.",
-        table_columns=("Theme", "Signal", "Evidence", "Impact", "Source"),
-        table_rows=("Top positive", "Top risk", "Management tone"),
+        table_columns=("Type", "Point", "Source"),
+        table_rows=("Highlight 1", "Highlight 2", "Lowlight 1", "Lowlight 2"),
         summary_label="Nami takeaway",
     ),
     ReportSectionTemplate(
