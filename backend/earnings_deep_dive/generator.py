@@ -40,7 +40,7 @@ def _llm_chat(prompt: str, system: str = "", max_tokens: int = MAX_CODEX_TOKENS)
     return codex_chat(prompt, system=system, max_tokens=max_tokens)
 
 kimi_chat = _llm_chat
-SECTION_MAX_CHARS = 2400
+SECTION_MAX_CHARS = 3200
 
 SECTION_METRIC_KEYS = {
     "EPS & Revenue": {

@@ -1205,6 +1205,8 @@ def build_earnings_deep_dive_report(
             return text
         # Replace runs of 3+ question marks with "—"
         text = _GARBAGE_RE.sub('—', text)
+        # Fix isolated question marks from LLM uncertainty (e.g., "missed by 16% ? a" → "missed by 16% — a")
+        text = _re.sub(r'\s+\?\s+', ' — ', text)
         # Replace runs of 3+ JP/fullwidth chars (garbled leakage) with "" only for English mode
         if report_language == "en":
             text = _JP_GARBAGE_RE.sub('', text)
