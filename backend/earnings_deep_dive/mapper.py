@@ -674,7 +674,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         
         # Margin guidance — from transcript/press release
         gm = getattr(metrics, "gross_margin", None)
-        gm_guidance = f"{float(gm)*100:.1f}%" if _has(gm) else "Not guided"
+        gm_guidance = _pct(gm) if _has(gm) else "Not guided"
         
         rows = [
             ["Revenue", rev_guidance, rev_qoq or "—", "Consensus estimate", guidance_source if _has(rev_est) else "Company filing"],

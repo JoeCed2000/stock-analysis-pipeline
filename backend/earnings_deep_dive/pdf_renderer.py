@@ -284,12 +284,30 @@ _CIRCLED_DIGIT_MAP = str.maketrans({
     '\u2470': '(17)', '\u2471': '(18)', '\u2472': '(19)', '\u2473': '(20)',
 })
 
+# ── Inline emoji marker → BMP-safe equivalent (model parity) ─────────
+_EMOJI_MARKER_MAP = str.maketrans({
+    '\U0001F449': '\u2192 ',   # 👉 → rightwards arrow
+    '\U0001F9E0': '',          # 🧠 → stripped (redundant, preserved via ■ markers)
+    '\U0001F3AF': '\u25C6 ',   # 🎯 → black diamond
+    '\U0001F4CC': '\u2022 ',   # 📌 → bullet
+    '\U0001F4CA': '',          # 📊 → stripped (used in section titles already)
+    '\U0001F4B0': '',          # 💰 → stripped
+    '\U0001F4C8': '',          # 📈 → stripped
+    '\U0001F4E6': '',          # 📦 → stripped
+    '\U0001F4A1': '',          # 💡 → stripped
+    '\U0001F4CB': '',          # 📋 → stripped
+    '\U0001F514': '',          # 🔔 → stripped
+    '\U0001F511': '\u26BF ',   # 🔑 → key symbol
+})
+
 
 def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
     """Keep characters renderable by standard PDF fonts. Strip the rest silently."""
     value = str(text)
     # Replace circled digits with parenthesized numbers — DejaVu has no glyphs
     value = value.translate(_CIRCLED_DIGIT_MAP)
+    # Map inline emoji markers to BMP-safe equivalents (model parity)
+    value = value.translate(_EMOJI_MARKER_MAP)
     # CJK fonts can handle their character ranges natively
     if font_name in ("MS-PGothic", "HeiseiMin-W3"):
         return value
@@ -299,7 +317,9 @@ def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
         cp = ord(ch)
         if (cp < 256                                              # Latin-1
             or (0x2000 <= cp <= 0x206F)                           # General Punctuation (—–•…'')
+            or (0x2190 <= cp <= 0x21FF)                           # Arrows (→←↑↓)
             or (0x25A0 <= cp <= 0x26FF)                           # Geometric Shapes + Misc Symbols
+            or (0x2700 <= cp <= 0x27BF)                           # Dingbats (✔✘✪★)
             or (0x2650 <= cp <= 0x265F)):                         # Chess symbols
             safe.append(ch)
         else:
@@ -601,15 +621,15 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
     story.extend(_earnings_documents_story(report, styles, fonts))
 
     for index, section in enumerate(report.sections):
-        # ── P2 fix: Skip page break when previous section is empty/placeholder ──
-        if section.key in ("Operating Metrics", "Capital Efficiency", "Forward P/E", "Guidance", "Verdict"):
-            prev_section = report.sections[index - 1] if index > 0 else None
-            skip_break = (
-                prev_section is not None
-                and _section_is_empty(prev_section)
-            )
-            if not skip_break:
-                story.append(PageBreak())
+        # ── Model parity: each section starts on a new page ──
+        # Skip page break when previous section is empty/placeholder
+        prev_section = report.sections[index - 1] if index > 0 else None
+        skip_break = (
+            prev_section is not None
+            and _section_is_empty(prev_section)
+        )
+        if not skip_break:
+            story.append(PageBreak())
 
         # Emoji image + title as flowables
         story.extend(_section_title_flowables(
