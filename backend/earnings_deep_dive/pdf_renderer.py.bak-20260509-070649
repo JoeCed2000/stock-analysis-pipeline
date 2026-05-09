@@ -3,13 +3,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
-from io import BytesIO
 import os
 from pathlib import Path
-import re
 from xml.sax.saxutils import escape
-
-from PIL import Image as PILImage, ImageDraw, ImageFont
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
@@ -20,8 +16,6 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
-    HRFlowable,
-    Image as RLImage,
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -30,6 +24,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from backend.earnings_deep_dive.mapper import MISSING
 from backend.earnings_deep_dive.report_model import EarningsDeepDiveReport
 
 
@@ -39,98 +34,45 @@ _GRID = colors.HexColor("#B8B8B8")
 _TEXT = colors.HexColor("#111111")
 _MUTED = colors.HexColor("#5D5D5D")
 _REGISTERED_FONTS: set[str] = set()
-
-# ── Emoji rendering via PIL + NotoColorEmoji.ttf ──────────────────────────
-_NOTO_EMOJI_PATH = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
-_EMOJI_FONT: ImageFont.FreeTypeFont | None = None
-
-
-def _get_emoji_font() -> ImageFont.FreeTypeFont:
-    global _EMOJI_FONT
-    if _EMOJI_FONT is None:
-        _EMOJI_FONT = ImageFont.truetype(_NOTO_EMOJI_PATH, 109)
-    return _EMOJI_FONT
-
-
-def _emoji_to_image(char: str, size: int = 16) -> RLImage:
-    """Render a single emoji character as a ReportLab Image via PIL + NotoColorEmoji."""
-    font = _get_emoji_font()
-    # 1. Render on transparent background to get accurate bbox
-    img = PILImage.new("RGBA", (136, 136), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    draw.text((12, 8), char, font=font, embedded_color=True)
-    # 2. Crop to emoji content only
-    bbox = img.getbbox()
-    if bbox:
-        img = img.crop(bbox)
-    # 3. Composite onto white RGB background (no alpha → better PDF viewer compat)
-    img_rgb = PILImage.new("RGB", img.size, (255, 255, 255))
-    img_rgb.paste(img, mask=img.split()[3])
-    buf = BytesIO()
-    img_rgb.save(buf, format="PNG")
-    buf.seek(0)
-    return RLImage(buf, width=size, height=size)
-
-
-# ── Section emoji prefixes (real color emoji, rendered as PNG images) ────
-_SECTION_PREFIXES: dict[str, str] = {
-    "EPS & Revenue":       "📊",
-    "Highlights":          "🌟⚠️",
-    "Operating Metrics":   "📈",
-    "Cash Flow":           "💰",
-    "Capital Efficiency":  "💡",
-    "Segments":            "📋",
-    "Forward P/E":         "📊",
-    "Backlog":             "📦",
-    "Guidance":            "🔮",
-    "Verdict":             "🏆",
+_GLYPH_FALLBACKS = {
+    # Emoji are decorative — drop silently when font lacks glyph support.
+    # Clean labels avoid markdown-artifact pollution (::, >>, ^^, !!, **, [])
+    "🌟": "",
+    "⚠️": "",
+    "🧠": "",
+    "🎯": "",
+    "📊": "",
+    "💵": "",
+    "💰": "",
+    "🏦": "",
+    "🧩": "",
+    "📈": "",
+    "📦": "",
+    "🔭": "",
+    "🔮": "",
+    "🏆": "",
+    "👉": "\u25b6",  # ▶ right-pointing triangle
+}
+_SECTION_PREFIXES = {
+    "EPS & Revenue": "📊",
+    "Highlights": "🌟 ⚠️",
+    "Operating Metrics": "🧠",
+    "Cash Flow": "💵",
+    "Capital Efficiency": "🏦",
+    "Segments": "🧩",
+    "Forward P/E": "📈",
+    "Backlog": "📦",
+    "Guidance": "🔭",
+    "Verdict": "🎯",
 }
 
 
-def _section_title_flowables(section, styles: dict[str, ParagraphStyle], *,
-                              font_name: str = "Helvetica",
-                              emoji_size: int = 16) -> list:
-    """Return [Table(emoji_images + title_paragraph)] or [Paragraph] for CJK."""
-    prefix = _SECTION_PREFIXES.get(section.key)
-    if not prefix or font_name in ("MS-PGothic", "HeiseiMin-W3"):
-        safe = _glyph_safe(section.title, font_name=font_name)
-        return [Paragraph(escape(safe), styles["section"])]
-
-    # Build emoji Image cells for each non-space character in prefix
-    emoji_cells: list[RLImage] = []
-    for ch in prefix:
-        if ch.strip():
-            emoji_cells.append(_emoji_to_image(ch, size=emoji_size))
-    if not emoji_cells:
-        safe = _glyph_safe(section.title, font_name=font_name)
-        return [Paragraph(escape(safe), styles["section"])]
-
-    # Title text paragraph
-    safe_title = _glyph_safe(section.title, font_name=font_name)
-    title_para = Paragraph(escape(safe_title), styles["section"])
-
-    # Table with emoji images in separate columns + title in last column
-    columns = emoji_cells + [title_para]
-    emoji_col_width = emoji_size + 3
-    emoji_total = len(emoji_cells) * emoji_col_width
-    remaining = LETTER[0] - 1.24 * inch - emoji_total - 6
-    col_widths = [emoji_col_width] * len(emoji_cells) + [max(remaining, 100)]
-
-    data = [columns]
-    table = Table(data, colWidths=col_widths, hAlign="LEFT")
-    table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (len(emoji_cells) - 1, 0), 3),
-        ("TOPPADDING", (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-        ("BOX", (0, 0), (-1, -1), 0, colors.white),
-        ("INNERGRID", (0, 0), (-1, -1), 0, colors.white),
-    ]))
-    return [table]
+@dataclass(frozen=True)
+class PdfFontSet:
+    regular: str
+    bold: str
 
 
-# ── Font discovery ──────────────────────────────────────────────────────
 def _font_candidates(filename: str) -> list[Path]:
     configured = os.getenv("PDF_FONT_DIR")
     roots = [
@@ -196,12 +138,6 @@ def resolve_pdf_fonts(language: str) -> PdfFontSet:
     return PdfFontSet(regular=regular, bold=bold)
 
 
-@dataclass(frozen=True)
-class PdfFontSet:
-    regular: str
-    bold: str
-
-
 def _styles(fonts: PdfFontSet) -> dict[str, ParagraphStyle]:
     base = getSampleStyleSheet()
     return {
@@ -248,8 +184,8 @@ def _styles(fonts: PdfFontSet) -> dict[str, ParagraphStyle]:
             "DeepDiveBody",
             parent=base["Normal"],
             fontName=fonts.regular,
-            fontSize=10,
-            leading=14,
+            fontSize=9.5,
+            leading=13,
             textColor=_TEXT,
             alignment=TA_LEFT,
             spaceBefore=5,
@@ -259,71 +195,50 @@ def _styles(fonts: PdfFontSet) -> dict[str, ParagraphStyle]:
             "DeepDiveSmall",
             parent=base["Normal"],
             fontName=fonts.regular,
-            fontSize=8.5,
-            leading=10.2,
+            fontSize=7.6,
+            leading=9.2,
             textColor=_TEXT,
         ),
         "small_bold": ParagraphStyle(
             "DeepDiveSmallBold",
             parent=base["Normal"],
             fontName=fonts.bold,
-            fontSize=8.5,
-            leading=10.2,
+            fontSize=7.6,
+            leading=9.2,
             textColor=_TEXT,
         ),
     }
 
 
-# ── Glyph safety (simplified — emojis no longer flow through text) ──────
-# ── Circled digit → plain text mapping (DejaVu lacks glyphs for U+2460-U+2473) ─
-_CIRCLED_DIGIT_MAP = str.maketrans({
-    '\u2460': '(1)', '\u2461': '(2)', '\u2462': '(3)', '\u2463': '(4)',
-    '\u2464': '(5)', '\u2465': '(6)', '\u2466': '(7)', '\u2467': '(8)',
-    '\u2468': '(9)', '\u2469': '(10)', '\u246a': '(11)', '\u246b': '(12)',
-    '\u246c': '(13)', '\u246d': '(14)', '\u246e': '(15)', '\u246f': '(16)',
-    '\u2470': '(17)', '\u2471': '(18)', '\u2472': '(19)', '\u2473': '(20)',
-})
-
-
 def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
-    """Keep characters renderable by standard PDF fonts. Strip the rest silently."""
+    """Replace emoji with clean fallbacks. Only strip to Latin-1 for non-CJK fonts."""
     value = str(text)
-    # Replace circled digits with parenthesized numbers — DejaVu has no glyphs
-    value = value.translate(_CIRCLED_DIGIT_MAP)
-    # CJK fonts can handle their character ranges natively
-    if font_name in ("MS-PGothic", "HeiseiMin-W3"):
-        return value
-
-    safe: list[str] = []
-    for ch in value:
-        cp = ord(ch)
-        if (cp < 256                                              # Latin-1
-            or (0x2000 <= cp <= 0x206F)                           # General Punctuation (—–•…'')
-            or (0x25A0 <= cp <= 0x26FF)                           # Geometric Shapes + Misc Symbols
-            or (0x2650 <= cp <= 0x265F)):                         # Chess symbols
-            safe.append(ch)
-        else:
-            continue  # Strip silently — never inject '?'
-    return ''.join(safe)
+    for source, replacement in _GLYPH_FALLBACKS.items():
+        value = value.replace(source, replacement)
+    # Only strip to Latin-1 for fonts that don't support CJK
+    if font_name not in ("MS-PGothic", "HeiseiMin-W3"):
+        return value.encode("latin-1", errors="replace").decode("latin-1")
+    return value
 
 
-# ── Paragraph helpers (no more _wrap_emoji / _register_symbola) ──────────
 def _paragraph(text: str, style: ParagraphStyle, *, font_name: str) -> Paragraph:
-    safe = _glyph_safe(str(text), font_name=font_name)
-    return Paragraph(escape(safe), style)
+    escaped = escape(_glyph_safe(str(text), font_name=font_name))
+    return Paragraph(escaped, style)
 
 
 def _format_markdown(text: str) -> str:
     """Convert basic markdown to ReportLab-compatible XML."""
+    import re
+    # Convert **bold** to <b>bold</b>
     text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+    # Convert *italic* to <i>italic</i> (but not **already bold**)
     text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<i>\1</i>', text)
     return text
 
 
 def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragraph:
     """Paragraph with markdown formatting support (bold/italic)."""
-    safe = _glyph_safe(str(text), font_name=font_name)
-    formatted = _format_markdown(safe)
+    formatted = _format_markdown(_glyph_safe(str(text), font_name=font_name))
     escaped = escape(formatted)
     # Unescape the XML tags we intentionally added
     escaped = escaped.replace('&lt;b&gt;', '<b>').replace('&lt;/b&gt;', '</b>')
@@ -331,7 +246,17 @@ def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragr
     return Paragraph(escaped, style)
 
 
-# ── Document structure helpers ──────────────────────────────────────────
+def _section_title(section, *, font_name: str = "Helvetica") -> str:
+    """Return section title. Skip emoji prefix for CJK fonts (can't render emoji)."""
+    prefix = _SECTION_PREFIXES.get(section.key)
+    if not prefix:
+        return _glyph_safe(section.title, font_name=font_name)
+    # CJK fonts can't render emoji — use clean title without prefix
+    if font_name in ("MS-PGothic", "HeiseiMin-W3"):
+        return _glyph_safe(section.title, font_name=font_name)
+    return _glyph_safe(f"{prefix} {section.title}", font_name=font_name)
+
+
 def _official_website(report: EarningsDeepDiveReport) -> str | None:
     for source in report.sources:
         label = source.label.lower()
@@ -357,6 +282,7 @@ def _source_note(report: EarningsDeepDiveReport, *labels: str) -> str:
             if source.url:
                 return source.url
             note = source.note or ""
+            # Translate Japanese missing marker when rendering English PDF
             if report.language != "jp" and note == "データ未取得":
                 return "Not available"
             return note or "N/A"
@@ -368,6 +294,7 @@ def _earnings_documents_story(
     styles: dict[str, ParagraphStyle],
     fonts: PdfFontSet,
 ) -> list:
+    # Look for the actual transcript source in the report's sources list
     transcript_label = None
     transcript_url = None
     for source in report.sources:
@@ -376,6 +303,7 @@ def _earnings_documents_story(
             transcript_label = source.label
             transcript_url = source.url
             break
+    # Fallback: if no transcript source found, use stockanalysis.com listing
     if not transcript_label:
         transcript_label = "Earnings Transcript — StockAnalysis"
         transcript_url = f"https://stockanalysis.com/stocks/{report.ticker.lower()}/transcripts/"
@@ -390,12 +318,22 @@ def _earnings_documents_story(
             ("Press Release", press_release_value, "会社開示データの一次ソース"),
             ("Earning Call Presentation", presentation_value, "補足KPI・セグメント・ガイダンス確認"),
         ]
+        analysis = [
+            "General Questions for Earnings",
+            "赤字プロンプト相当の質問は、PDFへ直接コピーせず、Transcript・Press Release・Presentationから構造化データを抽出するために使います。",
+            f"👉 会社名やリンクはモデル例ではなく、対象企業 {report.company} ({report.ticker}) のソースに置き換えます。",
+        ]
     else:
         rows = [
             (transcript_label, transcript_url or "N/A", "Earning Call Transcript source"),
             ("Official Investor Relations", ir_value, "Press Release / Earning Call Presentation"),
             ("Press Release", press_release_value, "Primary company-reported earnings source"),
             ("Earning Call Presentation", presentation_value, "Supplemental KPIs, segments, and guidance"),
+        ]
+        analysis = [
+            "General Questions for Earnings",
+            "The red prompt blocks in the model are treated as structured extraction prompts, not as final prose.",
+            f"👉 Company names and links are replaced with target-company sources for {report.company} ({report.ticker}).",
         ]
 
     section = type(
@@ -416,6 +354,7 @@ def _earnings_documents_story(
         },
     )()
     story = [Paragraph("Earnings Documents", styles["section"]), _table(section, styles, fonts)]
+    # Skip AI instruction text (analysis) — not part of the final report
     story.append(PageBreak())
     return story
 
@@ -452,43 +391,23 @@ def _section_continuation(section, report: EarningsDeepDiveReport) -> list[str]:
 
 
 def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Table:
-    """Build a ReportLab Table. Cells >250 chars are truncated with ellipsis."""
-    MAX_CELL_CHARS = 250
-    
     data = [
         [_paragraph(column, styles["small_bold"], font_name=fonts.bold) for column in section.table.columns]
     ]
     for row in section.table.rows:
         row_values = [row.label, *row.cells]
-        # Truncate long cells to prevent absurd cell heights and text overlap
-        truncated = []
-        for cell in row_values:
-            s = str(cell).strip()
-            if len(s) > MAX_CELL_CHARS:
-                s = s[:MAX_CELL_CHARS - 1] + "…"
-            truncated.append(_glyph_safe(s, font_name=fonts.regular))
-        data.append(truncated)
+        data.append([_paragraph(cell, styles["small"], font_name=fonts.regular) for cell in row_values])
 
     available_width = LETTER[0] - (1.35 * inch)
     col_count = max(1, len(section.table.columns))
-    # Wider minimum column width to prevent text-wrapping explosions
-    MIN_COL = 1.10 * inch
-    if col_count == 7:
-        col_widths = [1.10 * inch, 0.90 * inch, 0.90 * inch, 0.75 * inch, 0.70 * inch, 0.90 * inch, 0.95 * inch]
-    elif col_count == 6:
-        col_widths = [1.20 * inch, 1.10 * inch, 1.10 * inch, 1.00 * inch, 1.00 * inch, 1.25 * inch]
+    if col_count == 6:
+        col_widths = [1.2 * inch, 1.1 * inch, 1.1 * inch, 1.0 * inch, 1.1 * inch, 1.65 * inch]
     elif col_count == 5:
-        col_widths = [1.25 * inch, 1.25 * inch, 1.25 * inch, 1.35 * inch, 1.40 * inch]
-    elif col_count == 4:
-        col_widths = [1.50 * inch, 1.50 * inch, 1.50 * inch, 1.50 * inch]
-    elif col_count == 3:
-        col_widths = [1.80 * inch, 1.80 * inch, 2.00 * inch]
-    elif col_count == 2:
-        col_widths = [2.20 * inch, 3.20 * inch]
+        col_widths = [1.3 * inch, 1.3 * inch, 1.3 * inch, 1.45 * inch, 1.4 * inch]
     else:
-        col_widths = [max(MIN_COL, available_width / col_count)] * col_count
+        col_widths = [available_width / col_count] * col_count
 
-    table = Table(data, colWidths=col_widths, splitByRow=1, hAlign="LEFT")
+    table = Table(data, colWidths=col_widths, repeatRows=1, splitByRow=1, hAlign="LEFT")
     table.setStyle(
         TableStyle(
             [
@@ -517,63 +436,8 @@ def _footer(canvas, doc, font_name: str = "Helvetica") -> None:
     canvas.restoreState()
 
 
-def _section_is_empty(section) -> bool:
-    """Return True if the section has no meaningful content (empty/placeholder table)."""
-    rows = getattr(section.table, 'rows', [])
-    if len(rows) == 0:
-        return True
-    if len(rows) == 1:
-        # Check if the only row is a placeholder
-        cells = getattr(rows[0], 'cells', [])
-        if all(c.strip() in ('', '-', '—', 'No backlog', 'Not available', 'N/A', 'データ未取得')
-               for c in cells):
-            return True
-    return False
-
-
-def _validate_report(report) -> list[str]:
-    """Pre-render QA gate. Returns list of issues (empty = pass)."""
-    issues = []
-    mandatory = {
-        "EPS & Revenue", "Highlights", "Operating Metrics", "Cash Flow",
-        "Capital Efficiency", "Segments", "Geographic Segments",
-        "Forward P/E", "Backlog", "Guidance", "Verdict",
-    }
-    present = {s.key for s in report.sections}
-    missing = mandatory - present
-    if missing:
-        issues.append(f"Missing mandatory sections: {', '.join(sorted(missing))}")
-
-    for section in report.sections:
-        for row in section.table.rows:
-            for cell in [row.label, *row.cells]:
-                s = str(cell).strip()
-                if len(s) > 250:
-                    issues.append(f"Cell >250 chars in {section.key}: '{s[:80]}...' ({len(s)} chars)")
-                if s.endswith(",") or s.endswith(" and") or (s.endswith(".") and not s.endswith("...") and len(s.split()[-1]) < 3):
-                    pass  # not a reliable truncation check
-
-        # Check for "Not disclosed" + unsourced affirmative claim
-        analysis_text = " ".join(section.analysis) if section.analysis else ""
-        has_not_disclosed = "Not disclosed" in analysis_text or "not disclosed" in analysis_text
-        has_affirmative = any(phrase in analysis_text.lower() for phrase in
-            ["strongest region", "largest market", "dominant in", "clearly the"])
-        if has_not_disclosed and has_affirmative:
-            issues.append(f"Geographic: 'Not disclosed' + affirmative claim in {section.key}")
-
-    return issues
-
-
-# ── Main entry point ────────────────────────────────────────────────────
 def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: str | Path) -> str:
     """Render a structured earnings deep-dive report to an extractable PDF."""
-    # ── QA gate ──
-    validation_issues = _validate_report(report)
-    if validation_issues:
-        for issue in validation_issues:
-            print(f"[QA WARNING] {issue}", file=__import__('sys').stderr)
-        # Non-blocking for now — log warnings but don't abort
-
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -591,7 +455,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         author="stock-analysis-pipeline",
     )
 
-    story: list = [
+    story = [
         Paragraph(escape(f"{report.company} ({report.ticker})"), styles["title"]),
         Paragraph(escape(f"Earnings Deep-Dive - {report.quarter}"), styles["meta"]),
     ]
@@ -601,37 +465,15 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
     story.extend(_earnings_documents_story(report, styles, fonts))
 
     for index, section in enumerate(report.sections):
-        # ── P2 fix: Skip page break when previous section is empty/placeholder ──
-        if section.key in ("Operating Metrics", "Capital Efficiency", "Forward P/E", "Guidance", "Verdict"):
-            prev_section = report.sections[index - 1] if index > 0 else None
-            skip_break = (
-                prev_section is not None
-                and _section_is_empty(prev_section)
-            )
-            if not skip_break:
-                story.append(PageBreak())
-
-        # Emoji image + title as flowables
-        story.extend(_section_title_flowables(
-            section, styles,
-            font_name=fonts.regular,
-            emoji_size=20,
-        ))
-
-        # Display the section question (model parity — dark red, above content)
-        if section.question:
-            story.append(Paragraph(escape(section.question), styles["question"]))
-
-        # Prose-only sections (Highlights, Backlog when not applicable) skip the table
-        if section.key == "Highlights":
-            # Render Highlights as structured prose — no table
-            pass
-        else:
-            story.append(_table(section, styles, fonts))
+        story.append(Paragraph(escape(_section_title(section, font_name=fonts.regular)), styles["section"]))
+        # section.question is an AI instruction, NOT part of the final report — skip it
+        story.append(_table(section, styles, fonts))
         if section.analysis:
             for paragraph in section.analysis:
                 story.append(_paragraph_md(paragraph, styles["body"], font_name=fonts.regular))
-
+        # AI instruction continuations hidden — not part of final report
+        continuation = []
+        # Summary as a styled sub-heading + body text on separate lines
         story.append(Spacer(1, 0.12 * inch))
         story.append(Paragraph(
             f"<b>{escape(section.summary_label)}</b>",
@@ -643,9 +485,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             font_name=fonts.regular,
         ))
         if index < len(report.sections) - 1:
-            story.append(Spacer(1, 0.12 * inch))
-            story.append(HRFlowable(width="100%", thickness=0.5, color=_GRID))
-            story.append(Spacer(1, 0.12 * inch))
+            story.append(Spacer(1, 0.25 * inch))
         else:
             story.append(Spacer(1, 0.18 * inch))
 

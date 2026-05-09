@@ -1,0 +1,93 @@
+{
+  "ticker": "NVDA",
+  "company": "NVDA",
+  "quarter": "latest quarter",
+  "language": "en",
+  "generated_at": "2026-05-09T21:24:31.777976+00:00",
+  "provider": "Codex CLI local",
+  "max_tokens_per_call": 4000,
+  "sections": {
+    "EPS & Revenue": {
+      "name": "EPS & Revenue",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    },
+    "Highlights": {
+      "name": "Highlights",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    },
+    "Operating Metrics": {
+      "name": "Operating Metrics",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    },
+    "Cash Flow": {
+      "name": "Cash Flow",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    },
+    "Capital Efficiency": {
+      "name": "Capital Efficiency",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    },
+    "Segments": {
+      "name": "Segments",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    },
+    "Forward P/E": {
+      "name": "Forward P/E",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    },
+    "Backlog": {
+      "name": "Backlog",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    },
+    "Guidance": {
+      "name": "Guidance",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    },
+    "Verdict": {
+      "name": "Verdict",
+      "status": "ok",
+      "attempts": 1,
+      "error": null,
+      "warnings": []
+    }
+  },
+  "warnings": [],
+  "transcript_url": "https://www.fool.com/earnings/call-transcripts/2025/11/19/nvidia-nvda-q3-2026-earnings-call-transcript/",
+  "transcript": {
+    "found": true,
+    "source_count": 1,
+    "primary_source": "DuckDuckGo Web Search",
+    "url": "https://www.fool.com/earnings/call-transcripts/2025/11/19/nvidia-nvda-q3-2026-earnings-call-transcript/"
+  },
+  "output_files": {
+    "markdown": "/mnt/c/Users/cedon/Documents/Codex/stock-analysis-pipeline/reports/generated/07_final_report/earnings_deep_dive.md",
+    "meta": "/mnt/c/Users/cedon/Documents/Codex/stock-analysis-pipeline/reports/generated/07_final_report/earnings_deep_dive_meta.json"
+  }
+}

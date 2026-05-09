@@ -20,7 +20,6 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
-    HRFlowable,
     Image as RLImage,
     PageBreak,
     Paragraph,
@@ -275,21 +274,9 @@ def _styles(fonts: PdfFontSet) -> dict[str, ParagraphStyle]:
 
 
 # ── Glyph safety (simplified — emojis no longer flow through text) ──────
-# ── Circled digit → plain text mapping (DejaVu lacks glyphs for U+2460-U+2473) ─
-_CIRCLED_DIGIT_MAP = str.maketrans({
-    '\u2460': '(1)', '\u2461': '(2)', '\u2462': '(3)', '\u2463': '(4)',
-    '\u2464': '(5)', '\u2465': '(6)', '\u2466': '(7)', '\u2467': '(8)',
-    '\u2468': '(9)', '\u2469': '(10)', '\u246a': '(11)', '\u246b': '(12)',
-    '\u246c': '(13)', '\u246d': '(14)', '\u246e': '(15)', '\u246f': '(16)',
-    '\u2470': '(17)', '\u2471': '(18)', '\u2472': '(19)', '\u2473': '(20)',
-})
-
-
 def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
     """Keep characters renderable by standard PDF fonts. Strip the rest silently."""
     value = str(text)
-    # Replace circled digits with parenthesized numbers — DejaVu has no glyphs
-    value = value.translate(_CIRCLED_DIGIT_MAP)
     # CJK fonts can handle their character ranges natively
     if font_name in ("MS-PGothic", "HeiseiMin-W3"):
         return value
@@ -300,6 +287,7 @@ def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
         if (cp < 256                                              # Latin-1
             or (0x2000 <= cp <= 0x206F)                           # General Punctuation (—–•…'')
             or (0x25A0 <= cp <= 0x26FF)                           # Geometric Shapes + Misc Symbols
+            or (0x2460 <= cp <= 0x24FF)                           # Enclosed Alphanumerics (①②③④)
             or (0x2650 <= cp <= 0x265F)):                         # Chess symbols
             safe.append(ch)
         else:
@@ -452,41 +440,29 @@ def _section_continuation(section, report: EarningsDeepDiveReport) -> list[str]:
 
 
 def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Table:
-    """Build a ReportLab Table. Cells >250 chars are truncated with ellipsis."""
-    MAX_CELL_CHARS = 250
-    
     data = [
         [_paragraph(column, styles["small_bold"], font_name=fonts.bold) for column in section.table.columns]
     ]
     for row in section.table.rows:
         row_values = [row.label, *row.cells]
-        # Truncate long cells to prevent absurd cell heights and text overlap
-        truncated = []
-        for cell in row_values:
-            s = str(cell).strip()
-            if len(s) > MAX_CELL_CHARS:
-                s = s[:MAX_CELL_CHARS - 1] + "…"
-            truncated.append(_glyph_safe(s, font_name=fonts.regular))
-        data.append(truncated)
+        # Use plain strings instead of Paragraphs to avoid absurd cell heights (896pt bug)
+        data.append([_glyph_safe(str(cell), font_name=fonts.regular) for cell in row_values])
 
     available_width = LETTER[0] - (1.35 * inch)
     col_count = max(1, len(section.table.columns))
-    # Wider minimum column width to prevent text-wrapping explosions
-    MIN_COL = 1.10 * inch
     if col_count == 7:
-        col_widths = [1.10 * inch, 0.90 * inch, 0.90 * inch, 0.75 * inch, 0.70 * inch, 0.90 * inch, 0.95 * inch]
+        # Segments: Segment, Revenue, Prior Year, YoY, % of Total, Driver, Source
+        # Padding 7*8=56; usable = 514.8 - 56 = 458.8
+        col_widths = [0.95 * inch, 0.80 * inch, 0.80 * inch, 0.70 * inch, 0.60 * inch, 0.80 * inch, 0.92 * inch]
     elif col_count == 6:
-        col_widths = [1.20 * inch, 1.10 * inch, 1.10 * inch, 1.00 * inch, 1.00 * inch, 1.25 * inch]
+        # Padding 6*8=48; usable = 514.8 - 48 = 466.8
+        col_widths = [1.10 * inch, 1.00 * inch, 1.00 * inch, 0.95 * inch, 0.95 * inch, 1.25 * inch]
     elif col_count == 5:
-        col_widths = [1.25 * inch, 1.25 * inch, 1.25 * inch, 1.35 * inch, 1.40 * inch]
-    elif col_count == 4:
-        col_widths = [1.50 * inch, 1.50 * inch, 1.50 * inch, 1.50 * inch]
-    elif col_count == 3:
-        col_widths = [1.80 * inch, 1.80 * inch, 2.00 * inch]
-    elif col_count == 2:
-        col_widths = [2.20 * inch, 3.20 * inch]
+        # Account for 8pt padding per column (4L+4R): total_padding = 5*8 = 40
+        # Frame width = LETTER[0] - 1.35*inch = 514.8; usable = 514.8 - 40 = 474.8
+        col_widths = [1.15 * inch, 1.15 * inch, 1.15 * inch, 1.30 * inch, 1.35 * inch]
     else:
-        col_widths = [max(MIN_COL, available_width / col_count)] * col_count
+        col_widths = [available_width / col_count] * col_count
 
     table = Table(data, colWidths=col_widths, splitByRow=1, hAlign="LEFT")
     table.setStyle(
@@ -531,49 +507,9 @@ def _section_is_empty(section) -> bool:
     return False
 
 
-def _validate_report(report) -> list[str]:
-    """Pre-render QA gate. Returns list of issues (empty = pass)."""
-    issues = []
-    mandatory = {
-        "EPS & Revenue", "Highlights", "Operating Metrics", "Cash Flow",
-        "Capital Efficiency", "Segments", "Geographic Segments",
-        "Forward P/E", "Backlog", "Guidance", "Verdict",
-    }
-    present = {s.key for s in report.sections}
-    missing = mandatory - present
-    if missing:
-        issues.append(f"Missing mandatory sections: {', '.join(sorted(missing))}")
-
-    for section in report.sections:
-        for row in section.table.rows:
-            for cell in [row.label, *row.cells]:
-                s = str(cell).strip()
-                if len(s) > 250:
-                    issues.append(f"Cell >250 chars in {section.key}: '{s[:80]}...' ({len(s)} chars)")
-                if s.endswith(",") or s.endswith(" and") or (s.endswith(".") and not s.endswith("...") and len(s.split()[-1]) < 3):
-                    pass  # not a reliable truncation check
-
-        # Check for "Not disclosed" + unsourced affirmative claim
-        analysis_text = " ".join(section.analysis) if section.analysis else ""
-        has_not_disclosed = "Not disclosed" in analysis_text or "not disclosed" in analysis_text
-        has_affirmative = any(phrase in analysis_text.lower() for phrase in
-            ["strongest region", "largest market", "dominant in", "clearly the"])
-        if has_not_disclosed and has_affirmative:
-            issues.append(f"Geographic: 'Not disclosed' + affirmative claim in {section.key}")
-
-    return issues
-
-
 # ── Main entry point ────────────────────────────────────────────────────
 def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: str | Path) -> str:
     """Render a structured earnings deep-dive report to an extractable PDF."""
-    # ── QA gate ──
-    validation_issues = _validate_report(report)
-    if validation_issues:
-        for issue in validation_issues:
-            print(f"[QA WARNING] {issue}", file=__import__('sys').stderr)
-        # Non-blocking for now — log warnings but don't abort
-
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -618,16 +554,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             emoji_size=20,
         ))
 
-        # Display the section question (model parity — dark red, above content)
-        if section.question:
-            story.append(Paragraph(escape(section.question), styles["question"]))
-
-        # Prose-only sections (Highlights, Backlog when not applicable) skip the table
-        if section.key == "Highlights":
-            # Render Highlights as structured prose — no table
-            pass
-        else:
-            story.append(_table(section, styles, fonts))
+        story.append(_table(section, styles, fonts))
         if section.analysis:
             for paragraph in section.analysis:
                 story.append(_paragraph_md(paragraph, styles["body"], font_name=fonts.regular))
@@ -643,9 +570,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             font_name=fonts.regular,
         ))
         if index < len(report.sections) - 1:
-            story.append(Spacer(1, 0.12 * inch))
-            story.append(HRFlowable(width="100%", thickness=0.5, color=_GRID))
-            story.append(Spacer(1, 0.12 * inch))
+            story.append(Spacer(1, 0.25 * inch))
         else:
             story.append(Spacer(1, 0.18 * inch))
 
