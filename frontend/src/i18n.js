@@ -42,6 +42,9 @@ const translations = {
     detailedScoring: "Detailed Scoring",
     viewFullReport: "View Full Report →",
     downloadDossier: "📥 Download Dossier",
+    downloadingDossier: "⏳ Downloading...",
+    downloadComplete: "✅ Download complete!",
+    downloadFailed: "❌ Download failed",
     downloadReport: "📄 Download Report",
     
     // Scoring labels
@@ -167,6 +170,9 @@ const translations = {
     detailedScoring: "詳細スコア",
     viewFullReport: "詳細レポートを見る →",
     downloadDossier: "📥 ドシエをダウンロード",
+    downloadingDossier: "⏳ ダウンロード中...",
+    downloadComplete: "✅ ダウンロード完了!",
+    downloadFailed: "❌ ダウンロード失敗",
     downloadReport: "📄 レポートをダウンロード",
     
     // Scoring labels

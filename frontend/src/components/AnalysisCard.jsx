@@ -70,9 +70,11 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
   // ── Dossier polling ──
   const [dossierStatus, setDossierStatus] = useState({ sectionsReady: 0, pollFailures: 0 });
   const [countdown, setCountdown] = useState(null);
+  const [downloadState, setDownloadState] = useState('idle'); // idle | downloading | success | error
   const pollRef = useRef(null);
   const countdownRef = useRef(null);
   const failedPollsRef = useRef(0);
+  const downloadTimerRef = useRef(null);
   const ESTIMATED_SECS = 5; // dossier is now synchronous — ready in <5s
 
   // ── Quarter selector ──
@@ -140,6 +142,11 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
     const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
     return () => clearTimeout(timer);
   }, [countdown]);
+
+  // Cleanup download timer on unmount
+  useEffect(() => {
+    return () => { if (downloadTimerRef.current) clearTimeout(downloadTimerRef.current); };
+  }, []);
 
   const scorePercent = (total / 40) * 100;
   const scoreBarColor = total >= 32 ? '#238636' : total >= 26 ? '#d29922' : '#da3633';
@@ -264,6 +271,8 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
         {downloadReady ? (
           <button
             onClick={async () => {
+              if (downloadState === 'downloading') return;
+              setDownloadState('downloading');
               const url = getTickerDownloadUrl(ticker, lang, selectedQuarter);
               try {
                 const resp = await fetch(url);
@@ -277,22 +286,46 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
                 a.click();
                 document.body.removeChild(a);
                 setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+                setDownloadState('success');
+                if (downloadTimerRef.current) clearTimeout(downloadTimerRef.current);
+                downloadTimerRef.current = setTimeout(() => setDownloadState('idle'), 3000);
               } catch (err) {
                 console.error('Download failed:', err);
-                alert('Download failed. Please try again.');
+                setDownloadState('error');
+                if (downloadTimerRef.current) clearTimeout(downloadTimerRef.current);
+                downloadTimerRef.current = setTimeout(() => setDownloadState('idle'), 5000);
               }
             }}
             style={{
               flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500,
-              background: '#238636', border: '1px solid #2ea043',
-              borderRadius: 5, color: '#fff', cursor: 'pointer',
+              background: downloadState === 'success' ? '#238636'
+                : downloadState === 'error' ? '#da3633'
+                : downloadState === 'downloading' ? '#1f6feb'
+                : '#238636',
+              border: downloadState === 'success' ? '1px solid #2ea043'
+                : downloadState === 'error' ? '1px solid #f85149'
+                : downloadState === 'downloading' ? '1px solid #388bfd'
+                : '1px solid #2ea043',
+              borderRadius: 5, color: '#fff', cursor: downloadState === 'downloading' ? 'wait' : 'pointer',
               textDecoration: 'none', textAlign: 'center',
-              transition: 'background 0.15s', fontFamily: 'inherit',
+              transition: 'background 0.15s, border 0.15s', fontFamily: 'inherit',
             }}
-            onMouseEnter={e => e.target.style.background = '#2ea043'}
-            onMouseLeave={e => e.target.style.background = '#238636'}
+            onMouseEnter={e => {
+              if (downloadState === 'success') e.target.style.background = '#2ea043';
+              else if (downloadState === 'error') e.target.style.background = '#f85149';
+              else if (downloadState !== 'downloading') e.target.style.background = '#2ea043';
+            }}
+            onMouseLeave={e => {
+              if (downloadState === 'success') e.target.style.background = '#238636';
+              else if (downloadState === 'error') e.target.style.background = '#da3633';
+              else if (downloadState === 'downloading') e.target.style.background = '#1f6feb';
+              else e.target.style.background = '#238636';
+            }}
           >
-            📥 {t('downloadDossier')} ({dossierStatus?.sectionsReady ?? '?'}/7)
+            {downloadState === 'downloading' ? t('downloadingDossier')
+              : downloadState === 'success' ? t('downloadComplete')
+              : downloadState === 'error' ? t('downloadFailed')
+              : `${t('downloadDossier')} (${dossierStatus?.sectionsReady ?? '?'}/7)`}
           </button>
         ) : verificationBlocked ? (
           <div style={{

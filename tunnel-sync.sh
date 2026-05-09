@@ -24,6 +24,7 @@ cloudflared tunnel --url http://localhost:8780 2>&1 | while IFS= read -r line; d
     if echo "$line" | grep -q 'trycloudflare.com'; then
         URL=$(echo "$line" | grep -oP 'https://[a-z0-9-]+\.trycloudflare\.com' | head -1)
         if [ -n "$URL" ]; then
+            URL="${URL}/api"
             echo "$URL" > "$TUNNEL_LOG"
             echo "TUNNEL_URL=$URL"
         fi
