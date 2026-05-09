@@ -20,6 +20,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
+    HRFlowable,
     Image as RLImage,
     PageBreak,
     Paragraph,
@@ -617,6 +618,13 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             emoji_size=20,
         ))
 
+        # Section question (EN above, JP in red below — modele.pdf style)
+        question = getattr(section, "question", "")
+        if question:
+            story.append(Spacer(1, 0.08 * inch))
+            story.append(Paragraph(escape(question), styles["question"]))
+            story.append(Spacer(1, 0.06 * inch))
+
         # Prose-only sections (Highlights, Backlog when not applicable) skip the table
         if section.key == "Highlights":
             # Render Highlights as structured prose — no table
@@ -638,7 +646,9 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             font_name=fonts.regular,
         ))
         if index < len(report.sections) - 1:
-            story.append(Spacer(1, 0.25 * inch))
+            story.append(Spacer(1, 0.12 * inch))
+            story.append(HRFlowable(width="100%", thickness=0.5, color=_GRID))
+            story.append(Spacer(1, 0.12 * inch))
         else:
             story.append(Spacer(1, 0.18 * inch))
 
