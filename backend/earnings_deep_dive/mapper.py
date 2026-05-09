@@ -1260,6 +1260,7 @@ def build_earnings_deep_dive_report(
                             if not r.label.strip().startswith("**")  # Skip total/bold rows
                             and not all(str(c).strip() in ("—", "", "Data not available in transcript") for c in r.cells)
                             and not r.label.strip().lower().startswith("total")  # Skip total rows
+                            and r.label.strip().lower() not in ("segment / region", "segment")  # Skip embedded sub-table headers
                         ]
                         if real_rows:
                             # Remap LLM columns to template: Segment|Revenue|YoY|Driver|Source
