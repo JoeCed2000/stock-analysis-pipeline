@@ -53,3 +53,4 @@ RENDER_ENV_*
 SSH_SETUP.txt
 .vercel
 .bak
+tmp/
