@@ -3,10 +3,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+from io import BytesIO
 import os
 from pathlib import Path
 import re
 from xml.sax.saxutils import escape
+
+from PIL import Image as PILImage, ImageDraw, ImageFont
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
@@ -17,6 +20,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
+    Image as RLImage,
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -36,6 +40,94 @@ _TEXT = colors.HexColor("#111111")
 _MUTED = colors.HexColor("#5D5D5D")
 _REGISTERED_FONTS: set[str] = set()
 
+# ── Emoji rendering via PIL + NotoColorEmoji.ttf ──────────────────────────
+_NOTO_EMOJI_PATH = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
+_EMOJI_FONT: ImageFont.FreeTypeFont | None = None
+
+
+def _get_emoji_font() -> ImageFont.FreeTypeFont:
+    global _EMOJI_FONT
+    if _EMOJI_FONT is None:
+        _EMOJI_FONT = ImageFont.truetype(_NOTO_EMOJI_PATH, 109)
+    return _EMOJI_FONT
+
+
+def _emoji_to_image(char: str, size: int = 16) -> RLImage:
+    """Render a single emoji character as a ReportLab Image via PIL + NotoColorEmoji."""
+    font = _get_emoji_font()
+    # Render at full resolution; ReportLab scales to `size` via width/height.
+    img = PILImage.new("RGBA", (136, 136), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.text((12, 8), char, font=font, embedded_color=True)
+    # Crop to content bounding box
+    bbox = img.getbbox()
+    if bbox:
+        img = img.crop(bbox)
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return RLImage(buf, width=size, height=size)
+
+
+# ── Section emoji prefixes (real color emoji, rendered as PNG images) ────
+_SECTION_PREFIXES: dict[str, str] = {
+    "EPS & Revenue":       "📊",
+    "Highlights":          "🌟⚠️",
+    "Operating Metrics":   "📈",
+    "Cash Flow":           "💰",
+    "Capital Efficiency":  "💡",
+    "Segments":            "📋",
+    "Forward P/E":         "📊",
+    "Backlog":             "📦",
+    "Guidance":            "🔮",
+    "Verdict":             "🏆",
+}
+
+
+def _section_title_flowables(section, styles: dict[str, ParagraphStyle], *,
+                              font_name: str = "Helvetica",
+                              emoji_size: int = 16) -> list:
+    """Return [Table(emoji_images + title_paragraph)] or [Paragraph] for CJK."""
+    prefix = _SECTION_PREFIXES.get(section.key)
+    if not prefix or font_name in ("MS-PGothic", "HeiseiMin-W3"):
+        safe = _glyph_safe(section.title, font_name=font_name)
+        return [Paragraph(escape(safe), styles["section"])]
+
+    # Build emoji Image cells for each non-space character in prefix
+    emoji_cells: list[RLImage] = []
+    for ch in prefix:
+        if ch.strip():
+            emoji_cells.append(_emoji_to_image(ch, size=emoji_size))
+    if not emoji_cells:
+        safe = _glyph_safe(section.title, font_name=font_name)
+        return [Paragraph(escape(safe), styles["section"])]
+
+    # Title text paragraph
+    safe_title = _glyph_safe(section.title, font_name=font_name)
+    title_para = Paragraph(escape(safe_title), styles["section"])
+
+    # Table with emoji images in separate columns + title in last column
+    columns = emoji_cells + [title_para]
+    emoji_col_width = emoji_size + 3
+    emoji_total = len(emoji_cells) * emoji_col_width
+    remaining = LETTER[0] - 1.24 * inch - emoji_total - 6
+    col_widths = [emoji_col_width] * len(emoji_cells) + [max(remaining, 100)]
+
+    data = [columns]
+    table = Table(data, colWidths=col_widths, hAlign="LEFT")
+    table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (len(emoji_cells) - 1, 0), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("BOX", (0, 0), (-1, -1), 0, colors.white),
+        ("INNERGRID", (0, 0), (-1, -1), 0, colors.white),
+    ]))
+    return [table]
+
+
+# ── Font discovery ──────────────────────────────────────────────────────
 def _font_candidates(filename: str) -> list[Path]:
     configured = os.getenv("PDF_FONT_DIR")
     roots = [
@@ -54,39 +146,8 @@ def _first_existing_font(filename: str) -> Path | None:
             return candidate
     return None
 
-_REGISTERED_FONTS: set[str] = set()
-_EMOJI_PATTERN = re.compile(
-    "[\U0001F300-\U0001F9FF\u2600-\u27BF\u2B50\u2705\u26A0\u274C\u2714"
-    "\u26AB\u26AA\u2B06\u2B07\u23F0\u23F3\u267B\u2695\u26A1\u26D4"
-    "\u2708\u2709\u270C\u270F\u2712\u2716\u2728\u2733\u2734\u2744"
-    "\u2753\u2755\u2757\u2763\u2764\u2795\u2796\u2797\u2934\u2935"
-    "\u3030\u303D\u3297\u3299]"
-    "|\u00A9|\u00AE|\u2122|\uFE0F|\uFE0E"  # Variation selectors, copyright, TM
-)
-_GLYPH_FALLBACKS = {
-    # Emoji are now rendered via Symbola font — keep them intact (no stripping).
-    # Clean labels avoid markdown-artifact pollution (::, >>, ^^, !!, **, [])
-    "👉": "\u25b6",  # ▶ right-pointing triangle
-}
-_SECTION_PREFIXES = {
-    # BMP-safe Unicode symbols (DejaVu/Arial compatible — no emoji codepoints)
-    "EPS & Revenue": "\u25b8",        # ▸
-    "Highlights": "\u2605 \u26a0",    # ★ ⚠
-    "Operating Metrics": "\u25c6",    # ◆
-    "Cash Flow": "$",                  # $
-    "Capital Efficiency": "\u25c8",   # ◈
-    "Segments": "\u25eb",             # ◫
-    "Forward P/E": "\u25b2",          # ▲
-    "Backlog": "\u25a0",              # ■
-    "Guidance": "\u25c7",             # ◇
-    "Verdict": "\u265b",              # ♛
-}
 
-
-@dataclass(frozen=True)
-class PdfFontSet:
-    regular: str
-    bold: str
+_EMOJI_FONT = None  # re-initialised by _get_emoji_font() above
 
 
 def _register_ttf(font_name: str, path: Path, *, subfont_index: int | None = None) -> bool:
@@ -133,6 +194,12 @@ def resolve_pdf_fonts(language: str) -> PdfFontSet:
         if _register_cid("HeiseiMin-W3"):
             return PdfFontSet(regular="HeiseiMin-W3", bold="HeiseiMin-W3")
     return PdfFontSet(regular=regular, bold=bold)
+
+
+@dataclass(frozen=True)
+class PdfFontSet:
+    regular: str
+    bold: str
 
 
 def _styles(fonts: PdfFontSet) -> dict[str, ParagraphStyle]:
@@ -207,66 +274,37 @@ def _styles(fonts: PdfFontSet) -> dict[str, ParagraphStyle]:
     }
 
 
+# ── Glyph safety (simplified — emojis no longer flow through text) ──────
 def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
-    """Replace emoji with clean fallbacks. Only strip to Latin-1 for non-CJK fonts."""
+    """Keep characters renderable by standard PDF fonts. Strip the rest silently."""
     value = str(text)
-    for source, replacement in _GLYPH_FALLBACKS.items():
-        value = value.replace(source, replacement)
-    # Only strip to Latin-1 for fonts that don't support CJK
-    if font_name not in ("MS-PGothic", "HeiseiMin-W3"):
-        # Strip emoji-range characters (U+1F300-U+1F9FF) — replaced by BMP-safe symbols
-        # Allow BMP symbol ranges that exist in DejaVu/Arial:
-        #   U+25A0-U+26FF Geometric Shapes + Misc Symbols (▸★⚠◆◈◫▲■◇)
-        #   U+265B chess symbols (♛)
-        safe = []
-        for ch in value:
-            cp = ord(ch)
-            if 0x1F300 <= cp <= 0x1F9FF:
-                continue  # Strip emoji — BMP-safe equivalents used instead
-            elif (cp < 256                                         # Latin-1
-                  or (0x2000 <= cp <= 0x206F)                      # General Punctuation (—–•…'')
-                  or (0x25A0 <= cp <= 0x26FF)                      # Geometric Shapes + Misc Symbols
-                  or (0x2460 <= cp <= 0x24FF)                      # Enclosed Alphanumerics (①②③④⓵)
-                  or (0x2650 <= cp <= 0x265F)):                    # Chess symbols
-                safe.append(ch)
-            else:
-                continue  # Strip (don't inject '?')
-        return ''.join(safe)
-    return value
+    # CJK fonts can handle their character ranges natively
+    if font_name in ("MS-PGothic", "HeiseiMin-W3"):
+        return value
+
+    safe: list[str] = []
+    for ch in value:
+        cp = ord(ch)
+        if (cp < 256                                              # Latin-1
+            or (0x2000 <= cp <= 0x206F)                           # General Punctuation (—–•…'')
+            or (0x25A0 <= cp <= 0x26FF)                           # Geometric Shapes + Misc Symbols
+            or (0x2460 <= cp <= 0x24FF)                           # Enclosed Alphanumerics (①②③④)
+            or (0x2650 <= cp <= 0x265F)):                         # Chess symbols
+            safe.append(ch)
+        else:
+            continue  # Strip silently — never inject '?'
+    return ''.join(safe)
 
 
-def _wrap_emoji(text: str) -> str:
-    """DISABLED: Symbola font is broken — BMP-safe symbols used instead. Return text as-is."""
-    return text  # no-op: emoji codepoints are already replaced by _SECTION_PREFIXES
-
-
-def _register_symbola() -> bool:
-    """Register Symbola font with ReportLab if available."""
-    if "Symbola" in _REGISTERED_FONTS or "Symbola" in pdfmetrics.getRegisteredFontNames():
-        _REGISTERED_FONTS.add("Symbola")
-        return True
-    try:
-        symbola_path = _first_existing_font("Symbola.ttf") or Path("/home/ced/.fonts/Symbola.ttf")
-        if symbola_path.exists():
-            pdfmetrics.registerFont(TTFont("Symbola", str(symbola_path)))
-            _REGISTERED_FONTS.add("Symbola")
-            return True
-    except Exception:
-        pass
-    return False
-
-
+# ── Paragraph helpers (no more _wrap_emoji / _register_symbola) ──────────
 def _paragraph(text: str, style: ParagraphStyle, *, font_name: str) -> Paragraph:
     safe = _glyph_safe(str(text), font_name=font_name)
-    return Paragraph(_wrap_emoji(escape(safe)), style)
+    return Paragraph(escape(safe), style)
 
 
 def _format_markdown(text: str) -> str:
     """Convert basic markdown to ReportLab-compatible XML."""
-    import re
-    # Convert **bold** to <b>bold</b>
     text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
-    # Convert *italic* to <i>italic</i> (but not **already bold**)
     text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<i>\1</i>', text)
     return text
 
@@ -275,24 +313,14 @@ def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragr
     """Paragraph with markdown formatting support (bold/italic)."""
     safe = _glyph_safe(str(text), font_name=font_name)
     formatted = _format_markdown(safe)
-    escaped = _wrap_emoji(escape(formatted))
+    escaped = escape(formatted)
     # Unescape the XML tags we intentionally added
     escaped = escaped.replace('&lt;b&gt;', '<b>').replace('&lt;/b&gt;', '</b>')
     escaped = escaped.replace('&lt;i&gt;', '<i>').replace('&lt;/i&gt;', '</i>')
     return Paragraph(escaped, style)
 
 
-def _section_title(section, *, font_name: str = "Helvetica") -> str:
-    """Return section title. Skip emoji prefix for CJK fonts (can't render emoji)."""
-    prefix = _SECTION_PREFIXES.get(section.key)
-    if not prefix:
-        return _wrap_emoji(escape(_glyph_safe(section.title, font_name=font_name)))
-    # CJK fonts can't render emoji — use clean title without prefix
-    if font_name in ("MS-PGothic", "HeiseiMin-W3"):
-        return escape(_glyph_safe(section.title, font_name=font_name))
-    return _wrap_emoji(escape(_glyph_safe(f"{prefix} {section.title}", font_name=font_name)))
-
-
+# ── Document structure helpers ──────────────────────────────────────────
 def _official_website(report: EarningsDeepDiveReport) -> str | None:
     for source in report.sources:
         label = source.label.lower()
@@ -318,7 +346,6 @@ def _source_note(report: EarningsDeepDiveReport, *labels: str) -> str:
             if source.url:
                 return source.url
             note = source.note or ""
-            # Translate Japanese missing marker when rendering English PDF
             if report.language != "jp" and note == "データ未取得":
                 return "Not available"
             return note or "N/A"
@@ -330,7 +357,6 @@ def _earnings_documents_story(
     styles: dict[str, ParagraphStyle],
     fonts: PdfFontSet,
 ) -> list:
-    # Look for the actual transcript source in the report's sources list
     transcript_label = None
     transcript_url = None
     for source in report.sources:
@@ -339,7 +365,6 @@ def _earnings_documents_story(
             transcript_label = source.label
             transcript_url = source.url
             break
-    # Fallback: if no transcript source found, use stockanalysis.com listing
     if not transcript_label:
         transcript_label = "Earnings Transcript — StockAnalysis"
         transcript_url = f"https://stockanalysis.com/stocks/{report.ticker.lower()}/transcripts/"
@@ -354,22 +379,12 @@ def _earnings_documents_story(
             ("Press Release", press_release_value, "会社開示データの一次ソース"),
             ("Earning Call Presentation", presentation_value, "補足KPI・セグメント・ガイダンス確認"),
         ]
-        analysis = [
-            "General Questions for Earnings",
-            "赤字プロンプト相当の質問は、PDFへ直接コピーせず、Transcript・Press Release・Presentationから構造化データを抽出するために使います。",
-            f"👉 会社名やリンクはモデル例ではなく、対象企業 {report.company} ({report.ticker}) のソースに置き換えます。",
-        ]
     else:
         rows = [
             (transcript_label, transcript_url or "N/A", "Earning Call Transcript source"),
             ("Official Investor Relations", ir_value, "Press Release / Earning Call Presentation"),
             ("Press Release", press_release_value, "Primary company-reported earnings source"),
             ("Earning Call Presentation", presentation_value, "Supplemental KPIs, segments, and guidance"),
-        ]
-        analysis = [
-            "General Questions for Earnings",
-            "The red prompt blocks in the model are treated as structured extraction prompts, not as final prose.",
-            f"👉 Company names and links are replaced with target-company sources for {report.company} ({report.ticker}).",
         ]
 
     section = type(
@@ -390,7 +405,6 @@ def _earnings_documents_story(
         },
     )()
     story = [Paragraph("Earnings Documents", styles["section"]), _table(section, styles, fonts)]
-    # Skip AI instruction text (analysis) — not part of the final report
     story.append(PageBreak())
     return story
 
@@ -472,14 +486,27 @@ def _footer(canvas, doc, font_name: str = "Helvetica") -> None:
     canvas.restoreState()
 
 
+def _section_is_empty(section) -> bool:
+    """Return True if the section has no meaningful content (empty/placeholder table)."""
+    rows = getattr(section.table, 'rows', [])
+    if len(rows) == 0:
+        return True
+    if len(rows) == 1:
+        # Check if the only row is a placeholder
+        cells = getattr(rows[0], 'cells', [])
+        if all(c.strip() in ('', '-', '—', 'No backlog', 'Not available', 'N/A', 'データ未取得')
+               for c in cells):
+            return True
+    return False
+
+
+# ── Main entry point ────────────────────────────────────────────────────
 def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: str | Path) -> str:
     """Render a structured earnings deep-dive report to an extractable PDF."""
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
 
     fonts = resolve_pdf_fonts(report.language)
-    # _register_symbola() — DISABLED: Symbola font maps emojis to Greek glyphs (broken)
-    # BMP-safe Unicode symbols used instead in _SECTION_PREFIXES
     styles = _styles(fonts)
     doc = SimpleDocTemplate(
         str(output),
@@ -493,7 +520,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         author="stock-analysis-pipeline",
     )
 
-    story = [
+    story: list = [
         Paragraph(escape(f"{report.company} ({report.ticker})"), styles["title"]),
         Paragraph(escape(f"Earnings Deep-Dive - {report.quarter}"), styles["meta"]),
     ]
@@ -503,18 +530,28 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
     story.extend(_earnings_documents_story(report, styles, fonts))
 
     for index, section in enumerate(report.sections):
-        # Page breaks between logical groups for readability
+        # ── P2 fix: Skip page break when previous section is empty/placeholder ──
         if section.key in ("Operating Metrics", "Capital Efficiency", "Forward P/E", "Guidance", "Verdict"):
-            story.append(PageBreak())
-        story.append(Paragraph(_section_title(section, font_name=fonts.regular), styles["section"]))
-        # section.question is an AI instruction, NOT part of the final report — skip it
+            prev_section = report.sections[index - 1] if index > 0 else None
+            skip_break = (
+                prev_section is not None
+                and _section_is_empty(prev_section)
+            )
+            if not skip_break:
+                story.append(PageBreak())
+
+        # Emoji image + title as flowables
+        story.extend(_section_title_flowables(
+            section, styles,
+            font_name=fonts.regular,
+            emoji_size=16,
+        ))
+
         story.append(_table(section, styles, fonts))
         if section.analysis:
             for paragraph in section.analysis:
                 story.append(_paragraph_md(paragraph, styles["body"], font_name=fonts.regular))
-        # AI instruction continuations hidden — not part of final report
-        continuation = []
-        # Summary as a styled sub-heading + body text on separate lines
+
         story.append(Spacer(1, 0.12 * inch))
         story.append(Paragraph(
             f"<b>{escape(section.summary_label)}</b>",
