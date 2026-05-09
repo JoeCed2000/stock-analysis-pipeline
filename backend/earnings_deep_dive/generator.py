@@ -29,7 +29,7 @@ from backend.transcript_finder import find_transcripts
 logger = logging.getLogger(__name__)
 
 
-MAX_CODEX_TOKENS = 2000
+MAX_CODEX_TOKENS = 4000
 MAX_KIMI_TOKENS = MAX_CODEX_TOKENS
 
 def _llm_chat(prompt: str, system: str = "", max_tokens: int = MAX_CODEX_TOKENS) -> str | None:
@@ -40,7 +40,7 @@ def _llm_chat(prompt: str, system: str = "", max_tokens: int = MAX_CODEX_TOKENS)
     return codex_chat(prompt, system=system, max_tokens=max_tokens)
 
 kimi_chat = _llm_chat
-SECTION_MAX_CHARS = 3200
+SECTION_MAX_CHARS = 6000
 
 SECTION_METRIC_KEYS = {
     "EPS & Revenue": {

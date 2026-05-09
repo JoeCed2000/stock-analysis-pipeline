@@ -181,8 +181,8 @@ def _styles(fonts: PdfFontSet) -> dict[str, ParagraphStyle]:
             "DeepDiveBody",
             parent=base["Normal"],
             fontName=fonts.regular,
-            fontSize=9.5,
-            leading=13,
+            fontSize=10,
+            leading=14,
             textColor=_TEXT,
             alignment=TA_LEFT,
             spaceBefore=5,
@@ -192,16 +192,16 @@ def _styles(fonts: PdfFontSet) -> dict[str, ParagraphStyle]:
             "DeepDiveSmall",
             parent=base["Normal"],
             fontName=fonts.regular,
-            fontSize=7.6,
-            leading=9.2,
+            fontSize=8.5,
+            leading=10.2,
             textColor=_TEXT,
         ),
         "small_bold": ParagraphStyle(
             "DeepDiveSmallBold",
             parent=base["Normal"],
             fontName=fonts.bold,
-            fontSize=7.6,
-            leading=9.2,
+            fontSize=8.5,
+            leading=10.2,
             textColor=_TEXT,
         ),
     }
@@ -215,15 +215,22 @@ def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
     # Only strip to Latin-1 for fonts that don't support CJK
     if font_name not in ("MS-PGothic", "HeiseiMin-W3"):
         # Strip emoji-range characters (U+1F300-U+1F9FF) — replaced by BMP-safe symbols
+        # Allow BMP symbol ranges that exist in DejaVu/Arial:
+        #   U+25A0-U+26FF Geometric Shapes + Misc Symbols (▸★⚠◆◈◫▲■◇)
+        #   U+265B chess symbols (♛)
         safe = []
         for ch in value:
             cp = ord(ch)
             if 0x1F300 <= cp <= 0x1F9FF:
                 continue  # Strip emoji — BMP-safe equivalents used instead
-            elif cp < 256:
+            elif (cp < 256                                         # Latin-1
+                  or (0x2000 <= cp <= 0x206F)                      # General Punctuation (—–•…'')
+                  or (0x25A0 <= cp <= 0x26FF)                      # Geometric Shapes + Misc Symbols
+                  or (0x2460 <= cp <= 0x24FF)                      # Enclosed Alphanumerics (①②③④⓵)
+                  or (0x2650 <= cp <= 0x265F)):                    # Chess symbols
                 safe.append(ch)
             else:
-                safe.append('?')
+                continue  # Strip (don't inject '?')
         return ''.join(safe)
     return value
 
@@ -496,6 +503,9 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
     story.extend(_earnings_documents_story(report, styles, fonts))
 
     for index, section in enumerate(report.sections):
+        # Page breaks between logical groups for readability
+        if section.key in ("Operating Metrics", "Capital Efficiency", "Forward P/E", "Guidance", "Verdict"):
+            story.append(PageBreak())
         story.append(Paragraph(_section_title(section, font_name=fonts.regular), styles["section"]))
         # section.question is an AI instruction, NOT part of the final report — skip it
         story.append(_table(section, styles, fonts))
