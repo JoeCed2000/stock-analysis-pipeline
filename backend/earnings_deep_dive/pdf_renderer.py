@@ -618,13 +618,6 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             emoji_size=20,
         ))
 
-        # Section question (EN above, JP in red below — modele.pdf style)
-        question = getattr(section, "question", "")
-        if question:
-            story.append(Spacer(1, 0.08 * inch))
-            story.append(Paragraph(escape(question), styles["question"]))
-            story.append(Spacer(1, 0.06 * inch))
-
         # Prose-only sections (Highlights, Backlog when not applicable) skip the table
         if section.key == "Highlights":
             # Render Highlights as structured prose — no table

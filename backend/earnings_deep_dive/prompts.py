@@ -690,8 +690,10 @@ Section output contract:
 - Use strict markdown only.
 - Use the PDF visual markers where applicable: 📊 🌟 ⚠️ 🧠 🎯 🧩 💰 📈 📦 🔮 🏆.
 - Include the required table header exactly: {table_header}
-- Put every numeric financial claim in a table first, then explain it below.
+- CRITICAL: Keep the table LIGHTWEIGHT — only key numbers (metric|value columns). NO long prose in table cells. Max 20 words per cell.
+- ALL detailed analysis, explanations, and interpretations go BELOW the table as structured prose.
 - Use numbered analysis markers ①②③. Use ④⑤⑥ only when the PDF section calls for more points.
+- Under each ①②③ item, use ● for data bullets and 👉 for investor implications.
 - Include {nami_label} where specified.
 - Use direct transcript or supplied-metric evidence. Never invent financial data.
 - If the transcript excerpt says no transcript is available, use only Metrics and mark qualitative call evidence as Data not available in transcript.
