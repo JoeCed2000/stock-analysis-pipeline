@@ -445,7 +445,8 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
     ]
     for row in section.table.rows:
         row_values = [row.label, *row.cells]
-        data.append([_paragraph(cell, styles["small"], font_name=fonts.regular) for cell in row_values])
+        # Use plain strings instead of Paragraphs to avoid absurd cell heights (896pt bug)
+        data.append([_glyph_safe(str(cell), font_name=fonts.regular) for cell in row_values])
 
     available_width = LETTER[0] - (1.35 * inch)
     col_count = max(1, len(section.table.columns))
@@ -463,7 +464,7 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
     else:
         col_widths = [available_width / col_count] * col_count
 
-    table = Table(data, colWidths=col_widths, repeatRows=1, splitByRow=1, hAlign="LEFT")
+    table = Table(data, colWidths=col_widths, splitByRow=1, hAlign="LEFT")
     table.setStyle(
         TableStyle(
             [
