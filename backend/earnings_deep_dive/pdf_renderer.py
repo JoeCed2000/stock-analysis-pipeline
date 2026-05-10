@@ -486,7 +486,7 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
             s = str(cell).strip()
             if len(s) > MAX_CELL_CHARS:
                 s = s[:MAX_CELL_CHARS - 1] + "…"
-            truncated.append(_glyph_safe(s, font_name=fonts.regular))
+            truncated.append(_glyph_safe(escape(s), font_name=fonts.regular))
         data.append(truncated)
 
     available_width = LETTER[0] - (1.35 * inch)
