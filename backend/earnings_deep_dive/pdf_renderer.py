@@ -501,11 +501,12 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
     available_width = LETTER[0] - (1.35 * inch)
     col_count = max(1, len(section.table.columns))
     # Wider minimum column width to prevent text-wrapping explosions
-    MIN_COL = 1.10 * inch
+    MIN_COL = 1.00 * inch
     if col_count == 7:
-        col_widths = [1.10 * inch, 0.90 * inch, 0.90 * inch, 0.75 * inch, 0.70 * inch, 0.90 * inch, 0.95 * inch]
+        # Metric | Estimate | Actual | vs Est | YoY | ... | Source
+        col_widths = [1.30 * inch, 0.95 * inch, 1.05 * inch, 0.90 * inch, 0.90 * inch, 1.00 * inch, 1.05 * inch]
     elif col_count == 6:
-        col_widths = [1.20 * inch, 1.10 * inch, 1.10 * inch, 1.00 * inch, 1.00 * inch, 1.25 * inch]
+        col_widths = [1.40 * inch, 1.10 * inch, 1.10 * inch, 1.05 * inch, 1.10 * inch, 1.40 * inch]
     elif col_count == 5:
         col_widths = [1.25 * inch, 1.25 * inch, 1.25 * inch, 1.35 * inch, 1.40 * inch]
     elif col_count == 4:
