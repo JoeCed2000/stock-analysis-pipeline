@@ -16,7 +16,9 @@ export default function AdminPage({ t, onClose }) {
       ]);
       if (statsRes) setStats(statsRes);
       if (searchRes) setSearches(searchRes.searches || []);
-    } catch { /* silent */ }
+    } catch (e) {
+      console.error('[AdminPage] fetch failed:', e);
+    }
   }, []);
 
   useEffect(() => {
