@@ -58,7 +58,7 @@ export function canDownloadDossier(status, countdown) {
 
 export default function AnalysisCard({ result, onViewReport, t, lang }) {
   const { ticker, company_name, decision, scoring, conviction,
-          price_native, currency, price_eur, market_cap, sector } = result || {};
+          price_native, currency, price_eur, market_cap, sector, retrieved_at } = result || {};
 
   if (!result) return null;
 
@@ -236,6 +236,7 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
         <MetricBox label="Price" value={price_native ? `${price_native.toFixed(0)} ${currency}` : '—'} />
         <MetricBox label="Mkt Cap" value={market_cap ? `${(market_cap / 1e12).toFixed(1)}T` : '—'} border />
         <MetricBox label="Sector" value={sector || '—'} />
+        <MetricBox label="Retrieved" value={retrieved_at ? new Date(retrieved_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—'} border />
       </div>
 
       {/* ── AI INSIGHT ── */}
