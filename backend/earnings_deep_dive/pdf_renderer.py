@@ -370,15 +370,27 @@ def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragr
     # Double newlines → paragraph break, single newlines → line break
     formatted = formatted.replace('\n\n', '<br/><br/>')
     formatted = formatted.replace('\n', '<br/>')
-    # Ensure bullet markers and key phrases always start on a new line
-    for marker in ('●', '•', '👉', '→', '🎯', '⚠️', '✅', '❌',
-                   'For Nami-san', 'Nami-san', 'Namiさん',
-                   '①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩',
-                   'Caution:', 'Essential insight:', 'One-line summary:',
-                   'Nami takeaway:', 'Verdict takeaway:', 'Operating takeaway:',
-                   'Cash flow takeaway:', 'Capital efficiency takeaway:',
-                   'Valuation takeaway:'):
-        formatted = formatted.replace(f' {marker}', f'<br/>{marker}')
+    # Ensure bullet markers and key phrases always start on a new line.
+    # Process LONGER phrases first to avoid partial matches (e.g., 'For Nami-san'
+    # before 'Nami-san'). Only match when preceded by space or at line start.
+    import re as _re_markers
+    marker_list = sorted([
+        '●', '•', '👉', '→', '🎯', '⚠️', '✅', '❌',
+        'For Nami-san', 'Nami-san', 'Namiさん',
+        '①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩',
+        'Caution:', 'Essential insight:', 'One-line summary:',
+        'Nami takeaway:', 'Verdict takeaway:', 'Operating takeaway:',
+        'Cash flow takeaway:', 'Capital efficiency takeaway:',
+        'Valuation takeaway:',
+    ], key=len, reverse=True)  # longest first
+    for marker in marker_list:
+        # Match marker preceded by space or at start of text (after <br/>)
+        escaped_marker = _re_markers.escape(marker)
+        formatted = _re_markers.sub(
+            rf'(?<=[ >])({escaped_marker})',
+            rf'<br/>\1',
+            formatted
+        )
     escaped = escape(formatted)
     # Unescape the XML tags we intentionally added
     escaped = escaped.replace('&lt;br/&gt;', '<br/>')
@@ -678,11 +690,13 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
 
     for index, section in enumerate(report.sections):
         # ── Model parity: each section starts on a new page ──
-        # Skip page break when previous section is empty/placeholder
+        # Skip page break when:
+        #  (a) previous section is empty/placeholder, or
+        #  (b) this section itself is empty — don't waste a blank page
         prev_section = report.sections[index - 1] if index > 0 else None
         skip_break = (
-            prev_section is not None
-            and _section_is_empty(prev_section)
+            (prev_section is not None and _section_is_empty(prev_section))
+            or _section_is_empty(section)
         )
         if not skip_break:
             story.append(PageBreak())
