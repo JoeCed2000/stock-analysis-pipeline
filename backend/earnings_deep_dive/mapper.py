@@ -24,8 +24,8 @@ NOT_APPLICABLE = "該当なし"
 NOT_APPLICABLE_EN = "N/A"
 NOT_CALCULABLE = "計算不可"
 NOT_CALCULABLE_EN = "Not calculable"
-SOURCE_COMPANY = "Company filing / Calculated"
-SOURCE_YFINANCE = "yfinance quarterly"
+SOURCE_COMPANY = "SEC Filing (10-Q/10-K) via EDGAR"
+SOURCE_YFINANCE = "yfinance (Yahoo Finance)"
 
 _PLACEHOLDER_PATTERNS = {
     "?", "N/A", "NA", "Not available", "データ未取得",
@@ -634,7 +634,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
 
     if section_key == "Backlog":
         backlog_value = _money(metrics.backlog) if _has(metrics.backlog) else NOT_APPLICABLE_EN
-        backlog_source = _source(metrics.backlog) if _has(metrics.backlog) else "Company filing"
+        backlog_source = _source(metrics.backlog) if _has(metrics.backlog) else SOURCE_COMPANY
         # Quantity/Quality framework — even when not disclosed, show proxies
         has_backlog = _has(metrics.backlog)
         return [
@@ -677,12 +677,12 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         gm_guidance = _pct(gm) if _has(gm) else "Not guided"
         
         rows = [
-            ["Revenue", rev_guidance, rev_qoq or "—", "Consensus estimate", guidance_source if _has(rev_est) else "Company filing"],
+            ["Revenue", rev_guidance, rev_qoq or "—", "Consensus estimate", guidance_source if _has(rev_est) else SOURCE_COMPANY],
             ["GAAP Gross Margin", gm_guidance, "—", "Current quarter actual; forward guidance not separately disclosed", guidance_source],
-            ["Non-GAAP Gross Margin", "Not disclosed", "—", "Non-GAAP margin guidance not provided in quarterly filings", "Company filing"],
-            ["GAAP OpEx", "Not disclosed", "—", "OpEx guidance not provided in quarterly filings", "Company filing"],
-            ["EPS (non-GAAP)", eps_guidance, "—", "Consensus estimate", guidance_source if _has(eps_est) else "Company filing"],
-            ["Diluted Shares", "Not disclosed", "—", "Share count guidance not provided", "Company filing"],
+            ["Non-GAAP Gross Margin", "Not disclosed", "—", "Non-GAAP margin guidance not provided in quarterly filings", SOURCE_COMPANY],
+            ["GAAP OpEx", "Not disclosed", "—", "OpEx guidance not provided in quarterly filings", SOURCE_COMPANY],
+            ["EPS (non-GAAP)", eps_guidance, "—", "Consensus estimate", guidance_source if _has(eps_est) else SOURCE_COMPANY],
+            ["Diluted Shares", "Not disclosed", "—", "Share count guidance not provided", SOURCE_COMPANY],
         ]
         if _has(guidance_text) and isinstance(guidance_text, str) and len(guidance_text) > 10:
             rows.append(["Outlook context", guidance_text[:240] + ("…" if len(guidance_text) > 240 else ""), "—", "Full outlook text", guidance_source])

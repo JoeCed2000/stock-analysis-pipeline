@@ -645,10 +645,10 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
     if col_count == 7:
         # Wider Driver column (most text-heavy) — compress Segment and % of Total
         # Segment | Revenue | Prior Year | YoY | % of Total | Driver | Source
-        col_widths = [1.10 * inch, 0.92 * inch, 0.92 * inch, 0.82 * inch, 0.64 * inch, 1.60 * inch, 1.05 * inch]
+        col_widths = [1.10 * inch, 0.90 * inch, 0.90 * inch, 0.80 * inch, 0.62 * inch, 1.55 * inch, 1.20 * inch]
     elif col_count == 6:
         # Wider Source column to prevent overflow — shrink label column
-        col_widths = [1.20 * inch, 1.10 * inch, 1.05 * inch, 1.00 * inch, 1.20 * inch, 1.60 * inch]
+        col_widths = [1.15 * inch, 1.05 * inch, 1.00 * inch, 0.95 * inch, 1.30 * inch, 1.65 * inch]
     elif col_count == 5:
         col_widths = [1.20 * inch, 1.15 * inch, 1.15 * inch, 1.25 * inch, 1.60 * inch]
     elif col_count == 4:
