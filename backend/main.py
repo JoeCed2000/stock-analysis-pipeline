@@ -1203,7 +1203,7 @@ async def get_report_pdf(ticker: str, lang: str = "en"):
     if not pdf_path.exists():
         raise HTTPException(status_code=404, detail=f"No PDF found for {ticker}")
 
-    return FileResponse(pdf_path, media_type="application/pdf")
+    return FileResponse(pdf_path, media_type="application/pdf", filename=None, headers={"Content-Disposition": "inline"})
 
 
 @app.get("/api/report/{ticker}")
