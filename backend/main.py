@@ -147,8 +147,8 @@ def _save_batch_job(job: dict):
                 safe_job[k] = v
         with open(job_path, "w") as f:
             json.dump(safe_job, f, default=str)
-    except Exception:
-        pass  # Best-effort
+    except Exception as e:
+        logger.debug(f"Fallback: {e}")  # Best-effort
 
 def _load_batch_job(job_id: str) -> dict | None:
     """Try to load a batch job from disk (survives restart)."""
@@ -157,8 +157,8 @@ def _load_batch_job(job_id: str) -> dict | None:
         if job_path.exists():
             with open(job_path) as f:
                 return json.load(f)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Fallback: {e}")
     return None
 
 TICKER_RE = re.compile(r'^[A-Z]{1,5}(?:\.[A-Z]{1,2})?$')  # AAPL, MC.PA, BRK.B
@@ -200,8 +200,8 @@ def _ticker_from_analysis_dir(entry: Path) -> str | None:
                 match = re.search(r"/quote/([^/?]+)/?", url)
                 if match:
                     return match.group(1)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Fallback: {e}")
 
     match = re.match(r"^(?:\d{4}-\d{2}-\d{2}|\d{8})_([A-Z0-9]+(?:_[A-Z0-9]+)?)_", entry.name)
     return match.group(1).replace("_", ".") if match else None
@@ -246,8 +246,8 @@ def _ticker_exists(ticker: str) -> bool:
                     return True
             _ticker_cache[ticker] = (now, False)
             return False
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Fallback: {e}")
     # On error, be optimistic — let analysis catch the invalid ticker
     return True
 
@@ -268,9 +268,8 @@ def _isin_to_ticker_lookup(isin: str) -> str | None:
             for q in quotes:
                 if q.get("quoteType") == "EQUITY":
                     return q.get("symbol")
-    except Exception:
-        pass
-    return None
+    except Exception as e:
+        logger.debug(f"ISIN lookup failed: {e}")
 
 # Common ISIN → ticker mapping (extensible)
 ISIN_TO_TICKER = {
@@ -925,8 +924,8 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
         try:
             shutil.rmtree(work_dir, ignore_errors=True)
             logger.debug(f"[{ticker}] Temp translation dir cleaned up")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Fallback: {e}")
     
     return StreamingResponse(
         buf,

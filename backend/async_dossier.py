@@ -118,8 +118,8 @@ def get_dossier_status(ticker: str) -> dict:
             try:
                 vdata = json.loads(validation_file.read_text())
                 validation_passed = vdata.get("passed", False)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Fallback: {e}")
         
         if best_match is None:
             best_match = m

@@ -12,7 +12,7 @@ from backend.models import (
     AnalysisResult, FinancialData, SegmentInfo, ManagementTone,
     RiskItem, ValuationData, Scoring, Source, Claim
 )
-from backend.sources_collector import get_stock_data, get_finnhub_data, get_sec_filings, convert_to_eur
+from backend.sources_collector import get_stock_data, get_finnhub_data, get_sec_filings, convert_to_eur, _yf_ticker_safe
 from backend.scorer import score_ticker
 from backend.excel_generator import generate_excel
 from backend.tenk_pdf import convert_10k_to_pdf
@@ -68,9 +68,8 @@ def _parse_date(value: Any) -> Optional[datetime]:
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%b %d, %Y", "%B %d, %Y"):
         try:
             return datetime.strptime(text, fmt)
-        except Exception:
-            pass
-    match = re.search(r"(20\d{2})[-/](\d{1,2})[-/](\d{1,2})", text)
+        except Exception as e:
+            logger.debug(f"Date parse error for '{value}': {e}")
     if match:
         year, month, day = (int(part) for part in match.groups())
         try:
@@ -303,7 +302,7 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
         return result
 
     try:
-        ticker_obj = yf.Ticker(ticker)
+        ticker_obj = _yf_ticker_safe(ticker)
         financials = ticker_obj.quarterly_financials
         balance_sheet = ticker_obj.quarterly_balance_sheet
         cashflow = ticker_obj.quarterly_cashflow

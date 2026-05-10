@@ -463,8 +463,8 @@ def _get_stock_data_eodhd(ticker: str) -> Optional[Dict[str, Any]]:
                     if closes:
                         high_52w = max(closes)
                         low_52w = min(closes)
-        except Exception:
-            pass  # 52w is nice-to-have, not critical
+        except Exception as e:
+            logger.debug(f"Fallback: {e}")  # 52w is nice-to-have, not critical
 
         result = {
             "ticker": ticker,
@@ -515,6 +515,23 @@ def _load_yfinance():
     return yf
 
 
+def _yf_ticker_safe(ticker: str, timeout: int = 30):
+    """Create yf.Ticker with timeout to prevent hangs on slow Yahoo responses."""
+    import concurrent.futures
+
+    def _create():
+        yf = _load_yfinance()
+        return _yf_ticker_safe(ticker)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_create)
+        try:
+            return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            logger.warning(f"yfinance Ticker({ticker}) timed out after {timeout}s")
+            raise TimeoutError(f"yfinance Ticker({ticker}) timed out after {timeout}s")
+
+
 def get_yahoo_data(ticker: str) -> Dict[str, Any]:
     """Fetch all available fundamental + price data from Yahoo Finance.
     Uses file-based cache (TTL 1h) to avoid rate-limits."""
@@ -540,7 +557,7 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
 
     try:
         yf = _load_yfinance()
-        stock = yf.Ticker(ticker)
+        stock = _yf_ticker_safe(ticker)
         info = stock.info or {}
     except Exception:
         if cached is not None:
@@ -714,8 +731,8 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
                     break
             financials["gross_profit"] = gross_profit
             financials["opex"] = opex_val
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Fallback: {e}")
 
     if balance is not None and not balance.empty:
         try:
@@ -774,8 +791,8 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
                 invested = eq + abs(total_debt_val)
                 if invested > 0:
                     financials["roic"] = round(oi / invested, 4)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Fallback: {e}")
 
     # ROA from info (v2.5) — fallback to calculation if available
     if financials["roa"] is None:
@@ -852,7 +869,7 @@ def list_available_quarters(ticker: str) -> List[str]:
     Returns list like ['2026Q1', '2025Q4', '2025Q3', ...].
     Always available (yfinance has ~4 years of quarterly data)."""
     yf = _load_yfinance()
-    stock = yf.Ticker(ticker)
+    stock = _yf_ticker_safe(ticker)
     try:
         qf = stock.quarterly_financials
         if qf is None or qf.empty:
@@ -872,7 +889,7 @@ def get_yahoo_data_for_quarter(ticker: str, quarter: str) -> Optional[Dict[str, 
     Returns same structure as get_yahoo_data() but for the specified quarter.
     Falls back to get_yahoo_data() if quarter not found."""
     yf = _load_yfinance()
-    stock = yf.Ticker(ticker)
+    stock = _yf_ticker_safe(ticker)
 
     try:
         qf = stock.quarterly_financials
@@ -957,8 +974,8 @@ def get_yahoo_data_for_quarter(ticker: str, quarter: str) -> Optional[Dict[str, 
                     if prev_eps and eps_curr and prev_eps != 0:
                         financials["eps_yoy"] = round((eps_curr - prev_eps) / abs(prev_eps), 4)
                 break
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Fallback: {e}")
 
     # Extract from cashflow
     if cf is not None and not cf.empty and cf_col is not None:
@@ -973,8 +990,8 @@ def get_yahoo_data_for_quarter(ticker: str, quarter: str) -> Optional[Dict[str, 
                 cf.loc["Repurchase Of Capital Stock", cf_col] if "Repurchase Of Capital Stock" in cf.index else None)
             financials["dividends"] = _safe_float(
                 cf.loc["Cash Dividends Paid", cf_col] if "Cash Dividends Paid" in cf.index else None)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Fallback: {e}")
 
     # Extract from balance sheet
     if bs is not None and not bs.empty and bs_col is not None:
@@ -1000,8 +1017,8 @@ def get_yahoo_data_for_quarter(ticker: str, quarter: str) -> Optional[Dict[str, 
                 bs.loc["Cash And Cash Equivalents", bs_col] if "Cash And Cash Equivalents" in bs.index else None)
             if total_debt is not None and cash_eq is not None:
                 financials["net_debt"] = total_debt - cash_eq
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Fallback: {e}")
 
     # EPS estimate from forwardEps (annual, divide by 4 for quarterly)
     forward_eps = info.get("forwardEps")
@@ -1063,13 +1080,13 @@ def get_finnhub_data(ticker: str) -> Dict[str, Any]:
 
     try:
         result["recommendation"] = client.recommendation_trends(ticker)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Fallback: {e}")
 
     try:
         result["peers"] = client.company_peers(ticker)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Fallback: {e}")
 
     return result
 
@@ -1100,8 +1117,8 @@ def get_sec_filings(ticker: str, cik: Optional[str] = None) -> Dict[str, Any]:
                         cik = str(company["cik_str"]).zfill(10)
                         result["cik"] = cik
                         break
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Fallback: {e}")
 
     if cik:
         try:
@@ -1128,8 +1145,8 @@ def get_sec_filings(ticker: str, cik: Optional[str] = None) -> Dict[str, Any]:
                             "description": descriptions[i] if i < len(descriptions) else "",
                             "url": filing_url
                         })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"SEC filing parsing failed for {ticker}: {e}")
 
     return result
 
@@ -1146,8 +1163,8 @@ def convert_to_eur(amount_usd: float) -> Optional[float]:
         rate = eur.info.get("regularMarketPrice") or eur.info.get("currentPrice")
         if rate:
             return round(amount_usd / rate, 2)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Fallback: {e}")
     return None
 
 
@@ -1196,8 +1213,8 @@ def _resolve_cik(ticker: str) -> Optional[str]:
             for _, company in companies.items():
                 if company.get("ticker") == ticker_upper:
                     return str(company["cik_str"]).zfill(10)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Fallback: {e}")
     return None
 
 
@@ -1232,8 +1249,8 @@ def _get_latest_10k_url(ticker: str) -> Optional[tuple]:
                 acc_clean = acc.replace("-", "")
                 url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc_clean}/{doc}"
                 return (url, doc, acc)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Fallback: {e}")
     return None
 
 

@@ -91,8 +91,8 @@ def gemini_chat(
                     m = re.search(r"retry in (\d+\.?\d*)s", msg)
                     if m:
                         retry_s = float(m.group(1)) + 1
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Gemini retry-after parse failed: {e}")
                 logger.warning(f"Gemini 429 (attempt {attempt+1}/3) — waiting {retry_s:.1f}s")
                 time.sleep(retry_s)
                 continue  # retry
