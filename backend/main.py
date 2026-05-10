@@ -582,7 +582,16 @@ async def ticker_download(ticker: str):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "service": "stock-analysis-pipeline", "commit": "83f33d0"}
+    try:
+        import subprocess
+        commit = subprocess.check_output(
+            ["git", "log", "-1", "--format=%h"],
+            cwd=Path(__file__).parent.parent,
+            text=True
+        ).strip()
+    except Exception:
+        commit = "unknown"
+    return {"status": "ok", "service": "stock-analysis-pipeline", "commit": commit}
 
 
 # ═══════════ DEBUG ENDPOINTS — disabled in production ═══════════

@@ -1261,11 +1261,13 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
     currency_fast = yf_data.get("currency", "USD")
     company_name = yf_data.get("company_name", ticker)
     
-    # Compute output directory
-    date_str = datetime.now(PARIS).strftime("%Y-%m-%d")
+    # Compute output directory (timestamped to avoid collisions between runs)
+    now = datetime.now(PARIS)
+    date_str = now.strftime("%Y-%m-%d")
+    time_str = now.strftime("%H%M%S")
     ticker_clean = ticker.replace(".", "_")
     name_clean = company_name.replace(" ", "_").replace("/", "_")[:40]
-    output_dir = os.path.join(output_base, f"{date_str}_{ticker_clean}_{name_clean}")
+    output_dir = os.path.join(output_base, f"{date_str}_{time_str}_{ticker_clean}_{name_clean}")
     
     # Create bare directory structure (files filled by background dossier)
     for subdir in [
@@ -1628,16 +1630,5 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
             json.dump(manifest_sources, f, indent=2, default=str)
     except Exception as e:
         logger.warning(f"[{ticker}] Sources manifest write failed: {e}")
-    
-    # ── Background dossier generation (best-effort) ──
-    # Only spawn if NOT already generated synchronously above
-    # (avoids double work + race condition with ZIP — Codex R2 audit)
-    from backend.async_dossier import generate_dossier_background
-    if not os.path.exists(os.path.join(output_dir, "07_final_report", "report.md")):
-        try:
-            generate_dossier_background(ticker, company_name, yf_data, result, output_dir)
-            logger.debug(f"[{ticker}] Background dossier thread spawned (best-effort)")
-        except Exception as e:
-            logger.debug(f"[{ticker}] Background dossier spawn skipped: {e}")
     
     return result
