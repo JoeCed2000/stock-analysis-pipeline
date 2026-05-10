@@ -362,12 +362,33 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
         result["revenue_prior_year"] = prior_revenue
         result["revenue_yoy"] = _yoy_change(current_revenue, prior_revenue)
         
-        # EPS data
-        current_eps = financial_value(("Diluted EPS", "Basic EPS"), 0)
-        prior_eps = financial_value(("Diluted EPS", "Basic EPS"), 4)
-        result["eps_actual"] = current_eps
-        result["eps_prior_year"] = prior_eps
-        result["eps_yoy"] = _yoy_change(current_eps, prior_eps)
+        # EPS — use earnings_history for adjusted EPS (matches analyst consensus metric)
+        # GAAP Diluted EPS from income statement ($1.76) ≠ adjusted EPS ($1.62 for NVDA Q1 2026)
+        try:
+            eh = ticker_obj.earnings_history
+            if eh is not None and not eh.empty:
+                latest = eh.iloc[-1]
+                result["eps_actual"] = float(latest["epsActual"])
+                result["eps_estimate"] = float(latest["epsEstimate"])
+                # Prior year: try to find matching quarter in earnings_history
+                if len(eh) >= 5:
+                    prior = eh.iloc[-5]  # 4 quarters back = same quarter last year
+                    result["eps_prior_year"] = float(prior["epsActual"])
+                    result["eps_yoy"] = _yoy_change(result["eps_actual"], result["eps_prior_year"])
+            else:
+                # Fallback to GAAP Diluted EPS
+                current_eps = financial_value(("Diluted EPS", "Basic EPS"), 0)
+                prior_eps = financial_value(("Diluted EPS", "Basic EPS"), 4)
+                result["eps_actual"] = current_eps
+                result["eps_prior_year"] = prior_eps
+                result["eps_yoy"] = _yoy_change(current_eps, prior_eps)
+        except Exception:
+            # Last resort fallback
+            current_eps = financial_value(("Diluted EPS", "Basic EPS"), 0)
+            prior_eps = financial_value(("Diluted EPS", "Basic EPS"), 4)
+            result["eps_actual"] = current_eps
+            result["eps_prior_year"] = prior_eps
+            result["eps_yoy"] = _yoy_change(current_eps, prior_eps)
         
         info = getattr(ticker_obj, "info", {}) or {}
         if isinstance(info, dict):
@@ -375,9 +396,11 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
             result["pe_trailing"] = info.get("trailingPE")
             result["investor_relations_url"] = info.get("irWebsite")
             result["company_website"] = info.get("website")
-            forward_eps = info.get("forwardEps")
-            if forward_eps:
-                result["eps_estimate"] = forward_eps / 4.0
+            # Only fill eps_estimate from forwardEps if earnings_history didn't provide it
+            if not result.get("eps_estimate"):
+                forward_eps = info.get("forwardEps")
+                if forward_eps:
+                    result["eps_estimate"] = forward_eps / 4.0
 
         current_values = {
             "roe": _ratio(current_net_income, balance_value(("Stockholders Equity", "Common Stock Equity"), 0)),
