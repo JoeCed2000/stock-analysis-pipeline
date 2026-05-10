@@ -341,13 +341,22 @@ def _format_markdown(text: str) -> str:
 
 
 def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragraph:
-    """Paragraph with markdown formatting support (bold/italic)."""
+    """Paragraph with markdown formatting support (bold/italic).
+    Newlines are converted to <br/> for proper line breaks in ReportLab XML."""
     safe = _glyph_safe(str(text), font_name=font_name)
     formatted = _format_markdown(safe)
+    # Convert newlines to <br/> for ReportLab Paragraph (XML-based, \n = whitespace)
+    # Double newlines → paragraph break, single newlines → line break
+    formatted = formatted.replace('\n\n', '<br/><br/>')
+    formatted = formatted.replace('\n', '<br/>')
+    # Ensure bullet markers (●, •, 👉, →, -) always start on a new line
+    for marker in ('●', '•', '👉', '→', ' - ', '🎯', '⚠️', '✅', '❌'):
+        formatted = formatted.replace(f' {marker}', f'<br/>{marker}')
     escaped = escape(formatted)
     # Unescape the XML tags we intentionally added
     escaped = escaped.replace('&lt;b&gt;', '<b>').replace('&lt;/b&gt;', '</b>')
     escaped = escaped.replace('&lt;i&gt;', '<i>').replace('&lt;/i&gt;', '</i>')
+    escaped = escaped.replace('&lt;br/&gt;', '<br/>')  # unescape our <br/> tags
     return Paragraph(escaped, style)
 
 
@@ -653,6 +662,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
                 story.append(_paragraph_md(paragraph, styles["body"], font_name=fonts.regular))
 
         story.append(Spacer(1, 0.12 * inch))
+        story.append(HRFlowable(width="60%", thickness=0.3, color=_MUTED, spaceAfter=0.08*inch))
         story.append(Paragraph(
             f"<b>{escape(section.summary_label)}</b>",
             styles["body"],
