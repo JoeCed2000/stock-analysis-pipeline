@@ -268,7 +268,7 @@ def _styles(fonts: PdfFontSet) -> dict[str, ParagraphStyle]:
             parent=base["Normal"],
             fontName=fonts.bold,
             fontSize=8.5,
-            leading=10.2,
+            leading=12,
             textColor=_TEXT,
         ),
     }
@@ -643,6 +643,9 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         )
         if not skip_break:
             story.append(PageBreak())
+            # Visual separator at TOP of each section (model parity — HR after page break)
+            story.append(HRFlowable(width="100%", thickness=0.5, color=_GRID))
+            story.append(Spacer(1, 0.12 * inch))
 
         # Emoji image + title as flowables
         story.extend(_section_title_flowables(
@@ -675,12 +678,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             styles["body"],
             font_name=fonts.regular,
         ))
-        if index < len(report.sections) - 1:
-            story.append(Spacer(1, 0.12 * inch))
-            story.append(HRFlowable(width="100%", thickness=0.5, color=_GRID))
-            story.append(Spacer(1, 0.12 * inch))
-        else:
-            story.append(Spacer(1, 0.18 * inch))
+        story.append(Spacer(1, 0.18 * inch))
 
     if report.sources:
         story.append(Paragraph("Sources", styles["section"]))
