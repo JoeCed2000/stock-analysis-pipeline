@@ -858,6 +858,17 @@ def _sanitize_table(table: RenderedTable) -> RenderedTable:
         q_chars = stripped.count('?') + stripped.count('？')
         if jp_chars >= 3 or (q_chars >= 3 and jp_chars >= 1):
             return MISSING_EN
+        # 🔴 Fix: LLM sometimes formats margins as "7499.67%" (ratio 0.7499 ×100 twice).
+        # If a percentage >500%, it's likely a double-multiplied ratio — divide by 100.
+        pct_match = re.match(r'^([+-]?\d{3,}(?:\.\d+)?)\s*%\s*$', stripped)
+        if pct_match:
+            try:
+                pct_val = float(pct_match.group(1))
+                if pct_val > 500:
+                    corrected = pct_val / 100
+                    return f"{corrected:.1f}%"
+            except (ValueError, OverflowError):
+                pass
         return cell
     
     sanitized_rows: list[RenderedTableRow] = []
@@ -1298,6 +1309,18 @@ def build_earnings_deep_dive_report(
             text = _JP_GARBAGE_RE.sub('', text)
         # Clean up resulting empty lines or double dashes
         text = _re.sub(r'\n\s*—\s*\n', '\n', text)
+        # 🔴 Fix: strip "One-line summary:" / "一言まとめ:" blockquotes — generic filler
+        text = _re.sub(r'>\s*(One-line summary|一言まとめ|投資視点の一言)\s*:?\s*\n?', '', text)
+        # 🔴 Fix: LLM double-multiplied margins: "7499.67%" → divide by 100
+        def _fix_outlier_pct(m):
+            try:
+                val = float(m.group(1))
+                if val > 500:
+                    return f"{val / 100:.1f}%"
+            except (ValueError, OverflowError):
+                pass
+            return m.group(0)
+        text = _re.sub(r'([+-]?\d{3,}(?:\.\d+)?)\s*%', _fix_outlier_pct, text)
         return text
 
     sections: list[RenderedSection] = []

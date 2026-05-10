@@ -710,7 +710,7 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
             capex_val = _safe_float(
                 cashflow.loc["Capital Expenditure", latest] if "Capital Expenditure" in cashflow.index else None
             )
-            financials["capex"] = capex_val
+            financials["capex"] = abs(capex_val) if capex_val is not None else None
             # Buybacks & dividends (v2.5)
             financials["buybacks"] = _safe_float(
                 cashflow.loc["Repurchase Of Capital Stock", latest] if "Repurchase Of Capital Stock" in cashflow.index else None
@@ -885,15 +885,11 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
                 logger.info(f"eps_actual overridden: GAAP={gaap_eps} → adjusted={adj_eps}")
     except Exception as e:
         logger.debug(f"earnings_history epsActual override skipped: {e}")
-    # revenue_estimate from yfinance analyst consensus (info dict doesn't have it)
-    try:
-        rev_est = stock.revenue_estimate
-        if rev_est is not None and not rev_est.empty:
-            financials["revenue_estimate"] = rev_est.iloc[0]["avg"]  # 0q = current quarter avg estimate
-        else:
-            financials["revenue_estimate"] = None
-    except Exception:
-        financials["revenue_estimate"] = None
+    # NOTE: revenue_estimate intentionally NOT populated from stock.revenue_estimate.iloc[0]
+    # That field returns forward consensus for NEXT quarter, not the estimate for the *reported* quarter.
+    # Comparing actual Q1 revenue against forward Q2 consensus is misleading.
+    # Revenue estimate is left as None; the mapper will show "—" in comparison tables.
+    financials["revenue_estimate"] = None
     financials["pe_forward"] = info.get("forwardPE")
     # NOTE: guidance field is NOT filled from yfinance (earningsGrowth/revenueGrowth are rates, not guidance $)
     # Revenue guidance comes from the press release fetcher, applied via _apply_press_release_metrics
@@ -1011,7 +1007,7 @@ def get_yahoo_data_for_quarter(ticker: str, quarter: str) -> Optional[Dict[str, 
         "revenue_quarterly": None, "revenue_yoy_growth": None,
         "revenue_annual": None, "revenue_annual_growth": None,
         "eps_actual": None, "eps_estimate": None, "eps_yoy": None,
-        "revenue_estimate": (lambda s: s.revenue_estimate.iloc[0]["avg"] if s.revenue_estimate is not None and not s.revenue_estimate.empty else None)(stock),
+        "revenue_estimate": None,  # NOT stock.revenue_estimate — that is forward consensus, not quarter estimate
         "gross_margin": info.get("grossMargins"),
         "operating_margin": info.get("operatingMargins"),
         "net_income": None, "free_cash_flow": None,
@@ -1061,8 +1057,8 @@ def get_yahoo_data_for_quarter(ticker: str, quarter: str) -> Optional[Dict[str, 
                 cf.loc["Free Cash Flow", cf_col] if "Free Cash Flow" in cf.index else None)
             financials["operating_cash_flow"] = _safe_float(
                 cf.loc["Operating Cash Flow", cf_col] if "Operating Cash Flow" in cf.index else None)
-            financials["capex"] = _safe_float(
-                cf.loc["Capital Expenditure", cf_col] if "Capital Expenditure" in cf.index else None)
+            financials["capex"] = abs(_safe_float(
+                cf.loc["Capital Expenditure", cf_col] if "Capital Expenditure" in cf.index else None)) if cf_col is not None else None
             financials["buybacks"] = _safe_float(
                 cf.loc["Repurchase Of Capital Stock", cf_col] if "Repurchase Of Capital Stock" in cf.index else None)
             financials["dividends"] = _safe_float(
