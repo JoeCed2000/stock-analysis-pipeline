@@ -1163,6 +1163,15 @@ async def analyze_async(request: TickerRequest, lang: str = "en", fastapi_reques
                 results_list.append(r)
 
             errors_list = list(batch["errors"].values())
+            
+            # Log searches for admin dashboard
+            ua = fastapi_request.headers.get("user-agent", "") if fastapi_request else ""
+            client_ip = fastapi_request.client.host if fastapi_request and fastapi_request.client else ""
+            for r_item in results_list:
+                log_search(r_item["ticker"], "completed", 0, user_agent=ua, client_ip=client_ip)
+            for ticker_err in batch.get("errors", {}):
+                log_search(ticker_err, "failed", 0, error=str(batch["errors"][ticker_err]), user_agent=ua, client_ip=client_ip)
+            
             update_job(job_id, status="done", progress="Complete",
                        result={"results": results_list, "errors": errors_list})
         except Exception as e:

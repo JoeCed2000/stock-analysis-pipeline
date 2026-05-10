@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 CACHE_DIR = Path(__file__).parent / ".cache"
 CACHE_TTL_SECONDS = 3600  # 1 hour
-CACHE_VERSION = 4  # bump to invalidate old cache entries (v4: revenue_estimate from yfinance consensus)
+CACHE_VERSION = 5  # bump to invalidate old cache entries (v5: quarterly normalization + period_tag + EPS consensus guard)
 YF_CACHE_TTL = 600  # 10 min — yfinance data pushed by cron (refreshed every 2 min)
 
 
@@ -581,6 +581,7 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
         quarterly_income = None
         balance = None
         cashflow = None
+    period_tag: Optional[str] = None
 
     # Build financial data
     financials = {
@@ -621,6 +622,13 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
     if quarterly_income is not None and not quarterly_income.empty:
         try:
             latest_q = quarterly_income.columns[0]
+            # Derive period tag like 'YYYYQ#' from pandas Period/Timestamp
+            try:
+                dt = latest_q.to_pydatetime() if hasattr(latest_q, 'to_pydatetime') else latest_q
+                q_num = (dt.month - 1) // 3 + 1
+                period_tag = f"{dt.year}Q{q_num}"
+            except Exception:
+                period_tag = None
             financials["revenue_quarterly"] = _safe_float(
                 quarterly_income.loc["Total Revenue", latest_q] if "Total Revenue" in quarterly_income.index else None
             )
@@ -643,6 +651,12 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
                     curr_eps = financials["eps_actual"]
                     if prev_eps and curr_eps and prev_eps != 0:
                         financials["eps_yoy"] = round((curr_eps - prev_eps) / abs(prev_eps), 4)
+
+            # Net income — use QUARTERLY, not annual
+            if "Net Income" in quarterly_income.index:
+                ni_q = _safe_float(quarterly_income.loc["Net Income", latest_q])
+                if ni_q is not None:
+                    financials["net_income"] = ni_q
 
             operating_income = None
             if "Operating Income" in quarterly_income.index:
@@ -808,8 +822,30 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
     # EPS growth rate (NOT revenue guidance — revenue guidance comes from press release)
     financials["eps_growth_quarterly"] = info.get("earningsQuarterlyGrowth")
 
-    # Forward-looking metrics from info
-    financials["eps_estimate"] = info.get("forwardEps")
+    # Forward-looking metrics from info — EPS consensus for the SAME quarter
+    eps_consensus = None
+    try:
+        # yfinance doesn't expose quarterly EPS consensus cleanly; use forwardEps/4 as a proxy
+        fwd_eps = info.get("forwardEps")
+        if fwd_eps:
+            eps_consensus = fwd_eps / 4.0
+    except Exception:
+        eps_consensus = None
+    financials["eps_estimate"] = eps_consensus
+    financials["eps_consensus"] = eps_consensus
+    financials["estimate_period_tag"] = period_tag
+    financials["consensus_provider"] = "yfinance via Yahoo"
+    financials["consensus_as_of"] = _today_str()
+    # Guard: if estimate far above actual, flag it for review
+    try:
+        ea = financials.get("eps_actual")
+        ee = financials.get("eps_estimate")
+        if ea is not None and ee is not None and ee > (ea * 1.5):
+            financials["eps_estimate_flag"] = "OUTLIER_HIGH"
+        else:
+            financials["eps_estimate_flag"] = None
+    except Exception:
+        financials["eps_estimate_flag"] = None
     # revenue_estimate from yfinance analyst consensus (info dict doesn't have it)
     try:
         rev_est = stock.revenue_estimate
@@ -852,6 +888,7 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
         "52w_high": info.get("fiftyTwoWeekHigh"),
         "52w_low": info.get("fiftyTwoWeekLow"),
         "description": info.get("longBusinessSummary"),
+        "period_tag": period_tag,
         "analyst_consensus": info.get("recommendationKey"),
         "analyst_target": info.get("targetMeanPrice"),
         "analyst_count": info.get("numberOfAnalystOpinions"),
@@ -1045,6 +1082,7 @@ def get_yahoo_data_for_quarter(ticker: str, quarter: str) -> Optional[Dict[str, 
         "52w_low": info.get("fiftyTwoWeekLow"),
         "description": info.get("longBusinessSummary"),
         "quarter": quarter,
+        "period_tag": quarter,
     }
 
     return result
@@ -1134,16 +1172,23 @@ def get_sec_filings(ticker: str, cik: Optional[str] = None) -> Dict[str, Any]:
                 forms = filings_raw.get("form", [])
                 dates = filings_raw.get("filingDate", [])
                 urls = filings_raw.get("primaryDocument", [])
+                accessions = filings_raw.get("accessionNumber", [])
                 descriptions = filings_raw.get("primaryDocDescription", [])
 
                 for i in range(min(20, len(forms))):
                     if forms[i] in ("10-K", "10-Q", "8-K"):
-                        doc_url = urls[i] if i < len(urls) else ""
-                        filing_url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{doc_url.replace('/', '')}/{doc_url}" if doc_url else ""
+                        doc = urls[i] if i < len(urls) else ""
+                        acc = accessions[i] if i < len(accessions) else ""
+                        acc_clean = acc.replace("-", "") if acc else ""
+                        filing_url = (
+                            f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc_clean}/{doc}"
+                            if (doc and acc_clean) else ""
+                        )
                         result["filings"].append({
                             "form": forms[i],
                             "date": dates[i] if i < len(dates) else "",
                             "description": descriptions[i] if i < len(descriptions) else "",
+                            "accession": acc,
                             "url": filing_url
                         })
         except Exception as e:
