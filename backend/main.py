@@ -79,7 +79,7 @@ if env_path.exists():
                 k, v = line.split("=", 1)
                 os.environ[k.strip()] = v.strip()
 
-app = FastAPI(title="Stock Analysis Pipeline", version="1.0.0")
+app = FastAPI(title="Stock Analysis Pipeline", version="1.0.0", root_path="/stock-analysis")
 
 # ── Rate limiting middleware (P0 audit 2026-05-05) ──
 # In-memory token bucket with auto-cleanup: 30 req/min analyze, 120 req/min others
