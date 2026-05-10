@@ -15,12 +15,12 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = "gemini-2.5-flash-lite"  # Fast, free tier (30 RPM)
+GEMINI_MODEL = "gemini-2.5-flash"  # Fast, free tier (5 RPM burst)
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 # Global rate-limit tracking: free tier 5 RPM → 12s minimum between calls
 _last_call_ts = 0.0
-_MIN_INTERVAL = 2.5  # seconds between calls (30 RPM = 2s, add 0.5s buffer)
+_MIN_INTERVAL = 2.5  # seconds between calls (conservative, burst allows 5/min)
 
 
 def gemini_chat(

@@ -4,7 +4,7 @@ import logging
 import os
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from backend.earnings_deep_dive.errors import KimiFailureError, TranscriptMissingError, ValidationError
 from backend.earnings_deep_dive.markdown import assemble_final_report
@@ -33,13 +33,18 @@ MAX_CODEX_TOKENS = 4000
 MAX_KIMI_TOKENS = MAX_CODEX_TOKENS
 
 def _llm_chat(prompt: str, system: str = "", max_tokens: int = MAX_CODEX_TOKENS) -> str | None:
-    """Codex (GPT-5.5) first — zero tolerance for financial hallucinations.
-    Falls back to Kimi only if Codex is unavailable."""
-    result = codex_chat(prompt, system=system, max_tokens=max_tokens)
+    """DeepSeek first (fast, reliable) → Gemini Flash Lite → Kimi K2.6."""
+    # 1. DeepSeek — fastest, paid, reliable ($0.27/M tokens)
+    from backend.kimi_provider import _deepseek_chat
+    result = _deepseek_chat(prompt, system, max_tokens)
     if result:
         return result
-    import sys
-    print(f"[DEBUG] Codex unavailable, falling back to Kimi...", file=sys.stderr)
+    # 2. Gemini Flash Lite — free, fallback (may 429/503 under load)
+    from backend.gemini_provider import gemini_chat as _gemini
+    result = _gemini(prompt, system=system, max_tokens=max_tokens)
+    if result:
+        return result
+    # 3. Kimi K2.6 — free via NVIDIA NIM
     return _kimi_provider_chat(prompt, system=system, max_tokens=max_tokens)
 
 kimi_chat = _llm_chat
@@ -182,17 +187,19 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
         provider_name: str,
         chat_fn,
     ) -> Tuple[Dict[str, str], List[SectionStatus], List[str]]:
-        """Generate a batch of sections with a specific provider."""
+        """Generate a batch of sections in PARALLEL (max 3 concurrent) with a specific provider."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
         batch_sections: Dict[str, str] = {}
         batch_statuses: List[SectionStatus] = []
         batch_warnings: List[str] = []
         
-        for section in secs:
+        def _process_section(section: str) -> Tuple[str, SectionStatus, Optional[str]]:
+            """Process a single section with retry. Thread-safe."""
             sector = str(metrics.get("sector", "") or "")
             industry = str(metrics.get("industry", "") or "")
             sys_prompt = system_prompt(request.language, sector, industry)
             last_error = ""
-            ok = False
             
             for attempt in (1, 2):
                 prompt = build_prompt(
@@ -212,9 +219,7 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
                 try:
                     try:
                         output = chat_fn(prompt, system=sys_prompt, max_tokens=MAX_CODEX_TOKENS, temperature=0.3)
-                    except TypeError as exc:
-                        if "temperature" not in str(exc):
-                            raise
+                    except TypeError:
                         output = chat_fn(prompt, system=sys_prompt, max_tokens=MAX_CODEX_TOKENS)
                     if not output:
                         raise KimiFailureError(f"{provider_name} returned no content")
@@ -224,23 +229,28 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
                         cleaned, section, request.language,
                         request.max_section_chars, require_table=has_tx,
                     )
-                    batch_sections[section] = cleaned
-                    batch_statuses.append(SectionStatus(
+                    return cleaned, SectionStatus(
                         name=section,
                         status="ok" if attempt == 1 else "retry_ok",
                         attempts=attempt,
-                    ))
-                    ok = True
-                    break
+                    ), None
                 except (KimiFailureError, ValidationError) as exc:
                     last_error = str(exc)
             
-            if not ok:
-                batch_sections[section] = _placeholder_section(section, last_error)
-                batch_statuses.append(SectionStatus(
-                    name=section, status="failed", attempts=2, error=last_error or "failed",
-                ))
-                batch_warnings.append(f"{section}: {last_error or 'section unavailable'}")
+            # Failed after retries
+            return _placeholder_section(section, last_error), SectionStatus(
+                name=section, status="failed", attempts=2, error=last_error or "failed",
+            ), f"{section}: {last_error or 'section unavailable'}"
+        
+        # ── Parallel execution (3 workers = safe for Gemini 30 RPM with 2.5s throttle) ──
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = {executor.submit(_process_section, s): s for s in secs}
+            for future in as_completed(futures):
+                content, status, warning = future.result()
+                batch_sections[status.name] = content
+                batch_statuses.append(status)
+                if warning:
+                    batch_warnings.append(warning)
         
         return batch_sections, batch_statuses, batch_warnings
     
