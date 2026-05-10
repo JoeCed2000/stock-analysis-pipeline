@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { getTickerDownloadUrl, getDossierStatus, countDossierSections, fetchQuarters } from '../api.js';
 import ScoringChart from './ScoringChart.jsx';
+import FeedbackPanel from './FeedbackPanel.jsx';
 
 const SCORE_COLORS = {
   BUY: '#238636',
@@ -372,6 +373,9 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
           {t(level)} {t('conviction')}
         </span>
       </div>
+
+      {/* ── NAMI FEEDBACK ── */}
+      <FeedbackPanel ticker={result.ticker} t={t} lang={lang} />
     </div>
   );
 }

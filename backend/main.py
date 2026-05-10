@@ -1401,6 +1401,39 @@ async def search_stats():
     return JSONResponse(get_stats())
 
 
+# ── Nami Feedback System ──────────────────────────────────────────────
+@app.post("/api/feedback")
+async def submit_feedback(
+    ticker: str = Form(...),
+    text: str = Form(""),
+    files: list[UploadFile] = File(default=[]),
+):
+    """Submit feedback for a ticker. Stores text + files in analyses/{TICKER}/feedback/.
+    
+    Nami can attach screenshots, annotated PDFs, or notes.
+    A cron job processes new feedback periodically.
+    """
+    from backend.feedback_store import save_feedback
+    ticker = ticker.strip().upper()
+    if not TICKER_RE.match(ticker):
+        raise HTTPException(status_code=422, detail=f"Invalid ticker: {ticker}")
+    
+    try:
+        result = await save_feedback(ticker, text, files)
+        return JSONResponse({"status": "ok", **result})
+    except Exception as e:
+        logger.error(f"Feedback save failed for {ticker}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/feedback/{ticker}")
+async def list_feedback(ticker: str):
+    """List all feedback entries for a ticker."""
+    from backend.feedback_store import list_feedback as list_fb
+    ticker = ticker.strip().upper()
+    return JSONResponse(list_fb(ticker))
+
+
 # ── Serve React SPA (after all API routes — mono-origin architecture) ──
 _frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
 if _frontend_dist.exists():
