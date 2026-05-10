@@ -66,6 +66,9 @@ export default function FeedbackPanel({ ticker, t, lang }) {
       <h4 style={{ margin: '0 0 12px 0', color: '#e1e4e8', fontSize: 14 }}>
         💬 {lang === 'ja' ? 'フィードバック' : 'Feedback for Nami'}
       </h4>
+      <p style={{ margin: '0 0 12px 0', color: '#484f58', fontSize: 11 }}>
+        📎 {lang === 'ja' ? '最新のPDFレポートが自動添付されます' : 'Latest deep-dive PDF auto-attached'}
+      </p>
 
       <form onSubmit={handleSubmit}>
         <textarea

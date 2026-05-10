@@ -52,6 +52,39 @@ def _write_index(ticker: str, entries: List[Dict[str, Any]]) -> None:
         json.dump(entries, f, indent=2, ensure_ascii=False)
 
 
+def _attach_latest_pdf(ticker: str, fb_dir: Path, entry_id: str) -> str | None:
+    """Find the most recent deep-dive PDF for this ticker and copy it to the feedback dir.
+    Returns the filename if found, None otherwise."""
+    import shutil
+    
+    # Search analyses/ for directories matching the ticker
+    best_pdf = None
+    best_mtime = 0
+    for d in ANALYSES_DIR.iterdir():
+        if not d.is_dir():
+            continue
+        # Match ticker in directory name (e.g., 2026-05-10_NVDA_*)
+        if ticker.upper() not in d.name.upper():
+            continue
+        pdf_path = d / "07_final_report" / "earnings_deep_dive.pdf"
+        if pdf_path.exists():
+            mtime = pdf_path.stat().st_mtime
+            if mtime > best_mtime:
+                best_mtime = mtime
+                best_pdf = pdf_path
+    
+    if best_pdf is None:
+        logger.debug(f"[{ticker}] No deep-dive PDF found to attach")
+        return None
+    
+    # Copy to feedback dir with timestamped name
+    dest_name = f"{entry_id}_deep_dive_{ticker}.pdf"
+    dest_path = fb_dir / dest_name
+    shutil.copy2(best_pdf, dest_path)
+    logger.info(f"[{ticker}] Auto-attached PDF: {dest_name} ({best_pdf.stat().st_size} bytes)")
+    return dest_name
+
+
 async def save_feedback(
     ticker: str,
     text: str,
@@ -75,6 +108,11 @@ async def save_feedback(
             f.write(content)
         files_saved.append(safe_name)
         logger.info(f"[{ticker}] Feedback file saved: {safe_name} ({len(content)} bytes)")
+
+    # Auto-attach the latest deep-dive PDF so we know which version Nami reviewed
+    pdf_attached = _attach_latest_pdf(ticker, fb_dir, entry_id)
+    if pdf_attached:
+        files_saved.insert(0, pdf_attached)  # PDF first for visibility
 
     # Build entry
     entry = {
