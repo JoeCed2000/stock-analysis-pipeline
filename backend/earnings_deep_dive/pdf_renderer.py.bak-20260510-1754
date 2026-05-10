@@ -571,7 +571,7 @@ def _earnings_documents_story(
             )()
         },
     )()
-    story = [Paragraph("Earnings Documents", styles["section"])] + _table(section, styles, fonts)
+    story = [Paragraph("Earnings Documents", styles["section"]), _table(section, styles, fonts)]
     # Page break before sections is handled by the main render loop
     return story
 
@@ -609,7 +609,7 @@ def _section_continuation(section, report: EarningsDeepDiveReport) -> list[str]:
 
 def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Table:
     """Build a ReportLab Table with proper word-wrapping via Paragraph cells."""
-    MAX_CELL_CHARS = 150  # aggressive truncation for Source/Driver columns
+    MAX_CELL_CHARS = 250
     
     # Build cell style — compact font, tight leading, force word wrap
     cell_style = ParagraphStyle(
@@ -628,14 +628,7 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
     data = [
         [_paragraph(column, styles["small_bold"], font_name=fonts.bold) for column in section.table.columns]
     ]
-    explanation_rows = []  # yanked out: render as prose below table
     for row in section.table.rows:
-        label = str(row.label).strip()
-        # Skip explanation/discussion rows — they bloat table cells and crash the renderer
-        if label.lower().startswith(("explanation", "discussion", "analysis", "commentary", "note")):
-            full_text = label + ": " + " ".join(str(c) for c in row.cells)
-            explanation_rows.append(full_text)
-            continue
         row_values = [row.label, *row.cells]
         truncated = []
         for cell in row_values:
@@ -652,10 +645,10 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
     if col_count == 7:
         # Wider Driver column (most text-heavy) — compress Segment and % of Total
         # Segment | Revenue | Prior Year | YoY | % of Total | Driver | Source
-        col_widths = [1.10 * inch, 0.90 * inch, 0.90 * inch, 0.80 * inch, 0.62 * inch, 1.55 * inch, 1.20 * inch]
+        col_widths = [1.10 * inch, 0.92 * inch, 0.92 * inch, 0.82 * inch, 0.64 * inch, 1.60 * inch, 1.05 * inch]
     elif col_count == 6:
         # Wider Source column to prevent overflow — shrink label column
-        col_widths = [1.15 * inch, 1.05 * inch, 1.00 * inch, 0.95 * inch, 1.30 * inch, 1.65 * inch]
+        col_widths = [1.20 * inch, 1.10 * inch, 1.05 * inch, 1.00 * inch, 1.20 * inch, 1.60 * inch]
     elif col_count == 5:
         col_widths = [1.20 * inch, 1.15 * inch, 1.15 * inch, 1.25 * inch, 1.60 * inch]
     elif col_count == 4:
@@ -689,7 +682,7 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
             ]
         )
     )
-    return [table] + [Paragraph(escape(_glyph_safe(t[:300], font_name=fonts.regular)), cell_style) for t in explanation_rows]
+    return table
 
 
 def _footer(canvas, doc, font_name: str = "Helvetica") -> None:
@@ -814,7 +807,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             # Render Highlights as structured prose — no table
             pass
         else:
-            story.extend(_table(section, styles, fonts))
+            story.append(_table(section, styles, fonts))
         if section.analysis:
             for paragraph in section.analysis:
                 story.extend(_paragraph_with_emojis(paragraph, styles["body"], font_name=fonts.regular))

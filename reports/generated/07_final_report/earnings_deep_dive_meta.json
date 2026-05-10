@@ -1,9 +1,9 @@
 {
   "ticker": "NVDA",
-  "company": "NVDA",
+  "company": "NVIDIA Corporation",
   "quarter": "latest quarter",
   "language": "en",
-  "generated_at": "2026-05-09T21:24:31.777976+00:00",
+  "generated_at": "2026-05-10T13:00:13.331003+00:00",
   "provider": "Codex CLI local",
   "max_tokens_per_call": 4000,
   "sections": {
@@ -79,12 +79,12 @@
     }
   },
   "warnings": [],
-  "transcript_url": "https://www.fool.com/earnings/call-transcripts/2025/11/19/nvidia-nvda-q3-2026-earnings-call-transcript/",
+  "transcript_url": "https://www.marketbeat.com/stocks/NASDAQ/NVDA/earnings/",
   "transcript": {
     "found": true,
     "source_count": 1,
     "primary_source": "DuckDuckGo Web Search",
-    "url": "https://www.fool.com/earnings/call-transcripts/2025/11/19/nvidia-nvda-q3-2026-earnings-call-transcript/"
+    "url": "https://www.marketbeat.com/stocks/NASDAQ/NVDA/earnings/"
   },
   "output_files": {
     "markdown": "/mnt/c/Users/cedon/Documents/Codex/stock-analysis-pipeline/reports/generated/07_final_report/earnings_deep_dive.md",

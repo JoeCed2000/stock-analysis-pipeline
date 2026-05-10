@@ -10,6 +10,7 @@ import AdminPage from './components/AdminPage.jsx';
 import { analyzeTickersAsync, getJobStatus, getDossierStatus, countDossierSections } from './api.js';
 import translations from './i18n.js';
 
+// BUILD: v2 — SmartLoader 4-step activity, t() interpolation, skeleton loading
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 const ESTIMATED_SEC_PER_TICKER = 22;
@@ -20,7 +21,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [dossierPhase, setDossierPhase] = useState(false); // true when building dossier after analysis
   const [error, setError] = useState(null);
-  const [progress, setProgress] = useState({ current: 0, total: 0, ticker: '' });
+  const [progress, setProgress] = useState({ current: 0, total: 0, ticker: '', companyName: '' });
   const [showAdmin, setShowAdmin] = useState(() => window.location.hash === '#admin');
 
   useEffect(() => {
@@ -44,7 +45,15 @@ export default function App() {
     }
   };
 
-  const t = (key) => translations[lang]?.[key] || translations.en[key] || key;
+  const t = (key, params) => {
+    let str = translations[lang]?.[key] || translations.en[key] || key;
+    if (params) {
+      for (const [k, v] of Object.entries(params)) {
+        str = str.replaceAll(`{${k}}`, v);
+      }
+    }
+    return str;
+  };
 
   const handleViewReport = (result) => {
     // Open the deep-dive PDF in a new tab with current language
@@ -89,7 +98,7 @@ export default function App() {
             // Don't show cards yet — wait for dossier to be fully built
             const resultsList = data?.results || [];
             setDossierPhase(true);
-            setProgress({ current: total, total, ticker: '' });
+            setProgress({ current: total, total, ticker: resultsList[0]?.ticker || '' });
             timedOut = false;
 
             // Poll dossier status for each ticker (wait up to 6 min)
@@ -229,6 +238,7 @@ export default function App() {
             total={progress.total}
             current={progress.current}
             ticker={progress.ticker}
+            companyName={progress.companyName}
             t={t}
           />
 
@@ -251,10 +261,10 @@ export default function App() {
         </div>
       )}
 
-      {/* Show skeleton while dossier is building */}
-      {dossierPhase && (
+      {/* Show skeletons during loading and dossier building */}
+      {(loading || dossierPhase) && progress.total > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 400px))', gap: 20, marginTop: 16, justifyContent: 'center' }}>
-          <SkeletonCard />
+          {Array.from({ length: progress.total }, (_, i) => <SkeletonCard key={i} />)}
         </div>
       )}
 

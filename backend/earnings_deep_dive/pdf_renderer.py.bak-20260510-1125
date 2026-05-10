@@ -303,41 +303,20 @@ _CIRCLED_DIGIT_MAP = str.maketrans({
     '\u2470': '(17)', '\u2471': '(18)', '\u2472': '(19)', '\u2473': '(20)',
 })
 
-# ── Inline emoji markers — KEEP as Unicode, render as images ─────────
-# No more ASCII replacements. Emojis are structural markers (model parity):
-#   👉 = investor implication   🧠 = Nami analysis   🎯 = verdict
-#   ⚠️ = warning/lowlight   📊 = data table   📌 = formula
-# Rendered as inline PIL+NotoColorEmoji images via _paragraph_with_emojis()
-_STRUCTURAL_EMOJIS = re.compile(
-    '[\U0001F300-\U0001F9FF'  # Misc Symbols, Emoticons, Supplemental, etc.
-    '\U00002600-\U000027BF'    # Misc Symbols, Dingbats
-    '\U0001F000-\U0001F02F'    # Mahjong, Domino
-    ']'
-)
-
-# Only strip truly useless emojis (redundant with other markers)
-_EMOJI_STRIP_MAP = str.maketrans({
-    '\U0001F4B0': '',   # 💰 → redundant (revenue numbers speak)
-    '\U0001F4C8': '',   # 📈 → redundant
-    '\U0001F4E6': '',   # 📦 → redundant
-    '\U0001F4A1': '',   # 💡 → redundant
-    '\U0001F4CB': '',   # 📋 → redundant
-    '\U0001F514': '',   # 🔔 → redundant
-})
-
-
-# ── Fullwidth → ASCII mapping (LLM leakage) ──────────────────────────────
-# LLMs sometimes output fullwidth characters that have no Helvetica glyphs.
-_FULLWIDTH_MAP = str.maketrans({
-    **{chr(cp): chr(cp - 0xFEE0) for cp in range(0xFF01, 0xFF5F)},  # ！→!, ０→0, Ａ→A, etc.
-    '\u3000': ' ',   # ideographic space → regular space
-    '\u3001': ',',   # ideographic comma
-    '\u3002': '.',   # ideographic full stop
-    '\u2018': "'",   # left single quote
-    '\u2019': "'",   # right single quote
-    '\u201C': '"',   # left double quote
-    '\u201D': '"',   # right double quote
-    '\uFF0D': '-',   # fullwidth hyphen-minus
+# ── Inline emoji marker → BMP-safe equivalent (model parity) ─────────
+_EMOJI_MARKER_MAP = str.maketrans({
+    '\U0001F449': '\u2192 ',   # 👉 → rightwards arrow
+    '\U0001F9E0': '',          # 🧠 → stripped (redundant, preserved via ■ markers)
+    '\U0001F3AF': '\u25C6 ',   # 🎯 → black diamond
+    '\U0001F4CC': '\u2022 ',   # 📌 → bullet
+    '\U0001F4CA': '',          # 📊 → stripped (used in section titles already)
+    '\U0001F4B0': '',          # 💰 → stripped
+    '\U0001F4C8': '',          # 📈 → stripped
+    '\U0001F4E6': '',          # 📦 → stripped
+    '\U0001F4A1': '',          # 💡 → stripped
+    '\U0001F4CB': '',          # 📋 → stripped
+    '\U0001F514': '',          # 🔔 → stripped
+    '\U0001F511': '\u26BF ',   # 🔑 → key symbol
 })
 
 
@@ -346,10 +325,8 @@ def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
     value = str(text)
     # Replace circled digits with parenthesized numbers — DejaVu has no glyphs
     value = value.translate(_CIRCLED_DIGIT_MAP)
-    # Strip redundant emojis (💰📈📦💡📋🔔) but keep structural ones (👉🧠🎯⚠️📊📌✅❌)
-    value = value.translate(_EMOJI_STRIP_MAP)
-    # Map fullwidth characters to ASCII (LLM leakage prevention)
-    value = value.translate(_FULLWIDTH_MAP)
+    # Map inline emoji markers to BMP-safe equivalents (model parity)
+    value = value.translate(_EMOJI_MARKER_MAP)
     # CJK fonts can handle their character ranges natively
     if font_name in ("MS-PGothic", "HeiseiMin-W3"):
         return value
@@ -361,9 +338,8 @@ def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
             or (0x2000 <= cp <= 0x206F)                           # General Punctuation (—–•…'')
             or (0x2190 <= cp <= 0x21FF)                           # Arrows (→←↑↓)
             or (0x25A0 <= cp <= 0x26FF)                           # Geometric Shapes + Misc Symbols
-            or (0x2700 <= cp <= 0x27BF)                           # Dingbats (✔✘✪★⚠️)
-            or (0x2650 <= cp <= 0x265F)                           # Chess symbols
-            or (0x1F300 <= cp <= 0x1F9FF)):                       # Emoji (👉🧠🎯📊📌✅❌ etc.)
+            or (0x2700 <= cp <= 0x27BF)                           # Dingbats (✔✘✪★)
+            or (0x2650 <= cp <= 0x265F)):                         # Chess symbols
             safe.append(ch)
         else:
             continue  # Strip silently — never inject '?'
@@ -394,97 +370,15 @@ def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragr
     # Double newlines → paragraph break, single newlines → line break
     formatted = formatted.replace('\n\n', '<br/><br/>')
     formatted = formatted.replace('\n', '<br/>')
-    # Ensure bullet markers and key phrases always start on a new line.
-    # Process LONGER phrases first to avoid partial matches (e.g., 'For Nami-san'
-    # before 'Nami-san'). Only match when preceded by space or at line start.
-    import re as _re_markers
-    marker_list = sorted([
-        '●', '•', '👉', '→', '🎯', '⚠️', '✅', '❌',
-        'For Nami-san', 'Nami-san', 'Namiさん',
-        '①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩',
-        'Caution:', 'Essential insight:', 'One-line summary:',
-        'Nami takeaway:', 'Verdict takeaway:', 'Operating takeaway:',
-        'Cash flow takeaway:', 'Capital efficiency takeaway:',
-        'Valuation takeaway:',
-    ], key=len, reverse=True)  # longest first
-    for marker in marker_list:
-        # Match marker preceded by space or at start of text (after <br/>)
-        escaped_marker = _re_markers.escape(marker)
-        formatted = _re_markers.sub(
-            rf'(?<=[ >])({escaped_marker})',
-            rf'<br/>\1',
-            formatted
-        )
-    # ── Strip orphaned markers / empty bullets ──
-    # Lines like "<br/>●" or "<br/>● " or "<br/>>" with nothing after are clutter
-    formatted = _re_markers.sub(r'<br/>\s*(●|•|👉|→|>|🎯|⚠️|✅|❌)\s*<br/>', '<br/>', formatted)
-    # Remove leading standalone markers with nothing after
-    formatted = _re_markers.sub(r'^(●|•|👉|→|>|🎯|⚠️|✅|❌)\s*<br/>', '', formatted, flags=_re_markers.MULTILINE)
-    formatted = _re_markers.sub(r'<br/>(●|•|👉|→|>|🎯|⚠️|✅|❌)\s*$', '', formatted)
+    # Ensure bullet markers (●, •, 👉, →, -) always start on a new line
+    for marker in ('●', '•', '👉', '→', ' - ', '🎯', '⚠️', '✅', '❌'):
+        formatted = formatted.replace(f' {marker}', f'<br/>{marker}')
     escaped = escape(formatted)
     # Unescape the XML tags we intentionally added
-    escaped = escaped.replace('&lt;br/&gt;', '<br/>')
     escaped = escaped.replace('&lt;b&gt;', '<b>').replace('&lt;/b&gt;', '</b>')
     escaped = escaped.replace('&lt;i&gt;', '<i>').replace('&lt;/i&gt;', '</i>')
+    escaped = escaped.replace('&lt;br/&gt;', '<br/>')  # unescape our <br/> tags
     return Paragraph(escaped, style)
-
-
-def _paragraph_with_emojis(text: str, style: ParagraphStyle, *, font_name: str, emoji_size: int = 14) -> list:
-    """Render text with inline emoji images. Returns list of flowables.
-
-    Structural emojis (👉🧠🎯⚠️📊📌✅❌) are kept as Unicode in the text
-    and rendered as PIL+NotoColorEmoji PNG images via a single-row Table
-    that simulates inline rendering with zero padding.
-
-    Non-emoji text flows through _paragraph_md for standard formatting.
-    """
-    # Pre-process: strip redundant emojis, keep structural ones
-    clean = str(text).translate(_EMOJI_STRIP_MAP)
-    clean = _glyph_safe(clean, font_name=font_name)
-
-    # Split text at structural emoji boundaries
-    segments = _STRUCTURAL_EMOJIS.split(clean)
-    emojis = _STRUCTURAL_EMOJIS.findall(clean)
-
-    if not emojis:
-        # No emojis — use standard paragraph
-        return [_paragraph_md(text, style, font_name=font_name)]
-
-    # Build inline table: [text_seg, emoji_img, text_seg, emoji_img, ...]
-    cells = []
-    for i, seg in enumerate(segments):
-        if seg.strip():
-            cells.append(_paragraph_md(seg, style, font_name=font_name))
-        if i < len(emojis):
-            emoji_char = emojis[i]
-            # Skip ◆ rendering via emoji font — use diamond image instead
-            if emoji_char == '◆':
-                cells.append(_diamond_image(size=emoji_size))
-            else:
-                cells.append(_emoji_to_image(emoji_char, size=emoji_size))
-
-    if not cells:
-        return [_paragraph_md(text, style, font_name=font_name)]
-
-    # Single-row table with zero padding for true inline rendering
-    col_widths = []
-    for cell in cells:
-        if isinstance(cell, Paragraph):
-            col_widths.append(None)  # auto-width for text
-        else:
-            col_widths.append(emoji_size + 2)
-
-    table = Table([cells], colWidths=col_widths, hAlign="LEFT")
-    table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-        ("TOPPADDING", (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-        ("BOX", (0, 0), (-1, -1), 0, colors.white),
-        ("INNERGRID", (0, 0), (-1, -1), 0, colors.white),
-    ]))
-    return [table]
 
 
 # ── Document structure helpers ──────────────────────────────────────────
@@ -571,7 +465,7 @@ def _earnings_documents_story(
             )()
         },
     )()
-    story = [Paragraph("Earnings Documents", styles["section"])] + _table(section, styles, fonts)
+    story = [Paragraph("Earnings Documents", styles["section"]), _table(section, styles, fonts)]
     # Page break before sections is handled by the main render loop
     return story
 
@@ -608,54 +502,32 @@ def _section_continuation(section, report: EarningsDeepDiveReport) -> list[str]:
 
 
 def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Table:
-    """Build a ReportLab Table with proper word-wrapping via Paragraph cells."""
-    MAX_CELL_CHARS = 150  # aggressive truncation for Source/Driver columns
-    
-    # Build cell style — compact font, tight leading, force word wrap
-    cell_style = ParagraphStyle(
-        "DeepDiveTableCell",
-        fontName=fonts.regular,
-        fontSize=7,
-        leading=8.5,
-        textColor=_TEXT,
-        alignment=TA_LEFT,
-        wordSpace=0,
-        splitLongWords=True,
-        allowWidows=0,
-        allowOrphans=0,
-    )
+    """Build a ReportLab Table. Cells >250 chars are truncated with ellipsis."""
+    MAX_CELL_CHARS = 250
     
     data = [
         [_paragraph(column, styles["small_bold"], font_name=fonts.bold) for column in section.table.columns]
     ]
-    explanation_rows = []  # yanked out: render as prose below table
     for row in section.table.rows:
-        label = str(row.label).strip()
-        # Skip explanation/discussion rows — they bloat table cells and crash the renderer
-        if label.lower().startswith(("explanation", "discussion", "analysis", "commentary", "note")):
-            full_text = label + ": " + " ".join(str(c) for c in row.cells)
-            explanation_rows.append(full_text)
-            continue
         row_values = [row.label, *row.cells]
+        # Truncate long cells to prevent absurd cell heights and text overlap
         truncated = []
         for cell in row_values:
             s = str(cell).strip()
             if len(s) > MAX_CELL_CHARS:
                 s = s[:MAX_CELL_CHARS - 1] + "…"
-            safe = _glyph_safe(s, font_name=fonts.regular)
-            truncated.append(Paragraph(escape(safe), cell_style))
+            truncated.append(_glyph_safe(escape(s), font_name=fonts.regular))
         data.append(truncated)
 
+    MAX_CELL_CHARS = 180
     available_width = LETTER[0] - (1.35 * inch)
     col_count = max(1, len(section.table.columns))
     MIN_COL = 1.00 * inch
     if col_count == 7:
-        # Wider Driver column (most text-heavy) — compress Segment and % of Total
-        # Segment | Revenue | Prior Year | YoY | % of Total | Driver | Source
-        col_widths = [1.10 * inch, 0.90 * inch, 0.90 * inch, 0.80 * inch, 0.62 * inch, 1.55 * inch, 1.20 * inch]
+        col_widths = [1.30 * inch, 0.95 * inch, 1.05 * inch, 0.90 * inch, 0.90 * inch, 1.00 * inch, 1.05 * inch]
     elif col_count == 6:
         # Wider Source column to prevent overflow — shrink label column
-        col_widths = [1.15 * inch, 1.05 * inch, 1.00 * inch, 0.95 * inch, 1.30 * inch, 1.65 * inch]
+        col_widths = [1.20 * inch, 1.10 * inch, 1.05 * inch, 1.00 * inch, 1.20 * inch, 1.60 * inch]
     elif col_count == 5:
         col_widths = [1.20 * inch, 1.15 * inch, 1.15 * inch, 1.25 * inch, 1.60 * inch]
     elif col_count == 4:
@@ -689,7 +561,7 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
             ]
         )
     )
-    return [table] + [Paragraph(escape(_glyph_safe(t[:300], font_name=fonts.regular)), cell_style) for t in explanation_rows]
+    return table
 
 
 def _footer(canvas, doc, font_name: str = "Helvetica") -> None:
@@ -785,13 +657,11 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
 
     for index, section in enumerate(report.sections):
         # ── Model parity: each section starts on a new page ──
-        # Skip page break when:
-        #  (a) previous section is empty/placeholder, or
-        #  (b) this section itself is empty — don't waste a blank page
+        # Skip page break when previous section is empty/placeholder
         prev_section = report.sections[index - 1] if index > 0 else None
         skip_break = (
-            (prev_section is not None and _section_is_empty(prev_section))
-            or _section_is_empty(section)
+            prev_section is not None
+            and _section_is_empty(prev_section)
         )
         if not skip_break:
             story.append(PageBreak())
@@ -814,10 +684,10 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             # Render Highlights as structured prose — no table
             pass
         else:
-            story.extend(_table(section, styles, fonts))
+            story.append(_table(section, styles, fonts))
         if section.analysis:
             for paragraph in section.analysis:
-                story.extend(_paragraph_with_emojis(paragraph, styles["body"], font_name=fonts.regular))
+                story.append(_paragraph_md(paragraph, styles["body"], font_name=fonts.regular))
 
         story.append(Spacer(1, 0.12 * inch))
         story.append(HRFlowable(width="60%", thickness=0.3, color=_MUTED, spaceAfter=0.08*inch))
@@ -825,7 +695,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             f"<b>{escape(section.summary_label)}</b>",
             styles["body"],
         ))
-        story.extend(_paragraph_with_emojis(
+        story.append(_paragraph_md(
             section.summary.strip() if section.summary.strip() else "Not available.",
             styles["body"],
             font_name=fonts.regular,
