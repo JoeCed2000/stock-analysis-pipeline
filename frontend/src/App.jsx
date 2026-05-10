@@ -7,7 +7,7 @@ import SmartLoader from './components/SmartLoader.jsx';
 import SkeletonCard from './components/SkeletonCard.jsx';
 import LanguageSelector from './components/LanguageSelector.jsx';
 import AdminPage from './components/AdminPage.jsx';
-import { analyzeTickersAsync, getJobStatus } from './api.js';
+import { analyzeTickersAsync, getJobStatus, getDossierStatus, countDossierSections } from './api.js';
 import translations from './i18n.js';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -18,6 +18,7 @@ export default function App() {
   const [mode, setMode] = useState('single');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [dossierPhase, setDossierPhase] = useState(false); // true when building dossier after analysis
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState({ current: 0, total: 0, ticker: '' });
   const [showAdmin, setShowAdmin] = useState(() => window.location.hash === '#admin');
@@ -47,7 +48,7 @@ export default function App() {
 
   const handleViewReport = (result) => {
     // Open the deep-dive PDF in a new tab
-    const pdfUrl = `${API_BASE}/api/report/${result.ticker}/pdf`;
+    const pdfUrl = `${API_BASE}/report/${result.ticker}/pdf`;
     window.open(pdfUrl, '_blank', 'noopener');
   };
 
@@ -84,9 +85,40 @@ export default function App() {
             if (data?.errors?.length > 0) {
               setError(`Errors: ${data.errors.join(', ')}`);
             }
-            setResults(data?.results || []);
+            // Don't show cards yet — wait for dossier to be fully built
+            const resultsList = data?.results || [];
+            setDossierPhase(true);
             setProgress({ current: total, total, ticker: '' });
             timedOut = false;
+
+            // Poll dossier status for each ticker (wait up to 6 min)
+            for (const r of resultsList) {
+              let dossierReady = false;
+              for (let d = 0; d < 120; d++) {
+                await new Promise(r2 => setTimeout(r2, 3000));
+                try {
+                  const ds = await getDossierStatus(r.ticker);
+                  if (ds && ds.ready) {
+                    dossierReady = true;
+                    break;
+                  }
+                  // Update progress text with section count
+                  const sectionCount = countDossierSections(ds?.files || []);
+                  setProgress(p => ({
+                    ...p,
+                    ticker: `📊 Building dossier… ${sectionCount}/7`,
+                  }));
+                } catch {
+                  // transient — keep polling
+                }
+              }
+              if (!dossierReady) {
+                console.warn(`Dossier timeout for ${r.ticker} — showing card anyway`);
+              }
+            }
+
+            setResults(resultsList);
+            setDossierPhase(false);
             break;
           }
           if (job.status === 'error') {
@@ -190,7 +222,7 @@ export default function App() {
       )}
 
       {/* Smart loading */}
-      {loading && progress.total > 0 && (
+      {(loading || dossierPhase) && progress.total > 0 && (
         <>
           <SmartLoader
             total={progress.total}
@@ -203,7 +235,7 @@ export default function App() {
             textAlign: 'center', color: '#8b949e', fontSize: 12,
             marginTop: 16, marginBottom: 8,
           }}>
-            {t('analysisDuration')}
+            {dossierPhase ? t('buildingDossier') || '📊 Building dossier…' : t('analysisDuration')}
           </div>
         </>
       )}
@@ -218,7 +250,14 @@ export default function App() {
         </div>
       )}
 
-      {results.length > 0 && (
+      {/* Show skeleton while dossier is building */}
+      {dossierPhase && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 400px))', gap: 20, marginTop: 16, justifyContent: 'center' }}>
+          <SkeletonCard />
+        </div>
+      )}
+
+      {results.length > 0 && !dossierPhase && (
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 400px))', gap: 20,
           marginTop: 16, justifyContent: 'center',
