@@ -167,12 +167,6 @@ export default function App() {
           {t('siteSubtitle')}
         </p>
 
-        <div style={{ marginTop: 6 }}>
-          <a href="#admin" style={{ fontSize: 11, color: '#484f58', textDecoration: 'none' }}>
-            ⚙️ Admin
-          </a>
-        </div>
-
         {!loading && (
         <div style={{ marginTop: 16 }}>
           <AboutSection t={t} />
