@@ -24,16 +24,16 @@ class SectionName(str):
 
 
 SECTION_TITLES: Dict[str, str] = {
-    "EPS & Revenue": "📊 EPS & Revenue",
-    "Highlights": "🌟 Highlights & ⚠️ Lowlights",
-    "Operating Metrics": "🧠 Operating Metrics",
-    "Cash Flow": "💰 Cash Flow",
-    "Capital Efficiency": "🎯 Capital Efficiency",
-    "Segments": "🧩 Segments",
-    "Forward P/E": "📈 Forward P/E",
-    "Backlog": "📦 Backlog Quality",
-    "Guidance": "🔮 Guidance",
-    "Verdict": "🏆 Verdict",
+    "EPS & Revenue": "EPS & Revenue",
+    "Highlights": "Highlights & Lowlights",
+    "Operating Metrics": "Operating Metrics",
+    "Cash Flow": "Cash Flow",
+    "Capital Efficiency": "Capital Efficiency",
+    "Segments": "Segments",
+    "Forward P/E": "Forward P/E",
+    "Backlog": "Backlog Quality",
+    "Guidance": "Guidance",
+    "Verdict": "Verdict",
 }
 
 SECTION_ORDER: List[str] = [
@@ -589,7 +589,15 @@ def _fmt_metrics(metrics: Dict[str, Any]) -> str:
     if not metrics:
         return ""
     parts = []
+    # EXCLUDE annual metrics to prevent quarterly/annual confusion.
+    # Sections that need annual data (Segments, full-year context) use raw SEC XBRL.
+    _ANNUAL_KEYS = {
+        "revenue_annual", "revenue_annual_growth", "net_income_annual",
+        "gross_profit_annual", "operating_income_annual",
+    }
     for key in sorted(metrics):
+        if key in _ANNUAL_KEYS:
+            continue  # skip — sections that need these pull from SEC XBRL directly
         value = metrics[key]
         if value is None or value == "" or value == "Not disclosed":
             continue  # skip missing values
@@ -688,7 +696,7 @@ Analysis question for context only; do not print it in the output:
 Section output contract:
 - Start with exactly: ## {title}
 - Use strict markdown only.
-- Use the PDF visual markers where applicable: 📊 🌟 ⚠️ 🧠 🎯 🧩 💰 📈 📦 🔮 🏆.
+- Use the ◆ marker for numbered analysis points (①②③ ◆ text).
 - Include the required table header exactly: {table_header}
 - CRITICAL: Keep the table LIGHTWEIGHT — only key numbers (metric|value columns). NO long prose in table cells. Max 20 words per cell.
 - ALL detailed analysis, explanations, and interpretations go BELOW the table as structured prose.

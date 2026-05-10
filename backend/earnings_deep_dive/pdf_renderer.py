@@ -52,8 +52,31 @@ def _get_emoji_font() -> ImageFont.FreeTypeFont:
     return _EMOJI_FONT
 
 
+def _diamond_image(size: int = 16) -> RLImage:
+    """Draw a filled yellow ◆ diamond using PIL shapes (no font dependency)."""
+    # Yellow diamond color matching _DIAMOND_YELLOW (#E6A817)
+    fill = (230, 168, 23)
+    s = size
+    # Diamond polygon: top, right, bottom, left
+    points = [(s/2, 0), (s, s/2), (s/2, s), (0, s/2)]
+    img = PILImage.new("RGBA", (s, s), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.polygon(points, fill=fill)
+    # Convert to RGB for PDF
+    img_rgb = PILImage.new("RGB", (s, s), (255, 255, 255))
+    img_rgb.paste(img, mask=img.split()[3])
+    buf = BytesIO()
+    img_rgb.save(buf, format="PNG")
+    buf.seek(0)
+    return RLImage(buf, width=size, height=size)
+
 def _emoji_to_image(char: str, size: int = 16) -> RLImage:
-    """Render a single emoji character as a ReportLab Image via PIL + NotoColorEmoji."""
+    """Render a single emoji character as a ReportLab Image via PIL + NotoColorEmoji.
+    
+    Falls back to _diamond_image for ◆ (U+25C6) which is not in NotoColorEmoji."""
+    # ◆ is not in NotoColorEmoji — draw as polygon instead
+    if char == "◆":
+        return _diamond_image(size)
     font = _get_emoji_font()
     # 1. Render on transparent background to get accurate bbox
     img = PILImage.new("RGBA", (136, 136), (0, 0, 0, 0))
@@ -63,7 +86,7 @@ def _emoji_to_image(char: str, size: int = 16) -> RLImage:
     bbox = img.getbbox()
     if bbox:
         img = img.crop(bbox)
-    # 3. Composite onto white RGB background (no alpha → better PDF viewer compat)
+    # 3. Composite onto white RGB background
     img_rgb = PILImage.new("RGB", img.size, (255, 255, 255))
     img_rgb.paste(img, mask=img.split()[3])
     buf = BytesIO()
@@ -74,54 +97,50 @@ def _emoji_to_image(char: str, size: int = 16) -> RLImage:
 
 # ── Section emoji prefixes (real color emoji, rendered as PNG images) ────
 _SECTION_PREFIXES: dict[str, str] = {
-    "EPS & Revenue":       "📊",
-    "Highlights":          "🌟⚠️",
-    "Operating Metrics":   "📈",
-    "Cash Flow":           "💰",
-    "Capital Efficiency":  "💡",
-    "Segments":            "📋",
-    "Forward P/E":         "📊",
-    "Backlog":             "📦",
-    "Guidance":            "🔮",
-    "Verdict":             "🏆",
+    "EPS & Revenue":       "◆",
+    "Highlights":          "◆",
+    "Operating Metrics":   "◆",
+    "Cash Flow":           "◆",
+    "Capital Efficiency":  "◆",
+    "Segments":            "◆",
+    "Forward P/E":         "◆",
+    "Backlog":             "◆",
+    "Guidance":            "◆",
+    "Verdict":             "◆",
 }
+
+# Yellow diamond marker color (model parity)
+_DIAMOND_YELLOW = colors.HexColor("#E6A817")
 
 
 def _section_title_flowables(section, styles: dict[str, ParagraphStyle], *,
                               font_name: str = "Helvetica",
                               emoji_size: int = 16) -> list:
-    """Return [Table(emoji_images + title_paragraph)] or [Paragraph] for CJK."""
-    prefix = _SECTION_PREFIXES.get(section.key)
+    """Return [Table(◆_image + title_paragraph)] or [Paragraph] for CJK.
+    
+    Model parity: ALL sections use the same yellow ◆ marker.
+    Rendered via PIL+NotoColorEmoji → PNG to guarantee glyph availability.
+    """
+    prefix = _SECTION_PREFIXES.get(section.key, "◆")
     if not prefix or font_name in ("MS-PGothic", "HeiseiMin-W3"):
         safe = _glyph_safe(section.title, font_name=font_name)
         return [Paragraph(escape(safe), styles["section"])]
 
-    # Build emoji Image cells for each non-space character in prefix
-    emoji_cells: list[RLImage] = []
-    for ch in prefix:
-        if ch.strip():
-            emoji_cells.append(_emoji_to_image(ch, size=emoji_size))
-    if not emoji_cells:
-        safe = _glyph_safe(section.title, font_name=font_name)
-        return [Paragraph(escape(safe), styles["section"])]
-
-    # Title text paragraph
+    # Render ◆ as PIL image
+    diamond_img = _emoji_to_image(prefix.strip() or "◆", size=emoji_size)
+    
     safe_title = _glyph_safe(section.title, font_name=font_name)
     title_para = Paragraph(escape(safe_title), styles["section"])
 
-    # Table with emoji images in separate columns + title in last column
-    columns = emoji_cells + [title_para]
-    emoji_col_width = emoji_size + 3
-    emoji_total = len(emoji_cells) * emoji_col_width
-    remaining = LETTER[0] - 1.24 * inch - emoji_total - 6
-    col_widths = [emoji_col_width] * len(emoji_cells) + [max(remaining, 100)]
-
-    data = [columns]
-    table = Table(data, colWidths=col_widths, hAlign="LEFT")
+    # Table: diamond image + title
+    col_w = emoji_size + 3
+    remaining = LETTER[0] - 1.24 * inch - col_w - 6
+    table = Table([[diamond_img, title_para]], 
+                  colWidths=[col_w, max(remaining, 100)], hAlign="LEFT")
     table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (len(emoji_cells) - 1, 0), 3),
+        ("RIGHTPADDING", (0, 0), (0, 0), 3),
         ("TOPPADDING", (0, 0), (-1, -1), 0),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
         ("BOX", (0, 0), (-1, -1), 0, colors.white),
@@ -337,6 +356,8 @@ def _format_markdown(text: str) -> str:
     """Convert basic markdown to ReportLab-compatible XML."""
     text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
     text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<i>\1</i>', text)
+    # Strip markdown headings that leak into the PDF (### Title → bold Title)
+    text = re.sub(r'^###\s+', '<b>', text, flags=re.MULTILINE)
     return text
 
 
@@ -498,17 +519,17 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
             truncated.append(_glyph_safe(escape(s), font_name=fonts.regular))
         data.append(truncated)
 
+    MAX_CELL_CHARS = 180
     available_width = LETTER[0] - (1.35 * inch)
     col_count = max(1, len(section.table.columns))
-    # Wider minimum column width to prevent text-wrapping explosions
     MIN_COL = 1.00 * inch
     if col_count == 7:
-        # Metric | Estimate | Actual | vs Est | YoY | ... | Source
         col_widths = [1.30 * inch, 0.95 * inch, 1.05 * inch, 0.90 * inch, 0.90 * inch, 1.00 * inch, 1.05 * inch]
     elif col_count == 6:
-        col_widths = [1.40 * inch, 1.10 * inch, 1.10 * inch, 1.05 * inch, 1.10 * inch, 1.40 * inch]
+        # Wider Source column to prevent overflow — shrink label column
+        col_widths = [1.20 * inch, 1.10 * inch, 1.05 * inch, 1.00 * inch, 1.20 * inch, 1.60 * inch]
     elif col_count == 5:
-        col_widths = [1.25 * inch, 1.25 * inch, 1.25 * inch, 1.35 * inch, 1.40 * inch]
+        col_widths = [1.20 * inch, 1.15 * inch, 1.15 * inch, 1.25 * inch, 1.60 * inch]
     elif col_count == 4:
         col_widths = [1.50 * inch, 1.50 * inch, 1.50 * inch, 1.50 * inch]
     elif col_count == 3:
@@ -691,8 +712,5 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
                 text += f": {escape(source.note)}"
             story.append(Paragraph(text, styles["body"]))
 
-    def draw_footer(canvas, doc) -> None:
-        _footer(canvas, doc, fonts.regular)
-
-    doc.build(story, onFirstPage=draw_footer, onLaterPages=draw_footer)
+    doc.build(story)
     return str(output)

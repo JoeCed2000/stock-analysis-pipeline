@@ -65,7 +65,7 @@ class DeepDiveRequest(BaseModel):
     metrics: FinancialMetrics = Field(default_factory=FinancialMetrics)
     transcript_text: Optional[str] = None
     transcript_url: Optional[str] = None
-    max_section_chars: int = Field(default=2400, ge=600, le=5000)
+    max_section_chars: int = Field(default=4500, ge=600, le=8000)
 
     @field_validator("ticker")
     @classmethod
