@@ -195,3 +195,13 @@ def get_dossier_status(ticker: str) -> dict:
     
     return status
 
+
+def _list_dossier_files(dossier_dir: Path) -> list:
+    """Recursively list all files in dossier directory."""
+    files = []
+    if dossier_dir.exists():
+        for fpath in sorted(dossier_dir.rglob("*")):
+            if fpath.is_file():
+                files.append(fpath)
+    return files
+
