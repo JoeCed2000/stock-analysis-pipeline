@@ -511,7 +511,11 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
     elif col_count == 4:
         col_widths = [1.50 * inch, 1.50 * inch, 1.50 * inch, 1.50 * inch]
     elif col_count == 3:
-        col_widths = [1.80 * inch, 1.80 * inch, 2.00 * inch]
+        # Earnings Documents table: wide URL column, narrower "Used for"
+        if any("URL" in c or "url" in c or "status" in c.lower() for c in section.table.columns):
+            col_widths = [1.70 * inch, 2.80 * inch, 1.40 * inch]
+        else:
+            col_widths = [1.80 * inch, 1.80 * inch, 2.00 * inch]
     elif col_count == 2:
         col_widths = [2.20 * inch, 3.20 * inch]
     else:
@@ -647,9 +651,8 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             emoji_size=20,
         ))
 
-        # Display the section question (model parity — dark red, above content)
-        if section.question:
-            story.append(Paragraph(escape(section.question), styles["question"]))
+        # Section question is used by the LLM as context — not displayed in PDF (model parity)
+        # The section title already identifies the topic
 
         # Prose-only sections (Highlights, Backlog when not applicable) skip the table
         if section.key == "Highlights":

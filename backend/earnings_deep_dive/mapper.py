@@ -1489,6 +1489,23 @@ def build_earnings_deep_dive_report(
     )
     company_website_url = _metric_url(metrics, "company_website", "website", "weburl", "official_website")
     transcript_source = _metric_text(metrics, "transcript_source", "transcript_provider") or "Transcript"
+    # Normalize: if source is a search engine/discovery tool, extract the real domain from URL
+    if transcript_url and any(x in transcript_source.lower() for x in ("duckduckgo", "web search", "google", "bing")):
+        from urllib.parse import urlparse
+        try:
+            domain = urlparse(transcript_url).netloc.replace("www.", "")
+            # Map common domains to human-readable names
+            DOMAIN_NAMES = {
+                "fool.com": "Motley Fool",
+                "seekingalpha.com": "Seeking Alpha",
+                "finance.yahoo.com": "Yahoo Finance",
+                "reuters.com": "Reuters",
+                "bloomberg.com": "Bloomberg",
+                "cnbc.com": "CNBC",
+            }
+            transcript_source = DOMAIN_NAMES.get(domain, domain.split(".")[0].title())
+        except Exception:
+            pass
     # Build transcript source entry — use the real source name and URL.
     # If no transcript was actually obtained, omit this source row entirely.
     sources = []
