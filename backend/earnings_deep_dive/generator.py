@@ -33,13 +33,14 @@ MAX_CODEX_TOKENS = 4000
 MAX_KIMI_TOKENS = MAX_CODEX_TOKENS
 
 def _llm_chat(prompt: str, system: str = "", max_tokens: int = MAX_CODEX_TOKENS) -> str | None:
-    """Try Kimi first (fast), fall back to Codex if unavailable."""
-    result = _kimi_provider_chat(prompt, system=system, max_tokens=max_tokens)
+    """Codex (GPT-5.5) first — zero tolerance for financial hallucinations.
+    Falls back to Kimi only if Codex is unavailable."""
+    result = codex_chat(prompt, system=system, max_tokens=max_tokens)
     if result:
         return result
     import sys
-    print(f"[DEBUG] Kimi returned None, falling back to Codex...", file=sys.stderr)
-    return codex_chat(prompt, system=system, max_tokens=max_tokens)
+    print(f"[DEBUG] Codex unavailable, falling back to Kimi...", file=sys.stderr)
+    return _kimi_provider_chat(prompt, system=system, max_tokens=max_tokens)
 
 kimi_chat = _llm_chat
 SECTION_MAX_CHARS = 6000
