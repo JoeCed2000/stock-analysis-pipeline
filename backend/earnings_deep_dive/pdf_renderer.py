@@ -320,6 +320,21 @@ _EMOJI_MARKER_MAP = str.maketrans({
 })
 
 
+# ── Fullwidth → ASCII mapping (LLM leakage) ──────────────────────────────
+# LLMs sometimes output fullwidth characters that have no Helvetica glyphs.
+_FULLWIDTH_MAP = str.maketrans({
+    **{chr(cp): chr(cp - 0xFEE0) for cp in range(0xFF01, 0xFF5F)},  # ！→!, ０→0, Ａ→A, etc.
+    '\u3000': ' ',   # ideographic space → regular space
+    '\u3001': ',',   # ideographic comma
+    '\u3002': '.',   # ideographic full stop
+    '\u2018': "'",   # left single quote
+    '\u2019': "'",   # right single quote
+    '\u201C': '"',   # left double quote
+    '\u201D': '"',   # right double quote
+    '\uFF0D': '-',   # fullwidth hyphen-minus
+})
+
+
 def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
     """Keep characters renderable by standard PDF fonts. Strip the rest silently."""
     value = str(text)
@@ -327,6 +342,8 @@ def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
     value = value.translate(_CIRCLED_DIGIT_MAP)
     # Map inline emoji markers to BMP-safe equivalents (model parity)
     value = value.translate(_EMOJI_MARKER_MAP)
+    # Map fullwidth characters to ASCII (LLM leakage prevention)
+    value = value.translate(_FULLWIDTH_MAP)
     # CJK fonts can handle their character ranges natively
     if font_name in ("MS-PGothic", "HeiseiMin-W3"):
         return value
@@ -391,6 +408,12 @@ def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragr
             rf'<br/>\1',
             formatted
         )
+    # ── Strip orphaned markers / empty bullets ──
+    # Lines like "<br/>●" or "<br/>● " or "<br/>>" with nothing after are clutter
+    formatted = _re_markers.sub(r'<br/>\s*(●|•|👉|→|>|🎯|⚠️|✅|❌)\s*<br/>', '<br/>', formatted)
+    # Remove leading standalone markers with nothing after
+    formatted = _re_markers.sub(r'^(●|•|👉|→|>|🎯|⚠️|✅|❌)\s*<br/>', '', formatted, flags=_re_markers.MULTILINE)
+    formatted = _re_markers.sub(r'<br/>(●|•|👉|→|>|🎯|⚠️|✅|❌)\s*$', '', formatted)
     escaped = escape(formatted)
     # Unescape the XML tags we intentionally added
     escaped = escaped.replace('&lt;br/&gt;', '<br/>')
