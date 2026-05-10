@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import TickerInput from './components/TickerInput.jsx';
 import BatchAnalysis from './components/BatchAnalysis.jsx';
 import AnalysisCard from './components/AnalysisCard.jsx';
-import ReportView from './components/ReportView.jsx';
 import AboutSection from './components/AboutSection.jsx';
 import SmartLoader from './components/SmartLoader.jsx';
 import SkeletonCard from './components/SkeletonCard.jsx';
@@ -11,6 +10,8 @@ import AdminPage from './components/AdminPage.jsx';
 import { analyzeTickersAsync, getJobStatus } from './api.js';
 import translations from './i18n.js';
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 const ESTIMATED_SEC_PER_TICKER = 22;
 
 export default function App() {
@@ -18,7 +19,6 @@ export default function App() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [reportResult, setReportResult] = useState(null);
   const [progress, setProgress] = useState({ current: 0, total: 0, ticker: '' });
   const [showAdmin, setShowAdmin] = useState(() => window.location.hash === '#admin');
 
@@ -46,7 +46,9 @@ export default function App() {
   const t = (key) => translations[lang]?.[key] || translations.en[key] || key;
 
   const handleViewReport = (result) => {
-    setReportResult(result);
+    // Open the deep-dive PDF in a new tab
+    const pdfUrl = `${API_BASE}/api/report/${result.ticker}/pdf`;
+    window.open(pdfUrl, '_blank', 'noopener');
   };
 
   const handleAnalyze = async (tickers) => {
@@ -232,10 +234,6 @@ export default function App() {
             />
           ))}
         </div>
-      )}
-
-      {reportResult && (
-        <ReportView ticker={reportResult.ticker} result={reportResult} onClose={() => setReportResult(null)} t={t} lang={lang} />
       )}
 
       <style>{`

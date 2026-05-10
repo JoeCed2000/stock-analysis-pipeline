@@ -1175,20 +1175,18 @@ async def get_job_status(job_id: str):
 
 @app.get("/api/report/{ticker}/pdf")
 async def get_report_pdf(ticker: str):
-    """Generate and retrieve PDF report for a ticker."""
+    """Serve the earnings deep-dive PDF for a ticker."""
     ticker = ticker.strip().upper()
     matches = _find_analysis_dirs(ticker)
     if not matches:
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
 
-    # Check if PDF already exists
-    pdf_path = matches[0] / "07_final_report" / "report.pdf"
+    # Prefer deep-dive PDF; fall back to main report PDF
+    deep_dive = matches[0] / "07_final_report" / "earnings_deep_dive.pdf"
+    report_pdf = matches[0] / "07_final_report" / "report.pdf"
+    pdf_path = deep_dive if deep_dive.exists() else report_pdf
     if not pdf_path.exists():
-        # Generate PDF from existing analysis
-        from backend.pdf_generator import generate_pdf
-        # Re-run analysis to get result object
-        # For now, serve the markdown report
-        raise HTTPException(status_code=503, detail="PDF generation requires re-analysis. Use /api/analyze first.")
+        raise HTTPException(status_code=404, detail=f"No PDF found for {ticker}")
 
     return FileResponse(pdf_path, media_type="application/pdf")
 
