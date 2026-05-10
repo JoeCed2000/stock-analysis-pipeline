@@ -515,13 +515,14 @@ def _load_yfinance():
     return yf
 
 
-def _yf_ticker_safe(ticker: str, timeout: int = 30):
-    """Create yf.Ticker with timeout to prevent hangs on slow Yahoo responses."""
+def _yf_ticker_safe(ticker: str, timeout: int = 120):
+    """Create yf.Ticker with timeout to prevent hangs on slow Yahoo responses.
+    Default 120s — mega-caps (NVDA, AAPL) need >60s for full financial statements."""
     import concurrent.futures
 
     def _create():
         yf = _load_yfinance()
-        return _yf_ticker_safe(ticker)
+        return yf.Ticker(ticker)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(_create)
