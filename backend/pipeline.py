@@ -222,7 +222,11 @@ def _move_final_report_to_language_dir(output_dir: str, language: str) -> str:
 
 
 def _normalize_report_language(language: str) -> str:
-    return "jp" if language in ("jp", "ja") else "en"
+    if language in ("jp", "ja"):
+        return "jp"
+    if language == "bilingual":
+        return "bilingual"
+    return "en"
 
 
 def _quarterly_comparison_keys() -> list[str]:
@@ -767,52 +771,86 @@ def _add_earnings_deep_dive_if_transcript(
         from backend.earnings_deep_dive.mapper import build_earnings_deep_dive_report
         from backend.earnings_deep_dive.pdf_renderer import render_earnings_deep_dive_pdf
 
-        response = generate_deep_dive(
+        # Generate both EN and JP deep-dives (always bilingual)
+        en_output_dir = output_dir
+        jp_output_dir = os.path.join(output_dir, "jp")
+        os.makedirs(jp_output_dir, exist_ok=True)
+
+        en_response = generate_deep_dive(
             DeepDiveRequest(
                 ticker=ticker,
                 company=company_name,
                 quarter=transcript_quarter,
-                language=report_language,
-                output_dir=output_dir,
+                language="en",
+                output_dir=en_output_dir,
                 metrics=deep_dive_metrics,
                 transcript_text=transcript_text,
                 transcript_url=transcript_url,
             )
         )
-        response.sections = _strip_prompt_leaks_from_sections(response.sections)
+        en_response.sections = _strip_prompt_leaks_from_sections(en_response.sections)
 
-        pdf_path = os.path.join(output_dir, "07_final_report", "earnings_deep_dive.pdf")
-        report_model = build_earnings_deep_dive_report(
+        jp_response = generate_deep_dive(
+            DeepDiveRequest(
+                ticker=ticker,
+                company=company_name,
+                quarter=transcript_quarter,
+                language="jp",
+                output_dir=jp_output_dir,
+                metrics=deep_dive_metrics,
+                transcript_url=transcript_url,
+            )
+        )
+        jp_response.sections = _strip_prompt_leaks_from_sections(jp_response.sections)
+
+        # Render EN PDF (default location)
+        en_pdf_path = os.path.join(en_output_dir, "07_final_report", "earnings_deep_dive.pdf")
+        en_report_model = build_earnings_deep_dive_report(
             ticker=ticker,
             company=company_name,
             quarter=transcript_quarter,
-            language=report_language,
+            language="en",
             metrics=deep_dive_metrics,
             transcript_url=transcript_url,
-            section_analysis=response.sections,
+            section_analysis=en_response.sections,
         )
         if website:
             from backend.earnings_deep_dive.report_model import SourceRef
-            report_model.sources.append(SourceRef(label="Official Website", url=website))
-        render_earnings_deep_dive_pdf(report_model, pdf_path)
+            en_report_model.sources.append(SourceRef(label="Official Website", url=website))
+        render_earnings_deep_dive_pdf(en_report_model, en_pdf_path)
 
-        logger.info(f"[{ticker}] Earnings deep-dive added to dossier")
-        
+        # Render JP PDF
+        jp_pdf_path = os.path.join(jp_output_dir, "07_final_report", "earnings_deep_dive.pdf")
+        jp_report_model = build_earnings_deep_dive_report(
+            ticker=ticker,
+            company=company_name,
+            quarter=transcript_quarter,
+            language="jp",
+            metrics=deep_dive_metrics,
+            transcript_url=transcript_url,
+            section_analysis=jp_response.sections,
+        )
+        if website:
+            jp_report_model.sources.append(SourceRef(label="Official Website", url=website))
+        render_earnings_deep_dive_pdf(jp_report_model, jp_pdf_path)
+
+        logger.info(f"[{ticker}] Earnings deep-dive added to dossier (EN + JP)")
+
         # ── Post-generation validation ──
         from backend.earnings_deep_dive.deep_dive_validator import validate_deep_dive, validate_render_model
-        
-        en_md = response.markdown_path
+
+        en_md = en_response.markdown_path
         md_passed, issues = validate_deep_dive(en_md)
-        render_issues = validate_render_model(report_model)
+        render_issues = validate_render_model(en_report_model)
         issues = issues + render_issues
         passed = md_passed and not render_issues
         validation_result = {"passed": passed, "issues": issues, "checked_at": datetime.now(timezone.utc).isoformat()}
-        
-        # Write validation result next to the markdown
+
+        # Write validation result next to the EN markdown
         val_path = os.path.join(os.path.dirname(en_md), "deep_dive_validation.json")
         with open(val_path, "w") as f:
             json.dump(validation_result, f, indent=2)
-        
+
         if not passed:
             logger.warning(f"[{ticker}] Deep-dive validation FAILED ({len(issues)} issues)")
             for issue in issues[:5]:

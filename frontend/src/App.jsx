@@ -47,8 +47,9 @@ export default function App() {
   const t = (key) => translations[lang]?.[key] || translations.en[key] || key;
 
   const handleViewReport = (result) => {
-    // Open the deep-dive PDF in a new tab
-    const pdfUrl = `${API_BASE}/report/${result.ticker}/pdf`;
+    // Open the deep-dive PDF in a new tab with current language
+    const langParam = lang === 'ja' || lang === 'jp' ? '?lang=ja' : '';
+    const pdfUrl = `${API_BASE}/report/${result.ticker}/pdf${langParam}`;
     window.open(pdfUrl, '_blank', 'noopener');
   };
 

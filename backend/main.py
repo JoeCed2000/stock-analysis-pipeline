@@ -1182,16 +1182,23 @@ async def get_job_status(job_id: str):
 
 
 @app.get("/api/report/{ticker}/pdf")
-async def get_report_pdf(ticker: str):
-    """Serve the earnings deep-dive PDF for a ticker."""
+async def get_report_pdf(ticker: str, lang: str = "en"):
+    """Serve the earnings deep-dive PDF for a ticker in the requested language.
+    Use ?lang=ja or ?lang=jp for Japanese. Defaults to English."""
     ticker = ticker.strip().upper()
     matches = _find_analysis_dirs(ticker)
     if not matches:
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
 
-    # Prefer deep-dive PDF; fall back to main report PDF
-    deep_dive = matches[0] / "07_final_report" / "earnings_deep_dive.pdf"
-    report_pdf = matches[0] / "07_final_report" / "report.pdf"
+    # Language-specific path
+    analysis_dir = matches[0]
+    if lang in ("jp", "ja"):
+        deep_dive = analysis_dir / "jp" / "07_final_report" / "earnings_deep_dive.pdf"
+    else:
+        deep_dive = analysis_dir / "07_final_report" / "earnings_deep_dive.pdf"
+    report_pdf = analysis_dir / "07_final_report" / "report.pdf"
+
+    # Prefer deep-dive PDF, fall back to main report PDF (language-agnostic)
     pdf_path = deep_dive if deep_dive.exists() else report_pdf
     if not pdf_path.exists():
         raise HTTPException(status_code=404, detail=f"No PDF found for {ticker}")
