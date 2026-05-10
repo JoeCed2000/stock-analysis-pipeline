@@ -809,6 +809,10 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
                 ))
                 logger.info(f"[{ticker}] Deep-dive regenerated for {quarter}")
                 
+                # Strip echoed prompt questions from LLM output (mirrors pipeline.py)
+                from backend.pipeline import _strip_prompt_leaks_from_sections
+                response.sections = _strip_prompt_leaks_from_sections(response.sections)
+
                 # Render PDF and validate (mirrors _add_earnings_deep_dive_if_transcript)
                 from backend.earnings_deep_dive.mapper import build_earnings_deep_dive_report
                 from backend.earnings_deep_dive.pdf_renderer import render_earnings_deep_dive_pdf

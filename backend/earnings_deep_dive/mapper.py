@@ -1318,6 +1318,15 @@ def build_earnings_deep_dive_report(
         analysis_text = analysis_by_key.get(section.key) or analysis_by_key.get(section.title)
         if analysis_text:
             analysis_text = _clean_prose(analysis_text)
+            # Strip echoed template question (LLM sometimes echoes it verbatim)
+            if section.question and analysis_text.startswith(section.question):
+                analysis_text = analysis_text[len(section.question):].strip()
+            # Also strip any "Please X..." / "What X..." / "Question (EN): ..." instruction line at start
+            import re as _re_strip
+            analysis_text = _re_strip.sub(
+                r"^(?:(?:question\s*\(EN\):\s*)|(?:please\s+\w+)|(?:what\s+\w+)|(?:how\s+(?:is|are|was|were|does|do|did|can|could|should|would|will|has|have)\b))[^\n]*\n?",
+                "", analysis_text, count=1, flags=_re_strip.IGNORECASE
+            ).strip()
         codex_table = _extract_markdown_table(analysis_text, section.table_columns) if analysis_text else None
         
         # For data-driven sections, ignore the LLM table and use yfinance rows directly.
@@ -1468,7 +1477,8 @@ def build_earnings_deep_dive_report(
                         analysis_items[i] = item
                     # Also append the validated source note
                     pe_note = f"[Source: yfinance forwardPE = {pe_val}]"
-                    analysis_items[-1] = analysis_items[-1] + "\n\n" + pe_note
+                    if analysis_items:
+                        analysis_items[-1] = analysis_items[-1] + "\n\n" + pe_note
         sections.append(
             RenderedSection(
                 key=section.key,

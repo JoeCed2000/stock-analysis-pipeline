@@ -684,14 +684,27 @@ def _apply_press_release_metrics(
 
 
 def _strip_prompt_leak_text(text: str) -> str:
+    """Strip echoed prompt questions from LLM output before PDF rendering.
+
+    The LLM sometimes echoes the question back in its response, e.g.:
+    - "Please summarize EPS and revenue performance..."
+    - "What is the forward P/E..."
+    - "How were operating income..."
+
+    We strip these aggressively — prompt instructions are NOT report content.
+    """
     if not isinstance(text, str) or not text:
         return text
+    # Strip instruction lines: "Please <any verb> ...", "What <verb/noun> ...", "How <verb> ...", "Question (EN): ..."
     cleaned = re.sub(
-        r"(?im)^\s*please\s+(?:summarize|explain|state)\b[^\n]*(?:\n|$)",
+        r"(?im)^\s*(?:(?:question\s*\(EN\):\s*)|(?:please\s+\w+)|(?:what\s+\w+)|(?:how\s+(?:is|are|was|were|does|do|did|can|could|should|would|will|has|have)\b))[^\n]*\n?",
         "",
         text,
     )
-    cleaned = re.sub(r"(?i)\bplease\s+(?:summarize|explain|state)\b[:\s,.-]*", "", cleaned)
+    # Also strip standalone question marks on otherwise-empty-looking lines (LLM echoes)
+    cleaned = re.sub(r"(?im)^\s*\?\s*$", "", cleaned)
+    # Collapse multiple blank lines
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
 
 
