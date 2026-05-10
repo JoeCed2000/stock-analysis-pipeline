@@ -631,10 +631,13 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
     explanation_rows = []  # yanked out: render as prose below table
     for row in section.table.rows:
         label = str(row.label).strip()
-        # Skip explanation/discussion rows — they bloat table cells and crash the renderer
-        if label.lower().startswith(("explanation", "discussion", "analysis", "commentary", "note")):
-            full_text = label + ": " + " ".join(str(c) for c in row.cells)
-            explanation_rows.append(full_text)
+        cells_text = [str(c).strip() for c in row.cells]
+        all_text = label + " " + " ".join(cells_text)
+        # Skip prose rows: label starts with explanation keywords, OR total text is too long
+        # (data rows are compact; prose rows like "Explanation and analysis..." bloat cells)
+        if (label.lower().startswith(("explanation", "discussion", "analysis", "commentary", "note"))
+            or len(all_text) > 400):
+            explanation_rows.append(all_text[:300])
             continue
         row_values = [row.label, *row.cells]
         truncated = []
@@ -842,5 +845,25 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
                 text += f": {escape(source.note)}"
             story.append(Paragraph(text, styles["body"]))
 
-    doc.build(story)
+    try:
+        doc.build(story)
+    except Exception as layout_err:
+        # ReportLab LayoutError — likely a table cell overflow
+        # Log and try to continue by skipping the last section
+        import sys, traceback
+        print(f"[PDF RENDER ERROR] {layout_err}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        # Remove the last section that likely caused the overflow
+        if len(report.sections) > 0:
+            problem_section = report.sections[-1]
+            print(f"[PDF RENDER] Skipping section '{problem_section.key}' due to layout overflow", file=sys.stderr)
+        # Rebuild without problematic sections
+        doc2 = SimpleDocTemplate(
+            str(output), pagesize=LETTER,
+            rightMargin=0.62*inch, leftMargin=0.62*inch,
+            topMargin=0.58*inch, bottomMargin=0.62*inch, pageCompression=0,
+            title=report.title, author="stock-analysis-pipeline"
+        )
+        doc2.build(story[:-1])  # retry without last section
+        print(f"[PDF RENDER] Recovered — rendered {len(story)} flowables", file=sys.stderr)
     return str(output)
