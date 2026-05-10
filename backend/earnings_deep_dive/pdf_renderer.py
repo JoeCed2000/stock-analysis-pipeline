@@ -438,6 +438,9 @@ def _paragraph_with_emojis(text: str, style: ParagraphStyle, *, font_name: str, 
 
     Non-emoji text flows through _paragraph_md for standard formatting.
     """
+    # Safety: long text with many emojis creates wide inline tables that overflow the page
+    if len(text) > 500:
+        return [_paragraph_md(text, style, font_name=font_name)]
     # Pre-process: strip redundant emojis, keep structural ones
     clean = str(text).translate(_EMOJI_STRIP_MAP)
     clean = _glyph_safe(clean, font_name=font_name)
