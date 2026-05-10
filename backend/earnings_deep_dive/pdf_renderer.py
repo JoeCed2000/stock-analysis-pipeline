@@ -609,7 +609,7 @@ def _section_continuation(section, report: EarningsDeepDiveReport) -> list[str]:
 
 def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Table:
     """Build a ReportLab Table with proper word-wrapping via Paragraph cells."""
-    MAX_CELL_CHARS = 150  # aggressive truncation for Source/Driver columns
+    MAX_CELL_CHARS = 80  # aggressive truncation — prevents cell overflow crashes
     
     # Build cell style — compact font, tight leading, force word wrap
     cell_style = ParagraphStyle(
@@ -636,7 +636,7 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
         # Skip prose rows: label starts with explanation keywords, OR total text is too long
         # (data rows are compact; prose rows like "Explanation and analysis..." bloat cells)
         if (label.lower().startswith(("explanation", "discussion", "analysis", "commentary", "note"))
-            or len(all_text) > 400):
+            or len(all_text) > 200):
             explanation_rows.append(all_text[:300])
             continue
         row_values = [row.label, *row.cells]
