@@ -1306,6 +1306,8 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
                 ("revenue_annual", "revenue"),
                 ("net_income", "net_income"),
                 ("free_cash_flow", "free_cash_flow"),
+                ("net_debt", "net_debt"),         # NEW: SEC XBRL total_debt - cash
+                ("gross_margin", "gross_margin"), # NEW: SEC XBRL gross_profit / revenue
             ]:
                 current = getattr(financials, attr, None)
                 edgar_val = edgar.get(edgar_key)

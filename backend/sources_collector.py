@@ -1393,8 +1393,11 @@ def get_edgar_financials(ticker: str) -> Optional[Dict[str, Any]]:
     """Fetch structured financial data from SEC EDGAR via edgartools.
     
     Returns dict with: revenue, net_income, free_cash_flow, operating_income,
-    total_assets, total_liabilities, stockholders_equity, shares_outstanding,
+    gross_profit, total_assets, total_liabilities, stockholders_equity,
+    cash_and_equivalents, total_debt, shares_outstanding,
     current_ratio, debt_to_assets, and metrics dict.
+    
+    Computed fields: net_debt (= total_debt - cash), gross_margin (= gross_profit / revenue).
     
     Returns None if edgartools unavailable or ticker not found.
     
@@ -1406,8 +1409,10 @@ def get_edgar_financials(ticker: str) -> Optional[Dict[str, Any]]:
         from edgar import Company, set_identity
         
         # edgartools crashes on empty HTTPS_PROXY — unset before import
-        for var in ('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy', 'ALL_PROXY', 'all_proxy'):
-            if os.environ.get(var, 'x') == '':
+        for var in ('HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy', 'ALL_PROXY', 'all_proxy',
+                     'HTTPS_PROXIES', 'HTTP_PROXIES', 'NO_PROXY', 'no_proxy'):
+            val = os.environ.get(var, None)
+            if val is not None and val.strip() == '':
                 del os.environ[var]
         
         set_identity('StockAnalysisPipeline/1.0 (contact@example.com)')
@@ -1415,19 +1420,50 @@ def get_edgar_financials(ticker: str) -> Optional[Dict[str, Any]]:
         company = Company(ticker)
         financials = company.get_financials()
         
+        # Core financials (already extracted)
+        revenue = financials.get_revenue()
+        net_income = financials.get_net_income()
+        free_cash_flow = financials.get_free_cash_flow()
+        operating_income = financials.get_operating_income()
+        
+        # New fields for deeper scoring
+        gross_profit = _safe_get(financials, 'get_gross_profit')
+        cost_of_revenue = _safe_get(financials, 'get_cost_of_revenue')
+        cash = _safe_get(financials, 'get_cash_and_equivalents') or _safe_get(financials, 'get_cash')
+        total_debt = _safe_get(financials, 'get_total_debt')
+        total_assets = financials.get_total_assets()
+        total_liabilities = financials.get_total_liabilities()
+        
+        # Computed fields
+        gross_margin = None
+        if gross_profit and revenue and revenue > 0:
+            gross_margin = round(gross_profit / revenue, 4)
+        elif revenue and cost_of_revenue and revenue > 0:
+            gross_profit = revenue - cost_of_revenue
+            gross_margin = round(gross_profit / revenue, 4)
+        
+        net_debt = None
+        if total_debt is not None and cash is not None:
+            net_debt = round(total_debt - cash, 2)
+        
         result = {
             "ticker": ticker,
             "cik": company.cik,
             "source": "sec_edgar_xbrl",
             "metrics": financials.get_financial_metrics(),
-            "revenue": financials.get_revenue(),
-            "net_income": financials.get_net_income(),
-            "free_cash_flow": financials.get_free_cash_flow(),
-            "operating_income": financials.get_operating_income(),
-            "total_assets": financials.get_total_assets(),
-            "total_liabilities": financials.get_total_liabilities(),
+            "revenue": revenue,
+            "net_income": net_income,
+            "free_cash_flow": free_cash_flow,
+            "operating_income": operating_income,
+            "gross_profit": gross_profit,
+            "gross_margin": gross_margin,
+            "total_assets": total_assets,
+            "total_liabilities": total_liabilities,
             "stockholders_equity": financials.get_stockholders_equity(),
             "shares_outstanding": financials.get_shares_outstanding_basic(),
+            "cash_and_equivalents": cash,
+            "total_debt": total_debt,
+            "net_debt": net_debt,
         }
         return result
     except ImportError:
@@ -1435,4 +1471,15 @@ def get_edgar_financials(ticker: str) -> Optional[Dict[str, Any]]:
         return None
     except Exception as e:
         logger.warning(f"edgartools failed for {ticker}: {e}")
+        return None
+
+
+def _safe_get(obj, method_name: str) -> Optional[Any]:
+    """Safely call a getter method on an object, returning None on any error."""
+    try:
+        method = getattr(obj, method_name, None)
+        if method is None:
+            return None
+        return method()
+    except Exception:
         return None
