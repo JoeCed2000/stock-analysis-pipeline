@@ -869,6 +869,16 @@ def _sanitize_table(table: RenderedTable) -> RenderedTable:
                     return f"{corrected:.1f}%"
             except (ValueError, OverflowError):
                 pass
+        # 🔴 Fix: numbers formatted as % that are clearly not percentages (>1000%)
+        # e.g. "214512725331.2%" is likely a dollar amount ($214.5B) with a stray % sign
+        mega_pct = re.match(r'^([+-]?\d{7,}(?:\.\d+)?)\s*%\s*$', stripped)
+        if mega_pct:
+            try:
+                big_val = float(mega_pct.group(1))
+                if big_val > 10000:
+                    return _money(big_val)  # treat as dollar amount, not percentage
+            except (ValueError, OverflowError):
+                pass
         return cell
     
     sanitized_rows: list[RenderedTableRow] = []

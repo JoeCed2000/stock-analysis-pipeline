@@ -347,14 +347,14 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
             ("Operating Cash Flow", "Total Cash From Operating Activities"),
             4,
         )
-        current_capex = cashflow_raw_value(("Capital Expenditure", "Capital Expenditures"), 0)
-        prior_capex = cashflow_raw_value(("Capital Expenditure", "Capital Expenditures"), 4)
+        current_capex = cashflow_abs_value(("Capital Expenditure", "Capital Expenditures"), 0)
+        prior_capex = cashflow_abs_value(("Capital Expenditure", "Capital Expenditures"), 4)
         current_free_cash_flow = cashflow_raw_value(("Free Cash Flow",), 0)
         prior_free_cash_flow = cashflow_raw_value(("Free Cash Flow",), 4)
         if current_free_cash_flow is None and current_operating_cash_flow is not None and current_capex is not None:
-            current_free_cash_flow = current_operating_cash_flow + current_capex
+            current_free_cash_flow = current_operating_cash_flow - current_capex
         if prior_free_cash_flow is None and prior_operating_cash_flow is not None and prior_capex is not None:
-            prior_free_cash_flow = prior_operating_cash_flow + prior_capex
+            prior_free_cash_flow = prior_operating_cash_flow - prior_capex
 
         result["revenue_quarterly"] = current_revenue
         result["revenue_quarterly_prior_year"] = prior_revenue
