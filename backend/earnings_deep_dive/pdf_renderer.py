@@ -303,20 +303,26 @@ _CIRCLED_DIGIT_MAP = str.maketrans({
     '\u2470': '(17)', '\u2471': '(18)', '\u2472': '(19)', '\u2473': '(20)',
 })
 
-# ── Inline emoji marker → BMP-safe equivalent (model parity) ─────────
-_EMOJI_MARKER_MAP = str.maketrans({
-    '\U0001F449': '\u2192 ',   # 👉 → rightwards arrow
-    '\U0001F9E0': '',          # 🧠 → stripped (redundant, preserved via ■ markers)
-    '\U0001F3AF': '\u25C6 ',   # 🎯 → black diamond
-    '\U0001F4CC': '\u2022 ',   # 📌 → bullet
-    '\U0001F4CA': '',          # 📊 → stripped (used in section titles already)
-    '\U0001F4B0': '',          # 💰 → stripped
-    '\U0001F4C8': '',          # 📈 → stripped
-    '\U0001F4E6': '',          # 📦 → stripped
-    '\U0001F4A1': '',          # 💡 → stripped
-    '\U0001F4CB': '',          # 📋 → stripped
-    '\U0001F514': '',          # 🔔 → stripped
-    '\U0001F511': '\u26BF ',   # 🔑 → key symbol
+# ── Inline emoji markers — KEEP as Unicode, render as images ─────────
+# No more ASCII replacements. Emojis are structural markers (model parity):
+#   👉 = investor implication   🧠 = Nami analysis   🎯 = verdict
+#   ⚠️ = warning/lowlight   📊 = data table   📌 = formula
+# Rendered as inline PIL+NotoColorEmoji images via _paragraph_with_emojis()
+_STRUCTURAL_EMOJIS = re.compile(
+    '[\U0001F300-\U0001F9FF'  # Misc Symbols, Emoticons, Supplemental, etc.
+    '\U00002600-\U000027BF'    # Misc Symbols, Dingbats
+    '\U0001F000-\U0001F02F'    # Mahjong, Domino
+    ']'
+)
+
+# Only strip truly useless emojis (redundant with other markers)
+_EMOJI_STRIP_MAP = str.maketrans({
+    '\U0001F4B0': '',   # 💰 → redundant (revenue numbers speak)
+    '\U0001F4C8': '',   # 📈 → redundant
+    '\U0001F4E6': '',   # 📦 → redundant
+    '\U0001F4A1': '',   # 💡 → redundant
+    '\U0001F4CB': '',   # 📋 → redundant
+    '\U0001F514': '',   # 🔔 → redundant
 })
 
 
@@ -340,8 +346,8 @@ def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
     value = str(text)
     # Replace circled digits with parenthesized numbers — DejaVu has no glyphs
     value = value.translate(_CIRCLED_DIGIT_MAP)
-    # Map inline emoji markers to BMP-safe equivalents (model parity)
-    value = value.translate(_EMOJI_MARKER_MAP)
+    # Strip redundant emojis (💰📈📦💡📋🔔) but keep structural ones (👉🧠🎯⚠️📊📌✅❌)
+    value = value.translate(_EMOJI_STRIP_MAP)
     # Map fullwidth characters to ASCII (LLM leakage prevention)
     value = value.translate(_FULLWIDTH_MAP)
     # CJK fonts can handle their character ranges natively
@@ -355,8 +361,9 @@ def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
             or (0x2000 <= cp <= 0x206F)                           # General Punctuation (—–•…'')
             or (0x2190 <= cp <= 0x21FF)                           # Arrows (→←↑↓)
             or (0x25A0 <= cp <= 0x26FF)                           # Geometric Shapes + Misc Symbols
-            or (0x2700 <= cp <= 0x27BF)                           # Dingbats (✔✘✪★)
-            or (0x2650 <= cp <= 0x265F)):                         # Chess symbols
+            or (0x2700 <= cp <= 0x27BF)                           # Dingbats (✔✘✪★⚠️)
+            or (0x2650 <= cp <= 0x265F)                           # Chess symbols
+            or (0x1F300 <= cp <= 0x1F9FF)):                       # Emoji (👉🧠🎯📊📌✅❌ etc.)
             safe.append(ch)
         else:
             continue  # Strip silently — never inject '?'
@@ -420,6 +427,64 @@ def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragr
     escaped = escaped.replace('&lt;b&gt;', '<b>').replace('&lt;/b&gt;', '</b>')
     escaped = escaped.replace('&lt;i&gt;', '<i>').replace('&lt;/i&gt;', '</i>')
     return Paragraph(escaped, style)
+
+
+def _paragraph_with_emojis(text: str, style: ParagraphStyle, *, font_name: str, emoji_size: int = 14) -> list:
+    """Render text with inline emoji images. Returns list of flowables.
+
+    Structural emojis (👉🧠🎯⚠️📊📌✅❌) are kept as Unicode in the text
+    and rendered as PIL+NotoColorEmoji PNG images via a single-row Table
+    that simulates inline rendering with zero padding.
+
+    Non-emoji text flows through _paragraph_md for standard formatting.
+    """
+    # Pre-process: strip redundant emojis, keep structural ones
+    clean = str(text).translate(_EMOJI_STRIP_MAP)
+    clean = _glyph_safe(clean, font_name=font_name)
+
+    # Split text at structural emoji boundaries
+    segments = _STRUCTURAL_EMOJIS.split(clean)
+    emojis = _STRUCTURAL_EMOJIS.findall(clean)
+
+    if not emojis:
+        # No emojis — use standard paragraph
+        return [_paragraph_md(text, style, font_name=font_name)]
+
+    # Build inline table: [text_seg, emoji_img, text_seg, emoji_img, ...]
+    cells = []
+    for i, seg in enumerate(segments):
+        if seg.strip():
+            cells.append(_paragraph_md(seg, style, font_name=font_name))
+        if i < len(emojis):
+            emoji_char = emojis[i]
+            # Skip ◆ rendering via emoji font — use diamond image instead
+            if emoji_char == '◆':
+                cells.append(_diamond_image(size=emoji_size))
+            else:
+                cells.append(_emoji_to_image(emoji_char, size=emoji_size))
+
+    if not cells:
+        return [_paragraph_md(text, style, font_name=font_name)]
+
+    # Single-row table with zero padding for true inline rendering
+    col_widths = []
+    for cell in cells:
+        if isinstance(cell, Paragraph):
+            col_widths.append(None)  # auto-width for text
+        else:
+            col_widths.append(emoji_size + 2)
+
+    table = Table([cells], colWidths=col_widths, hAlign="LEFT")
+    table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("BOX", (0, 0), (-1, -1), 0, colors.white),
+        ("INNERGRID", (0, 0), (-1, -1), 0, colors.white),
+    ]))
+    return [table]
 
 
 # ── Document structure helpers ──────────────────────────────────────────
@@ -745,7 +810,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             story.append(_table(section, styles, fonts))
         if section.analysis:
             for paragraph in section.analysis:
-                story.append(_paragraph_md(paragraph, styles["body"], font_name=fonts.regular))
+                story.extend(_paragraph_with_emojis(paragraph, styles["body"], font_name=fonts.regular))
 
         story.append(Spacer(1, 0.12 * inch))
         story.append(HRFlowable(width="60%", thickness=0.3, color=_MUTED, spaceAfter=0.08*inch))
@@ -753,7 +818,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             f"<b>{escape(section.summary_label)}</b>",
             styles["body"],
         ))
-        story.append(_paragraph_md(
+        story.extend(_paragraph_with_emojis(
             section.summary.strip() if section.summary.strip() else "Not available.",
             styles["body"],
             font_name=fonts.regular,
