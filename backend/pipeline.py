@@ -63,8 +63,8 @@ def _parse_date(value: Any) -> Optional[datetime]:
     text = value.strip()
     try:
         return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[{ticker}] Yahoo snapshot save skipped: {e}")
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%b %d, %Y", "%B %d, %Y"):
         try:
             return datetime.strptime(text, fmt)
@@ -724,7 +724,8 @@ def _add_earnings_deep_dive_if_transcript(
             or "Transcript"
         ).strip()
         if not transcript_text:
-            logger.info(f"[{ticker}] Earnings deep-dive proceeding without usable transcript")
+            logger.info(f"[{ticker}] No usable transcript — skipping deep-dive (saves ~30-90s)")
+            return False
 
         try:
             from backend.press_release_fetcher import fetch_press_release_for_ticker
@@ -1439,8 +1440,8 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
         yf_local = os.path.join(output_dir, "03_financial_data_sources", f"yahoo_snapshot_{ticker}.json")
         with open(yf_local, "w") as f:
             json.dump(yf_data, f, indent=2, default=str)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[{ticker}] Yahoo snapshot save skipped: {e}")
     
     # Save Finnhub snapshot (already fetched in parallel with 10-K above)
     try:
@@ -1448,8 +1449,8 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
             fh_local = os.path.join(output_dir, "03_financial_data_sources", f"finnhub_{ticker}.json")
             with open(fh_local, "w") as f:
                 json.dump(fh_data, f, indent=2, default=str)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[{ticker}] Yahoo snapshot save skipped: {e}")
     
     # ── Synchronous dossier generation (all content written immediately) ──
     # Background thread on Render free tier is unreliable — generates everything here.

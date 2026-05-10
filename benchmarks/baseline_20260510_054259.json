@@ -1,0 +1,70 @@
+{
+  "timestamp": "2026-05-10T03:42:59.138429+00:00",
+  "ticker": "NVDA",
+  "n_runs": 3,
+  "total_avg_s": 2.64,
+  "total_min_s": 0.54,
+  "total_max_s": 5.84,
+  "per_step": {
+    "1_get_stock_data": {
+      "avg": 0.05,
+      "min": 0.01,
+      "max": 0.13,
+      "n": 3
+    },
+    "2_get_edgar_financials": {
+      "avg": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "n": 3
+    },
+    "3a_extract_10k": {
+      "avg": 0.08,
+      "min": 0.02,
+      "max": 0.18,
+      "n": 3
+    },
+    "3b_get_finnhub": {
+      "avg": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "n": 3
+    },
+    "4_management_analysis": {
+      "avg": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "n": 3
+    },
+    "5_scoring": {
+      "avg": 0.03,
+      "min": 0.0,
+      "max": 0.08,
+      "n": 3
+    },
+    "6_transcripts": {
+      "avg": 2.4,
+      "min": 0.49,
+      "max": 5.27,
+      "n": 3
+    },
+    "7_deep_dive": {
+      "avg": 0.07,
+      "min": 0.02,
+      "max": 0.18,
+      "n": 3
+    },
+    "8_report_pdf": {
+      "avg": 0.01,
+      "min": 0.01,
+      "max": 0.01,
+      "n": 3
+    },
+    "9_zip": {
+      "avg": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "n": 3
+    }
+  }
+}

@@ -42,8 +42,8 @@ def _cache_get(ticker: str) -> Optional[Dict[str, Any]]:
             logger.info(f"Cache HIT for {ticker} (age: {age:.0f}s)")
             return entry["data"]
         logger.info(f"Cache EXPIRED for {ticker} (age: {age:.0f}s)")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Cache read error for {ticker}: {e}")
     return None
 
 
@@ -193,47 +193,49 @@ def get_stock_data(ticker: str) -> Dict[str, Any]:
 
     # Merge yfinance deep financials into Finnhub/TwelveData result
     # Finnhub free tier gives ratios (grossMarginTTM, etc.) but NOT absolute values
-    # yfinance has Income Statement, Balance Sheet, Cash Flow — blocked on Render IP
-    # Fallback: always check cron-pushed yfinance cache (fill_dossiers.py every 2 min)
-    try:
-        # Try live yfinance first (works locally, blocked on Render)
-        yf_data = get_yahoo_data(ticker)
-        if not yf_data:
-            yf_data = {}
-        
-        # Always also check cron-pushed cache — may have data the live call missed
-        yf_cached = _cache_get_yf(ticker)
-        if yf_cached:
-            logger.info(f"Merging cron-pushed yfinance data for {ticker}")
-            # Merge cached into yf_data (cached data wins if live is None)
-            yf_fin_cached = yf_cached.get("financials", {})
-            yf_fin_live = yf_data.get("financials", {}) if yf_data else {}
-            for key in ["revenue_quarterly", "revenue_annual", "revenue_annual_growth",
-                       "net_income", "free_cash_flow", "net_debt"]:
-                if yf_fin_live.get(key) is None and yf_fin_cached.get(key) is not None:
-                    yf_fin_live[key] = yf_fin_cached[key]
-            for key in ["pe_current", "pe_forward", "peg_ratio", "expected_growth",
-                       "beta", "52w_high", "52w_low"]:
-                if yf_data.get(key) is None and yf_cached.get(key) is not None:
-                    yf_data[key] = yf_cached[key]
-            # Persist enriched financials back to yf_data for downstream merge
-            yf_data["financials"] = yf_fin_live
-        
-        if yf_data:
-            yf_fin = yf_data.get("financials", {})
-            # Only overwrite if Finnhub returned None — preserve Finnhub's ratios
-            for key in ["revenue_quarterly", "revenue_annual", "revenue_annual_growth",
-                        "net_income", "free_cash_flow", "net_debt", "revenue_estimate", "eps_estimate"]:
-                if result["financials"].get(key) is None:
-                    result["financials"][key] = yf_fin.get(key)
-            # Merge PE ratios if Finnhub didn't have them
-            for key in ["pe_current", "pe_forward", "peg_ratio", "expected_growth",
-                       "beta", "52w_high", "52w_low"]:
-                if result.get(key) is None and yf_data.get(key) is not None:
-                    result[key] = yf_data[key]
-            logger.info(f"YFinance financials merged for {ticker}")
-    except Exception as e:
-        logger.warning(f"YFinance merge failed for {ticker} — using Finnhub-only data: {e}")
+    # yfinance has Income Statement, Balance Sheet, Cash Flow
+    # Optimization: skip live yfinance when cron cache has sufficient data,
+    # and only fetch live when critical fields are truly missing.
+    
+    FINNHUB_MISSING_FINANCIALS = ["revenue_quarterly", "revenue_annual", "net_income", "free_cash_flow"]
+    FINNHUB_MISSING_VALUATION = ["pe_current", "pe_forward", "peg_ratio"]
+    
+    _needs_enrichment = any(
+        result["financials"].get(k) is None for k in FINNHUB_MISSING_FINANCIALS
+    ) or any(result.get(k) is None for k in FINNHUB_MISSING_VALUATION)
+    
+    if _needs_enrichment:
+        try:
+            # Step 1: Try cron-pushed cache (fast, no network) 
+            yf_cached = _cache_get_yf(ticker)
+            if yf_cached:
+                logger.info(f"Enriching from yfinance cron cache for {ticker}")
+                yf_fin_cached = yf_cached.get("financials", {})
+                for key in FINNHUB_MISSING_FINANCIALS + ["revenue_estimate", "eps_estimate", "net_debt"]:
+                    if result["financials"].get(key) is None and yf_fin_cached.get(key) is not None:
+                        result["financials"][key] = yf_fin_cached[key]
+                for key in FINNHUB_MISSING_VALUATION + ["expected_growth", "beta", "52w_high", "52w_low"]:
+                    if result.get(key) is None and yf_cached.get(key) is not None:
+                        result[key] = yf_cached[key]
+            
+            # Step 2: Recheck — still missing data? Try live yfinance 
+            _still_needs = any(
+                result["financials"].get(k) is None for k in FINNHUB_MISSING_FINANCIALS
+            )
+            if _still_needs:
+                logger.info(f"Cron cache insufficient for {ticker}, trying live yfinance")
+                yf_data = get_yahoo_data(ticker)
+                if yf_data:
+                    yf_fin = yf_data.get("financials", {})
+                    for key in FINNHUB_MISSING_FINANCIALS + ["revenue_estimate", "eps_estimate"]:
+                        if result["financials"].get(key) is None:
+                            result["financials"][key] = yf_fin.get(key)
+                    for key in FINNHUB_MISSING_VALUATION:
+                        if result.get(key) is None and yf_data.get(key) is not None:
+                            result[key] = yf_data[key]
+                    logger.info(f"YFinance live enrichment done for {ticker}")
+        except Exception as e:
+            logger.warning(f"YFinance merge failed for {ticker} — using available data: {e}")
 
     _cache_set(ticker, result)
     result["_source"] = _source or "cache"
@@ -638,8 +640,8 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
             rev = financials.get("revenue_quarterly")
             if operating_income and rev and rev > 0:
                 financials["operating_margin"] = round(operating_income / rev, 4)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Quarterly income extraction failed for {ticker}: {e}")
 
     if income is not None and not income.empty:
         try:
@@ -659,8 +661,8 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
                 curr_rev = financials["revenue_annual"]
                 if prev_rev and curr_rev and prev_rev > 0:
                     financials["revenue_annual_growth"] = round((curr_rev - prev_rev) / prev_rev, 4)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Annual income extraction failed for {ticker}: {e}")
 
     if cashflow is not None and not cashflow.empty:
         try:
@@ -684,8 +686,8 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
             financials["dividends"] = _safe_float(
                 cashflow.loc["Cash Dividends Paid", latest] if "Cash Dividends Paid" in cashflow.index else None
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Cashflow extraction failed for {ticker}: {e}")
 
     if quarterly_income is not None and not quarterly_income.empty:
         try:
