@@ -822,30 +822,69 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
     # EPS growth rate (NOT revenue guidance — revenue guidance comes from press release)
     financials["eps_growth_quarterly"] = info.get("earningsQuarterlyGrowth")
 
-    # Forward-looking metrics from info — EPS consensus for the SAME quarter
+    # EPS consensus for the REPORTED quarter — use earnings_history, NOT forwardEps/4
     eps_consensus = None
+    consensus_provider = None
     try:
-        # yfinance doesn't expose quarterly EPS consensus cleanly; use forwardEps/4 as a proxy
-        fwd_eps = info.get("forwardEps")
-        if fwd_eps:
-            eps_consensus = fwd_eps / 4.0
-    except Exception:
-        eps_consensus = None
+        eh = stock.earnings_history
+        if eh is not None and not eh.empty:
+            # Most recent row = latest reported quarter; epsEstimate = consensus AT THAT TIME
+            latest = eh.iloc[-1]
+            eps_consensus = float(latest["epsEstimate"])
+            consensus_provider = "yfinance earnings_history (consensus at quarter close)"
+            logger.info(f"EPS consensus from earnings_history: {eps_consensus}")
+    except Exception as e:
+        logger.warning(f"earnings_history EPS estimate unavailable: {e}")
+    # Fallback: earnings_estimate 0q (current quarter consensus) — less precise match
+    if eps_consensus is None:
+        try:
+            ee = stock.earnings_estimate
+            if ee is not None and not ee.empty and "0q" in ee.index:
+                eps_consensus = float(ee.loc["0q", "avg"])
+                consensus_provider = "yfinance earnings_estimate 0q (current quarter consensus)"
+        except Exception as e:
+            logger.warning(f"earnings_estimate fallback failed: {e}")
+    # Last resort: earnings_dates latest row EPS Estimate
+    if eps_consensus is None:
+        try:
+            ed = stock.earnings_dates
+            if ed is not None and not ed.empty:
+                eps_consensus = float(ed.iloc[0]["EPS Estimate"])
+                consensus_provider = "yfinance earnings_dates (next quarter consensus, weak proxy)"
+        except Exception as e:
+            logger.warning(f"earnings_dates fallback failed: {e}")
     financials["eps_estimate"] = eps_consensus
     financials["eps_consensus"] = eps_consensus
     financials["estimate_period_tag"] = period_tag
-    financials["consensus_provider"] = "yfinance via Yahoo"
+    financials["consensus_provider"] = consensus_provider or "yfinance via Yahoo"
     financials["consensus_as_of"] = _today_str()
     # Guard: if estimate far above actual, flag it for review
-    try:
-        ea = financials.get("eps_actual")
-        ee = financials.get("eps_estimate")
-        if ea is not None and ee is not None and ee > (ea * 1.5):
-            financials["eps_estimate_flag"] = "OUTLIER_HIGH"
-        else:
+    if eps_consensus is not None:
+        try:
+            ea = financials.get("eps_actual")
+            if ea is not None and ea > 0 and eps_consensus > (ea * 1.5):
+                financials["eps_estimate_flag"] = "OUTLIER_HIGH"
+            else:
+                financials["eps_estimate_flag"] = None
+        except Exception:
             financials["eps_estimate_flag"] = None
-    except Exception:
+    else:
         financials["eps_estimate_flag"] = None
+    # Override eps_actual with adjusted EPS from earnings_history (matches analyst consensus metric)
+    # GAAP diluted EPS from income statement often differs ($1.76 vs $1.62 for NVDA Q1 2026)
+    try:
+        eh = stock.earnings_history
+        if eh is not None and not eh.empty:
+            latest = eh.iloc[-1]
+            adj_eps = float(latest["epsActual"])
+            if adj_eps is not None and adj_eps > 0:
+                gaap_eps = financials.get("eps_actual")
+                financials["eps_actual_gaap"] = gaap_eps  # preserve GAAP for reference
+                financials["eps_actual"] = adj_eps
+                financials["eps_actual_source"] = "yfinance earnings_history (adjusted, matches consensus)"
+                logger.info(f"eps_actual overridden: GAAP={gaap_eps} → adjusted={adj_eps}")
+    except Exception as e:
+        logger.debug(f"earnings_history epsActual override skipped: {e}")
     # revenue_estimate from yfinance analyst consensus (info dict doesn't have it)
     try:
         rev_est = stock.revenue_estimate
@@ -1058,10 +1097,57 @@ def get_yahoo_data_for_quarter(ticker: str, quarter: str) -> Optional[Dict[str, 
         except Exception as e:
             logger.debug(f"Fallback: {e}")
 
-    # EPS estimate from forwardEps (annual, divide by 4 for quarterly)
-    forward_eps = info.get("forwardEps")
-    if forward_eps:
-        financials["eps_estimate"] = forward_eps / 4.0
+    # EPS consensus for the REPORTED quarter — match to earnings_history, NOT forwardEps/4
+    eps_consensus = None
+    try:
+        eh = stock.earnings_history
+        if eh is not None and not eh.empty:
+            import pandas as _pd
+            # Convert quarter string to a target date for matching
+            q_dt = _pd.Timestamp(year=year, month=target_month, day=1)
+            # Try exact match on earnings_history index
+            for idx in eh.index:
+                idx_dt = idx.to_pydatetime() if hasattr(idx, 'to_pydatetime') else _pd.Timestamp(idx)
+                if idx_dt.year == q_dt.year and idx_dt.month == q_dt.month:
+                    eps_consensus = float(eh.loc[idx, "epsEstimate"])
+                    logger.info(f"EPS consensus for {quarter} from earnings_history: {eps_consensus}")
+                    break
+    except Exception as e:
+        logger.warning(f"earnings_history EPS estimate for {quarter}: {e}")
+    # Fallback: earnings_estimate 0q
+    if eps_consensus is None:
+        try:
+            ee = stock.earnings_estimate
+            if ee is not None and not ee.empty and "0q" in ee.index:
+                eps_consensus = float(ee.loc["0q", "avg"])
+                logger.info(f"EPS consensus fallback (earnings_estimate 0q): {eps_consensus}")
+        except Exception as e:
+            logger.warning(f"earnings_estimate fallback: {e}")
+    # Last resort: forwardEps/4 (weak proxy)
+    if eps_consensus is None:
+        forward_eps = info.get("forwardEps")
+        if forward_eps:
+            eps_consensus = forward_eps / 4.0
+            logger.warning(f"EPS consensus last-resort (forwardEps/4): {eps_consensus}")
+    financials["eps_estimate"] = eps_consensus
+
+    # Override eps_actual with adjusted EPS from earnings_history (matches analyst consensus metric)
+    try:
+        eh = stock.earnings_history
+        if eh is not None and not eh.empty:
+            q_dt = _pd.Timestamp(year=year, month=target_month, day=1)
+            for idx in eh.index:
+                idx_dt = idx.to_pydatetime() if hasattr(idx, 'to_pydatetime') else _pd.Timestamp(idx)
+                if idx_dt.year == q_dt.year and idx_dt.month == q_dt.month:
+                    adj_eps = float(eh.loc[idx, "epsActual"])
+                    if adj_eps is not None and adj_eps > 0:
+                        financials["eps_actual_gaap"] = financials.get("eps_actual")
+                        financials["eps_actual"] = adj_eps
+                        financials["eps_actual_source"] = "yfinance earnings_history (adjusted, matches consensus)"
+                        logger.info(f"eps_actual overridden: GAAP={financials.get('eps_actual_gaap')} → adjusted={adj_eps}")
+                    break
+    except Exception as e:
+        logger.debug(f"earnings_history epsActual override for {quarter}: {e}")
 
     result = {
         "ticker": ticker,
