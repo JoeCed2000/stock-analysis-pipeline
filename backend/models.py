@@ -7,6 +7,7 @@ from datetime import datetime
 class TickerRequest(BaseModel):
     """Request to analyze one or more tickers."""
     tickers: List[str] = Field(..., min_length=1, max_length=10)
+    deep_dive: bool = Field(default=False, description="Also generate earnings deep-dive PDF")
 
 
 class FinancialData(BaseModel):

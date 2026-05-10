@@ -1133,6 +1133,8 @@ async def analyze_async(request: TickerRequest, lang: str = "en", fastapi_reques
     job_id = create_job(normalized_tickers, lang)
 
     # Run analysis in background thread
+    do_deep_dive = request.deep_dive  # capture for closure
+
     def _run():
         try:
             update_job(job_id, status="processing", progress="Starting analysis...")
@@ -1163,7 +1165,54 @@ async def analyze_async(request: TickerRequest, lang: str = "en", fastapi_reques
                 results_list.append(r)
 
             errors_list = list(batch["errors"].values())
-            
+
+            # ── Deep-dive generation (if requested) ──
+            deep_dive_pdfs = {}
+            if do_deep_dive:
+                update_job(job_id, status="processing", progress="Generating deep-dive PDFs...")
+                from backend.earnings_deep_dive.generator import generate_deep_dive
+                from backend.earnings_deep_dive.schemas import DeepDiveRequest
+                from backend.sources_collector import get_yahoo_data_for_quarter
+                from backend.pipeline import _deep_dive_metrics
+                from backend.models import AnalysisResult
+                from datetime import datetime, timezone
+                import os as _os
+                for ticker_name, result in batch["results"].items():
+                    try:
+                        matches = _find_analysis_dirs(ticker_name)
+                        if not matches:
+                            continue
+                        out_dir = str(matches[0])
+                        q_data = get_yahoo_data_for_quarter(ticker_name, "2026Q1")
+                        if not q_data:
+                            continue
+                        dummy = AnalysisResult(
+                            ticker=ticker_name,
+                            company_name=q_data.get("company_name", ticker_name),
+                            retrieved_at=datetime.now(timezone.utc).isoformat(),
+                            price=q_data.get("price"),
+                            currency=q_data.get("currency", "USD"),
+                        )
+                        metrics = _deep_dive_metrics(dummy, q_data)
+                        dd_req = DeepDiveRequest(
+                            ticker=ticker_name,
+                            company=q_data.get("company_name", ticker_name),
+                            quarter="2026Q1",
+                            language=lang,
+                            output_dir=out_dir,
+                            metrics=metrics.model_dump(),
+                        )
+                        dd_resp = generate_deep_dive(dd_req)
+                        if dd_resp and dd_resp.markdown_path:
+                            deep_dive_pdfs[ticker_name] = {
+                                "markdown": dd_resp.markdown_path,
+                                "sections": len(dd_resp.sections),
+                            }
+                            logger.info(f"[{job_id}] Deep-dive PDF generated for {ticker_name}")
+                    except Exception as dd_err:
+                        logger.warning(f"[{job_id}] Deep-dive failed for {ticker_name}: {dd_err}")
+                        deep_dive_pdfs[ticker_name] = {"error": str(dd_err)}
+
             # Log searches for admin dashboard
             ua = fastapi_request.headers.get("user-agent", "") if fastapi_request else ""
             client_ip = fastapi_request.client.host if fastapi_request and fastapi_request.client else ""
@@ -1173,7 +1222,8 @@ async def analyze_async(request: TickerRequest, lang: str = "en", fastapi_reques
                 log_search(ticker_err, "failed", 0, error=str(batch["errors"][ticker_err]), user_agent=ua, client_ip=client_ip)
             
             update_job(job_id, status="done", progress="Complete",
-                       result={"results": results_list, "errors": errors_list})
+                       result={"results": results_list, "errors": errors_list,
+                               "deep_dive": deep_dive_pdfs if do_deep_dive else None})
         except Exception as e:
             logger.exception(f"Async job {job_id} failed")
             update_job(job_id, status="error", progress="Failed", error=str(e))
