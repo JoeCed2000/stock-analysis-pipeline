@@ -14,8 +14,13 @@ export default function AdminPage({ t, onClose }) {
         fetch(`${API}/admin/search-stats`).then(r => r.ok ? r.json() : null),
         fetch(`${API}/admin/recent-searches?limit=2000`).then(r => r.ok ? r.json() : null),
       ]);
+      console.log('[AdminPage] statsRes:', statsRes);
+      console.log('[AdminPage] searchRes:', searchRes);
       if (statsRes) setStats(statsRes);
-      if (searchRes) setSearches(searchRes.searches || []);
+      if (searchRes) {
+        console.log('[AdminPage] searches count:', searchRes.searches?.length);
+        setSearches(searchRes.searches || []);
+      }
     } catch (e) {
       console.error('[AdminPage] fetch failed:', e);
     }
