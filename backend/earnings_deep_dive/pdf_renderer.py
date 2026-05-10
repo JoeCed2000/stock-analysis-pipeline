@@ -676,8 +676,13 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             emoji_size=20,
         ))
 
-        # Section question is used by the LLM as context — not displayed in PDF (model parity)
-        # The section title already identifies the topic
+        # Section question — displayed in red (model parity)
+        if section.question and section.question.strip():
+            story.append(Paragraph(
+                escape(section.question.strip()),
+                styles["question"],
+            ))
+            story.append(Spacer(1, 0.08 * inch))
 
         # Prose-only sections (Highlights, Backlog when not applicable) skip the table
         if section.key == "Highlights":
