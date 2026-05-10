@@ -12,7 +12,7 @@ export default function AdminPage({ t, onClose }) {
     try {
       const [statsRes, searchRes] = await Promise.all([
         fetch(`${API}/admin/search-stats`).then(r => r.ok ? r.json() : null),
-        fetch(`${API}/admin/recent-searches?limit=100`).then(r => r.ok ? r.json() : null),
+        fetch(`${API}/admin/recent-searches?limit=2000`).then(r => r.ok ? r.json() : null),
       ]);
       if (statsRes) setStats(statsRes);
       if (searchRes) setSearches(searchRes.searches || []);
@@ -97,7 +97,7 @@ export default function AdminPage({ t, onClose }) {
       {/* Recent Searches Table */}
       <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 8, overflow: 'hidden' }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid #30363d' }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#e1e4e8' }}>📋 Recent Searches</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#e1e4e8' }}>📋 All Searches</span>
           <span style={{ fontSize: 11, color: '#484f58', marginLeft: 8 }}>(auto-refresh 5s)</span>
         </div>
         <div style={{ maxHeight: 500, overflowY: 'auto' }}>
