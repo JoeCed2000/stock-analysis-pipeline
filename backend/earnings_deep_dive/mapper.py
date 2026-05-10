@@ -333,7 +333,7 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
     # Compute total revenue for mix % calculation
     total_rev = segments.get("total_revenue_quarterly")
     if not _has(total_rev):
-        total_rev = getattr(metrics, "revenue_actual", None) or metrics.revenue_quarterly
+        total_rev = getattr(metrics, "revenue_actual", None) or getattr(metrics, "revenue_quarterly", None)
 
     for index, row_label in enumerate(labels):
         if index >= len(segment_items):
@@ -400,10 +400,10 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         rows = (
             (
                 row_labels[0],  # Revenue (new first row)
-                _money(getattr(metrics, "revenue_actual", None) or metrics.revenue_quarterly),
+                _money(getattr(metrics, "revenue_actual", None) or getattr(metrics, "revenue_quarterly", None)),
                 _money(getattr(metrics, "revenue_quarterly_prior_year", None)),
                 _yoy_pct(getattr(metrics, "revenue_yoy", None)),
-                getattr(metrics, "revenue_actual", None) or metrics.revenue_quarterly,
+                getattr(metrics, "revenue_actual", None) or getattr(metrics, "revenue_quarterly", None),
             ),
             (
                 row_labels[1],
