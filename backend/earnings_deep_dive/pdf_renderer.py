@@ -370,14 +370,20 @@ def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragr
     # Double newlines → paragraph break, single newlines → line break
     formatted = formatted.replace('\n\n', '<br/><br/>')
     formatted = formatted.replace('\n', '<br/>')
-    # Ensure bullet markers (●, •, 👉, →, -) always start on a new line
-    for marker in ('●', '•', '👉', '→', ' - ', '🎯', '⚠️', '✅', '❌'):
+    # Ensure bullet markers and key phrases always start on a new line
+    for marker in ('●', '•', '👉', '→', '🎯', '⚠️', '✅', '❌',
+                   'For Nami-san', 'Nami-san', 'Namiさん',
+                   '①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩',
+                   'Caution:', 'Essential insight:', 'One-line summary:',
+                   'Nami takeaway:', 'Verdict takeaway:', 'Operating takeaway:',
+                   'Cash flow takeaway:', 'Capital efficiency takeaway:',
+                   'Valuation takeaway:'):
         formatted = formatted.replace(f' {marker}', f'<br/>{marker}')
     escaped = escape(formatted)
     # Unescape the XML tags we intentionally added
+    escaped = escaped.replace('&lt;br/&gt;', '<br/>')
     escaped = escaped.replace('&lt;b&gt;', '<b>').replace('&lt;/b&gt;', '</b>')
     escaped = escaped.replace('&lt;i&gt;', '<i>').replace('&lt;/i&gt;', '</i>')
-    escaped = escaped.replace('&lt;br/&gt;', '<br/>')  # unescape our <br/> tags
     return Paragraph(escaped, style)
 
 
@@ -502,29 +508,44 @@ def _section_continuation(section, report: EarningsDeepDiveReport) -> list[str]:
 
 
 def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Table:
-    """Build a ReportLab Table. Cells >250 chars are truncated with ellipsis."""
+    """Build a ReportLab Table with proper word-wrapping via Paragraph cells."""
     MAX_CELL_CHARS = 250
+    
+    # Build cell style — compact font, tight leading, force word wrap
+    cell_style = ParagraphStyle(
+        "DeepDiveTableCell",
+        fontName=fonts.regular,
+        fontSize=7,
+        leading=8.5,
+        textColor=_TEXT,
+        alignment=TA_LEFT,
+        wordSpace=0,
+        splitLongWords=True,
+        allowWidows=0,
+        allowOrphans=0,
+    )
     
     data = [
         [_paragraph(column, styles["small_bold"], font_name=fonts.bold) for column in section.table.columns]
     ]
     for row in section.table.rows:
         row_values = [row.label, *row.cells]
-        # Truncate long cells to prevent absurd cell heights and text overlap
         truncated = []
         for cell in row_values:
             s = str(cell).strip()
             if len(s) > MAX_CELL_CHARS:
                 s = s[:MAX_CELL_CHARS - 1] + "…"
-            truncated.append(_glyph_safe(escape(s), font_name=fonts.regular))
+            safe = _glyph_safe(s, font_name=fonts.regular)
+            truncated.append(Paragraph(escape(safe), cell_style))
         data.append(truncated)
 
-    MAX_CELL_CHARS = 180
     available_width = LETTER[0] - (1.35 * inch)
     col_count = max(1, len(section.table.columns))
     MIN_COL = 1.00 * inch
     if col_count == 7:
-        col_widths = [1.30 * inch, 0.95 * inch, 1.05 * inch, 0.90 * inch, 0.90 * inch, 1.00 * inch, 1.05 * inch]
+        # Wider Driver column (most text-heavy) — compress Segment and % of Total
+        # Segment | Revenue | Prior Year | YoY | % of Total | Driver | Source
+        col_widths = [1.10 * inch, 0.92 * inch, 0.92 * inch, 0.82 * inch, 0.64 * inch, 1.60 * inch, 1.05 * inch]
     elif col_count == 6:
         # Wider Source column to prevent overflow — shrink label column
         col_widths = [1.20 * inch, 1.10 * inch, 1.05 * inch, 1.00 * inch, 1.20 * inch, 1.60 * inch]
