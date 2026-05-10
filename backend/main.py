@@ -1406,7 +1406,7 @@ async def search_stats():
 async def submit_feedback(
     ticker: str = Form(...),
     text: str = Form(""),
-    files: list[UploadFile] = File(default=[]),
+    files: list[UploadFile] = FastAPIFile(default=[]),
 ):
     """Submit feedback for a ticker. Stores text + files in analyses/{TICKER}/feedback/.
     
