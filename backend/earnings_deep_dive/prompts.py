@@ -690,6 +690,16 @@ Quarter: {quarter}
 Metrics: {_fmt_metrics(metrics)}
 Transcript excerpt: {transcript_context}
 
+🔴 DATA CONTRACT — READ BEFORE WRITING:
+The Metrics above are the SINGLE SOURCE OF TRUTH extracted from yfinance and SEC filings.
+The PDF renderer will validate your table against these exact values and replace
+any hallucinated numbers with data-driven corrections.
+- Every number in your table MUST come from Metrics. If a metric is missing → write —.
+- Every number in your PROSE must match the table. Do not write "$4.91 EPS" if the table says "$1.76".
+- Never convert, annualize, or TTM-adjust the Metrics values. Use them as-is.
+- If you need a number that is not in Metrics, write — in the table and
+  "Data not available" in prose. Never guess.
+
 Analysis question for context only; do not print it in the output:
 {question}
 
