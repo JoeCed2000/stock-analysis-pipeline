@@ -666,6 +666,42 @@ def _section_continuation(section, report: EarningsDeepDiveReport) -> list[str]:
     }.get(section.key, [])
 
 
+# ── Source label abbreviation ──────────────────────────────────────────────
+
+_SOURCE_ABBREV = {
+    "SEC Filing (10-Q/10-K) via EDGAR": "SEC 10-Q/K",
+    "SEC Filing (10-K) via EDGAR": "SEC 10-K",
+    "SEC Filing (10-Q) via EDGAR": "SEC 10-Q",
+    "yfinance (Yahoo Finance)": "Yahoo Finance",
+    "finnhub-python (Finnhub)": "Finnhub",
+    "Company IR website": "IR website",
+    "Press release": "Press Release",
+    "Earnings transcript": "Transcript",
+    "Calculated / Derived": "Calculated",
+    "Analyst consensus (yfinance)": "Consensus",
+    "Analyst consensus via yfinance": "Consensus",
+    "XBRL via EDGAR": "XBRL/EDGAR",
+    "Not disclosed": "—",
+    "Data not available in transcript": "—",
+}
+
+
+def _shorten_source(label: str) -> str:
+    """Shorten long source labels for compact table rendering."""
+    for long, short in _SOURCE_ABBREV.items():
+        if long.lower() in label.lower():
+            return short
+    # Truncate URLs to domain
+    if "http" in label:
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(label)
+            return parsed.netloc or parsed.path[:40]
+        except Exception:
+            pass
+    return label
+
+
 def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Table:
     """Build a ReportLab Table with proper word-wrapping via Paragraph cells."""
     MAX_CELL_CHARS = 80  # aggressive truncation — prevents cell overflow crashes
@@ -726,6 +762,9 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
             s = str(cell).strip()
             if len(s) > MAX_CELL_CHARS:
                 s = s[:MAX_CELL_CHARS - 1] + "…"
+            # Shorten source labels for compact table rendering
+            if "source" in column.lower():
+                s = _shorten_source(s)
             safe = _glyph_safe(s, font_name=fonts.regular)
             truncated.append(Paragraph(escape(safe), _indicator_style(column, s)))
         data.append(truncated)
@@ -904,18 +943,28 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             for paragraph in section.analysis:
                 story.extend(_paragraph_with_emojis(paragraph, styles["body"], font_name=fonts.regular))
 
+        # ── Nami takeaway callout box (shaded, left-accent border) ──
+        summary_text = section.summary.strip() if section.summary.strip() else "Not available."
+        summary_body = _paragraph_with_emojis(summary_text, styles["body"], font_name=fonts.regular)
+        callout_cells = [
+            Paragraph(f"<b>{escape(section.summary_label)}</b>", styles["body"]),
+        ] + summary_body
+        callout_table = Table([[cell] for cell in callout_cells], colWidths=[LETTER[0] - 1.65 * inch])
+        callout_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F5F0EB")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 12),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (0, 0), 10),
+            ("BOTTOMPADDING", (-1, -1), (-1, -1), 10),
+            ("TOPPADDING", (0, 1), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (0, 0), 4),
+            ("LINEBEFORE", (0, 0), (0, -1), 2, _POSITIVE),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#D4C5B9")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ]))
         summary_flowables = [
             Spacer(1, 0.12 * inch),
-            HRFlowable(width="60%", thickness=0.3, color=_MUTED, spaceAfter=0.08*inch),
-            Paragraph(
-                f"<b>{escape(section.summary_label)}</b>",
-                styles["body"],
-            ),
-            *_paragraph_with_emojis(
-                section.summary.strip() if section.summary.strip() else "Not available.",
-                styles["body"],
-                font_name=fonts.regular,
-            ),
+            callout_table,
             Spacer(1, 0.18 * inch),
         ]
         story.append(KeepTogether(summary_flowables))
