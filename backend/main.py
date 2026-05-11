@@ -1308,13 +1308,13 @@ async def get_report_pdf(ticker: str, lang: str = "en", background_tasks: Backgr
                 import logging
                 logging.getLogger("uvicorn.error").error(f"Deep-dive generation failed for {ticker}: {e}")
         
-        # Launch async — FastAPI background_tasks runs after response
-        if background_tasks:
-            background_tasks.add_task(_generate_deep_dive_async, ticker, lang, deep_dive)
-        else:
-            # No BackgroundTasks available (e.g., testing) — run synchronously
-            import asyncio
-            asyncio.create_task(_generate_deep_dive_async(ticker, lang, deep_dive))
+        # Launch async — use thread for reliability (BackgroundTasks can be flaky with --workers)
+        import threading
+        thread = threading.Thread(
+            target=lambda: asyncio.run(_generate_deep_dive_async(ticker, lang, deep_dive)),
+            daemon=True
+        )
+        thread.start()
         
         # Return 202 with polling info
         return JSONResponse(
