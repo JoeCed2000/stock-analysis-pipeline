@@ -1442,9 +1442,6 @@ def _default_section_analysis(
     )
     return [
         text.get(section_key, f"🧠 {ticker}'s section view is based only on sourced metrics in the table. 👉 Missing values remain explicit limitations, and conclusions should be traceable to the source dossier before they are used in an investment decision."),
-        audit.get(section_key, "● Audit read: the conclusion must remain traceable to table values and listed sources. Missing values are explicitly preserved as limitations, and no financial fact is inferred from context alone."),
-        checklist,
-        source_walkthrough,
     ]
 
 
