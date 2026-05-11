@@ -1,0 +1,53 @@
+{
+  "name": "analyze-ticker",
+  "version": "1.0.0",
+  "description": "Run full stock analysis and return BUY/HOLD/SELL verdict with scoring breakdown",
+  "category": "finance",
+  "inputs": [
+    {
+      "name": "ticker",
+      "type": "string",
+      "required": true,
+      "description": "Stock ticker symbol (e.g., AAPL, NVDA, MSFT)"
+    },
+    {
+      "name": "quarter",
+      "type": "string",
+      "required": false,
+      "default": "latest",
+      "description": "Quarter in YYYYQN format, or latest"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "stdout",
+      "type": "json",
+      "description": "Analysis result with verdict, score, and section breakdown"
+    }
+  ],
+  "examples": [
+    {
+      "description": "Analyze Apple latest quarter",
+      "command": "./run.sh AAPL",
+      "expected_output": "verdict: BUY, score: 85, ticker: AAPL"
+    },
+    {
+      "description": "Analyze NVIDIA Q1 2026",
+      "command": "./run.sh NVDA 2026Q1",
+      "expected_output": "verdict: HOLD, score: 72, ticker: NVDA"
+    }
+  ],
+  "execution": {
+    "runner": "bash",
+    "entrypoint": "run.sh",
+    "timeout_seconds": 120,
+    "side_effects": ["network:outbound", "filesystem:write"],
+    "env_vars": ["DEEPSEEK_API_KEY"]
+  },
+  "errors": [
+    {"code": "TICKER_NOT_FOUND", "description": "Ticker not supported or no data available"},
+    {"code": "BACKEND_DOWN", "description": "Backend API at :8780 is not running"},
+    {"code": "RATE_LIMITED", "description": "API rate limited, retry after 60s"},
+    {"code": "TIMEOUT", "description": "Analysis took longer than 120s, try with fewer data sources"}
+  ]
+}

@@ -7,12 +7,14 @@ const API = '/api';
 export default function AdminPage({ t, onClose }) {
   const [stats, setStats] = useState(null);
   const [searches, setSearches] = useState([]);
+  const [feedbacks, setFeedbacks] = useState([]);
 
   const fetchData = useCallback(async () => {
     try {
-      const [statsRes, searchRes] = await Promise.all([
+      const [statsRes, searchRes, fbRes] = await Promise.all([
         fetch(`${API}/admin/search-stats`).then(r => r.ok ? r.json() : null),
         fetch(`${API}/admin/recent-searches?limit=2000`).then(r => r.ok ? r.json() : null),
+        fetch(`${API}/admin/feedback`).then(r => r.ok ? r.json() : null),
       ]);
       console.log('[AdminPage] statsRes:', statsRes);
       console.log('[AdminPage] searchRes:', searchRes);
@@ -21,6 +23,7 @@ export default function AdminPage({ t, onClose }) {
         console.log('[AdminPage] searches count:', searchRes.searches?.length);
         setSearches(searchRes.searches || []);
       }
+      if (fbRes) setFeedbacks(fbRes || []);
     } catch (e) {
       console.error('[AdminPage] fetch failed:', e);
     }
@@ -119,6 +122,96 @@ export default function AdminPage({ t, onClose }) {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Feedback Viewer */}
+      <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 8, overflow: 'hidden', marginBottom: 24 }}>
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid #30363d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#e1e4e8' }}>💬 Nami Feedback</span>
+            <span style={{ fontSize: 11, color: '#484f58', marginLeft: 8 }}>(auto-refresh 5s)</span>
+          </span>
+          <span style={{
+            fontSize: 11, padding: '2px 8px', borderRadius: 10,
+            background: feedbacks.filter(f => !f.processed).length > 0 ? '#da363320' : '#23863620',
+            color: feedbacks.filter(f => !f.processed).length > 0 ? '#f85149' : '#3fb950',
+          }}>
+            {feedbacks.filter(f => !f.processed).length} unprocessed / {feedbacks.length} total
+          </span>
+        </div>
+        {feedbacks.length === 0 ? (
+          <div style={{ padding: 24, textAlign: 'center', color: '#484f58', fontSize: 13 }}>
+            No feedback yet — Nami's notes will appear here
+          </div>
+        ) : (
+          <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+            {feedbacks.map((fb, i) => (
+              <div key={fb.id || i} style={{
+                padding: '12px 16px',
+                borderBottom: i < feedbacks.length - 1 ? '1px solid #21262d' : 'none',
+                background: !fb.processed ? '#1a1d27' : 'transparent',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{
+                      fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: '#58a6ff',
+                      background: '#0d1117', padding: '2px 8px', borderRadius: 4,
+                    }}>
+                      {fb._ticker || fb.ticker}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#8b949e' }}>
+                      {formatTime(fb.submitted_at)}
+                    </span>
+                    {!fb.processed && (
+                      <span style={{
+                        fontSize: 10, padding: '1px 6px', borderRadius: 3,
+                        background: '#da363320', color: '#f85149',
+                      }}>
+                        NEW
+                      </span>
+                    )}
+                    {fb.processed && (
+                      <span style={{
+                        fontSize: 10, padding: '1px 6px', borderRadius: 3,
+                        background: '#23863620', color: '#3fb950',
+                      }}>
+                        processed
+                      </span>
+                    )}
+                  </div>
+                  {fb.files?.length > 0 && (
+                    <span style={{ fontSize: 11, color: '#8b949e' }}>
+                      📎 {fb.files.length} file{fb.files.length > 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
+                <div style={{
+                  fontSize: 13, color: '#c9d1d9', lineHeight: 1.5,
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                }}>
+                  {fb.text || '(no text)'}
+                </div>
+                {fb.files?.length > 0 && (
+                  <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {fb.files.map((f, j) => (
+                      <span key={j} style={{
+                        fontSize: 11, color: '#8b949e',
+                        background: '#21262d', padding: '2px 8px', borderRadius: 4,
+                      }}>
+                        📄 {f}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {fb.notes && (
+                  <div style={{ marginTop: 6, fontSize: 11, color: '#d29922', fontStyle: 'italic' }}>
+                    📝 {fb.notes}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Top Tickers + Recent Errors — compact, BELOW table */}

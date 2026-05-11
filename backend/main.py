@@ -1504,6 +1504,13 @@ async def list_feedback(ticker: str):
     return JSONResponse(list_fb(ticker))
 
 
+@app.get("/api/admin/feedback")
+async def admin_list_feedback():
+    """List all feedback across all tickers for the admin dashboard."""
+    from backend.feedback_store import get_all_admin_feedback
+    return JSONResponse(get_all_admin_feedback())
+
+
 # ── Serve React SPA (after all API routes — mono-origin architecture) ──
 _frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
 if _frontend_dist.exists():

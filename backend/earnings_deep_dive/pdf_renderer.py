@@ -325,6 +325,46 @@ _EMOJI_STRIP_MAP = str.maketrans({
     '\U0001F514': '',   # 🔔 → redundant
 })
 
+# ── Emoji → text fallback — standard PDF fonts (Helvetica/DejaVu) have ──
+# ── NO glyphs for emoji-range codepoints (0x1F300-0x1F9FF).  Replace  ──
+# ── with Unicode equivalents that DO render (Dingbats, Geometric Shapes, ──
+# ── Misc Symbols blocks).  Applied in _glyph_safe AFTER _EMOJI_STRIP_MAP. ──
+_EMOJI_FALLBACK = str.maketrans({
+    # Stars / sparkles
+    '\U0001F31F': '\u2605',   # 🌟 → ★ (U+2605, in Dingbats)
+    '\U0001F320': '\u2606',   # 🌠 → ☆
+    '\U0001F4AB': '\u2606',   # 💫 → ☆
+    # Indicators
+    '\U0001F449': '\u2192',   # 👉 → → (U+2192, in Arrows)
+    '\U0001F448': '\u2190',   # 👈 → ←
+    '\U0001F446': '\u2191',   # 👆 → ↑
+    '\U0001F4CC': '\u25C6',   # 📌 → ◆ (diamond)
+    '\U0001F3AF': '\u25C6',   # 🎯 → ◆
+    # Warning / caution
+    '\U000026A0': '\u26A0',   # ⚠️ already in Dingbats — keep as-is (codepoint pass-through)
+    # Check / cross
+    '\U00002705': '\u2713',   # ✅ → ✓
+    '\U0000274C': '\u2717',   # ❌ → ✗
+    '\U00002714': '\u2713',   # ✔ → ✓
+    '\U00002716': '\u2717',   # ✖ → ✗
+    # Data / chart
+    '\U0001F4CA': '\u25B2',   # 📊 → ▲ (bar chart fallback)
+    '\U0001F4C8': '\u25B2',   # 📈 → ▲
+    # Lightbulb / idea
+    '\U0001F4A1': '\u25C6',   # 💡 → ◆
+    # Brain
+    '\U0001F9E0': '',         # 🧠 → (remove, Nami context word covers it)
+    # Circles (red/green indicators)
+    '\U0001F534': '\u25CF',   # 🔴 → ●
+    '\U0001F7E2': '\u25CB',   # 🟢 → ○
+    # Box
+    '\U0001F4E6': '',         # 📦 → (remove)
+    # Clip
+    '\U0001F4CB': '',         # 📋 → (remove)
+    # Bell
+    '\U0001F514': '',         # 🔔 → (remove)
+})
+
 
 # ── Fullwidth → ASCII mapping (LLM leakage) ──────────────────────────────
 # LLMs sometimes output fullwidth characters that have no Helvetica glyphs.
@@ -341,13 +381,20 @@ _FULLWIDTH_MAP = str.maketrans({
 })
 
 
-def _glyph_safe(text: str, *, font_name: str = "Helvetica") -> str:
-    """Keep characters renderable by standard PDF fonts. Strip the rest silently."""
+def _glyph_safe(text: str, *, font_name: str = "Helvetica", keep_emojis: bool = False) -> str:
+    """Keep characters renderable by standard PDF fonts. Strip the rest silently.
+    
+    keep_emojis=True: preserve emoji-range characters for PIL image rendering
+    (used by _paragraph_with_emojis)."""
     value = str(text)
     # Replace circled digits with parenthesized numbers — DejaVu has no glyphs
     value = value.translate(_CIRCLED_DIGIT_MAP)
     # Strip redundant emojis (💰📈📦💡📋🔔) but keep structural ones (👉🧠🎯⚠️📊📌✅❌)
     value = value.translate(_EMOJI_STRIP_MAP)
+    # Replace emoji-range characters with font-safe text fallbacks
+    # ▶ ★ ● ○ ✓ ✗ ◆ ← → — these all render correctly in Helvetica/DejaVu
+    if not keep_emojis:
+        value = value.translate(_EMOJI_FALLBACK)
     # Map fullwidth characters to ASCII (LLM leakage prevention)
     value = value.translate(_FULLWIDTH_MAP)
     # CJK fonts can handle their character ranges natively
@@ -443,7 +490,7 @@ def _paragraph_with_emojis(text: str, style: ParagraphStyle, *, font_name: str, 
         return [_paragraph_md(text, style, font_name=font_name)]
     # Pre-process: strip redundant emojis, keep structural ones
     clean = str(text).translate(_EMOJI_STRIP_MAP)
-    clean = _glyph_safe(clean, font_name=font_name)
+    clean = _glyph_safe(clean, font_name=font_name, keep_emojis=True)
 
     # Split text at structural emoji boundaries
     segments = _STRUCTURAL_EMOJIS.split(clean)
@@ -811,6 +858,8 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             font_name=fonts.regular,
             emoji_size=20,
         ))
+        # Spacing between title and table (model parity — prevents title touching table)
+        story.append(Spacer(1, 0.10 * inch))
 
         # Section question is used by the LLM as context — not displayed in PDF (model parity)
         # The section title already identifies the topic

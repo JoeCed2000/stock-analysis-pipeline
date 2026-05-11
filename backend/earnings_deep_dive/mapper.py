@@ -1310,6 +1310,9 @@ def build_earnings_deep_dive_report(
     def _clean_prose(text: str) -> str:
         if not text:
             return text
+        # ── Fix: collapse line breaks that split key phrases ──
+        text = text.replace('For\nNami-san', 'For Nami-san')
+        text = text.replace('For\nNamiさん', 'For Namiさん')
         # Replace runs of 3+ question marks with "—"
         text = _GARBAGE_RE.sub('—', text)
         # Fix isolated question marks from LLM uncertainty (e.g., "missed by 16% ? a" → "missed by 16% — a")
@@ -1320,7 +1323,17 @@ def build_earnings_deep_dive_report(
         # Clean up resulting empty lines or double dashes
         text = _re.sub(r'\n\s*—\s*\n', '\n', text)
         # 🔴 Fix: strip "One-line summary:" / "一言まとめ:" blockquotes — generic filler
-        text = _re.sub(r'>\s*(One-line summary|一言まとめ|投資視点の一言)\s*:?\s*\n?', '', text)
+        # Match both with and without blockquote prefix (>)
+        text = _re.sub(r'(?:^|\n)\s*>?\s*(One-line summary|一言まとめ|投資視点の一言)\s*:?\s*[^\n]*\n?', '\n', text, flags=_re.MULTILINE)
+        # 🔴 Fix: strip "[VALIDATED DATA: ...]" internal markers from prose
+        text = _re.sub(r'\n?\s*\[VALIDATED DATA:[^\]]*\]\s*\n?', '\n', text)
+        # 🔴 Fix: convert markdown bullet markers to proper bullets
+        # Lines starting with "* " or "- " get converted to "• "
+        text = _re.sub(r'(?m)^\s*\*\s+', '• ', text)
+        text = _re.sub(r'(?m)^\s*-\s+', '• ', text)
+        # Also handle bullets after a newline mid-paragraph
+        text = _re.sub(r'\n\*\s+', '\n• ', text)
+        text = _re.sub(r'\n-\s+', '\n• ', text)
         # 🔴 Fix: LLM double-multiplied margins: "7499.67%" → divide by 100
         def _fix_outlier_pct(m):
             try:
@@ -1530,6 +1543,21 @@ def build_earnings_deep_dive_report(
         "investors_url",
         "ir_url",
     )
+    # 🔴 Fix: normalize known outdated / broken IR URLs to current official ones
+    _IR_URL_FIXUPS = {
+        # NVIDIA moved from phx.corporate-ir.net to investor.nvidia.com
+        "phx.corporate-ir.net": "https://investor.nvidia.com",
+    }
+    if investor_relations_url:
+        from urllib.parse import urlparse as _urlparse_ir
+        try:
+            domain_ir = _urlparse_ir(investor_relations_url).netloc
+            for old_domain, new_url in _IR_URL_FIXUPS.items():
+                if old_domain in domain_ir:
+                    investor_relations_url = new_url
+                    break
+        except Exception:
+            pass
     company_website_url = _metric_url(metrics, "company_website", "website", "weburl", "official_website")
     transcript_source = _metric_text(metrics, "transcript_source", "transcript_provider") or "Transcript"
     # Normalize: if source is a search engine, discovery tool, or the generic default, extract the real domain from URL

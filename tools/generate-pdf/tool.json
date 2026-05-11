@@ -1,0 +1,65 @@
+{
+  "name": "generate-pdf",
+  "version": "1.0.0",
+  "description": "Generate deep-dive earnings PDF report for a ticker with EN and JP versions",
+  "category": "finance",
+  "inputs": [
+    {
+      "name": "ticker",
+      "type": "string",
+      "required": true,
+      "description": "Stock ticker symbol (e.g., AAPL, NVDA)"
+    },
+    {
+      "name": "quarter",
+      "type": "string",
+      "required": false,
+      "default": "latest",
+      "description": "Quarter in YYYYQN format"
+    },
+    {
+      "name": "lang",
+      "type": "string",
+      "required": false,
+      "default": "en",
+      "description": "Language: en or ja"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "stdout",
+      "type": "json",
+      "description": "JSON with PDF path and generation metadata"
+    },
+    {
+      "name": "earnings_deep_dive.pdf",
+      "type": "file",
+      "description": "Generated PDF report (14-20 pages)"
+    }
+  ],
+  "examples": [
+    {
+      "description": "Generate EN deep-dive for Apple",
+      "command": "./run.sh AAPL",
+      "expected_output": "status: ok, ticker: AAPL, pdf generated"
+    },
+    {
+      "description": "Generate JP deep-dive for NVIDIA",
+      "command": "./run.sh NVDA latest ja",
+      "expected_output": "status: ok, ticker: NVDA, lang: ja, pdf generated"
+    }
+  ],
+  "execution": {
+    "runner": "bash",
+    "entrypoint": "run.sh",
+    "timeout_seconds": 300,
+    "side_effects": ["network:outbound", "filesystem:write"],
+    "env_vars": ["DEEPSEEK_API_KEY"]
+  },
+  "errors": [
+    {"code": "TICKER_NOT_FOUND", "description": "No data or transcript for this ticker"},
+    {"code": "BACKEND_DOWN", "description": "Backend API at :8780 is not running"},
+    {"code": "GENERATION_FAILED", "description": "PDF generation failed, check backend logs"},
+    {"code": "TIMEOUT", "description": "Generation exceeded 300s, ticker may have large report"}
+  ]
+}

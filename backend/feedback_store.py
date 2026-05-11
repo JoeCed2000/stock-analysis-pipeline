@@ -176,3 +176,21 @@ def get_unprocessed() -> List[Dict[str, Any]]:
                     unprocessed.append(entry)
     unprocessed.sort(key=lambda e: e.get("submitted_at", ""))
     return unprocessed
+
+
+def get_all_admin_feedback() -> List[Dict[str, Any]]:
+    """Get ALL feedback across all tickers for the admin dashboard.
+    Returns entries sorted by date, most recent first.
+    Includes processed + unprocessed."""
+    all_entries = []
+    if not ANALYSES_DIR.exists():
+        return all_entries
+    for d in sorted(ANALYSES_DIR.iterdir(), reverse=True):
+        if d.is_dir() and d.name.startswith("feedback_"):
+            ticker = d.name.replace("feedback_", "")
+            index = _read_index(ticker)
+            for entry in index:
+                entry["_ticker"] = ticker
+                all_entries.append(entry)
+    all_entries.sort(key=lambda e: e.get("submitted_at", ""), reverse=True)
+    return all_entries
