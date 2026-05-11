@@ -38,6 +38,8 @@ _HEADER_FILL = colors.HexColor("#EFE6E0")
 _GRID = colors.HexColor("#B8B8B8")
 _TEXT = colors.HexColor("#111111")
 _MUTED = colors.HexColor("#5D5D5D")
+_POSITIVE = colors.HexColor("#0B6B3A")
+_NEGATIVE = colors.HexColor("#A33A2A")
 _REGISTERED_FONTS: set[str] = set()
 
 # ── Emoji rendering via PIL + NotoColorEmoji.ttf ──────────────────────────
@@ -353,7 +355,7 @@ _EMOJI_FALLBACK = str.maketrans({
     # Lightbulb / idea
     '\U0001F4A1': '\u25C6',   # 💡 → ◆
     # Brain
-    '\U0001F9E0': '',         # 🧠 → (remove, Nami context word covers it)
+    '\U0001F9E0': '\u25C6',   # 🧠 → ◆ fallback when not rendered as PNG
     # Circles (red/green indicators)
     '\U0001F534': '\u25CF',   # 🔴 → ●
     '\U0001F7E2': '\u25CB',   # 🟢 → ○
@@ -480,61 +482,63 @@ def _paragraph_with_emojis(text: str, style: ParagraphStyle, *, font_name: str, 
     """Render text with inline emoji images. Returns list of flowables.
 
     Structural emojis (👉🧠🎯⚠️📊📌✅❌) are kept as Unicode in the text
-    and rendered as PIL+NotoColorEmoji PNG images via a single-row Table
-    that simulates inline rendering with zero padding.
+    and rendered as PIL+NotoColorEmoji PNG images via line/block flowables.
 
     Non-emoji text flows through _paragraph_md for standard formatting.
     """
-    # Safety: long text with many emojis creates wide inline tables that overflow the page
-    if len(text) > 500:
-        return [_paragraph_md(text, style, font_name=font_name)]
     # Pre-process: strip redundant emojis, keep structural ones
     clean = str(text).translate(_EMOJI_STRIP_MAP)
     clean = _glyph_safe(clean, font_name=font_name, keep_emojis=True)
-
-    # Split text at structural emoji boundaries
-    segments = _STRUCTURAL_EMOJIS.split(clean)
-    emojis = _STRUCTURAL_EMOJIS.findall(clean)
-
-    if not emojis:
-        # No emojis — use standard paragraph
+    if not _STRUCTURAL_EMOJIS.search(clean):
         return [_paragraph_md(text, style, font_name=font_name)]
 
-    # Build inline table: [text_seg, emoji_img, text_seg, emoji_img, ...]
-    cells = []
-    for i, seg in enumerate(segments):
-        if seg.strip():
-            cells.append(_paragraph_md(seg, style, font_name=font_name))
-        if i < len(emojis):
-            emoji_char = emojis[i]
-            # Skip ◆ rendering via emoji font — use diamond image instead
-            if emoji_char == '◆':
-                cells.append(_diamond_image(size=emoji_size))
-            else:
-                cells.append(_emoji_to_image(emoji_char, size=emoji_size))
+    # Force structural markers onto their own logical lines before building
+    # marker rows. This avoids one very wide inline table for long commentary.
+    clean = re.sub(r"(?<!^)(?<!\n)\s*([👉🧠🎯⚠✅❌📊📌])", r"\n\1", clean)
 
-    if not cells:
-        return [_paragraph_md(text, style, font_name=font_name)]
+    available_width = LETTER[0] - (1.35 * inch)
+    marker_width = emoji_size + 5
+    text_width = max(available_width - marker_width, 120)
 
-    # Single-row table with zero padding for true inline rendering
-    col_widths = []
-    for cell in cells:
-        if isinstance(cell, Paragraph):
-            col_widths.append(None)  # auto-width for text
-        else:
-            col_widths.append(emoji_size + 2)
+    def marker_row(emoji_char: str, segment: str) -> Table:
+        image = _diamond_image(size=emoji_size) if emoji_char == "◆" else _emoji_to_image(emoji_char, size=emoji_size)
+        paragraph = _paragraph_md(segment.strip() or " ", style, font_name=font_name)
+        table = Table([[image, paragraph]], colWidths=[marker_width, text_width], hAlign="LEFT")
+        table.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (0, 0), 4),
+            ("RIGHTPADDING", (1, 0), (1, 0), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+            ("BOX", (0, 0), (-1, -1), 0, colors.white),
+            ("INNERGRID", (0, 0), (-1, -1), 0, colors.white),
+        ]))
+        return table
 
-    table = Table([cells], colWidths=col_widths, hAlign="LEFT")
-    table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-        ("TOPPADDING", (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-        ("BOX", (0, 0), (-1, -1), 0, colors.white),
-        ("INNERGRID", (0, 0), (-1, -1), 0, colors.white),
-    ]))
-    return [table]
+    flowables: list = []
+    for raw_line in clean.splitlines():
+        line = raw_line.strip()
+        if not line:
+            flowables.append(Spacer(1, 0.04 * inch))
+            continue
+
+        cursor = 0
+        for match in _STRUCTURAL_EMOJIS.finditer(line):
+            prefix = line[cursor:match.start()].strip()
+            if prefix:
+                flowables.append(_paragraph_md(prefix, style, font_name=font_name))
+            next_match = _STRUCTURAL_EMOJIS.search(line, match.end())
+            end = next_match.start() if next_match else len(line)
+            segment = line[match.end():end]
+            flowables.append(marker_row(match.group(0), segment))
+            cursor = end
+
+        suffix = line[cursor:].strip()
+        if suffix:
+            flowables.append(_paragraph_md(suffix, style, font_name=font_name))
+
+    return flowables or [_paragraph_md(text, style, font_name=font_name)]
 
 
 # ── Document structure helpers ──────────────────────────────────────────
@@ -674,6 +678,27 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
         allowWidows=0,
         allowOrphans=0,
     )
+    cell_styles = {
+        "default": cell_style,
+        "positive": ParagraphStyle("DeepDiveTableCellPositive", parent=cell_style, textColor=_POSITIVE),
+        "negative": ParagraphStyle("DeepDiveTableCellNegative", parent=cell_style, textColor=_NEGATIVE),
+    }
+
+    def _indicator_style(column: str, value: str) -> ParagraphStyle:
+        col = column.lower()
+        text = value.strip().lower()
+        if not text or text in {"not available", "not disclosed", "n/a", "—"}:
+            return cell_style
+        signal_column = "yoy" in col or "estimate" in col or "change" in col
+        if signal_column and re.search(r"(^|[\s(])\+\d", text):
+            return cell_styles["positive"]
+        if signal_column and re.search(r"(^|[\s(])-\d", text):
+            return cell_styles["negative"]
+        if any(word in text for word in ("beat", "positive", "favorable", "growth", "improved", "strong")):
+            return cell_styles["positive"]
+        if any(word in text for word in ("miss", "negative", "decline", "compression", "pressure", "weak")):
+            return cell_styles["negative"]
+        return cell_style
     
     data = [
         [_paragraph(column, styles["small_bold"], font_name=fonts.bold) for column in section.table.columns]
@@ -692,20 +717,23 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
         row_values = [row.label, *row.cells]
         truncated = []
         for cell in row_values:
+            column = section.table.columns[len(truncated)] if len(truncated) < len(section.table.columns) else ""
             s = str(cell).strip()
             if len(s) > MAX_CELL_CHARS:
                 s = s[:MAX_CELL_CHARS - 1] + "…"
             safe = _glyph_safe(s, font_name=fonts.regular)
-            truncated.append(Paragraph(escape(safe), cell_style))
+            truncated.append(Paragraph(escape(safe), _indicator_style(column, s)))
         data.append(truncated)
 
     available_width = LETTER[0] - (1.35 * inch)
     col_count = max(1, len(section.table.columns))
     MIN_COL = 1.00 * inch
     if col_count == 7:
-        # Wider Driver column (most text-heavy) — compress Segment and % of Total
+        # Wider Driver column (most text-heavy) while keeping the total width below
+        # the frame. The older widths exceeded the printable area and pressured
+        # ReportLab into overflow-prone layouts.
         # Segment | Revenue | Prior Year | YoY | % of Total | Driver | Source
-        col_widths = [1.10 * inch, 0.90 * inch, 0.90 * inch, 0.80 * inch, 0.62 * inch, 1.55 * inch, 1.20 * inch]
+        col_widths = [0.95 * inch, 0.82 * inch, 0.82 * inch, 0.62 * inch, 0.52 * inch, 1.28 * inch, 1.05 * inch]
     elif col_count == 6:
         # Wider Source column to prevent overflow — shrink label column
         col_widths = [1.15 * inch, 1.05 * inch, 1.00 * inch, 0.95 * inch, 1.30 * inch, 1.65 * inch]
@@ -746,11 +774,7 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
 
 
 def _footer(canvas, doc, font_name: str = "Helvetica") -> None:
-    canvas.saveState()
-    canvas.setFont(font_name, 8)
-    canvas.setFillColor(_MUTED)
-    canvas.drawCentredString(LETTER[0] / 2, 0.42 * inch, f"{doc.page}")
-    canvas.restoreState()
+    return None
 
 
 def _section_is_empty(section) -> bool:
@@ -888,6 +912,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         story.append(Spacer(1, 0.18 * inch))
 
     if report.sources:
+        story.append(PageBreak())
         story.append(Paragraph("Sources", styles["section"]))
         for source in report.sources:
             text = escape(source.label)

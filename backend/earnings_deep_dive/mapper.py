@@ -210,6 +210,16 @@ def _extract_markdown_table(markdown: str, expected_columns: tuple[str, ...]) ->
 
 
 def _analysis_without_table(markdown: str) -> str:
+    return "\n\n".join(_analysis_blocks_without_table(markdown))
+
+
+def _analysis_blocks_without_table(markdown: str) -> list[str]:
+    """Extract non-table prose as separate renderable blocks.
+
+    The previous single-string extractor made one fragile paragraph out of the
+    whole LLM section. Keeping blocks preserves lists and lets ReportLab split
+    long commentary naturally.
+    """
     kept: list[str] = []
     in_table = False
     for line in markdown.splitlines():
@@ -223,7 +233,23 @@ def _analysis_without_table(markdown: str) -> str:
         if stripped.startswith("## "):
             continue
         kept.append(line)
-    return "\n".join(kept).strip()
+
+    blocks: list[str] = []
+    current: list[str] = []
+    for line in kept:
+        if line.strip():
+            current.append(line.rstrip())
+            continue
+        if current:
+            block = "\n".join(current).strip()
+            if block:
+                blocks.append(block)
+            current = []
+    if current:
+        block = "\n".join(current).strip()
+        if block:
+            blocks.append(block)
+    return blocks
 
 
 def _parse_segments_from_prose(analysis_text: str) -> dict[str, dict]:
@@ -1239,8 +1265,10 @@ def _summary(language: TemplateLanguage, ticker: str, section_key: str, metrics:
 def _default_highlights_analysis(language: TemplateLanguage, metrics: FinancialMetrics) -> list[str]:
     revenue = _money(metrics.revenue_actual)
     revenue_yoy = _pct(metrics.revenue_yoy)
+    eps = _eps(metrics.eps_actual)
     fcf = _money(metrics.free_cash_flow)
     margin = _pct(metrics.operating_margin)
+    pe = _multiple(metrics.pe_forward)
     if language == "jp":
         return [
             "\n".join(
@@ -1255,13 +1283,21 @@ def _default_highlights_analysis(language: TemplateLanguage, metrics: FinancialM
                     f"● フリーキャッシュフロー: {fcf}",
                     "👉 利益が現金に変わっているかは、決算の質を見る重要ポイントです。",
                     "",
+                    "③ EPSと利益の確認",
+                    f"● EPS: {eps}",
+                    "👉 予想比と前年比の両方を見て、成長が株主利益に届いているかを確認します。",
+                    "",
                     "⚠️ ローライト（懸念点）",
                     "",
                     "① 利益率の確認",
                     f"● 営業利益率: {margin}",
                     "👉 売上が伸びても利益率が弱い場合、株価評価は伸びにくくなります。",
                     "",
-                    "② 未開示データ",
+                    "② バリュエーション",
+                    f"● Forward P/E: {pe}",
+                    "👉 成長が鈍化した場合、PERが高いほど株価の下振れリスクは大きくなります。",
+                    "",
+                    "③ 未開示データ",
                     "● 未取得または未開示の項目は表で明示しています。",
                     "👉 空欄でごまかさず、次に確認すべき資料を明確にします。",
                     "",
@@ -1277,12 +1313,191 @@ def _default_highlights_analysis(language: TemplateLanguage, metrics: FinancialM
         "\n".join(
             [
                 "Highlights / Lowlights",
-                f"① Revenue signal: {revenue} with YoY growth of {revenue_yoy}.",
+                "",
+                "① Revenue growth",
+                f"● Revenue: {revenue}; YoY growth: {revenue_yoy}.",
+                "👉 Investor implication: the first test is whether reported growth is broad enough to support durable earnings power.",
+                "",
+                "② Earnings delivery",
+                f"● EPS: {eps}.",
+                "👉 Investor implication: EPS must be read against revenue growth and operating leverage, not as a standalone headline number.",
+                "",
+                "③ Cash conversion",
                 f"● Free cash flow: {fcf}.",
-                "👉 Investor read: focus on whether growth converts into durable cash and margin expansion.",
+                "👉 Investor implication: cash conversion confirms whether accounting earnings are turning into usable owner cash.",
+                "",
+                "⚠️ Lowlights / watch items",
+                "",
+                "① Margin durability",
+                f"● Operating margin: {margin}.",
+                "👉 If margin weakens while revenue grows, the market may discount the quality of the growth.",
+                "",
+                "② Valuation sensitivity",
+                f"● Forward P/E: {pe}.",
+                "👉 A higher multiple requires confidence that revenue growth, margin, and free cash flow can persist.",
+                "",
+                "③ Disclosure gaps",
+                "● Any item marked Not available, Not disclosed, or N/A needs confirmation in the source dossier before it is used as an investment fact.",
+                "👉 Missing data is treated as a limitation, not as evidence for or against the company.",
+                "",
+                "🧠 Nami insight",
+                "👉 Start with revenue, margin, and cash flow. If all three point in the same direction, the quarter is easier to trust; if they diverge, the risk is in quality rather than the headline.",
+                "",
+                "🎯 Investment takeaway",
+                "👉 The quarter is attractive only if growth converts into cash while valuation remains consistent with the next few quarters of guidance.",
             ]
         )
     ]
+
+
+def _default_section_analysis(
+    language: TemplateLanguage,
+    ticker: str,
+    section_key: str,
+    metrics: FinancialMetrics,
+) -> list[str]:
+    """Deterministic fallback commentary when LLM prose is missing or too thin."""
+    if section_key == "Highlights":
+        return _default_highlights_analysis(language, metrics)
+
+    revenue = _money(getattr(metrics, "revenue_actual", None) or getattr(metrics, "revenue_quarterly", None))
+    revenue_yoy = _pct(getattr(metrics, "revenue_yoy", None))
+    eps = _eps(getattr(metrics, "eps_actual", None))
+    fcf = _money(getattr(metrics, "free_cash_flow", None))
+    ocf = _money(getattr(metrics, "operating_cash_flow", None))
+    capex = _money(getattr(metrics, "capex", None))
+    gross_margin = _pct(getattr(metrics, "gross_margin", None))
+    operating_margin = _pct(getattr(metrics, "operating_margin", None))
+    net_income = _money(getattr(metrics, "net_income_quarterly", None) or getattr(metrics, "net_income", None))
+    roe = _pct(getattr(metrics, "roe", None))
+    roic = _pct(getattr(metrics, "roic", None))
+    pe = _multiple(getattr(metrics, "pe_forward", None))
+    backlog = _money(getattr(metrics, "backlog", None))
+    guidance = _metric_text(metrics, "guidance") or NOT_DISCLOSED_EN
+
+    if language == "jp":
+        text = {
+            "EPS & Revenue": f"🧠 EPSは{eps}、売上高は{revenue}、前年比は{revenue_yoy}です。予想比だけでなく、売上の伸びがEPSに届いているかを確認します。👉 数字が未取得の場合は推測せず、表のデータ未取得を前提に次の資料確認へ進みます。",
+            "Operating Metrics": f"🧠 売上高{revenue}、粗利率{gross_margin}、営業利益率{operating_margin}、純利益{net_income}を同じ期間で見ます。👉 売上成長と利益率が同時に改善していれば質は高く、どちらかが弱い場合はコスト構造を確認します。",
+            "Cash Flow": f"📌 FCF = OCF - CapEx。OCFは{ocf}、CapExは{capex}、FCFは{fcf}です。👉 利益が現金に変わっているかが最重要で、FCFが弱い場合は成長投資と一時要因を分けて確認します。",
+            "Capital Efficiency": f"🧠 ROEは{roe}、ROICは{roic}です。👉 高い資本効率は強みですが、自社株買い、レバレッジ、資産圧縮の影響を分けて、事業そのものの収益力かを確認します。",
+            "Segments": f"🧠 セグメント別売上は、どの事業が{ticker}の成長を支えているかを見るために使います。👉 表のセグメント売上、前年比、ドライバーを比較し、単一事業依存か複数事業の成長かを確認します。",
+            "Forward P/E": f"🧠 Forward P/Eは{pe}です。👉 この倍率は単独では判断せず、売上成長{revenue_yoy}、利益率{operating_margin}、FCF{fcf}で正当化できるかを見ます。",
+            "Backlog": f"🧠 Backlogは{backlog}です。👉 開示される業種では将来売上の視認性を示しますが、開示がない場合は無理に評価せず、ガイダンスや受注コメントを補助情報として扱います。",
+            "Guidance": f"🧠 ガイダンス: {guidance}。👉 次四半期の売上、利益率、EPSの前提が現在の実績とつながっているかを確認し、強い実績でも弱い見通しなら評価を調整します。",
+            "Verdict": f"🎯 {ticker}の判断は、売上{revenue}、EPS{eps}、FCF{fcf}、Forward P/E{pe}を同時に見ます。👉 良い決算でも、キャッシュとバリュエーションが支えなければ追いかけすぎに注意です。",
+        }
+        return [text.get(section_key, f"🧠 {ticker}の決算は、確認できる数字と未開示項目を分けて評価します。👉 推測は使わず、表とソースに戻って判断します。")]
+
+    text = {
+        "EPS & Revenue": f"🧠 EPS was {eps} and revenue was {revenue}, with YoY revenue growth of {revenue_yoy}. The commentary should separate the estimate surprise from the underlying growth signal: a beat is higher quality when revenue, EPS, and source-backed YoY data point in the same direction. 👉 If any estimate or actual is unavailable, it remains a data limitation rather than an inferred beat or miss.",
+        "Operating Metrics": f"🧠 Operating quality is read through revenue of {revenue}, gross margin of {gross_margin}, operating margin of {operating_margin}, and net income of {net_income}. Strong revenue growth is more durable when it carries through to margins. 👉 If margins move against revenue, the issue is not demand alone but cost discipline and operating leverage.",
+        "Cash Flow": f"📌 FCF = OCF - CapEx. Operating cash flow was {ocf}, capex was {capex}, and free cash flow was {fcf}. Cash flow is the check on earnings quality because it shows whether reported profit becomes usable cash. 👉 Weak FCF requires separating temporary working-capital timing from structural cash conversion pressure.",
+        "Capital Efficiency": f"🧠 Capital efficiency uses ROE of {roe} and ROIC of {roic} to judge whether growth creates value. High returns are strongest when they come from operating profit rather than leverage, buybacks, or asset shrinkage. 👉 The investor read is to compare returns with reinvestment needs and cash generation before treating growth as value-accretive.",
+        "Segments": f"🧠 Segment commentary identifies which business lines are carrying {ticker}'s quarter. The table should be read by revenue size, YoY direction, and stated driver rather than by one headline segment. 👉 A healthier quarter has multiple segments contributing; concentration in one segment raises execution risk for the next quarter.",
+        "Forward P/E": f"🧠 The forward P/E is {pe}. Valuation is not a verdict by itself; it has to be tested against revenue growth of {revenue_yoy}, operating margin of {operating_margin}, and free cash flow of {fcf}. 👉 A premium multiple is acceptable only when forward guidance and cash conversion support the implied growth path.",
+        "Backlog": f"🧠 Backlog is {backlog}. For companies where backlog is economically relevant, it is a visibility indicator for future revenue; for companies that do not disclose it, the correct treatment is not applicable or not disclosed. 👉 Do not infer backlog strength from revenue growth unless the company explicitly reports orders or remaining performance obligations.",
+        "Guidance": f"🧠 Guidance reads as: {guidance}. This section resets expectations after the reported quarter by linking management's forward comments to revenue, margins, and EPS. 👉 Strong trailing results deserve a lower valuation weight if the next-quarter guide implies slowing demand or margin pressure.",
+        "Verdict": f"🎯 The verdict combines revenue of {revenue}, EPS of {eps}, free cash flow of {fcf}, operating margin of {operating_margin}, and forward P/E of {pe}. The investment call should not rest on one metric. 👉 The risk/reward improves when growth, cash conversion, and valuation are aligned; it weakens when any one of those pillars breaks.",
+    }
+    audit = {
+        "EPS & Revenue": f"● Audit read: tie each surprise back to the EPS and revenue rows before calling the quarter strong or weak. For {ticker}, a revenue beat without EPS leverage would point to cost pressure, while EPS strength without revenue support could be mix, tax, buybacks, or one-time items. 👉 The source-safe conclusion is the intersection of estimate variance, YoY growth, and management explanation.",
+        "Operating Metrics": f"● Audit read: compare the income statement from top line to operating income. Revenue growth of {revenue_yoy} is more convincing when gross margin and operating margin move with it. If gross margin is stable but operating margin weakens, OpEx is the pressure point; if gross margin weakens first, pricing, mix, or input costs need source confirmation.",
+        "Cash Flow": "● Audit read: cash conversion should reconcile earnings quality with balance-sheet movement. A quarter can show strong EPS while free cash flow lags because of working capital timing, inventory, receivables, or heavy capex. The PDF should therefore keep OCF, CapEx, and FCF separate instead of collapsing them into a single cash-flow judgment.",
+        "Capital Efficiency": "● Audit read: returns on capital are useful only when the denominator is understood. ROE can rise because operations improved, because equity fell after buybacks, or because leverage increased. ROIC is the cleaner operating lens, but it still needs to be read beside cash generation and reinvestment requirements before assigning a quality premium.",
+        "Segments": f"● Audit read: segment data prevents a misleading company-level conclusion. If one segment drives most of {ticker}'s growth, the next-quarter risk is concentration. If several segments grow with different drivers, the growth base is more resilient. Missing segment rows remain limitations and should not be filled with assumed business mix.",
+        "Forward P/E": "● Audit read: valuation should be treated as conditional, not absolute. A low forward P/E can still be expensive if earnings estimates are falling, and a high multiple can be reasonable if growth durability and margins are improving. The sourced approach is to connect the multiple to forward EPS basis, guidance, and cash conversion.",
+        "Backlog": "● Audit read: backlog is only meaningful when the company reports it in a consistent way. For software or subscription businesses, remaining performance obligations may be the closer proxy; for industrial companies, orders and book-to-bill may matter more. If none of those are disclosed, the correct conclusion is visibility not disclosed.",
+        "Guidance": "● Audit read: guidance is the bridge between the reported quarter and valuation. The strongest setup is reported growth plus guidance that sustains or improves the run-rate. A weaker guide can offset a strong quarter because markets discount the future. Every guidance conclusion should name whether it came from company guidance, consensus, or transcript language.",
+        "Verdict": "● Audit read: the final call should be reproducible from the report. A constructive verdict requires at least two confirming pillars, usually growth plus cash conversion or growth plus valuation support. A cautious verdict is appropriate when the table shows missing data, margin pressure, weak cash conversion, or a valuation that requires assumptions not present in the source dossier.",
+    }
+    checklist_focus = {
+        "EPS & Revenue": "estimate variance, YoY revenue growth, EPS leverage, and the exact source for consensus versus actuals",
+        "Operating Metrics": "gross margin, operating margin, OpEx discipline, net income conversion, and whether revenue growth carries through the income statement",
+        "Cash Flow": "operating cash flow, capex, free cash flow, working-capital timing, and whether cash generation supports the EPS story",
+        "Capital Efficiency": "ROE, ROIC, buybacks, dividends, leverage effects, and whether returns come from operations rather than balance-sheet mechanics",
+        "Segments": "segment revenue, segment YoY growth, mix, business driver language, and concentration risk across the reported portfolio",
+        "Forward P/E": "forward P/E, forward EPS basis, guidance support, growth durability, and whether the multiple embeds assumptions not proven by sources",
+        "Backlog": "reported backlog, order intake, book-to-bill, remaining performance obligations, and the distinction between not applicable and not disclosed",
+        "Guidance": "revenue guide, margin guide, EPS guide, management tone, and whether the forward view confirms or weakens the reported quarter",
+        "Verdict": "growth, profitability, cash conversion, capital efficiency, valuation, and the unresolved data gaps that could change the conclusion",
+    }
+    checklist = (
+        f"👉 Decision checklist: review {checklist_focus.get(section_key, 'the sourced table values and unresolved data gaps')} before using this section in the final investment call.\n"
+        "① Confirm the table values reconcile to an explicit source row or listed document.\n"
+        "② Separate confirmed data from interpretation; do not upgrade a missing field into a positive or negative claim.\n"
+        "③ Compare the current quarter with the prior-year or consensus baseline shown in the table, because direction matters as much as the absolute number.\n"
+        "④ Link the section back to the final verdict only when it changes growth durability, earnings quality, cash conversion, valuation, or forward visibility.\n"
+        "⑤ Treat every Not available, Not disclosed, or N/A cell as an audit flag for the source dossier rather than as permission to infer a number."
+    )
+    source_walkthrough = (
+        "🧠 Source walkthrough: start with the table row, then open the matching transcript, press release, presentation, SEC filing, or yfinance field named in the Source column. "
+        "Write down whether the number is company-reported, consensus-derived, calculated by the pipeline, or unavailable. "
+        "If the value is calculated, verify the numerator and denominator separately before relying on the result. "
+        "If the source is management commentary rather than a numeric filing line, classify it as tone or guidance, not as a hard financial metric. "
+        "This distinction matters because a PDF reader should be able to reproduce the conclusion without trusting hidden model reasoning. "
+        "A strong section therefore contains three things: the reported value, the comparison baseline, and the investor implication. "
+        "A weak section usually misses one of those pieces, and the final verdict should discount it until the source dossier fills the gap. "
+        "🎯 Practical takeaway: promote this section in the investment view only when the data is sourced, the direction is clear, and the implication is material to future earnings or valuation."
+    )
+    return [
+        text.get(section_key, f"🧠 {ticker}'s section view is based only on sourced metrics in the table. 👉 Missing values remain explicit limitations, and conclusions should be traceable to the source dossier before they are used in an investment decision."),
+        audit.get(section_key, "● Audit read: the conclusion must remain traceable to table values and listed sources. Missing values are explicitly preserved as limitations, and no financial fact is inferred from context alone."),
+        checklist,
+        source_walkthrough,
+    ]
+
+
+def _numbered_highlight_count(text: str) -> int:
+    return len(re.findall(r"(?m)^\s*(?:[①②③④⑤⑥⑦⑧⑨⑩]|\d+\.)\s+", text))
+
+
+def _ensure_section_commentary(
+    language: TemplateLanguage,
+    ticker: str,
+    section_key: str,
+    metrics: FinancialMetrics,
+    analysis_items: list[str],
+) -> list[str]:
+    cleaned = [item.strip() for item in analysis_items if item and item.strip()]
+    combined = "\n".join(cleaned)
+    fallback = _default_section_analysis(language, ticker, section_key, metrics)
+
+    if section_key == "Highlights":
+        has_required_structure = (
+            _numbered_highlight_count(combined) >= 3
+            and "🧠" in combined
+            and "🎯" in combined
+            and ("⚠" in combined or "Lowlight" in combined or "Lowlights" in combined)
+        )
+        if not has_required_structure:
+            cleaned.extend(fallback)
+    elif len(combined) <= 200:
+        cleaned.extend(fallback)
+
+    return cleaned
+
+
+def _resolved_quarter_label(quarter: str, metrics: FinancialMetrics) -> str:
+    requested = quarter.strip() if isinstance(quarter, str) else ""
+    if requested and requested.lower() != "latest quarter":
+        return requested
+    explicit = _metric_text(
+        metrics,
+        "quarter",
+        "fiscal_quarter",
+        "reporting_quarter",
+        "reporting_period",
+        "period",
+        "transcript_quarter",
+    )
+    if explicit and explicit.lower() != "latest quarter":
+        return explicit
+    # Fallback: derive calendar quarter from today
+    from datetime import date
+    today = date.today()
+    q = (today.month - 1) // 3 + 1
+    return f"{today.year}Q{q}"
 
 
 def build_earnings_deep_dive_report(
@@ -1362,6 +1577,7 @@ def build_earnings_deep_dive_report(
     
     for section in template:
         analysis_text = analysis_by_key.get(section.key) or analysis_by_key.get(section.title)
+        rows: list[list[str]] = []
         if analysis_text:
             analysis_text = _clean_prose(analysis_text)
             # Strip echoed template question (LLM sometimes echoes it verbatim)
@@ -1387,7 +1603,30 @@ def build_earnings_deep_dive_report(
                 ) for row in rows],
             )
             table = _sanitize_table(table)
-            analysis_items = [_analysis_without_table(analysis_text)] if analysis_text else []
+            if codex_table and section.key != "Highlights":
+                deterministic_is_sparse = all(
+                    all(
+                        str(cell).strip() in (
+                            MISSING,
+                            MISSING_EN,
+                            NOT_APPLICABLE,
+                            NOT_APPLICABLE_EN,
+                            NOT_DISCLOSED,
+                            NOT_DISCLOSED_EN,
+                            NOT_CALCULABLE,
+                            NOT_CALCULABLE_EN,
+                            "—",
+                            "",
+                        )
+                        for cell in row.cells
+                    )
+                    for row in table.rows
+                )
+                if deterministic_is_sparse:
+                    table = _enrich_codex_table(codex_table, section.key, section.table_rows, metrics)
+                    table = _number_highlights_rows(table)
+                    table = _sanitize_table(table)
+            analysis_items = _analysis_blocks_without_table(analysis_text) if analysis_text else []
             # ── Segments fallback: when XBRL is garbage (all rows NA), use LLM table ──
             if section.key == "Segments" and analysis_text:
                 all_na = all(
@@ -1461,7 +1700,7 @@ def build_earnings_deep_dive_report(
             table = _enrich_codex_table(codex_table, section.key, section.table_rows, metrics)
             table = _number_highlights_rows(table)
             table = _sanitize_table(table)
-            analysis_items = [text for text in (_analysis_without_table(analysis_text),) if text]
+            analysis_items = _analysis_blocks_without_table(analysis_text)
         else:
             rows = _rows_for_section(section.key, section.table_rows, metrics)
             table = RenderedTable(
@@ -1473,18 +1712,23 @@ def build_earnings_deep_dive_report(
             )
             table = _sanitize_table(table)
             if analysis_text:
-                analysis_items = [analysis_text]
-            elif section.key == "Highlights":
-                analysis_items = _default_highlights_analysis(report_language, metrics)
+                analysis_items = _analysis_blocks_without_table(analysis_text)
             else:
                 analysis_items = []
+        analysis_items = _ensure_section_commentary(
+            report_language,
+            ticker_clean,
+            section.key,
+            metrics,
+            analysis_items,
+        )
         # ── Data annotation injection: force LLM commentary to use table values ──
         if section.key in ("EPS & Revenue", "Forward P/E") and rows:
             value_col_idx = 2 if section.key == "EPS & Revenue" else 1  # "Actual" or "Current"
             if section.key == "EPS & Revenue" and len(rows) > 0 and len(rows[0]) > value_col_idx:
                 eps_actual = rows[0][value_col_idx]
                 if eps_actual and eps_actual not in (MISSING, MISSING_EN, NOT_APPLICABLE, NOT_APPLICABLE_EN, NOT_DISCLOSED, NOT_DISCLOSED_EN):
-                    eps_note = f"[VALIDATED DATA: EPS actual = {eps_actual}]"
+                    eps_note = f"EPS actual: {eps_actual} (validated from source data)"
                     if analysis_items:
                         analysis_items[-1] = analysis_items[-1] + "\n\n" + eps_note
                     else:
@@ -1626,7 +1870,7 @@ def build_earnings_deep_dive_report(
     return EarningsDeepDiveReport(
         ticker=ticker_clean,
         company=company_name,
-        quarter=quarter.strip() if quarter else "latest quarter",
+        quarter=_resolved_quarter_label(quarter, metrics),
         language=report_language,
         generated_at=generated_at or datetime.now(timezone.utc).isoformat(),
         title=f"{company_name} ({ticker_clean}) - Earnings Deep-Dive",

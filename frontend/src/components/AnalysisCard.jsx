@@ -258,7 +258,7 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
       {/* ── ACTIONS ── */}
       <div style={{ padding: '8px 14px 6px', display: 'flex', gap: 6 }}>
         <button
-          onClick={() => onViewReport(result)}
+          onClick={() => onViewReport(result, selectedQuarter)}
           style={{
             flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500,
             background: '#21262d', border: '1px solid #30363d',
