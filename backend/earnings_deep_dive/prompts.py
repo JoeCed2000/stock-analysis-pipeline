@@ -81,58 +81,101 @@ SECTION_QUESTIONS: Dict[str, Dict[str, str]] = {
     "EPS & Revenue": {
         "en": (
             "Please summarize the estimated and actual figures for EPS (earnings per share) "
-            "and revenue of {company} ({ticker}) for {quarter} in a table, including the "
-            "variance versus estimates and the year-over-year change."
+            "and revenue of {company} ({ticker}) for {quarter} in a detailed table "
+            "(Estimate|Actual|vs Estimate|YoY|Source). "
+            "Include the 3-quarter EPS trend to show trajectory and velocity. "
+            "Explain beat/miss quality: was this a high-quality surprise (both top and bottom line beat) "
+            "or a mixed result? Provide variance versus estimates and year-over-year change "
+            "with specific dollar amounts and percentages."
         ),
-        "jp": "{company} ({ticker}) の{quarter}決算のEPS（1株当たり利益）と売上高の予想値、実績値、予想比、前年同期比をまとめて下さい。",
+        "jp": "{company} ({ticker}) の{quarter}決算のEPS（1株当たり利益）と売上高の予想値、実績値、予想比、前年同期比をまとめて下さい。3四半期のEPSトレンドも含めてください。",
     },
     "Highlights": {
-        "en": "What are the highlights and lowlights (key concerns) of this earnings report?",
-        "jp": "今回の決算のハイライト、ローライトを教えてください。",
+        "en": (
+            "What are the highlights and lowlights (key concerns) of this earnings report? "
+            "Categorize each by theme (Operational, Strategic, Macro, Competitive) "
+            "with a severity rating (High/Medium/Low). For each, provide the specific transcript "
+            "or data evidence, explain WHY it matters to investors, and assess whether "
+            "it represents a durable shift or a one-quarter event."
+        ),
+        "jp": (
+            "今回の決算のハイライト、ローライトを、テーマ別（オペレーション/戦略/マクロ/競合）に分類し、"
+            "重要度（高/中/低）を付けて教えてください。それぞれに具体的な証拠を示してください。"
+        ),
     },
     "Operating Metrics": {
         "en": (
             "How were operating income, operating margin, gross profit, gross margin, "
-            "operating expenses, and net income? Please provide a summary of the key "
-            "metrics first, followed by an explanation and analysis."
+            "operating expenses, and net income? Provide a summary table of the key "
+            "metrics (Current|Prior Qtr|YoY|Source), followed by detailed analysis. "
+            "Show the 3-quarter trend to explain margin trajectory. "
+            "Compare to sector peers where possible."
         ),
-        "jp": "営業利益、営業利益率、粗利益、粗利益率、営業費用、純利益などは前年同期比と比べてどうでしたか？最初に指標の一覧を出して、その後説明・分析をしてください。",
+        "jp": "営業利益、営業利益率、粗利益、粗利益率、営業費用、純利益などは前年同期比と比べてどうでしたか？指標の一覧を出して、3四半期のトレンド分析とセクター比較を含めて説明してください。",
     },
     "Cash Flow": {
-        "en": "Please share any available figures for operating cash flow, CapEx, and free cash flow.",
-        "jp": "営業キャッシュフロー、CapEx、フリーキャッシュフローの数値についてもわかることを教えてください。",
+        "en": (
+            "Please share any available figures for operating cash flow, CapEx, and free cash flow. "
+            "Include a table (Current|Prior Qtr|YoY|Source) followed by analysis. "
+            "Show 3-quarter cash flow trajectory. Discuss cash conversion quality "
+            "and compare reinvestment intensity to sector norms."
+        ),
+        "jp": "営業キャッシュフロー、CapEx、フリーキャッシュフローの数値について、3四半期のトレンドを含めて教えてください。",
     },
     "Capital Efficiency": {
-        "en": "How were ROE, ROTCE (ROTE), ROA, and ROIC?",
-        "jp": "ROE / ROTCE（ROTE）/ ROA / ROICなどはどうでしたか？",
+        "en": (
+            "How were ROE, ROTCE (ROTE), ROA, and ROIC? Provide a table with values and sources. "
+            "Explain whether efficiency is driven by business-model strength or financial engineering. "
+            "Compare to sector and historical norms."
+        ),
+        "jp": "ROE / ROTCE（ROTE）/ ROA / ROICなどはどうでしたか？ビジネスモデルの強さと財務エンジニアリングを区別し、セクター比較も含めてください。",
     },
     "Segments": {
-        "en": "What were the results by segment?",
-        "jp": "セグメント別の業績はどうでしたか？",
+        "en": (
+            "What were the results by segment? Provide tables for product/category segments AND "
+            "regional segments (Segment|Revenue Q|YoY|Mix%|Source). Explain which segments "
+            "are driving growth, which are stable, and which are under pressure. "
+            "Compare segment mix to sector peers."
+        ),
+        "jp": "セグメント別の業績はどうでしたか？製品別・地域別の表を作成し、どのセグメントが成長を牽引しているか、セクターと比較して説明してください。",
     },
     "Forward P/E": {
         "en": (
             "What is the forward P/E ratio for {company} ({ticker})? "
-            "State the current multiple, compare it to the sector and historical range, "
-            "and explain whether growth, margins, and cash flows justify this valuation level."
+            "State the current multiple with exact source, compare it to the sector and historical range, "
+            "and explain whether growth, margins, and cash flows justify this valuation level. "
+            "Discuss whether the multiple looks supported, stretched, or not assessable."
         ),
-        "jp": "{company} ({ticker}) のForward P/Eはどうなっていますか？現在の倍率、セクターや過去との比較、成長・利益率・キャッシュフローがバリュエーションを正当化するか説明してください。",
+        "jp": "{company} ({ticker}) のForward P/Eはどうなっていますか？現在の倍率、セクターや過去との比較、成長・利益率・キャッシュフローがバリュエーションを正当化するか、支持されるか/割高か/判断不能かを説明してください。",
     },
     "Backlog": {
         "en": (
             "How is the quality and quantity of the order backlog for {company} ({ticker})? "
             "If the company does not disclose a backlog (common for consumer/tech companies), "
-            "state 'Not applicable' and explain why."
+            "state 'Not applicable' and explain why in 2-3 sentences with business-model context. "
+            "If backlog data exists, assess quantity (quarters of coverage), quality (firm vs cancellable), "
+            "and conversion risk."
         ),
-        "jp": "{company} ({ticker}) の受注残の質と量はどうですか？開示がない場合は「該当なし」と明記し、理由を説明してください。",
+        "jp": "{company} ({ticker}) の受注残の質と量はどうですか？開示がない場合は「該当なし」と明記し、2-3文で理由を説明してください。データがある場合は量・質・変換リスクを評価してください。",
     },
     "Guidance": {
         "en": "What is the guidance for the upcoming quarters and beyond?",
         "jp": "来期以降のガイダンスをおしえてください。",
     },
     "Verdict": {
-        "en": "What is the overall earnings verdict for Nami-san after weighing growth, margins, cash flow, valuation, backlog, and guidance?",
-        "jp": "成長、利益率、キャッシュフロー、バリュエーション、バックログ、ガイダンスを踏まえて、Namiさん向けの総合評価を教えてください。",
+        "en": (
+            "What is the overall earnings verdict for Nami-san after weighing each dimension? "
+            "Rate each dimension (Growth, Margins, Cash Flow, Capital Efficiency, Valuation, "
+            "Backlog/Guidance) on a simple scale: Strong / Neutral / Weak. "
+            "Then produce an integrated verdict explaining how these dimensions interact — "
+            "e.g., strong growth offset by weak margins, or improving cash flow despite "
+            "valuation concerns. End with the 2-3 most critical monitor items for next quarter."
+        ),
+        "jp": (
+            "成長、利益率、キャッシュフロー、資本効率、バリュエーション、バックログ/ガイダンスの"
+            "各次元を「強い/普通/弱い」で評価し、Namiさん向けの総合評価を教えてください。"
+            "これらの次元がどのように相互作用するかも説明してください。"
+        ),
     },
 }
 
@@ -155,19 +198,21 @@ Required analysis format:
 | ⚠️ Lowlight | ① | ... | ... | ... | Low / Medium / High |
 
 Required analysis format:
-🌟 ハイライト（良かった点）
-① ...
-● Metric / transcript evidence
-👉 Why it matters
-② ...
-③ ...
+🌟 ハイライト（良かった点、各3〜5文）
+① 最重要ハイライト: 最も重要なポジティブサプライズを、具体的な指標またはトランスクリプトの証拠とともに示してください。構造的改善か一時的イベントかを評価。可能であればセクター比較。投資家への示唆。
+② 2番目のハイライト: 重要なオペレーション上または戦略上の改善。具体的なデータ証拠と出所。投資テーゼへの関連性。
+③ 3番目のハイライト: 経営陣のシグナルまたは市場動向。トランスクリプト証拠。将来への示唆。
+④⑤ 経営陣が強調したテーマに関する追加ポイント（トランスクリプトがあれば）。
 
-⚠️ ローライト（懸念点）
-① ...
-● Evidence and severity
-👉 Investor concern
-② ...
-③ ...
+⚠️ ローライト（懸念点、各3〜5文）
+① 最重要懸念: 最も重要なネガティブシグナル。具体的証拠（指標低下、コスト圧力、競合脅威）。深刻度と持続性の評価。投資家への懸念。
+② 2番目の懸念: 追加のリスクまたは弱点。可能であれば定量化。緩和要因または悪化傾向。
+③ 3番目の懸念: 今後重要になりうる二次的問題。モニタリングトリガー。
+④⑤ トランスクリプトが重大なリスクを明らかにしている場合の追加懸念。
+
+競合コンテキスト: 今四半期のパフォーマンスはセクター平均と比較してどうか？上回る/同等/下回る？
+
+⚠️ リスク: 1〜2の具体的で裏付けのあるリスク。汎用的ではない。
 
 🧠 総合評価（Namiさん向け）: grade the quarter in one concise line.
 🎯 投資視点の一言: state the core takeaway without investment advice.""",
@@ -183,13 +228,23 @@ Required analysis format:
 | Net Income | ... | ... | ... | ... |
 
 Required analysis format:
-🧠 説明・分析
-① Gross profit / gross margin: expansion or compression, with drivers.
-② Operating income / operating margin: whether scale benefits offset OpEx.
-③ OpEx and net income: cost investment, tax/other effects, and sustainability.
-🎯 全体構造（超重要）: summarize the revenue growth x margins x cost structure.
-🧩 Namiさん向けの本質理解: explain whether the earnings quality is high or fragile.
-⚠️ 今後のチェックポイント: list the next 2 checks.""",
+🧠 説明・分析（各3〜5文）
+① 粗利益・粗利益率の分析: 粗利益率を正確な%と出所で示してください。前期比と前年同期比で比較（3四半期トレンド）。要因を説明 — 価格決定力、投入コスト、規模の利益、製品ミックス。セクター平均と比較。収益品質の軌道への影響。
+② 営業利益・営業利益率: 営業利益率を正確な%で。営業レバレッジがポジティブか（収益成長 > OpEx成長）ネガティブか。固定費vs変動費の構造的影響。セクターの営業利益率基準との比較。
+③ OpExと純利益: 主要OpExカテゴリ（R&D、SG&A）とその軌道。純利益に影響する一時的項目。税率の影響。現在のコスト構造の持続可能性。
+④⑤ 追加分析: 収益の質（経常的vs一時的）、マージン持続性の要因、トランスクリプトからの経営陣のコスト見通し。
+
+3四半期マージントレンド: 過去3四半期の粗利益率と営業利益率の軌道を示してください。
+
+競合コンテキスト: セクター平均と比較したマージンの位置付け — 上回る/同等/下回る？
+
+🎯 全体構造（超重要）: 収益成長の軌道 × マージンプロファイル × コスト構造の相互作用を要約。
+
+🧩 Namiさん向けの本質理解: 収益品質が高いか（オペレーション主導、持続可能）脆弱か（コスト削減、一時的利益、景気循環的）を説明。
+
+⚠️ リスク: 1〜2のマージンまたはコストに関する具体的リスク。
+
+⚠️ 今後のチェックポイント: 次の2つのモニタリングポイントをリスト。""",
     "Cash Flow": """Required table:
 {table_header}
 |---|---|---|---|---|---|
@@ -198,14 +253,21 @@ Required analysis format:
 | Free Cash Flow (FCF) | ... | ... | ... | ... | ... |
 
 Required analysis format:
-🧠 説明・分析
-① Operating cash flow: cash earnings quality and working-capital effect.
-② CapEx: whether investment intensity is rising or falling.
-③ Free cash flow: conversion from earnings to cash and sustainability.
-🎯 Cash structure（超重要）: compare cash generation versus reinvestment needs.
-🧩 Namiさん向け解釈: explain whether the company creates cash efficiently or burns cash.
-💰 Cash use: buybacks, dividends, debt paydown — state actual amounts.
-⚠️ 注意点（Namiさん向け）: mention one-off working-capital or future investment risks.""",
+🧠 説明・分析（各3〜5文）
+① 営業CF: OCF金額を正確な出所と共に。収益の質 — 純利益のどれだけが現金に変換されるか？運転資本効果（プラスまたはマイナスの影響）。3四半期OCFトレンド。セクターの現金変換基準と比較。
+② CapEx: CapEx金額と強度（CapEx/収益%）。投資が増加しているか減少しているか。何に投資しているか？再投資率をセクターおよび成長率の正当化と比較。
+③ FCF: FCF = OCF - CapExを正確な計算で。意味がある場合はFCF利回り。3四半期FCFトレンド。現在のFCF生成の持続可能性。
+④⑤ 追加分析: 自社株買い、配当、債務返済 — 実際の金額と軌道。
+
+🎯 Cash structure（超重要）: 現金生成と再投資ニーズの比較。この企業は現金複利マシンか現金消費者か？
+
+競合コンテキスト: セクター平均と比較したFCF変換率とCapEx強度。
+
+🧩 Namiさん向け解釈: 企業が効率的に現金を生み出しているか現金を消費しているか、現在の現金使途（自社株買い、投資、債務）が価値創造的かを説明。
+
+⚠️ リスク: 1〜2の運転資本または再投資リスク。
+
+⚠️ 注意点（Namiさん向け）: 一時的な運転資本や将来の投資リスクについて言及。""",
     "Capital Efficiency": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -234,17 +296,26 @@ Required analysis format:
 | Region 2 | ... | ... | ... | ... | ... |
 
 Required analysis format:
-🧠 セグメント別の解説・分析
-① Lead product/category segment: growth, mix, and driver.
-② Profit engine or recurring segment: margin relevance and durability.
-③ Stable / weak segments: recovery, maturity, or pressure.
-🌍 地域別の重要ポイント
-① Strongest region
-② Emerging growth region
-③ Mature-market stability or weakness
-🎯 全体構造（超重要）: revenue mix and concentration.
-🧩 Namiさん向け本質理解: short / medium / long-term segment thesis.
-⚠️ 注意ポイント: concentration and future segment dependency.""",
+🧠 セグメント別の解説・分析（各3〜5文）
+① 主要製品/カテゴリセグメント: 収益、成長率、全体に占める割合。成長の要因 — 価格、数量、新製品？成長率をセクター平均と比較。
+② 利益エンジン/経常収益セグメント: マージン貢献と持続性。これはキャッシュカウか？経常収益の特性。
+③ 安定/弱含みのセグメント: 回復シグナル、成熟圧力、構造的衰退。3四半期の収益軌道。
+④⑤ 追加セグメントまたはトランスクリプトで強調されたテーマ。
+
+🌍 地域別の重要ポイント（各3〜5文）
+① 最強の地域: 収益と成長。地域のアウトパフォーマンス要因は？
+② 新興成長地域: 次の成長の波はどこか？初期シグナル。
+③ 成熟市場: 安定性、飽和、マクロ経済エクスポージャー。
+
+競合コンテキスト: セクター平均と比較したセグメントミックス — より多様化/集中？より高い/低い成長セグメント？
+
+🎯 全体構造（超重要）: 収益集中リスク。顧客または製品依存度の分析。
+
+🧩 Namiさん向け本質理解: 短期/中期/長期のセグメントテーゼ — どのセグメントが勝ち、どれが衰えるか。
+
+⚠️ リスク: 1〜2のセグメント固有リスク（集中、競合代替、景気循環性）。
+
+⚠️ 注意ポイント: 集中と将来のセグメント依存。""",
     "Forward P/E": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -310,13 +381,23 @@ Required analysis format:
 | Backlog / Guidance | ... | ... | ... | ... |
 
 Required analysis format:
-🏆 総合評価（Namiさん向け）
-① What was strongest: growth, margins, cash, backlog, or guidance.
-② What was weakest: costs, concentration, valuation, cyclicality, or missing data.
-③ What matters next: the 2-3 monitor items for the next quarter.
-🎯 投資視点の一言: summarize the thesis without making buy/sell advice.
-⚠️ リスク: cite only sourced risks.
-🧩 本質理解: explain the quality of the quarter in simple terms.""",
+🏆 総合評価（Namiさん向け、各次元3〜5文）
+① 成長: 強い/普通/弱いで評価。収益とEPSの軌道。成長の質（オーガニックvs買収、経常的vs一時的）。セクター成長との比較。
+② マージン: 強い/普通/弱いで評価。粗利益率と営業利益率のトレンド。価格決定力とコスト管理。セクター平均との比較。
+③ キャッシュフロー: 強い/普通/弱いで評価。FCF生成と変換率。現金使途の質（自社株買い、再投資、債務）。FCF利回りの文脈。
+④ 資本効率: 強い/普通/弱いで評価。ROIC vs 資本コスト。バランスシートの強さ。財務エンジニアリング vs ビジネスモデルのリターン。
+⑤ バリュエーション: 強い/普通/弱いで評価。Forward P/E vs 成長率（PEG文脈）。過去レンジとの比較。セクターとの比較。支持されるか/割高か？
+⑥ バックログ/ガイダンス: 強い/普通/弱いで評価。収益の可視性。ガイダンスの方向性（上方修正/維持/下方修正）。バックログの質（該当する場合）。
+
+統合的評価: これらの次元がどのように相互作用するかを説明。強い成長 + 弱いマージン ≠ 強い成長 + 強いマージン。緊張はどこに？整合性はどこに？
+
+次に重要なこと: 来四半期の最も重要な2〜3のモニタリング項目。具体的で実用的なシグナル。
+
+🎯 投資視点の一言: Summarize the thesis without making buy/sell advice.
+
+⚠️ リスク: Cite only sourced risks from the analysis above. Not generic.
+
+🧩 本質理解: Explain the quality of the quarter in simple terms — clean operational beat or noisy quarter with asterisks?""",
 }
 
 EN_SECTION_FORMATS: Dict[str, str] = {
@@ -339,19 +420,21 @@ For Nami-san: explain in plain investor terms whether this is a high-quality sur
 | ⚠️ Lowlight | ① | ... | ... | ... | Low / Medium / High |
 
 Required analysis format:
-🌟 Highlights
-① ...
-* Metric / transcript evidence
-* Why it matters
-② ...
-③ ...
+🌟 Highlights (3-5 sentences each)
+① Primary highlight: Name the single most important positive surprise with exact metric or transcript evidence. Explain structural vs one-time nature. Compare to sector peers if relevant. Investor implication.
+② Second highlight: Key operational or strategic improvement. Data evidence with specific source. Why it matters for the thesis.
+③ Third highlight: Management signal or market development. Transcript evidence. Forward-looking implication.
+④⑤ Additional points on themes management emphasized (use transcript if available).
 
-⚠️ Lowlights
-① ...
-* Evidence and severity
-* Investor concern
-② ...
-③ ...
+⚠️ Lowlights (3-5 sentences each)
+① Primary concern: Name the single most important negative signal. Specific evidence (metric decline, cost pressure, competitive threat). Severity and durability assessment. Investor concern.
+② Second concern: Additional risk or weakness. Evidence and quantification if possible. Mitigation factors or worsening trajectory.
+③ Third concern: Secondary issue that could become material. Monitoring trigger.
+④⑤ Additional concerns if transcript reveals significant risks.
+
+Competitive context: How does this quarter's performance compare to sector peers? Above/at/below sector average?
+
+⚠️ Risk/Implications: 1-2 specific, sourced risks for this quarter's themes. Not generic.
 
 Essential insight for Nami-san: grade the quarter in one concise line.
 Investment takeaway: state the core takeaway without investment advice.
@@ -368,13 +451,23 @@ Investment takeaway: state the core takeaway without investment advice.
 | Net Income | ... | ... | ... | ... |
 
 Required analysis format:
-🧠 Explanation and analysis
-① Gross profit / gross margin: expansion or compression, with drivers.
-② Operating income / operating margin: whether scale benefits offset OpEx.
-③ OpEx and net income: cost investment, tax/other effects, and sustainability.
-Operating structure: summarize revenue growth x margins x cost structure.
-Essential insight for Nami-san: explain whether earnings quality is high or fragile.
-Caution: list the next 2 checks.
+🧠 Explanation and analysis (3-5 sentences each point)
+① Gross Profit & Margin Analysis: State the gross margin with exact percentage and source. Compare to prior quarter AND same quarter last year (show 3-quarter trend). Explain drivers — pricing power, input costs, scale benefits, product mix shift. Contrast with sector peers. Implication for earnings quality trajectory.
+② Operating Income & Margin: Operating margin with exact percentage. Whether operating leverage is positive (revenue growth > OpEx growth) or negative. Fixed vs variable cost structure impact. Compare to sector operating margin norms.
+③ OpEx & Net Income: Key OpEx categories (R&D, SG&A) and their trajectory. Any one-time items affecting net income. Tax rate impact. Sustainability of current cost structure.
+④⑤ Additional analysis: Revenue quality (recurring vs one-time), margin durability factors, management cost outlook from transcript.
+
+3-Quarter Margin Trend: Show gross margin and operating margin trajectory over the last 3 quarters (compact table or prose).
+
+Competitive context: Margin positioning vs sector peers — above/at/below average?
+
+Operating structure: Summarize revenue growth trajectory × margin profile × cost structure interaction.
+
+Essential insight for Nami-san: Explain whether earnings quality is high (operationally driven, sustainable) or fragile (cost-cutting, one-time benefits, cyclical).
+
+⚠️ Risk/Implications: 1-2 specific margin or cost risks. Not generic.
+
+Caution: List the next 2 monitoring checkpoints.
 > One-line summary: [your one-line summary here]""",
     "Cash Flow": """Required table:
 {table_header}
@@ -384,14 +477,21 @@ Caution: list the next 2 checks.
 | Free Cash Flow (FCF) | ... | ... | ... | ... | ... |
 
 Required analysis format:
-🧠 Explanation and analysis
-① Operating cash flow: cash earnings quality and working-capital effect.
-② CapEx: whether investment intensity is rising or falling.
-③ Free cash flow: conversion from earnings to cash and sustainability.
-Cash structure: compare cash generation versus reinvestment needs.
-Essential insight for Nami-san: explain whether the company creates cash efficiently or burns cash.
-💰 Cash use: buybacks, dividends, debt paydown — state actual amounts.
-Caution for Nami-san: mention one-off working-capital or future investment risks.
+🧠 Explanation and analysis (3-5 sentences each)
+① Operating Cash Flow: OCF amount with exact source. Cash earnings quality — how much of net income converts to cash? Working capital effect (positive or negative drag). 3-quarter OCF trend. Compare to sector cash conversion norms.
+② CapEx: CapEx amount and intensity (CapEx/Revenue %). Whether investment is rising or falling. What is the company investing in? Compare reinvestment rate to sector and growth rate justification.
+③ Free Cash Flow: FCF = OCF - CapEx with exact calculation. FCF yield if meaningful. 3-quarter FCF trend. Sustainability of current FCF generation.
+④⑤ Additional analysis: Buybacks, dividends, debt paydown — actual amounts and trajectory.
+
+Cash structure: Compare cash generation versus reinvestment needs. Is the company a cash compounder or cash consumer?
+
+Competitive context: FCF conversion and CapEx intensity vs sector peers.
+
+Essential insight for Nami-san: Explain whether the company creates cash efficiently or burns cash, and whether current cash usage (buybacks, investment, debt) is value-accretive.
+
+⚠️ Risk/Implications: 1-2 working-capital or reinvestment risks. Not generic.
+
+Caution for Nami-san: Mention one-off working-capital or future investment risks.
 > One-line summary: [your one-line summary here]""",
     "Capital Efficiency": """Required table:
 {table_header}
@@ -422,17 +522,26 @@ Caution: distinguish financial engineering from business-model strength.
 | Region 2 | ... | ... | ... | ... | ... |
 
 Required analysis format:
-🧠 Segment explanation and analysis
-① Lead product/category segment: growth, mix, and driver.
-② Profit engine or recurring segment: margin relevance and durability.
-③ Stable / weak segments: recovery, maturity, or pressure.
-Regional points:
-① Strongest region
-② Emerging growth region
-③ Mature-market stability or weakness
-Overall structure: revenue mix and concentration.
-Essential insight for Nami-san: short / medium / long-term segment thesis.
-Caution: concentration and future segment dependency.
+🧠 Segment explanation and analysis (3-5 sentences each)
+① Lead product/category segment: Revenue, growth rate, and mix % of total. What drove the growth — pricing, volume, new products? Compare growth rate to sector peers.
+② Profit engine or recurring segment: Margin contribution and durability. Is this the cash cow? Recurring revenue characteristics.
+③ Stable/weak segments: Recovery signals, maturity pressure, or structural decline. Revenue trajectory over 3 quarters.
+④⑤ Additional segments or transcript-emphasized themes.
+
+Regional analysis (3-5 sentences each):
+① Strongest region: Revenue and growth. What is driving regional outperformance?
+② Emerging growth region: Where is the next growth wave? Early signals.
+③ Mature-market: Stability, saturation, or macroeconomic exposure.
+
+Competitive context: Segment mix positioning vs sector peers — more/less diversified? Higher/lower growth segments?
+
+Overall structure: Revenue concentration risk. Customer or product dependency analysis.
+
+Essential insight for Nami-san: Short/medium/long-term segment thesis — which segments win, which fade.
+
+⚠️ Risk/Implications: 1-2 segment-specific risks (concentration, competitive displacement, cyclicality).
+
+Caution: Concentration and future segment dependency.
 > One-line summary: [your one-line summary here]""",
     "Forward P/E": """Required table:
 {table_header}
@@ -499,13 +608,23 @@ Essential insight for Nami-san: what the guide means and what to monitor next.
 | Risks | ... | ... | ... | ... |
 
 Required analysis format:
-🏆 Overall assessment for Nami-san
-① What was strongest: growth, margins, cash, backlog, or guidance.
-② What was weakest: costs, concentration, valuation, cyclicality, or missing data.
-③ What matters next: the 2-3 monitor items for the next quarter.
-Investment takeaway: summarize the thesis without making buy/sell advice.
-Caution: cite only sourced risks.
-Essential insight: explain the quality of the quarter in simple terms.
+🏆 Overall assessment for Nami-san (3-5 sentences each dimension)
+① Growth: Rate Strong/Neutral/Weak. Revenue and EPS trajectory. Quality of growth (organic vs acquired, recurring vs one-time). Compare to sector growth.
+② Margins: Rate Strong/Neutral/Weak. Gross and operating margin trend. Pricing power and cost control. Margin vs sector peers.
+③ Cash Flow: Rate Strong/Neutral/Weak. FCF generation and conversion. Cash usage quality (buybacks, reinvestment, debt). FCF yield context.
+④ Capital Efficiency: Rate Strong/Neutral/Weak. ROIC vs cost of capital. Balance sheet strength. Financial engineering vs business-model returns.
+⑤ Valuation: Rate Strong/Neutral/Weak. Forward P/E vs growth rate (PEG context). vs historical range. vs sector. Supported/stretched?
+⑥ Backlog/Guidance: Rate Strong/Neutral/Weak. Revenue visibility. Guidance direction (raise/maintain/cut). Backlog quality if applicable.
+
+Integrated verdict: Explain how these dimensions interact. Strong growth + weak margins = different story than strong growth + strong margins. Where is the tension? Where is the alignment?
+
+What matters next: 2-3 most critical monitor items for next quarter. Specific, actionable signals.
+
+Investment takeaway: Summarize the thesis without making buy/sell advice.
+
+⚠️ Risk: Cite only sourced risks from the analysis above. Not generic.
+
+Essential insight: Explain the quality of the quarter in simple terms — was this a clean beat on operational strength or a noisy quarter with asterisks?
 > One-line summary: [your one-line summary here]""",
 }
 
@@ -525,17 +644,24 @@ def system_prompt(language: str, sector: str = "", industry: str = "") -> str:
         f"a fund manager who needs actionable, sector-specific insight.{sector_line}\n"
         f"{sector_guidance}\n\n"
         "THINK LIKE AN ANALYST — NOT A FORM FILLER:\n"
+        "- Each analysis point must be 3-5 substantive sentences with specific data evidence, "
+        "competitive context, and investor implications. Single-line answers are UNACCEPTABLE.\n"
         "- Identify the 3-5 metrics that truly matter for THIS company in THIS sector. "
         "Do not mechanically list every metric in the supplied data.\n"
         "- When the company does NOT report a metric (e.g., backlog for Apple), "
         "say so clearly instead of forcing a table.\n"
-        "- Adapt your analysis depth to what the transcript reveals.\n"
+        "- Adapt your analysis depth to what the transcript reveals, and add ④⑤ analysis points "
+        "on themes management emphasized in the call.\n"
+        "- Provide competitive context — compare to sector peers where data allows. "
+        "State whether performance appears above, at, or below sector average.\n"
+        "- Show QoQ trend alongside YoY — discuss what CHANGED this quarter vs the trajectory.\n"
         "- Use markdown tables where they add clarity, with columns that make sense for the sector.\n\n"
         "STRUCTURE:\n"
         "- Start each section with ## Section Name\n"
-        "- Use numbered analysis ①②③ for key points\n"
+        "- Use numbered analysis ①②③ for key points (3-5 sentences each minimum)\n"
         "- Include a 'Nami-san takeaway' line\n"
-        "- End with > One-line summary: [concise verdict]\n\n"
+        "- End with > One-line summary: [concise verdict]\n"
+        "- Every section must include a ⚠️ Risk/Implications paragraph with 1-2 specific, sourced risks\n\n"
         "DATA RULES:\n"
         "- Every number must be sourced: (Transcript, CEO remarks) or (yfinance, quarterly data)\n"
         "- Never invent data. When a number is unavailable, explain WHY.\n"
@@ -547,10 +673,13 @@ def system_prompt(language: str, sector: str = "", industry: str = "") -> str:
         f"あなたはバイサイドのシニアアナリストで、Namiさん向けに決算分析を書いています。{sector_line}\n"
         f"{sector_guidance}\n\n"
         "型にはまったフォーム記入ではなく、アナリストとして考えてください：\n"
+        "- 各分析ポイントは3〜5文の実質的な内容で、具体的なデータ証拠、競合コンテキスト、投資家への示唆を含めてください。1行の回答は不十分です。\n"
         "- この企業・このセクターで本当に重要な3〜5の指標を特定してください。\n"
         "- 企業が指標を開示していない場合、「該当なし」と明確に述べてください。\n"
-        "- 決算トランスクリプトで経営陣が強調しているテーマに合わせて分析の深さを調整。\n\n"
-        "構造：## セクション名, ①②③, Namiさん向け解釈, > 一言まとめ\n\n"
+        "- 決算トランスクリプトで経営陣が強調しているテーマに合わせて分析の深さを調整し、④⑤の追加分析ポイントを加えてください。\n"
+        "- 可能な場合はセクター平均との比較を含めてください。\n"
+        "- QoQトレンドをYoYと併せて示し、単なるスナップショットではなく変化を論じてください。\n\n"
+        "構造：## セクション名, ①②③, Namiさん向け解釈, ⚠️ リスク, > 一言まとめ\n\n"
         "データルール：すべての数字に出所を明記。数値が入手できない場合は理由を説明。\n"
         "埋め草（Not available/Supplied metrics）を使用しない。日本語で記述。"
     )
@@ -708,7 +837,7 @@ Section output contract:
 - Use strict markdown only.
 - Use the ◆ marker for numbered analysis points (①②③ ◆ text).
 - Include the required table header exactly: {table_header}
-- CRITICAL: Keep the table LIGHTWEIGHT — only key numbers (metric|value columns). NO long prose in table cells. Max 20 words per cell.
+- CRITICAL: Tables are quick reference only. ALL substantive analysis goes in prose below. Every table cell value MUST appear AGAIN in prose with detailed analysis, sourcing, competitive context, and implications. Tables provide the numbers — prose provides the ANALYSIS.
 - ALL detailed analysis, explanations, and interpretations go BELOW the table as structured prose.
 - Use numbered analysis markers ①②③. Use ④⑤⑥ only when the PDF section calls for more points.
 - Under each ①②③ item, use ● for data bullets and 👉 for investor implications.
@@ -716,7 +845,7 @@ Section output contract:
 - Use direct transcript or supplied-metric evidence. Never invent financial data.
 - If the transcript excerpt says no transcript is available, use only Metrics and mark qualitative call evidence as Data not available in transcript.
 - Every table cell must contain a sourced value or —. Never leave cells empty and never invent missing values.
-- CRITICAL Source column format: Use real source labels — NEVER write "Company filing" or "Calculated" alone. Use "SEC 10-Q p.5" for SEC filings, "yfinance" for Yahoo Finance data, "Calculated: [formula]" for computed values, "Not disclosed" when the company does not report it. Every source cell must identify the real data origin.
+- CRITICAL Source column format: Every source cell MUST identify the real data origin with specificity. Use exact provenance — SEC 10-Q page and line number, yfinance key name, transcript quote with timestamp, or calculation formula with inputs. Generic labels like "Company filing" or "Calculated" are INSUFFICIENT.
 - CRITICAL: Never write \"Section unavailable\" or similar placeholder text. If specific data is missing, use — in table cells and provide qualitative analysis based on the company's known business model, sector position, and total revenue/growth trends from Metrics.
 - End with exactly one final blockquote line: {summary_label}
 
