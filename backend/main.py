@@ -1261,7 +1261,46 @@ async def get_report_pdf(ticker: str, lang: str = "en"):
         deep_dive = analysis_dir / "07_final_report" / "earnings_deep_dive.pdf"
     report_pdf = analysis_dir / "07_final_report" / "report.pdf"
 
-    # Prefer deep-dive PDF, fall back to main report PDF (language-agnostic)
+    # Prefer deep-dive PDF; if it doesn't exist, trigger generation (don't silently fall back to report.pdf)
+    if not deep_dive.exists():
+        # Trigger deep-dive generation via the dedicated endpoint logic
+        from backend.earnings_deep_dive.generator import generate_deep_dive
+        from backend.earnings_deep_dive.schemas import DeepDiveRequest
+        from backend.pipeline import _deep_dive_metrics, get_yahoo_data
+        from backend.models import AnalysisResult
+        from datetime import datetime, timezone
+        import os
+        
+        try:
+            q_data = get_yahoo_data(ticker)
+            if q_data:
+                dummy = AnalysisResult(
+                    ticker=ticker,
+                    company_name=q_data.get("company_name", ticker),
+                    retrieved_at=datetime.now(timezone.utc).isoformat(),
+                    price=q_data.get("price"),
+                    currency=q_data.get("currency", "USD"),
+                    sector=q_data.get("sector"),
+                )
+                metrics = _deep_dive_metrics(dummy, q_data)
+                dd_req = DeepDiveRequest(ticker=ticker, quarter="latest quarter", lang=lang, metrics=metrics)
+                dd_response = generate_deep_dive(dd_req)
+                # Render PDF from the generated markdown
+                from backend.earnings_deep_dive.mapper import build_earnings_deep_dive_report
+                from backend.earnings_deep_dive.pdf_renderer import render_earnings_deep_dive_pdf
+                report_model = build_earnings_deep_dive_report(
+                    ticker=ticker,
+                    company=dummy.company_name,
+                    quarter=dd_req.quarter,
+                    metrics=metrics,
+                    transcript_url=dd_response.transcript_url if hasattr(dd_response, 'transcript_url') else None,
+                    language=lang,
+                )
+                os.makedirs(deep_dive.parent, exist_ok=True)
+                render_earnings_deep_dive_pdf(report_model, str(deep_dive))
+        except Exception:
+            pass
+    
     pdf_path = deep_dive if deep_dive.exists() else report_pdf
     if not pdf_path.exists():
         raise HTTPException(status_code=404, detail=f"No PDF found for {ticker}")
