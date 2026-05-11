@@ -17,7 +17,7 @@ import hashlib
 import time
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile, Header, Form, Request, Body
+from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile, Header, Form, Request, Body, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -1245,7 +1245,7 @@ async def get_job_status(job_id: str):
 
 
 @app.get("/api/report/{ticker}/pdf")
-async def get_report_pdf(ticker: str, lang: str = "en"):
+async def get_report_pdf(ticker: str, lang: str = "en", background_tasks: BackgroundTasks = None):
     """Serve the earnings deep-dive PDF for a ticker in the requested language.
     Use ?lang=ja or ?lang=jp for Japanese. Defaults to English."""
     ticker = ticker.strip().upper()
@@ -1261,20 +1261,25 @@ async def get_report_pdf(ticker: str, lang: str = "en"):
         deep_dive = analysis_dir / "07_final_report" / "earnings_deep_dive.pdf"
     report_pdf = analysis_dir / "07_final_report" / "report.pdf"
 
-    # Prefer deep-dive PDF; if it doesn't exist, trigger generation (don't silently fall back to report.pdf)
+    # Prefer deep-dive PDF; if it doesn't exist, launch async generation
+    # and return 202 Accepted so the client can poll (no 2-min timeout)
     if not deep_dive.exists():
-        # Trigger deep-dive generation via the dedicated endpoint logic
-        from backend.earnings_deep_dive.generator import generate_deep_dive
-        from backend.earnings_deep_dive.schemas import DeepDiveRequest
-        from backend.pipeline import _deep_dive_metrics
-        from backend.sources_collector import get_yahoo_data
-        from backend.models import AnalysisResult
-        from datetime import datetime, timezone
-        import os
+        import asyncio
         
-        try:
-            q_data = get_yahoo_data(ticker)
-            if q_data:
+        async def _generate_deep_dive_async(ticker: str, lang: str, dd_path: Path):
+            """Background deep-dive generation — runs in thread to not block."""
+            try:
+                from backend.earnings_deep_dive.generator import generate_deep_dive
+                from backend.earnings_deep_dive.schemas import DeepDiveRequest
+                from backend.pipeline import _deep_dive_metrics
+                from backend.sources_collector import get_yahoo_data
+                from backend.models import AnalysisResult
+                from datetime import datetime, timezone
+                import os
+                
+                q_data = get_yahoo_data(ticker)
+                if not q_data:
+                    return
                 dummy = AnalysisResult(
                     ticker=ticker,
                     company_name=q_data.get("company_name", ticker),
@@ -1286,7 +1291,7 @@ async def get_report_pdf(ticker: str, lang: str = "en"):
                 metrics = _deep_dive_metrics(dummy, q_data)
                 dd_req = DeepDiveRequest(ticker=ticker, quarter="latest quarter", lang=lang, metrics=metrics)
                 dd_response = generate_deep_dive(dd_req)
-                # Render PDF from the generated markdown
+                
                 from backend.earnings_deep_dive.mapper import build_earnings_deep_dive_report
                 from backend.earnings_deep_dive.pdf_renderer import render_earnings_deep_dive_pdf
                 report_model = build_earnings_deep_dive_report(
@@ -1294,13 +1299,34 @@ async def get_report_pdf(ticker: str, lang: str = "en"):
                     company=dummy.company_name,
                     quarter=dd_req.quarter,
                     metrics=metrics,
-                    transcript_url=dd_response.transcript_url if hasattr(dd_response, 'transcript_url') else None,
+                    transcript_url=getattr(dd_response, 'transcript_url', None),
                     language=lang,
                 )
-                os.makedirs(deep_dive.parent, exist_ok=True)
-                render_earnings_deep_dive_pdf(report_model, str(deep_dive))
-        except Exception:
-            pass
+                os.makedirs(dd_path.parent, exist_ok=True)
+                render_earnings_deep_dive_pdf(report_model, str(dd_path))
+            except Exception as e:
+                import logging
+                logging.getLogger("uvicorn.error").error(f"Deep-dive generation failed for {ticker}: {e}")
+        
+        # Launch async — FastAPI background_tasks runs after response
+        if background_tasks:
+            background_tasks.add_task(_generate_deep_dive_async, ticker, lang, deep_dive)
+        else:
+            # No BackgroundTasks available (e.g., testing) — run synchronously
+            import asyncio
+            asyncio.create_task(_generate_deep_dive_async(ticker, lang, deep_dive))
+        
+        # Return 202 with polling info
+        return JSONResponse(
+            status_code=202,
+            content={
+                "status": "generating",
+                "ticker": ticker,
+                "message": "Deep-dive PDF generation started. Poll this endpoint until ready.",
+                "retry_after_seconds": 10,
+            },
+            headers={"Retry-After": "10"},
+        )
     
     pdf_path = deep_dive if deep_dive.exists() else report_pdf
     if not pdf_path.exists():

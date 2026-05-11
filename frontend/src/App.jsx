@@ -55,11 +55,45 @@ export default function App() {
     return str;
   };
 
-  const handleViewReport = (result) => {
+  const handleViewReport = async (result) => {
     // Open the deep-dive PDF in a new tab with current language
+    // If PDF doesn't exist yet (202), poll until ready
     const langParam = lang === 'ja' || lang === 'jp' ? '?lang=ja' : '';
     const pdfUrl = `${API_BASE}/report/${result.ticker}/pdf${langParam}`;
-    window.open(pdfUrl, '_blank', 'noopener');
+    
+    // Check if PDF is ready or needs generation
+    try {
+      const checkRes = await fetch(pdfUrl, { method: 'HEAD' });
+      if (checkRes.status === 202) {
+        // Generation in progress — poll until ready
+        const toast = document.createElement('div');
+        toast.style.cssText = 'position:fixed;top:20px;right:20px;background:#161b22;border:1px solid #30363d;color:#c9d1d9;padding:12px 18px;border-radius:8px;z-index:9999;font-size:13px';
+        toast.textContent = `📊 Generating deep-dive for ${result.ticker}...`;
+        document.body.appendChild(toast);
+        
+        const poll = async () => {
+          const res = await fetch(pdfUrl, { method: 'HEAD' });
+          if (res.status === 200) {
+            toast.textContent = `✅ Deep-dive ready for ${result.ticker}`;
+            setTimeout(() => toast.remove(), 2000);
+            window.open(pdfUrl, '_blank', 'noopener');
+          } else if (res.status === 202) {
+            toast.textContent = `📊 Generating deep-dive for ${result.ticker}...`;
+            setTimeout(poll, 5000);
+          } else {
+            toast.textContent = `❌ Failed to generate deep-dive for ${result.ticker}`;
+            setTimeout(() => toast.remove(), 5000);
+          }
+        };
+        setTimeout(poll, 3000);
+      } else {
+        // PDF exists — open directly
+        window.open(pdfUrl, '_blank', 'noopener');
+      }
+    } catch (e) {
+      // Fallback: open directly
+      window.open(pdfUrl, '_blank', 'noopener');
+    }
   };
 
   const handleAnalyze = async (tickers) => {
