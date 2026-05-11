@@ -20,8 +20,10 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
+    CondPageBreak,
     HRFlowable,
     Image as RLImage,
+    KeepTogether,
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -126,7 +128,9 @@ def _section_title_flowables(section, styles: dict[str, ParagraphStyle], *,
     prefix = _SECTION_PREFIXES.get(section.key, "◆")
     if not prefix or font_name in ("MS-PGothic", "HeiseiMin-W3"):
         safe = _glyph_safe(section.title, font_name=font_name)
-        return [Paragraph(escape(safe), styles["section"])]
+        paragraph = Paragraph(escape(safe), styles["section"])
+        paragraph.keepWithNext = 1
+        return [paragraph]
 
     # Render ◆ as PIL image
     diamond_img = _emoji_to_image(prefix.strip() or "◆", size=emoji_size)
@@ -148,6 +152,7 @@ def _section_title_flowables(section, styles: dict[str, ParagraphStyle], *,
         ("BOX", (0, 0), (-1, -1), 0, colors.white),
         ("INNERGRID", (0, 0), (-1, -1), 0, colors.white),
     ]))
+    table.keepWithNext = 1
     return [table]
 
 
@@ -791,6 +796,15 @@ def _section_is_empty(section) -> bool:
     return False
 
 
+def _section_has_renderable_content(section) -> bool:
+    """Return True when a section has table, analysis, or summary content to render."""
+    has_table = not _section_is_empty(section)
+    has_analysis = any(str(item).strip() for item in getattr(section, "analysis", []) or [])
+    summary = str(getattr(section, "summary", "") or "").strip()
+    has_summary = bool(summary and summary.lower() not in {"not available.", "not available", "n/a"})
+    return has_table or has_analysis or has_summary
+
+
 def _validate_report(report) -> list[str]:
     """Pre-render QA gate. Returns list of issues (empty = pass)."""
     issues = []
@@ -860,21 +874,13 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         story.append(Paragraph(escape(f"Official Website: {website}"), styles["meta"]))
     story.extend(_earnings_documents_story(report, styles, fonts))
 
-    for index, section in enumerate(report.sections):
-        # ── Model parity: each section starts on a new page ──
-        # Skip page break when:
-        #  (a) previous section is empty/placeholder, or
-        #  (b) this section itself is empty — don't waste a blank page
-        prev_section = report.sections[index - 1] if index > 0 else None
-        skip_break = (
-            (prev_section is not None and _section_is_empty(prev_section))
-            or _section_is_empty(section)
-        )
-        if not skip_break:
-            story.append(PageBreak())
-            # Visual separator at TOP of each section (model parity — HR after page break)
-            story.append(HRFlowable(width="100%", thickness=0.5, color=_GRID))
-            story.append(Spacer(1, 0.12 * inch))
+    rendered_sections = [section for section in report.sections if _section_has_renderable_content(section)]
+
+    for index, section in enumerate(rendered_sections):
+        if index > 0:
+            story.append(CondPageBreak(2.25 * inch))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=_GRID))
+        story.append(Spacer(1, 0.12 * inch))
 
         # Emoji image + title as flowables
         story.extend(_section_title_flowables(
@@ -898,18 +904,21 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             for paragraph in section.analysis:
                 story.extend(_paragraph_with_emojis(paragraph, styles["body"], font_name=fonts.regular))
 
-        story.append(Spacer(1, 0.12 * inch))
-        story.append(HRFlowable(width="60%", thickness=0.3, color=_MUTED, spaceAfter=0.08*inch))
-        story.append(Paragraph(
-            f"<b>{escape(section.summary_label)}</b>",
-            styles["body"],
-        ))
-        story.extend(_paragraph_with_emojis(
-            section.summary.strip() if section.summary.strip() else "Not available.",
-            styles["body"],
-            font_name=fonts.regular,
-        ))
-        story.append(Spacer(1, 0.18 * inch))
+        summary_flowables = [
+            Spacer(1, 0.12 * inch),
+            HRFlowable(width="60%", thickness=0.3, color=_MUTED, spaceAfter=0.08*inch),
+            Paragraph(
+                f"<b>{escape(section.summary_label)}</b>",
+                styles["body"],
+            ),
+            *_paragraph_with_emojis(
+                section.summary.strip() if section.summary.strip() else "Not available.",
+                styles["body"],
+                font_name=fonts.regular,
+            ),
+            Spacer(1, 0.18 * inch),
+        ]
+        story.append(KeepTogether(summary_flowables))
 
     if report.sources:
         story.append(PageBreak())
