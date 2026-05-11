@@ -1332,7 +1332,14 @@ async def get_report_pdf(ticker: str, lang: str = "en", background_tasks: Backgr
     if not pdf_path.exists():
         raise HTTPException(status_code=404, detail=f"No PDF found for {ticker}")
 
-    return FileResponse(pdf_path, media_type="application/pdf", filename=None, headers={"Content-Disposition": "inline"})
+    # Generate ticker-aware filename for browser save dialog: MSFT_deep_dive.pdf
+    pdf_filename = f"{ticker}_deep_dive.pdf"
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=None,
+        headers={"Content-Disposition": f"inline; filename=\"{pdf_filename}\""}
+    )
 
 
 @app.get("/api/report/{ticker}")
