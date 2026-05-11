@@ -23,31 +23,29 @@ from backend.earnings_deep_dive.validators import (
     validate_section_heading,
 )
 from backend.codex_provider import _codex_chat as codex_chat
-from backend.kimi_provider import kimi_chat as _kimi_provider_chat
 from backend.transcript_finder import find_transcripts
 
 logger = logging.getLogger(__name__)
 
 
-MAX_CODEX_TOKENS = 4000
-MAX_KIMI_TOKENS = MAX_CODEX_TOKENS
+MAX_CODEX_TOKENS = 16000
 
 def _llm_chat(prompt: str, system: str = "", max_tokens: int = MAX_CODEX_TOKENS) -> str | None:
-    """DeepSeek first (fast, reliable) → Gemini Flash Lite → Kimi K2.6."""
-    # 1. DeepSeek — fastest, paid, reliable ($0.27/M tokens)
+    """GPT-5.5 (Codex) primary → DeepSeek → Gemini Flash Lite."""
+    # 1. Codex (GPT-5.5 via ChatGPT Plus subscription) — best reasoning, required for financial data
+    result = codex_chat(prompt, system=system, max_tokens=max_tokens)
+    if result:
+        return result
+    # 2. DeepSeek — paid, reliable ($0.27/M tokens)
     from backend.kimi_provider import _deepseek_chat
     result = _deepseek_chat(prompt, system, max_tokens)
     if result:
         return result
-    # 2. Gemini Flash Lite — free, fallback (may 429/503 under load)
+    # 3. Gemini Flash Lite — free, fallback (may 429/503 under load)
     from backend.gemini_provider import gemini_chat as _gemini
-    result = _gemini(prompt, system=system, max_tokens=max_tokens)
-    if result:
-        return result
-    # 3. Kimi K2.6 — free via NVIDIA NIM
-    return _kimi_provider_chat(prompt, system=system, max_tokens=max_tokens)
+    return _gemini(prompt, system=system, max_tokens=max_tokens)
 
-kimi_chat = _llm_chat
+primary_chat = _llm_chat
 SECTION_MAX_CHARS = 6000
 
 SECTION_METRIC_KEYS = {
@@ -255,7 +253,7 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
         return batch_sections, batch_statuses, batch_warnings
     
     # The wrapper keeps retries and provider fallback behavior patchable in tests.
-    sections_a_dict, statuses_a, warnings_a = _gen_batch(list(SECTION_ORDER), "kimi", kimi_chat)
+    sections_a_dict, statuses_a, warnings_a = _gen_batch(list(SECTION_ORDER), "primary", primary_chat)
     sections_b_dict, statuses_b, warnings_b = {}, [], []
     
     # Merge in original order
@@ -342,9 +340,9 @@ def _generate_section(
             )
 
         try:
-            output = kimi_chat(prompt, system=sys_prompt, max_tokens=MAX_CODEX_TOKENS)
+            output = primary_chat(prompt, system=sys_prompt, max_tokens=MAX_CODEX_TOKENS)
             if not output:
-                raise KimiFailureError("Kimi returned no content")
+                raise KimiFailureError("LLM returned no content")
             cleaned = _clean_section_output(output, request.max_section_chars)
             _validate_section(
                 cleaned,

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+import os
 import re
 
 from backend.earnings_deep_dive.report_model import (
@@ -1848,6 +1849,30 @@ def build_earnings_deep_dive_report(
     presentation_url = _metric_url(metrics, "earnings_presentation_url", "presentation_url")
     if presentation_url:
         sources.append(SourceRef(label="Earnings Call Presentation", url=presentation_url))
+
+    # --- Data Sources (always relevant) ---
+    sources.append(SourceRef(
+        label="Financial Data",
+        url=f"https://finance.yahoo.com/quote/{ticker_clean}",
+        note="Price, estimates, and key metrics via yfinance"
+    ))
+    sources.append(SourceRef(
+        label="SEC EDGAR Filings",
+        url=f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker_clean}",
+        note="10-K, 10-Q, and 8-K filings — primary data source"
+    ))
+    finnhub_api_key = os.environ.get("FINNHUB_API_KEY", "")
+    if finnhub_api_key:
+        sources.append(SourceRef(
+            label="Finnhub",
+            url="https://finnhub.io",
+            note="Real-time estimates, transcripts, and SEC filings index"
+        ))
+    sources.append(SourceRef(
+        label="Seeking Alpha Transcripts",
+        url=f"https://seekingalpha.com/symbol/{ticker_clean}/earnings/transcripts",
+        note="Earnings call transcripts (when available)"
+    ))
 
     # Filter: skip Geographic Segments (never reported in quarterly filings)
     # and any truly empty sections

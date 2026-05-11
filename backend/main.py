@@ -1305,6 +1305,7 @@ async def get_report_pdf(ticker: str, lang: str = "en", background_tasks: Backgr
                     metrics=metrics,
                     transcript_url=getattr(dd_response, 'transcript_url', None),
                     language=lang,
+                    section_analysis=getattr(dd_response, 'sections', None),
                 )
                 os.makedirs(dd_path.parent, exist_ok=True)
                 render_earnings_deep_dive_pdf(report_model, str(dd_path))

@@ -939,6 +939,8 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             pass
         else:
             story.extend(_table(section, styles, fonts))
+            # Spacing between table and analysis text (prevents text sticking to table)
+            story.append(Spacer(1, 0.15 * inch))
         if section.analysis:
             for paragraph in section.analysis:
                 story.extend(_paragraph_with_emojis(paragraph, styles["body"], font_name=fonts.regular))
@@ -972,13 +974,57 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
     if report.sources:
         story.append(PageBreak())
         story.append(Paragraph("Sources", styles["section"]))
+        story.append(Spacer(1, 0.15 * inch))
+
+        # Separate document sources from data sources
+        doc_sources = []
+        data_sources = []
+        doc_labels = {
+            "Earnings Transcript", "Official Investor Relations", "Official Website",
+            "Press Release", "Earnings Call Presentation", "Seeking Alpha Transcripts",
+        }
         for source in report.sources:
-            text = escape(source.label)
-            if source.url:
-                text += f": {escape(source.url)}"
-            elif source.note:
-                text += f": {escape(source.note)}"
-            story.append(Paragraph(text, styles["body"]))
+            if source.label in doc_labels or "Transcript" in source.label or "Investor" in source.label or "Website" in source.label or "Press Release" in source.label or "Presentation" in source.label:
+                doc_sources.append(source)
+            else:
+                data_sources.append(source)
+
+        # --- Document Sources ---
+        if doc_sources:
+            story.append(Paragraph("<b>Earnings Documents</b>", styles["body"]))
+            for source in doc_sources:
+                if source.url:
+                    url_text = f'<font size="8"><a href="{escape(source.url)}" color="blue">{escape(source.url)}</a></font>'
+                    story.append(Paragraph(url_text, styles["body"]))
+                label_text = f'<b>{escape(source.label)}</b>'
+                if source.note:
+                    label_text += f'  <font size="8" color="#555555">{escape(source.note)}</font>'
+                story.append(Paragraph(label_text, styles["small"]))
+                story.append(Spacer(1, 0.08 * inch))
+            story.append(Spacer(1, 0.12 * inch))
+
+        # --- Data Sources ---
+        if data_sources:
+            story.append(Paragraph("<b>Data &amp; Analytics</b>", styles["body"]))
+            for source in data_sources:
+                if source.url:
+                    url_text = f'<font size="8"><a href="{escape(source.url)}" color="blue">{escape(source.url)}</a></font>'
+                    story.append(Paragraph(url_text, styles["body"]))
+                label_text = f'<b>{escape(source.label)}</b>'
+                if source.note:
+                    label_text += f'  <font size="8" color="#555555">{escape(source.note)}</font>'
+                story.append(Paragraph(label_text, styles["small"]))
+                story.append(Spacer(1, 0.08 * inch))
+
+        # Methodology note
+        story.append(Spacer(1, 0.2 * inch))
+        story.append(Paragraph(
+            "<b>Methodology:</b> This deep-dive combines quantitative metrics from SEC filings "
+            "(via yfinance/Finnhub) with qualitative analysis of the earnings call transcript. "
+            "All figures are sourced; no data is invented. "
+            "Ratings reflect Nami-grade buy-side analysis standards.",
+            styles["small"]
+        ))
 
     try:
         doc.build(story)
