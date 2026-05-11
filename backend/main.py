@@ -1266,7 +1266,8 @@ async def get_report_pdf(ticker: str, lang: str = "en"):
         # Trigger deep-dive generation via the dedicated endpoint logic
         from backend.earnings_deep_dive.generator import generate_deep_dive
         from backend.earnings_deep_dive.schemas import DeepDiveRequest
-        from backend.pipeline import _deep_dive_metrics, get_yahoo_data
+        from backend.pipeline import _deep_dive_metrics
+        from backend.sources_collector import get_yahoo_data
         from backend.models import AnalysisResult
         from datetime import datetime, timezone
         import os
