@@ -54,3 +54,4 @@ SSH_SETUP.txt
 .vercel
 .bak
 tmp/
+*.bak
