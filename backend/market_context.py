@@ -7,12 +7,18 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-GEMINI_API = os.getenv("GEMINI_API_URL", "http://127.0.0.1:7863")
+GEMINI_API = os.environ.get("GEMINI_API_URL")
+if not GEMINI_API:
+    logger.warning("GEMINI_API_URL not set — market context will be skipped")
+    GEMINI_API = None
 
 
 def submit_market_research(ticker: str, company_name: str) -> Optional[str]:
     """Submit a Gemini Deep Research job for market context. Returns job_id or None."""
     try:
+        if not GEMINI_API:
+            logger.warning("GEMINI_API_URL not set — skipping market research")
+            return None
         resp = http.post(
             f"{GEMINI_API}/api/research-jobs",
             json={

@@ -145,7 +145,7 @@ app.add_middleware(
 
 ANALYSES_DIR = Path(__file__).parent.parent / "analyses"
 
-# In-memory batch job store (survives between requests, lost on server restart)
+# Batch job store — persisted to batches/ on disk for restart resilience
 _batch_jobs: dict = {}
 BATCH_DIR = Path(__file__).parent.parent / "batches"
 BATCH_DIR.mkdir(exist_ok=True)
