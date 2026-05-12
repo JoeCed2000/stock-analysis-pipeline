@@ -136,13 +136,15 @@ def _multiple(value: Any) -> str:
 
 
 def _yoy_pct(value: Any) -> str:
-    """Format a YoY percentage value that is already in percentage points (e.g., -4.4, 9.5)."""
+    """Format a YoY percentage value — handles both ratios (0.25→25%) and percentage points (25→25%)."""
     if not _has(value):
         return MISSING
     try:
         number = float(value)
     except (TypeError, ValueError):
         return str(value)
+    if abs(number) <= 1:
+        number *= 100
     sign = "+" if number > 0 else ""
     return f"{sign}{number:.1f}%"
 
@@ -976,13 +978,13 @@ def _highlights_rows(metrics: FinancialMetrics, row_labels: tuple[str, ...]) -> 
     except (TypeError, ValueError):
         margin_num = None
     risk_evidence = (
-        f"Margin {margin}, {'below 15% threshold' if margin_num and margin_num < 15 else 'within healthy range'}"
+        f"Margin {margin}, {'below 15% threshold' if margin_num and (margin_num * 100) < 15 else 'within healthy range'}"
         if margin_num is not None
         else f"PE Forward {pe}" if pe and pe != MISSING else "Watch valuation multiple"
     )
     risk_impact = (
         "Margin compression risk if costs rise faster than revenue"
-        if margin_num is not None and margin_num < 15
+        if margin_num is not None and (margin_num * 100) < 15
         else "Valuation risk if growth decelerates"
     )
 
@@ -1042,12 +1044,12 @@ def _verdict_rows(metrics: FinancialMetrics, row_labels: tuple[str, ...]) -> lis
     gd_positive = f"Revenue {revenue}, {revenue_yoy} YoY"
     gd_negative = (
         f"Margin {margin} — watch for compression"
-        if margin_num is not None and margin_num < 15
+        if margin_num is not None and (margin_num * 100) < 15
         else "Growth rate sustainability needs monitoring"
     )
     gd_assessment = (
         "Strong — revenue growth with margin support"
-        if rev_yoy_num > 10 and (margin_num is None or margin_num >= 15)
+        if rev_yoy_num > 10 and (margin_num is None or (margin_num * 100) >= 15)
         else "Moderate — growth present but margin/quality questions remain"
         if rev_yoy_num > 0
         else "Weak — declining revenue YoY"
@@ -1164,7 +1166,7 @@ def _compute_final_verdict(ticker: str, metrics: FinancialMetrics) -> str:
         margin_num = float(metrics.operating_margin) if metrics.operating_margin is not None else None
     except (TypeError, ValueError):
         margin_num = None
-    if margin_num is not None and margin_num < 15: concerns.append("margin below 15%")
+    if margin_num is not None and (margin_num * 100) < 15: concerns.append("margin below 15%")
     if pe_num is not None and pe_num > 25: concerns.append("premium valuation")
     if rev_yoy_num <= 0: concerns.append("declining revenue")
 

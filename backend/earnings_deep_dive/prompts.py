@@ -891,9 +891,9 @@ def highlights_prompt(language: str, ticker: str, company: str, quarter: str, me
         pct = rev_vs * 100
         direction = "BEAT" if pct > 0 else "MISSED"
         try: rev_b = float(rev_actual) / 1e9
-        except: rev_b = rev_actual
+        except (TypeError, ValueError): rev_b = rev_actual
         try: rev_est_b = float(rev_est) / 1e9
-        except: rev_est_b = rev_est
+        except (TypeError, ValueError): rev_est_b = rev_est
         extra += f"\n⚠️  Revenue {direction} consensus estimates by {abs(pct):.1f}% (actual=${rev_b:.2f}B, estimate=${rev_est_b:.2f}B). Frame highlights consistent with this result."
     base = _base_prompt(
         section="Highlights",
