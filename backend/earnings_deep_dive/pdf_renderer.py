@@ -24,6 +24,7 @@ from reportlab.platypus import (
     HRFlowable,
     Image as RLImage,
     KeepTogether,
+    LayoutError,
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -1028,23 +1029,30 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
 
     try:
         doc.build(story)
-    except Exception as layout_err:
-        # ReportLab LayoutError — likely a table cell overflow
-        # Log and try to continue by skipping the last section
-        import sys, traceback
+    except LayoutError as layout_err:
+        # ReportLab LayoutError — likely a table cell overflow.
+        # Recover by dropping the last section and retrying.
+        import sys
         print(f"[PDF RENDER ERROR] {layout_err}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
-        # Remove the last section that likely caused the overflow
         if len(report.sections) > 0:
             problem_section = report.sections[-1]
-            print(f"[PDF RENDER] Skipping section '{problem_section.key}' due to layout overflow", file=sys.stderr)
-        # Rebuild without problematic sections
+            print(f"[PDF RENDER] Dropping section '{problem_section.key}' due to layout overflow", file=sys.stderr)
+            report.sections = report.sections[:-1]
+        # Rebuild with truncated sections, adding a visible warning
+        from reportlab.lib.pagesizes import LETTER
+        from reportlab.platypus import SimpleDocTemplate
+        warning_para = Paragraph(
+            "<font color='red'><b>⚠ WARNING: This report is incomplete — a layout error prevented full rendering.</b></font>",
+            styles["body"]
+        )
+        story.insert(0, warning_para)
+        story.insert(1, Spacer(1, 0.15 * inch))
         doc2 = SimpleDocTemplate(
             str(output), pagesize=LETTER,
             rightMargin=0.62*inch, leftMargin=0.62*inch,
             topMargin=0.58*inch, bottomMargin=0.62*inch, pageCompression=0,
             title=report.title, author="stock-analysis-pipeline"
         )
-        doc2.build(story[:-1])  # retry without last section
-        print(f"[PDF RENDER] Recovered — rendered {len(story)} flowables", file=sys.stderr)
+        doc2.build(story)
+        print(f"[PDF RENDER] Recovered with {len(report.sections)} sections (1 dropped)", file=sys.stderr)
     return str(output)

@@ -63,6 +63,19 @@ class DeepDiveRequest(BaseModel):
     language: Language = "en"
     output_dir: str = Field(..., min_length=1)
     metrics: FinancialMetrics = Field(default_factory=FinancialMetrics)
+
+    @field_validator("output_dir")
+    @classmethod
+    def _validate_output_dir(cls, v: str) -> str:
+        """Ensure output_dir is under the approved analyses root."""
+        from pathlib import Path
+        p = Path(v).resolve()
+        analyses_root = (Path(__file__).parent.parent.parent / "analyses").resolve()
+        try:
+            p.relative_to(analyses_root)
+        except ValueError:
+            raise ValueError(f"output_dir must be under {analyses_root}, got {v}")
+        return v
     transcript_text: Optional[str] = None
     transcript_url: Optional[str] = None
     max_section_chars: int = Field(default=8000, ge=600, le=8000)
