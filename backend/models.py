@@ -100,7 +100,7 @@ class Source(BaseModel):
     source_type: str
     publisher: str
     period: Optional[str] = None
-    used_for: List[str] = []
+    used_for: List[str] = Field(default_factory=list)
     reliability: str = "medium"
 
 
