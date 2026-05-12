@@ -17,7 +17,8 @@ from backend.earnings_deep_dive.schemas import FinancialMetrics
 from backend.earnings_deep_dive.template import TemplateLanguage, get_earnings_template
 
 
-MISSING = "データ未取得"
+MISSING = "Not available"
+MISSING_JP = "データ未取得"
 MISSING_EN = "Not available"
 NOT_DISCLOSED = "開示なし"
 NOT_DISCLOSED_EN = "Not disclosed"
@@ -964,9 +965,9 @@ def _highlights_rows(metrics: FinancialMetrics, row_labels: tuple[str, ...]) -> 
     )
 
     # Top risk: margins or valuation
-    if margin and margin != MISSING and not margin.startswith("データ"):
+    if margin and margin != MISSING and margin != MISSING_JP and not margin.startswith("データ"):
         risk_signal = f"Operating margin: {margin}"
-    elif gross_margin and gross_margin != MISSING and not gross_margin.startswith("データ"):
+    elif gross_margin and gross_margin != MISSING and gross_margin != MISSING_JP and not gross_margin.startswith("データ"):
         risk_signal = f"Gross margin: {gross_margin}"
     else:
         risk_signal = "Margin data not disclosed"
