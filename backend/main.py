@@ -17,7 +17,7 @@ import hashlib
 import time
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile, Header, Form, Request, Body, BackgroundTasks
+from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile, Header, Form, Request, Body, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -118,9 +118,27 @@ async def rate_limit_middleware(request: Request, call_next):
         _rate_limits[client_ip] = [now, 1]
     return await call_next(request)
 
+# ── Admin auth gate —─────────────────────────────────────────────────
+# Protects /api/admin/* endpoints behind an ADMIN_SECRET env var.
+# Set ADMIN_SECRET in .env to enable. Without it, admin endpoints return 403.
+_ADMIN_SECRET = os.getenv("ADMIN_SECRET", "")
+
+async def _require_admin(request: Request):
+    """FastAPI dependency: reject if ADMIN_SECRET is not set or doesn't match."""
+    if not _ADMIN_SECRET:
+        raise HTTPException(status_code=403, detail="Admin endpoints disabled (set ADMIN_SECRET)")
+    provided = request.headers.get("X-Admin-Secret", "") or request.query_params.get("admin_secret", "")
+    if provided != _ADMIN_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid admin credentials")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",   # Vite dev server
+        "http://127.0.0.1:5173",
+        "https://sa.cedlabusa.net",  # production tunnel
+        "https://www.cedlabusa.net",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -1525,7 +1543,7 @@ async def list_analyses():
 
 
 @app.get("/api/admin/recent-searches")
-async def recent_searches(limit: int = 50, status: str = "all"):
+async def recent_searches(limit: int = 50, status: str = "all", _admin=Depends(_require_admin)):
     """Get recent search events for near-real-time monitoring.
     
     Query params:
@@ -1540,7 +1558,7 @@ async def recent_searches(limit: int = 50, status: str = "all"):
 
 
 @app.get("/api/admin/search-stats")
-async def search_stats():
+async def search_stats(_admin=Depends(_require_admin)):
     """Get aggregate search statistics for the admin dashboard.
     
     Returns {total, success_rate, avg_duration_ms, top_tickers, recent_errors, last_24h}
@@ -1583,7 +1601,7 @@ async def list_feedback(ticker: str):
 
 
 @app.get("/api/admin/feedback")
-async def admin_list_feedback():
+async def admin_list_feedback(_admin=Depends(_require_admin)):
     """List all feedback across all tickers for the admin dashboard."""
     from backend.feedback_store import get_all_admin_feedback
     return JSONResponse(get_all_admin_feedback())
