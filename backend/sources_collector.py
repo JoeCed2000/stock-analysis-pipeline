@@ -252,12 +252,19 @@ def _get_stock_data_finnhub(ticker: str) -> Optional[Dict[str, Any]]:
     import time as _time_module
 
     def _fh(path: str, retries: int = 3) -> Optional[Dict]:
-        """Fetch Finnhub endpoint with retry on 429/timeout."""
+        """Fetch Finnhub endpoint with retry on 429/timeout. Token passed via params, not URL."""
+        from urllib.parse import urlparse, parse_qs, urlencode
+        parsed = urlparse(f"https://finnhub.io/api/v1{path}")
+        # Merge existing query params with token (token never in URL)
+        params = {k: v[0] for k, v in parse_qs(parsed.query).items()}
+        params["token"] = api_key
+        url = f"https://finnhub.io/api/v1{parsed.path}"
         last_error = None
         for attempt in range(retries + 1):
             try:
                 resp = http.get(
-                    f"https://finnhub.io/api/v1{path}&token={api_key}",
+                    url,
+                    params=params,
                     timeout=10
                 )
                 if resp.status_code == 200:

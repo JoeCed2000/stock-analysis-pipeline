@@ -995,6 +995,13 @@ async def dossier_upload(
     safe_name = os.path.basename(file.filename)
     if not safe_name or safe_name.startswith('.'):
         raise HTTPException(status_code=400, detail="Invalid filename")
+
+    # Enforce max upload size (50 MB)
+    MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+    contents = await file.read()
+    if len(contents) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"File exceeds {MAX_UPLOAD_BYTES // (1024*1024)}MB limit")
+    await file.seek(0)
     
     # Find analysis directory — only upload to existing analyses (never create dummy dirs)
     ticker_clean = ticker.replace(".", "_").upper()
