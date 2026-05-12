@@ -681,7 +681,7 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
             financials["revenue_annual"] = _safe_float(
                 income.loc["Total Revenue", latest_year] if "Total Revenue" in income.index else None
             )
-            financials["net_income"] = _safe_float(
+            financials["net_income_annual"] = _safe_float(
                 income.loc["Net Income", latest_year] if "Net Income" in income.index else None
             )
             # Annual growth

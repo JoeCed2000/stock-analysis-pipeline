@@ -1292,7 +1292,7 @@ async def get_report_pdf(ticker: str, lang: str = "en", background_tasks: Backgr
                 # Find analysis directory for output_dir (required by schema)
                 # dd_path is .../07_final_report/earnings_deep_dive.pdf, parent.parent = analysis_dir
                 output_dir = str(dd_path.parent.parent)
-                dd_req = DeepDiveRequest(ticker=ticker, quarter="latest quarter", lang=lang,
+                dd_req = DeepDiveRequest(ticker=ticker, quarter="latest quarter", language=lang,
                                          output_dir=output_dir, metrics=metrics)
                 dd_response = generate_deep_dive(dd_req)
                 

@@ -64,18 +64,12 @@ def _parse_date(value: Any) -> Optional[datetime]:
     try:
         return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
     except Exception as e:
-        logger.debug(f"[{ticker}] Yahoo snapshot save skipped: {e}")
+        logger.debug(f"ISO date parse error for '{text}': {e}")
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%b %d, %Y", "%B %d, %Y"):
         try:
             return datetime.strptime(text, fmt)
         except Exception as e:
             logger.debug(f"Date parse error for '{value}': {e}")
-    if match:
-        year, month, day = (int(part) for part in match.groups())
-        try:
-            return datetime(year, month, day)
-        except ValueError:
-            return None
     return None
 
 
