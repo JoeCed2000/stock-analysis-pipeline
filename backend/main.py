@@ -192,8 +192,14 @@ def _ticker_dir_key(ticker: str) -> str:
 
 
 def _find_analysis_dirs(ticker: str) -> list[Path]:
-    """Find analysis directories for a ticker, case-insensitively."""
-    return sorted(ANALYSES_DIR.glob(f"*_{_ticker_dir_key(ticker)}_*"), reverse=True)
+    """Find analysis directories for a ticker that HAVE a deep-dive PDF, case-insensitively.
+    Returns newest first."""
+    all_dirs = sorted(ANALYSES_DIR.glob(f"*_{_ticker_dir_key(ticker)}_*"), reverse=True)
+    # Prefer dirs with existing deep-dive PDF
+    with_pdf = [d for d in all_dirs if (d / "07_final_report" / "earnings_deep_dive.pdf").exists()]
+    if with_pdf:
+        return with_pdf
+    return all_dirs  # fallback: none have PDF, return all
 
 
 def _ticker_from_analysis_dir(entry: Path) -> str | None:
