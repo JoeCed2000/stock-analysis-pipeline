@@ -136,7 +136,15 @@ def _section_title_flowables(section, styles: dict[str, ParagraphStyle], *,
     # Render ◆ as PIL image
     diamond_img = _emoji_to_image(prefix.strip() or "◆", size=emoji_size)
     
-    safe_title = _glyph_safe(section.title, font_name=font_name)
+    # Replace circled digits ①-⑳ with (1)-(20) — PDF fonts lack these glyphs
+    _C_TITLE = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
+    _P_TITLE = ["(1)","(2)","(3)","(4)","(5)","(6)","(7)","(8)","(9)","(10)","(11)","(12)","(13)","(14)","(15)","(16)","(17)","(18)","(19)","(20)"]
+    title_text = section.title
+    question_text = section.question or ""
+    for ci, ch in enumerate(_C_TITLE):
+        title_text = title_text.replace(ch, _P_TITLE[ci])
+        question_text = question_text.replace(ch, _P_TITLE[ci])
+    safe_title = _glyph_safe(title_text, font_name=font_name)
     title_para = Paragraph(escape(safe_title), styles["section"])
 
     # Table: diamond image + title
