@@ -1601,7 +1601,16 @@ def build_earnings_deep_dive_report(
         "Highlights",  # Prose-only — LLM table is suppressed, rich prose kept
     }
     
+    # 🔴 Fix: Replace circled digits in section titles/questions — PDF fonts lack these glyphs
+    _CIRCLED_Q = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
+    _PAREN_Q = ["(1)","(2)","(3)","(4)","(5)","(6)","(7)","(8)","(9)","(10)","(11)","(12)","(13)","(14)","(15)","(16)","(17)","(18)","(19)","(20)"]
     for section in template:
+        # Replace circled digits in section title and question for PDF font compatibility
+        section.title = section.title
+        for ci, ch in enumerate(_CIRCLED_Q):
+            section.title = section.title.replace(ch, _PAREN_Q[ci])
+            if section.question:
+                section.question = section.question.replace(ch, _PAREN_Q[ci])
         analysis_text = analysis_by_key.get(section.key) or analysis_by_key.get(section.title)
         rows: list[list[str]] = []
         if analysis_text:

@@ -435,8 +435,9 @@ def _format_markdown(text: str) -> str:
     """Convert basic markdown to ReportLab-compatible XML."""
     text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
     text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<i>\1</i>', text)
-    # Strip markdown headings that leak into the PDF (### Title → bold Title)
+    # Strip markdown headings that leak into the PDF (##/### Title → bold Title)
     text = re.sub(r'^###\s+', '<b>', text, flags=re.MULTILINE)
+    text = re.sub(r'^##\s+', '<b>', text, flags=re.MULTILINE)
     return text
 
 
