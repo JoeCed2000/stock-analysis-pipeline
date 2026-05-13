@@ -1526,9 +1526,13 @@ def build_earnings_deep_dive_report(
     def _clean_prose(text: str) -> str:
         if not text:
             return text
+        # ── Fix: strip null bytes from font rendering issues ──
+        text = text.replace("\x00", "")
         # ── Fix: collapse line breaks that split key phrases ──
         text = text.replace('For\nNami-san', 'For Nami-san')
         text = text.replace('For\nNamiさん', 'For Namiさん')
+        text = text.replace('For\nNami', 'For Nami')
+        text = _re.sub(r'For\s+\n\s*Nami', 'For Nami', text)
         # Replace runs of 3+ question marks with "—"
         text = _GARBAGE_RE.sub('—', text)
         # Fix isolated question marks from LLM uncertainty (e.g., "missed by 16% ? a" → "missed by 16% — a")
@@ -1550,8 +1554,15 @@ def build_earnings_deep_dive_report(
         # Also handle bullets after a newline mid-paragraph
         text = _re.sub(r'\n\*\s+', '\n• ', text)
         text = _re.sub(r'\n-\s+', '\n• ', text)
+        # 🔴 Fix: Strip markdown ## headers that leak from LLM output
+        text = _re.sub(r"(?m)^##\s+[^\n]+\n?", "", text)
         # 🔴 Fix: LLM double-multiplied margins: "7499.67%" → divide by 100
         # Also rounds ALL percentages to 1 decimal to fix raw float leakage (e.g. 67.63265% → 67.6%)
+        # 🔴 Fix: Replace circled digits ①-⑳ with (1)-(20) — PDF fonts lack these glyphs
+        text = text.translate(str.maketrans(
+            "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳",
+            "(1)(2)(3)(4)(5)(6)(7)(8)(9)(10)(11)(12)(13)(14)(15)(16)(17)(18)(19)(20)"
+        ))
         def _fix_outlier_pct(m):
             try:
                 val = float(m.group(1))
