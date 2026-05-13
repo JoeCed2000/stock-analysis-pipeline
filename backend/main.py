@@ -124,9 +124,14 @@ async def rate_limit_middleware(request: Request, call_next):
 _ADMIN_SECRET = os.getenv("ADMIN_SECRET", "")
 
 async def _require_admin(request: Request):
-    """FastAPI dependency: reject if ADMIN_SECRET is not set or doesn't match."""
+    """FastAPI dependency: reject if ADMIN_SECRET is not set or doesn't match.
+    Local requests (127.0.0.1, localhost) bypass auth automatically."""
     if not _ADMIN_SECRET:
         raise HTTPException(status_code=403, detail="Admin endpoints disabled (set ADMIN_SECRET)")
+    # Bypass auth for local requests
+    host = request.client.host if request.client else ""
+    if host in ("127.0.0.1", "::1", "localhost"):
+        return
     provided = request.headers.get("X-Admin-Secret", "") or request.query_params.get("admin_secret", "")
     if provided != _ADMIN_SECRET:
         raise HTTPException(status_code=403, detail="Invalid admin credentials")
@@ -837,6 +842,26 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
                 from backend.pipeline import _strip_prompt_leaks_from_sections
                 response.sections = _strip_prompt_leaks_from_sections(response.sections)
 
+                # ── Pre-render validation (non-blocking) ──
+                from backend.earnings_deep_dive.pre_render_validator import (
+                    validate_pre_render,
+                    annotate_sections_with_warnings,
+                )
+                pre_val = validate_pre_render(
+                    ticker=ticker,
+                    quarter=quarter,
+                    metrics=metrics,
+                    section_analysis=response.sections,
+                )
+                if not pre_val.passed:
+                    logger.warning(
+                        f"[{ticker}] Pre-render validation: {len(pre_val.warnings)} issue(s) "
+                        f"— sections flagged with ⚠️"
+                    )
+                    response.sections = annotate_sections_with_warnings(
+                        response.sections, pre_val,
+                    )
+
                 # Render PDF and validate (mirrors _add_earnings_deep_dive_if_transcript)
                 from backend.earnings_deep_dive.mapper import build_earnings_deep_dive_report
                 from backend.earnings_deep_dive.pdf_renderer import render_earnings_deep_dive_pdf
@@ -1275,6 +1300,7 @@ async def get_job_status(job_id: str):
     return JSONResponse(job)
 
 
+@app.head("/api/report/{ticker}/pdf")
 @app.get("/api/report/{ticker}/pdf")
 async def get_report_pdf(ticker: str, lang: str = "en", background_tasks: BackgroundTasks = None):
     """Serve the earnings deep-dive PDF for a ticker in the requested language.
@@ -1327,6 +1353,23 @@ async def get_report_pdf(ticker: str, lang: str = "en", background_tasks: Backgr
                                          output_dir=output_dir, metrics=metrics)
                 dd_response = generate_deep_dive(dd_req)
                 
+                # ── Pre-render validation (non-blocking) ──
+                from backend.earnings_deep_dive.pre_render_validator import (
+                    validate_pre_render,
+                    annotate_sections_with_warnings,
+                )
+                sections = getattr(dd_response, 'sections', None)
+                pre_val = validate_pre_render(
+                    ticker=ticker,
+                    quarter=dd_req.quarter,
+                    metrics=metrics,
+                    section_analysis=sections,
+                )
+                if not pre_val.passed:
+                    sections = annotate_sections_with_warnings(
+                        sections or {}, pre_val,
+                    )
+                
                 from backend.earnings_deep_dive.mapper import build_earnings_deep_dive_report
                 from backend.earnings_deep_dive.pdf_renderer import render_earnings_deep_dive_pdf
                 report_model = build_earnings_deep_dive_report(
@@ -1336,7 +1379,7 @@ async def get_report_pdf(ticker: str, lang: str = "en", background_tasks: Backgr
                     metrics=metrics,
                     transcript_url=getattr(dd_response, 'transcript_url', None),
                     language=lang,
-                    section_analysis=getattr(dd_response, 'sections', None),
+                    section_analysis=sections,
                 )
                 os.makedirs(dd_path.parent, exist_ok=True)
                 render_earnings_deep_dive_pdf(report_model, str(dd_path))
@@ -1378,6 +1421,7 @@ async def get_report_pdf(ticker: str, lang: str = "en", background_tasks: Backgr
     )
 
 
+@app.head("/api/report/{ticker}")
 @app.get("/api/report/{ticker}")
 async def get_report(ticker: str):
     """Retrieve the full markdown report for a ticker."""

@@ -214,3 +214,91 @@ def test_detects_number_mismatch():
     assert len(mismatch_warnings) >= 1, (
         f"Should flag $50B vs actual $82.9B mismatch. Warnings: {[(w.check, w.detail[:60]) for w in result.warnings]}"
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Test 7: annotate_sections_with_warnings injects ⚠️ markers
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_annotate_sections_with_warnings_adds_warning_prefix():
+    """When validation finds issues, affected sections get ⚠️ prefix."""
+    from backend.earnings_deep_dive.pre_render_validator import (
+        ValidationResult,
+        ValidationWarning,
+        annotate_sections_with_warnings,
+    )
+
+    section_analysis = {
+        "EPS & Revenue": "Revenue was $82.9B. EPS of $3.46.",
+        "Verdict": "Score: 8/10. Sell immediately before the crash.",
+        "Clean Section": "Everything looks good here.",
+    }
+
+    warnings = [
+        ValidationWarning(
+            check="not_available",
+            section="EPS & Revenue",
+            detail="'Not available' found",
+        ),
+        ValidationWarning(
+            check="score_commentary_contradiction",
+            section="Verdict",
+            detail="Score is 8/10 but negative phrases found",
+        ),
+    ]
+
+    result = ValidationResult(passed=False, warnings=warnings)
+    annotated = annotate_sections_with_warnings(section_analysis, result)
+
+    # Affected sections get ⚠️ prefix
+    assert annotated["EPS & Revenue"].startswith("⚠️"), (
+        f"EPS & Revenue should have ⚠️ prefix, got: {annotated['EPS & Revenue'][:50]}"
+    )
+    assert annotated["Verdict"].startswith("⚠️"), (
+        f"Verdict should have ⚠️ prefix, got: {annotated['Verdict'][:50]}"
+    )
+    # Clean section is untouched
+    assert annotated["Clean Section"] == "Everything looks good here."
+    # Original is unmutated
+    assert not section_analysis["EPS & Revenue"].startswith("⚠️")
+
+
+def test_annotate_sections_passes_through_when_no_warnings():
+    """When validation passes, section_analysis is returned unchanged."""
+    from backend.earnings_deep_dive.pre_render_validator import (
+        ValidationResult,
+        annotate_sections_with_warnings,
+    )
+
+    section_analysis = {"EPS & Revenue": "Revenue was $82.9B."}
+    result = ValidationResult(passed=True, warnings=[])
+    annotated = annotate_sections_with_warnings(section_analysis, result)
+
+    assert annotated is section_analysis, (
+        "Should return the same dict when validation passes"
+    )
+
+
+def test_annotate_sections_does_not_double_prefix():
+    """⚠️ is not added twice if text already starts with it."""
+    from backend.earnings_deep_dive.pre_render_validator import (
+        ValidationResult,
+        ValidationWarning,
+        annotate_sections_with_warnings,
+    )
+
+    section_analysis = {"EPS & Revenue": "⚠️ Revenue was $82.9B."}
+    warnings = [
+        ValidationWarning(
+            check="not_available",
+            section="EPS & Revenue",
+            detail="'Not available' found",
+        ),
+    ]
+    result = ValidationResult(passed=False, warnings=warnings)
+    annotated = annotate_sections_with_warnings(section_analysis, result)
+
+    # Should NOT double-prefix
+    assert annotated["EPS & Revenue"] == "⚠️ Revenue was $82.9B.", (
+        f"Should not double-prefix, got: {annotated['EPS & Revenue']}"
+    )

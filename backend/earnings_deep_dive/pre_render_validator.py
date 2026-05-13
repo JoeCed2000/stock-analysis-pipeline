@@ -132,15 +132,15 @@ def validate_pre_render(
     # Build a map of metric name → value for known metric fields
     metric_map: Dict[str, float] = {}
     if metrics is not None:
-        for field_name in dir(metrics):
+        try:
+            raw = metrics.model_dump()
+        except Exception:
+            raw = {}
+        for field_name, value in raw.items():
             if field_name.startswith('_'):
                 continue
-            try:
-                value = getattr(metrics, field_name)
-                if isinstance(value, (int, float)) and value is not True and value is not False:
-                    metric_map[field_name] = float(value)
-            except Exception:
-                pass
+            if isinstance(value, (int, float)) and value is not True and value is not False:
+                metric_map[field_name] = float(value)
 
     for section_name, text in _sec.items():
         if not isinstance(text, str):
@@ -282,3 +282,28 @@ def _parse_money(text: str) -> Optional[float]:
         return float(num_part) * multiplier
     except (ValueError, TypeError):
         return None
+
+
+def annotate_sections_with_warnings(
+    section_analysis: Dict[str, str],
+    validation: ValidationResult,
+) -> Dict[str, str]:
+    """Inject ⚠️ markers into section_analysis text for sections with warnings.
+
+    Returns a new dict with ⚠️ prepended to affected section text.
+    Pass-through: returns original if no warnings or validation passed.
+    Side-effect-free: never mutates the input dict.
+    """
+    if validation.passed or not validation.warnings:
+        return section_analysis
+
+    annotated = dict(section_analysis)
+    warned_sections = {w.section for w in validation.warnings}
+
+    for section_name in warned_sections:
+        if section_name in annotated and isinstance(annotated[section_name], str):
+            text = annotated[section_name]
+            if not text.startswith("⚠️"):
+                annotated[section_name] = f"⚠️ {text}"
+
+    return annotated

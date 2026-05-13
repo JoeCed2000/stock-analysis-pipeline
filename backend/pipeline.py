@@ -820,6 +820,26 @@ def _add_earnings_deep_dive_if_transcript(
         )
         en_response.sections = _strip_prompt_leaks_from_sections(en_response.sections)
 
+        # ── Pre-render validation (non-blocking) ──
+        from backend.earnings_deep_dive.pre_render_validator import (
+            validate_pre_render,
+            annotate_sections_with_warnings,
+        )
+        en_validation = validate_pre_render(
+            ticker=ticker,
+            quarter=transcript_quarter,
+            metrics=deep_dive_metrics,
+            section_analysis=en_response.sections,
+        )
+        if not en_validation.passed:
+            logger.warning(
+                f"[{ticker}] Pre-render validation: {len(en_validation.warnings)} issue(s) — "
+                f"sections flagged with ⚠️"
+            )
+            en_response.sections = annotate_sections_with_warnings(
+                en_response.sections, en_validation,
+            )
+
         jp_response = generate_deep_dive(
             DeepDiveRequest(
                 ticker=ticker,
@@ -832,6 +852,22 @@ def _add_earnings_deep_dive_if_transcript(
             )
         )
         jp_response.sections = _strip_prompt_leaks_from_sections(jp_response.sections)
+
+        # ── Pre-render validation for JP (non-blocking) ──
+        jp_validation = validate_pre_render(
+            ticker=ticker,
+            quarter=transcript_quarter,
+            metrics=deep_dive_metrics,
+            section_analysis=jp_response.sections,
+        )
+        if not jp_validation.passed:
+            logger.warning(
+                f"[{ticker}] Pre-render validation (JP): {len(jp_validation.warnings)} issue(s) — "
+                f"sections flagged with ⚠️"
+            )
+            jp_response.sections = annotate_sections_with_warnings(
+                jp_response.sections, jp_validation,
+            )
 
         # Render EN PDF (default location)
         en_pdf_path = os.path.join(en_output_dir, "07_final_report", "earnings_deep_dive.pdf")
