@@ -903,7 +903,9 @@ def highlights_prompt(language: str, ticker: str, company: str, quarter: str, me
     if eps_vs is not None:
         pct = eps_vs * 100
         direction = "BEAT" if pct > 0 else "MISSED"
-        extra += f"\n\n🔴 CRITICAL OVERRIDE: EPS {direction} consensus estimates by {abs(pct):.1f}% (actual=${eps_actual}, estimate=${eps_est}). Frame highlights consistent with this result."
+        try: eps_actual_f = float(eps_actual); eps_est_f = float(eps_est)
+        except (TypeError, ValueError): eps_actual_f = eps_actual; eps_est_f = eps_est
+        extra += f"\n\n🔴 CRITICAL OVERRIDE: EPS {direction} consensus estimates by {abs(pct):.1f}% (actual=${eps_actual_f:.2f}, estimate=${eps_est_f:.2f}). Frame highlights consistent with this result."
     rev_vs = _vs(rev_actual, rev_est) if rev_actual is not None and rev_est is not None else None
     if rev_vs is not None:
         pct = rev_vs * 100
@@ -940,41 +942,41 @@ def operating_metrics_prompt(language: str, ticker: str, company: str, quarter: 
     if rev_q is not None:
         try:
             rev_b = float(rev_q) / 1e9
-            extra += f"\n\n🔴 CRITICAL OVERRIDE: Revenue (current quarter) = ${rev_b:.2f}B (raw={rev_q}). USE THIS EXACT VALUE in the Revenue row of the table. Do NOT invent a different revenue number."
+            extra += f"\n\n🔴 CRITICAL OVERRIDE: Revenue (current quarter) = ${rev_b:.2f}B. USE THIS EXACT VALUE in the Revenue row of the table. Do NOT invent a different revenue number."
         except (TypeError, ValueError):
             pass
     if rev_prior is not None:
         try:
             rp_b = float(rev_prior) / 1e9
-            extra += f"\n⚠️  Revenue prior year = ${rp_b:.2f}B (raw={rev_prior}). Use in Prior Year column."
+            extra += f"\n⚠️  Revenue prior year = ${rp_b:.2f}B. Use in Prior Year column."
         except (TypeError, ValueError):
             pass
     if gross_margin is not None:
         try:
-            extra += f"\n⚠️  Gross Margin = {float(gross_margin)*100:.2f}% (raw={gross_margin}). Use in Gross Margin row."
+            extra += f"\n⚠️  Gross Margin = {float(gross_margin)*100:.2f}%. Use in Gross Margin row."
         except (TypeError, ValueError):
             pass
     if op_margin is not None:
         try:
-            extra += f"\n⚠️  Operating Margin = {float(op_margin)*100:.2f}% (raw={op_margin}). Use in Operating Margin row."
+            extra += f"\n⚠️  Operating Margin = {float(op_margin)*100:.2f}%. Use in Operating Margin row."
         except (TypeError, ValueError):
             pass
     if op_income is not None:
         try:
             oi_b = float(op_income) / 1e9
-            extra += f"\n⚠️  Operating Income = ${oi_b:.2f}B (raw={op_income}). Use in Operating Income row."
+            extra += f"\n⚠️  Operating Income = ${oi_b:.2f}B. Use in Operating Income row."
         except (TypeError, ValueError):
             pass
     if net_income is not None:
         try:
             ni_b = float(net_income) / 1e9
-            extra += f"\n⚠️  Net Income = ${ni_b:.2f}B (raw={net_income}). Use in Net Income row."
+            extra += f"\n⚠️  Net Income = ${ni_b:.2f}B. Use in Net Income row."
         except (TypeError, ValueError):
             pass
     if opex is not None:
         try:
             ox_b = float(opex) / 1e9
-            extra += f"\n⚠️  OpEx = ${ox_b:.2f}B (raw={opex}). Use in OpEx row."
+            extra += f"\n⚠️  OpEx = ${ox_b:.2f}B. Use in OpEx row."
         except (TypeError, ValueError):
             pass
     base = _base_prompt(
