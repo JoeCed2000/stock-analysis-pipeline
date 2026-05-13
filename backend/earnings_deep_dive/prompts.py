@@ -730,8 +730,26 @@ def _fmt_metrics(metrics: Dict[str, Any]) -> str:
         value = metrics[key]
         if value is None or value == "" or value == "Not disclosed":
             continue  # skip missing values
-        parts.append(f"{key}={value}")
+        parts.append(f"{key}={_fmt_value(value)}")
     return " | ".join(parts) if parts else ""
+
+
+def _fmt_value(value: Any) -> str:
+    """Format a metric value for LLM prompt — round floats to prevent regurgitation."""
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        abs_val = abs(value)
+        if abs_val >= 1e9:
+            return f"{value / 1e9:.2f}B"
+        if abs_val >= 1e6:
+            return f"{value / 1e6:.2f}M"
+        if abs_val < 1:
+            return f"{value:.4f}"
+        return f"{value:.2f}"
+    return str(value)
 
 
 def _canonical_section(section: str) -> str:
