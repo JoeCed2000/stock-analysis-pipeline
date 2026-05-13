@@ -1554,6 +1554,14 @@ def build_earnings_deep_dive_report(
         # Also handle bullets after a newline mid-paragraph
         text = _re.sub(r'\n\*\s+', '\n• ', text)
         text = _re.sub(r'\n-\s+', '\n• ', text)
+        # 🔴 Fix: Balance markdown bold/italic markers — unclosed ** crashes ReportLab
+        # Strip orphaned ** markers (odd count → remove last)
+        bold_count = text.count('**')
+        if bold_count % 2 == 1:
+            text = text[::-1].replace('**', '', 1)[::-1]  # remove last occurrence
+        # Strip all markdown bold/italic — PDF uses ReportLab formatting, not markdown
+        text = _re.sub(r'(?<!\*)\*\*(?!\*)', '', text)  # ** → nothing
+        text = _re.sub(r'(?<!\*)\*(?!\*)', '', text)     # * → nothing (italic)
         # 🔴 Fix: Strip markdown ## headers that leak from LLM output
         text = _re.sub(r"(?m)^##\s+[^\n]+\n?", "", text)
         # 🔴 Fix: LLM double-multiplied margins: "7499.67%" → divide by 100
