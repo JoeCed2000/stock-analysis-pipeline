@@ -1551,11 +1551,17 @@ def build_earnings_deep_dive_report(
         text = _re.sub(r'\n\*\s+', '\n• ', text)
         text = _re.sub(r'\n-\s+', '\n• ', text)
         # 🔴 Fix: LLM double-multiplied margins: "7499.67%" → divide by 100
+        # Also rounds ALL percentages to 1 decimal to fix raw float leakage (e.g. 67.63265% → 67.6%)
         def _fix_outlier_pct(m):
             try:
                 val = float(m.group(1))
+                # Decimal form (e.g. 0.0767 for ROE) → multiply by 100
+                if abs(val) <= 1:
+                    val *= 100
+                # Double-multiplied (e.g. 7499.67%) → divide by 100
                 if val > 500:
-                    return f"{val / 100:.1f}%"
+                    val /= 100
+                return f"{val:.1f}%"
             except (ValueError, OverflowError):
                 pass
             return m.group(0)
