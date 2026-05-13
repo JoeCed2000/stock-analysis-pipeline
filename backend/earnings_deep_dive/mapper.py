@@ -1341,14 +1341,14 @@ def _default_highlights_analysis(language: TemplateLanguage, metrics: FinancialM
                 "👉 A higher multiple requires confidence that revenue growth, margin, and free cash flow can persist.",
                 "",
                 "③ Disclosure gaps",
-                "● Any item marked Not available, Not disclosed, or N/A needs confirmation in the source dossier before it is used as an investment fact.",
+                "● Items marked as Not available, Not disclosed, or N/A represent data limitations that should be verified against SEC filings before drawing investment conclusions.",
                 "👉 Missing data is treated as a limitation, not as evidence for or against the company.",
                 "",
                 "🧠 Nami insight",
                 "👉 Revenue, margin, and cash flow provide the three-way quality check on this quarter. When all three move together, the earnings signal is stronger; when they diverge, the risk is in execution quality rather than the headline growth rate.",
                 "",
                 "🎯 Investment takeaway",
-                "👉 The quarter is attractive only if growth converts into cash while valuation remains consistent with the next few quarters of guidance.",
+                "👉 The quarter is investable when revenue growth, cash generation, and valuation are aligned; divergence in any pillar warrants caution on position sizing.",
             ]
         )
     ]
@@ -1559,7 +1559,7 @@ def build_earnings_deep_dive_report(
             except (ValueError, OverflowError):
                 pass
             return m.group(0)
-        text = _re.sub(r'([+-]?\d{3,}(?:\.\d+)?)\s*%', _fix_outlier_pct, text)
+        text = _re.sub(r'([+-]?\d+(?:\.\d+)?)\s*%', _fix_outlier_pct, text)
         return text
 
     sections: list[RenderedSection] = []
