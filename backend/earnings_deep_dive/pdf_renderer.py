@@ -1039,8 +1039,6 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             print(f"[PDF RENDER] Dropping section '{problem_section.key}' due to layout overflow", file=sys.stderr)
             report.sections = report.sections[:-1]
         # Rebuild with truncated sections, adding a visible warning
-        from reportlab.lib.pagesizes import LETTER
-        from reportlab.platypus import SimpleDocTemplate
         warning_para = Paragraph(
             "<font color='red'><b>⚠ WARNING: This report is incomplete — a layout error prevented full rendering.</b></font>",
             styles["body"]

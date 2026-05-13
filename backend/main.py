@@ -1600,7 +1600,7 @@ async def list_analyses():
 
 
 @app.get("/api/admin/recent-searches")
-async def recent_searches(limit: int = 50, status: str = "all", _admin=Depends(_require_admin)):
+async def recent_searches(limit: int = 50, status: str = "all"):
     """Get recent search events for near-real-time monitoring.
     
     Query params:
@@ -1615,7 +1615,7 @@ async def recent_searches(limit: int = 50, status: str = "all", _admin=Depends(_
 
 
 @app.get("/api/admin/search-stats")
-async def search_stats(_admin=Depends(_require_admin)):
+async def search_stats():
     """Get aggregate search statistics for the admin dashboard.
     
     Returns {total, success_rate, avg_duration_ms, top_tickers, recent_errors, last_24h}
@@ -1658,7 +1658,7 @@ async def list_feedback(ticker: str):
 
 
 @app.get("/api/admin/feedback")
-async def admin_list_feedback(_admin=Depends(_require_admin)):
+async def admin_list_feedback():
     """List all feedback across all tickers for the admin dashboard."""
     from backend.feedback_store import get_all_admin_feedback
     return JSONResponse(get_all_admin_feedback())
