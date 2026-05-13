@@ -396,6 +396,12 @@ _FULLWIDTH_MAP = str.maketrans({
     '\uFF0D': '-',   # fullwidth hyphen-minus
 })
 
+_PDF_SAFE_PUNCTUATION_MAP = str.maketrans({
+    '\u25CF': '-',    # ● black circle can render as tofu in PDF viewers
+    '\u2014': '-',    # — em dash
+    '\u2192': '->',   # → rightwards arrow
+})
+
 
 def _glyph_safe(text: str, *, font_name: str = "Helvetica", keep_emojis: bool = False) -> str:
     """Keep characters renderable by standard PDF fonts. Strip the rest silently.
@@ -407,10 +413,10 @@ def _glyph_safe(text: str, *, font_name: str = "Helvetica", keep_emojis: bool = 
     value = value.translate(_CIRCLED_DIGIT_MAP)
     # Strip redundant emojis (💰📈📦💡📋🔔) but keep structural ones (👉🧠🎯⚠️📊📌✅❌)
     value = value.translate(_EMOJI_STRIP_MAP)
-    # Replace emoji-range characters with font-safe text fallbacks
-    # ▶ ★ ● ○ ✓ ✗ ◆ ← → — these all render correctly in Helvetica/DejaVu
+    # Replace emoji-range characters with font-safe text fallbacks.
     if not keep_emojis:
         value = value.translate(_EMOJI_FALLBACK)
+    value = value.translate(_PDF_SAFE_PUNCTUATION_MAP)
     # Map fullwidth characters to ASCII (LLM leakage prevention)
     value = value.translate(_FULLWIDTH_MAP)
     # CJK fonts can handle their character ranges natively
@@ -458,6 +464,7 @@ def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragr
     # Double newlines → paragraph break, single newlines → line break
     formatted = formatted.replace('\n\n', '<br/><br/>')
     formatted = formatted.replace('\n', '<br/>')
+    formatted = formatted.replace('For Nami-san', 'For\u00A0Nami-san')
     # Ensure bullet markers and key phrases always start on a new line.
     # Process LONGER phrases first to avoid partial matches (e.g., 'For Nami-san'
     # before 'Nami-san'). Only match when preceded by space or at line start.
@@ -1006,9 +1013,9 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
                 if source.url:
                     url_text = f'<font size="8"><a href="{escape(source.url)}" color="blue">{escape(source.url)}</a></font>'
                     story.append(Paragraph(url_text, styles["body"]))
-                label_text = f'<b>{escape(source.label)}</b>'
+                label_text = f'<b>{escape(_glyph_safe(source.label, font_name=fonts.regular))}</b>'
                 if source.note:
-                    label_text += f'  <font size="8" color="#555555">{escape(source.note)}</font>'
+                    label_text += f'  <font size="8" color="#555555">{escape(_glyph_safe(source.note, font_name=fonts.regular))}</font>'
                 story.append(Paragraph(label_text, styles["small"]))
                 story.append(Spacer(1, 0.08 * inch))
             story.append(Spacer(1, 0.12 * inch))
@@ -1020,9 +1027,9 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
                 if source.url:
                     url_text = f'<font size="8"><a href="{escape(source.url)}" color="blue">{escape(source.url)}</a></font>'
                     story.append(Paragraph(url_text, styles["body"]))
-                label_text = f'<b>{escape(source.label)}</b>'
+                label_text = f'<b>{escape(_glyph_safe(source.label, font_name=fonts.regular))}</b>'
                 if source.note:
-                    label_text += f'  <font size="8" color="#555555">{escape(source.note)}</font>'
+                    label_text += f'  <font size="8" color="#555555">{escape(_glyph_safe(source.note, font_name=fonts.regular))}</font>'
                 story.append(Paragraph(label_text, styles["small"]))
                 story.append(Spacer(1, 0.08 * inch))
 
