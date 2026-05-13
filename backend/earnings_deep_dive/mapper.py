@@ -1559,10 +1559,10 @@ def build_earnings_deep_dive_report(
         # 🔴 Fix: LLM double-multiplied margins: "7499.67%" → divide by 100
         # Also rounds ALL percentages to 1 decimal to fix raw float leakage (e.g. 67.63265% → 67.6%)
         # 🔴 Fix: Replace circled digits ①-⑳ with (1)-(20) — PDF fonts lack these glyphs
-        text = text.translate(str.maketrans(
-            "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳",
-            "(1)(2)(3)(4)(5)(6)(7)(8)(9)(10)(11)(12)(13)(14)(15)(16)(17)(18)(19)(20)"
-        ))
+        _CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳"
+        _PAREN = ["(1)","(2)","(3)","(4)","(5)","(6)","(7)","(8)","(9)","(10)","(11)","(12)","(13)","(14)","(15)","(16)","(17)","(18)","(19)","(20)"]
+        for i, ch in enumerate(_CIRCLED):
+            text = text.replace(ch, _PAREN[i])
         def _fix_outlier_pct(m):
             try:
                 val = float(m.group(1))
