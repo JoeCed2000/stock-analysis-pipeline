@@ -265,30 +265,54 @@ def _render_xbrl_statement(xbrl: Any, statement: str) -> Optional[Any]:
 
 
 def extract_segment_revenue(ticker: str) -> Dict[str, Any]:
-    """Extract product segment revenue from latest 10-K XBRL.
+    """Extract product segment revenue from latest 10-Q XBRL, fallback to 10-K.
+
+    Tries 10-Q first for quarterly segment data. If 10-Q has no segment
+    breakdown, falls back to 10-K but marks data as annual (period="annual").
 
     Returns:
         {
             "source": "SEC XBRL 10-Q",
             "filing_date": "2026-05-01",
+            "period": "quarterly",       # NEW: quarterly or annual
+            "source_form": "10-Q",        # NEW: 10-Q or 10-K
             "total_revenue_quarterly": 111184000000,
-            "product_segments": [
-                {"name": "iPhone", "revenue_quarterly": 56994000000},
-                ...
-            ],
-            "deferred_revenue_total": 14700000000,
-            "deferred_revenue_1yr_pct": 64,
+            "product_segments": [...],
+            ...
         }
     """
     _ensure_identity()
     from edgar import Company
 
     company = Company(ticker.upper())
-    filing = company.get_filings(form="10-K").latest(1)
+    
+    # ── Try 10-Q first (quarterly segment data) ──
+    filing = None
+    period = "quarterly"
+    source_form = "10-Q"
+    try:
+        q_filings = company.get_filings(form="10-Q")
+        if q_filings is not None:
+            filing = q_filings.latest(1)
+    except Exception:
+        pass
+    
+    # ── Fallback to 10-K (annual — mark explicitly) ──
+    if filing is None:
+        try:
+            filing = company.get_filings(form="10-K").latest(1)
+            period = "annual"
+            source_form = "10-K"
+        except Exception:
+            logger.warning(f"[{ticker}] No 10-Q or 10-K filing found")
+            return {"period": "unknown", "source_form": "unknown", "product_segments": []}
+    
     xbrl = filing.xbrl()
     result: Dict[str, Any] = {
-        "source": "SEC XBRL 10-K (edgartools)",
+        "source": f"SEC XBRL {source_form} (edgartools)",
         "filing_date": str(filing.filing_date),
+        "period": period,
+        "source_form": source_form,
         "product_segments": [],
     }
 

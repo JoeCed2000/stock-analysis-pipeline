@@ -52,6 +52,9 @@ class FinancialMetrics(BaseModel):
     earnings_presentation_url: Optional[str] = None
     transcript_source: Optional[str] = None
     segments: Dict[str, Any] = Field(default_factory=dict)
+    # ── Period awareness (P0: prevent annual/quarterly mixing) ──
+    period: Optional[str] = None       # "quarterly" | "annual" | "unknown"
+    source_form: Optional[str] = None  # "10-Q" | "10-K" | "8-K" | "yfinance" | "mixed"
 
 
 class DeepDiveRequest(BaseModel):

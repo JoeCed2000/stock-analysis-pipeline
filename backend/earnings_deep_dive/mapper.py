@@ -333,8 +333,29 @@ def _parse_segments_from_prose(analysis_text: str) -> dict[str, dict]:
 def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) -> list[list[str]]:
     rows: list[list[str]] = []
     segments = metrics.segments if isinstance(metrics.segments, dict) else {}
-    # Filter out metadata keys (non-dict values, known meta fields)
-    _META_KEYS = {"product_segments", "total_revenue_quarterly", "deferred_revenue_1yr_pct", "source", "filing_date"}
+    
+    # ── P0: Period mismatch guard ──
+    # If segment data is from 10-K (annual) while metrics are quarterly,
+    # show "annual context only" instead of misleading quarterly table.
+    _META_KEYS = {"product_segments", "total_revenue_quarterly", "deferred_revenue_1yr_pct", "source", "filing_date",
+                  "period", "source_form", "_annual_context_only"}
+    is_annual_context = segments.get("_annual_context_only", False) or segments.get("period") == "annual"
+    total_seg = segments.get("total_revenue_quarterly")
+    q_revenue = getattr(metrics, "revenue_actual", None) or getattr(metrics, "revenue_quarterly", None)
+    # Secondary check: if segment total is >1.5x quarterly revenue, it's likely annual
+    if (not is_annual_context and total_seg and q_revenue 
+            and _has(total_seg) and _has(q_revenue)):
+        try:
+            if float(total_seg) > float(q_revenue) * 1.5:
+                is_annual_context = True
+        except (TypeError, ValueError):
+            pass
+    
+    if is_annual_context:
+        source_note = segments.get("source_form", "SEC filing")
+        period_note = segments.get("period", "annual")
+        note = f"Segment data from {source_note} ({period_note}) — annual context only, not comparable to quarterly metrics above"
+        return [[labels[0], note, "—", "—", "—", "—", note]]
     segment_entries = [
         (k, v) for k, v in segments.items()
         if isinstance(v, dict) and k not in _META_KEYS

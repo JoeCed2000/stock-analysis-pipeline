@@ -556,7 +556,9 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
         guidance=str(guidance_value) if guidance_value is not None else None,
         investor_relations_url=comparison_pick("investor_relations_url"),
         company_website=comparison_pick("company_website"),
-        segments=_extract_segments(ticker_for_segments, guidance_value) if ticker_for_segments else {},
+        segments=(seg_data := _extract_segments(ticker_for_segments, guidance_value) if ticker_for_segments else {}),
+        period=seg_data.get("period") if seg_data else "quarterly",
+        source_form=seg_data.get("source_form") if seg_data else "yfinance",
         sector=(yf_data.get("sector") if isinstance(yf_data, dict) else None),
         industry=(yf_data.get("industry") if isinstance(yf_data, dict) else None),
     )
@@ -603,9 +605,20 @@ def _segment_metrics_shape(segment_data: Dict[str, Any]) -> Dict[str, Any]:
                 "source": segment.get("source") or segment_data.get("source") or "SEC XBRL",
             }
 
-    for key in ("product_segments", "total_revenue_quarterly", "total_revenue_6m", "deferred_revenue_total", "deferred_revenue_1yr_pct", "source", "filing_date"):
+    for key in ("product_segments", "total_revenue_quarterly", "total_revenue_6m", "deferred_revenue_total", "deferred_revenue_1yr_pct", "source", "filing_date", "period", "source_form"):
         if key in segment_data:
             shaped[key] = segment_data[key]
+    
+    # ── Period mismatch guard (P0: annual segments in quarterly report) ──
+    total_seg = shaped.get("total_revenue_quarterly")
+    period = shaped.get("period", "quarterly")
+    if period == "annual":
+        import logging
+        _log = logging.getLogger("stock_analysis.pipeline")
+        _log.warning(f"Segment data from {shaped.get('source_form', '?')} is ANNUAL — "
+                     f"total={total_seg}. Will be flagged as annual context only.")
+        shaped["_annual_context_only"] = True
+    
     return shaped
 
 
