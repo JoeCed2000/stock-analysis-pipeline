@@ -106,7 +106,7 @@ def test_pdf_renderer_generates_language_specific_japanese_report(tmp_path):
     assert pdf_path.exists()
     assert "Microsoft Corporation (MSFT)" in text
     assert "総合評価" in text
-    assert "DONNÉE NON DISPONIBLE" in normalized_text
+    assert "DONNÉE NON DISPONIBLE" not in normalized_text
 
 
 def test_pdf_renderer_resolves_model_fonts_when_available():
