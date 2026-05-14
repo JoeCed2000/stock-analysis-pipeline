@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "VITE_API_URL=${VITE_API_URL:-/stock-analysis/api} vite build",
     "preview": "vite preview"
   },
   "dependencies": {
