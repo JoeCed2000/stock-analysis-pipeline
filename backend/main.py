@@ -1666,8 +1666,23 @@ async def admin_list_feedback():
 
 # ── Serve React SPA (after all API routes — mono-origin architecture) ──
 _frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+
 if _frontend_dist.exists():
-    app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")
+    from starlette.staticfiles import StaticFiles as _SF
+    from starlette.types import Scope, Receive, Send
+    
+    class _CacheBustingStaticFiles(_SF):
+        """StaticFiles that adds Cache-Control: no-cache to force CDN revalidation."""
+        async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+            async def _send(message):
+                if message.get("type") == "http.response.start":
+                    headers = list(message.get("headers", []))
+                    headers.append((b"cache-control", b"no-cache, must-revalidate"))
+                    message["headers"] = headers
+                await send(message)
+            await super().__call__(scope, receive, _send)
+    
+    app.mount("/", _CacheBustingStaticFiles(directory=str(_frontend_dist), html=True), name="frontend")
     logger.info("Frontend mounted from %s", str(_frontend_dist))
 else:
     logger.warning("Frontend dist/ not found at %s — API-only mode", str(_frontend_dist))
