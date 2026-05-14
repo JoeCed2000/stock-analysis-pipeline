@@ -12,16 +12,16 @@ from typing import List, Dict, Tuple
 # ── Template requirements ────────────────────────────────────────────────────
 
 REQUIRED_SECTIONS: Dict[str, str] = {
-    "📊 EPS & Revenue": "EPS & Revenue",
-    "🌟 Highlights & ⚠️ Lowlights": "Highlights & Lowlights",
-    "🧠 Operating Metrics": "Operating Metrics",
-    "💰 Cash Flow": "Cash Flow",
-    "🎯 Capital Efficiency": "Capital Efficiency",
-    "🧩 Segments": "Segments",
-    "📈 Forward P/E": "Forward P/E",
-    "📦 Backlog Quality": "Backlog Quality",
-    "🔮 Guidance": "Guidance",
-    "🏆 Verdict": "Verdict",
+    "EPS & Revenue": "EPS & Revenue",
+    "Highlights & Lowlights": "Highlights & Lowlights",
+    "Operating Metrics": "Operating Metrics",
+    "Cash Flow": "Cash Flow",
+    "Capital Efficiency": "Capital Efficiency",
+    "Segments": "Segments",
+    "Forward P/E": "Forward P/E",
+    "Backlog Quality": "Backlog Quality",
+    "Guidance": "Guidance",
+    "Verdict": "Verdict",
 }
 
 REQUIRED_SUMMARY_MARKER = re.compile(
@@ -39,11 +39,11 @@ FORBIDDEN_MARKERS: List[str] = [
 
 # Sections that MUST contain a markdown table
 TABLE_SECTIONS = {
-    "📊 EPS & Revenue",
-    "🧠 Operating Metrics",
-    "💰 Cash Flow",
-    "🧩 Segments",
-    "🔮 Guidance",
+    "EPS & Revenue",
+    "Operating Metrics",
+    "Cash Flow",
+    "Segments",
+    "Guidance",
 }
 
 TABLE_PATTERN = re.compile(r"^\|.+\|$", re.MULTILINE)

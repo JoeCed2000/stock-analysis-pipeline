@@ -1,6 +1,8 @@
 """Tests for the earnings call deep-dive generator."""
 import json
 
+from pathlib import Path
+
 from backend.earnings_deep_dive.schemas import DeepDiveRequest, FinancialMetrics
 from backend.earnings_deep_dive.generator import generate_deep_dive
 from backend.earnings_deep_dive.markdown import assemble_final_report
@@ -44,8 +46,8 @@ def test_pdf_aligned_prompts_require_nami_template_shape():
 
     assert len(SECTION_ORDER) == 10
     assert "Nami" in system_prompt("jp")
-    assert "Cite transcript source:" in system_prompt("en")
-    assert "If transcript is unavailable" in system_prompt("en")
+    assert "sourced: (Transcript" in system_prompt("en")
+    assert "DATA RULES" in system_prompt("en")
 
     for section in SECTION_ORDER:
         prompt = build_prompt(
@@ -90,16 +92,16 @@ def test_section_metrics_keeps_missing_keys_when_all_values_are_missing():
 
 def test_generate_deep_dive_writes_report_and_meta(tmp_path, monkeypatch):
     outputs = {
-        "📊 EPS & Revenue": "## 📊 EPS & Revenue\n\n| Metric | Estimate | Actual | Variance | YoY |\n|---|---|---|---|---|\n| EPS | $1.20 | $1.25 | +4% | +10% |\n| Revenue | $26B | $26B | 0% | +12% |",
-        "🌟 Highlights & ⚠️ Lowlights": "## 🌟 Highlights & ⚠️ Lowlights\n\n| Type | Item | Evidence |\n|---|---|---|\n| 🌟 | Demand improved | Transcript |\n| ⚠️ | Margin pressure | Transcript |",
-        "🧠 Operating Metrics": "## 🧠 Operating Metrics\n\n| Metric | Current | Prior | YoY |\n|---|---|---|---|\n| Revenue | $26B | $23B | +12% |",
-        "💵 Cash Flow": "## 💵 Cash Flow\n\n| Metric | Current | Prior | YoY |\n|---|---|---|---|\n| OCF | $5B | $4B | +25% |\n| FCF | $3B | $2B | +50% |",
-        "💰 Capital Efficiency": "## 💰 Capital Efficiency\n\n| Metric | Current | Benchmark |\n|---|---|---|\n| ROE | 35% | 25% |\n| ROIC | 20% | 15% |",
-        "🎯 Segments": "## 🎯 Segments\n\n| Segment | Revenue | YoY |\n|---|---|---|\n| Cloud | $10B | +20% |",
-        "📈 Forward P/E": "## 📈 Forward P/E\n\n| Metric | Value | Context |\n|---|---|---|\n| Fwd P/E | 24x | Sector avg 20x |",
-        "📦 Backlog Quality": "## 📦 Backlog Quality\n\n| Quantity | Coverage | Quality |\n|---|---|---|\n| Not disclosed | N/A | N/A |",
-        "🧩 Guidance": "## 🧩 Guidance\n\n| Metric | Guidance | QoQ |\n|---|---|---|\n| Revenue | $27B | +4% |",
-        "🏆 Verdict / 総合評価": "## 🏆 Verdict / 総合評価\n\n| Dimension | Positive | Negative |\n|---|---|---|\n| Growth | Strong | None |",
+        "EPS & Revenue": "## EPS & Revenue\n\n| Metric | Estimate | Actual | Variance | YoY |\n|---|---|---|---|---|\n| EPS | $1.20 | $1.25 | +4% | +10% |\n| Revenue | $26B | $26B | 0% | +12% |",
+        "Highlights & Lowlights": "## Highlights & Lowlights\n\n| Type | Item | Evidence |\n|---|---|---|\n| 🌟 | Demand improved | Transcript |\n| ⚠️ | Margin pressure | Transcript |",
+        "Operating Metrics": "## Operating Metrics\n\n| Metric | Current | Prior | YoY |\n|---|---|---|---|\n| Revenue | $26B | $23B | +12% |",
+        "Cash Flow": "## Cash Flow\n\n| Metric | Current | Prior | YoY |\n|---|---|---|---|\n| OCF | $5B | $4B | +25% |\n| FCF | $3B | $2B | +50% |",
+        "Capital Efficiency": "## Capital Efficiency\n\n| Metric | Current | Benchmark |\n|---|---|---|\n| ROE | 35% | 25% |\n| ROIC | 20% | 15% |",
+        "Segments": "## Segments\n\n| Segment | Revenue | YoY |\n|---|---|---|\n| Cloud | $10B | +20% |",
+        "Forward P/E": "## Forward P/E\n\n| Metric | Value | Context |\n|---|---|---|\n| Fwd P/E | 24x | Sector avg 20x |",
+        "Backlog Quality": "## Backlog Quality\n\n| Quantity | Coverage | Quality |\n|---|---|---|\n| Not disclosed | N/A | N/A |",
+        "Guidance": "## Guidance\n\n| Metric | Guidance | QoQ |\n|---|---|---|\n| Revenue | $27B | +4% |",
+        "Verdict": "## Verdict\n\n| Dimension | Positive | Negative |\n|---|---|---|\n| Growth | Strong | None |",
     }
 
     def fake_find_transcripts(ticker, output_dir=""):
@@ -130,32 +132,36 @@ def test_generate_deep_dive_writes_report_and_meta(tmp_path, monkeypatch):
         return "## Unknown\n\n- Not disclosed."
 
     monkeypatch.setattr("backend.earnings_deep_dive.generator.find_transcripts", fake_find_transcripts)
-    monkeypatch.setattr("backend.earnings_deep_dive.generator.kimi_chat", fake_kimi)
+    monkeypatch.setattr("backend.earnings_deep_dive.generator.primary_chat", fake_kimi)
 
+    import tempfile
+    from pathlib import Path as _Path
+    _analyses = _Path(__file__).parent.parent / "analyses"
+    out_dir = tempfile.mkdtemp(dir=_analyses)
     request = DeepDiveRequest(
         ticker="NVDA",
         company="NVIDIA",
         quarter="2026Q1",
         language="en",
-        output_dir=str(tmp_path),
+        output_dir=out_dir,
         metrics=FinancialMetrics(eps_actual=1.25, revenue_actual=26000000000, pe_forward=24.0),
         transcript_url="https://example.com/nvda-transcript",
     )
 
     response = generate_deep_dive(request)
 
-    md_path = tmp_path / "07_final_report" / "earnings_deep_dive.md"
-    meta_path = tmp_path / "07_final_report" / "earnings_deep_dive_meta.json"
+    md_path = Path(out_dir) / "07_final_report" / "earnings_deep_dive.md"
+    meta_path = Path(out_dir) / "07_final_report" / "earnings_deep_dive_meta.json"
     assert md_path.exists()
     assert meta_path.exists()
     assert response.markdown_path == str(md_path)
     assert len(response.sections) == 10
     # at least one section succeeded (mock may not satisfy all new validators)
     assert any(status.status == "ok" for status in response.statuses)
-    assert all(call["max_tokens"] == 2000 for call in calls)
+    assert all(call["max_tokens"] == 16000 for call in calls)
     assert all("Transcript excerpt:" in call["prompt"] for call in calls)
     assert "## Sources" in response.report_markdown
-    assert "- Transcript: https://example.com/nvda-transcript" in response.report_markdown
+    assert "https://example.com/nvda-transcript" in response.report_markdown
     meta = json.loads(meta_path.read_text())
     assert meta["ticker"] == "NVDA"
     assert meta["provider"] == "Codex CLI local"
@@ -171,23 +177,27 @@ def test_generate_deep_dive_bilingual_runs_en_and_jp_passes(tmp_path, monkeypatc
         heading = prompt.split("Required heading: ## ", 1)[1].splitlines()[0]
         return f"## {heading}\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n> 一言まとめ: ok"
 
-    monkeypatch.setattr("backend.earnings_deep_dive.generator.kimi_chat", fake_kimi)
+    monkeypatch.setattr("backend.earnings_deep_dive.generator.primary_chat", fake_kimi)
 
+    import tempfile as _tempfile2
+    from pathlib import Path as _Path2
+    _analyses2 = _Path2(__file__).parent.parent / "analyses"
+    out_dir2 = _tempfile2.mkdtemp(dir=_analyses2)
     response = generate_deep_dive(
         DeepDiveRequest(
             ticker="NVDA",
             company="NVIDIA",
             quarter="2026Q1",
             language="bilingual",
-            output_dir=str(tmp_path),
+            output_dir=out_dir2,
             transcript_text="Revenue EPS guidance backlog cash flow segments.",
             transcript_url="https://example.com/nvda-transcript",
         )
     )
 
     assert response.language == "bilingual"
-    assert (tmp_path / "en" / "07_final_report" / "earnings_deep_dive.md").exists()
-    assert (tmp_path / "jp" / "07_final_report" / "earnings_deep_dive.md").exists()
+    assert (Path(out_dir2) / "en" / "07_final_report" / "earnings_deep_dive.md").exists()
+    assert (Path(out_dir2) / "jp" / "07_final_report" / "earnings_deep_dive.md").exists()
     assert any("Language: en" in call for call in calls)
     assert any("Language: jp" in call for call in calls)
     assert response.transcript_url == "https://example.com/nvda-transcript"
@@ -200,7 +210,7 @@ def test_generate_deep_dive_retries_then_degrades_to_placeholder(tmp_path, monke
     attempts = {"EPS & Revenue": 0}
 
     def fake_kimi(prompt, system=None, max_tokens=400, temperature=0.0):
-        if "Required heading: ## 📊 EPS & Revenue" in prompt:
+        if "Required heading: ## EPS & Revenue" in prompt:
             attempts["EPS & Revenue"] += 1
             return "bad\nbad\nbad\nbad"
         if "Required heading: ## 🧩 Guidance" in prompt:
@@ -209,20 +219,24 @@ def test_generate_deep_dive_retries_then_degrades_to_placeholder(tmp_path, monke
         return f"## {heading}\n\n- Not disclosed."
 
     monkeypatch.setattr("backend.earnings_deep_dive.generator.find_transcripts", fake_find_transcripts)
-    monkeypatch.setattr("backend.earnings_deep_dive.generator.kimi_chat", fake_kimi)
+    monkeypatch.setattr("backend.earnings_deep_dive.generator.primary_chat", fake_kimi)
 
+    import tempfile as _tempfile3
+    from pathlib import Path as _Path3
+    _analyses3 = _Path3(__file__).parent.parent / "analyses"
+    out_dir3 = _tempfile3.mkdtemp(dir=_analyses3)
     response = generate_deep_dive(
         DeepDiveRequest(
             ticker="MSFT",
             company="Microsoft",
             quarter="2026Q3",
             language="en",
-            output_dir=str(tmp_path),
+            output_dir=out_dir3,
         )
     )
 
     assert attempts["EPS & Revenue"] == 2
-    assert "## 📊 EPS & Revenue" in response.sections["EPS & Revenue"]
+    assert "## EPS & Revenue" in response.sections["EPS & Revenue"]
     assert "Section unavailable" in response.sections["EPS & Revenue"]
     assert response.sections["Guidance"].startswith("##")
     assert any(status.status == "failed" for status in response.statuses)

@@ -14,8 +14,6 @@ from backend.models import (
 )
 from backend.sources_collector import get_stock_data, get_finnhub_data, get_sec_filings, convert_to_eur, _yf_ticker_safe
 from backend.scorer import score_ticker
-from backend.excel_generator import generate_excel
-from backend.tenk_pdf import convert_10k_to_pdf
 from backend.company_profile import generate_company_profile
 from backend.sec_8k import download_latest_8k
 from backend.earnings_deep_dive.schemas import DeepDiveRequest, FinancialMetrics
