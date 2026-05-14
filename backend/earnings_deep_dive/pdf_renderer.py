@@ -100,18 +100,18 @@ def _emoji_to_image(char: str, size: int = 16) -> RLImage:
     return RLImage(buf, width=size, height=size)
 
 
-# ── Section emoji prefixes (real color emoji, rendered as PNG images) ────
+# ── Section emoji prefixes (model parity — section-specific semantics) ────
 _SECTION_PREFIXES: dict[str, str] = {
-    "EPS & Revenue":       "◆",
-    "Highlights":          "◆",
-    "Operating Metrics":   "◆",
-    "Cash Flow":           "◆",
-    "Capital Efficiency":  "◆",
-    "Segments":            "◆",
-    "Forward P/E":         "◆",
-    "Backlog":             "◆",
-    "Guidance":            "◆",
-    "Verdict":             "◆",
+    "EPS & Revenue":       "📊",
+    "Highlights":          "🌟",
+    "Operating Metrics":   "🧠",
+    "Cash Flow":           "💰",
+    "Capital Efficiency":  "🎯",
+    "Segments":            "📊",
+    "Forward P/E":         "📈",
+    "Backlog":             "📦",
+    "Guidance":            "🔮",
+    "Verdict":             "🏆",
 }
 
 # Yellow diamond marker color (model parity)
@@ -121,10 +121,11 @@ _DIAMOND_YELLOW = colors.HexColor("#E6A817")
 def _section_title_flowables(section, styles: dict[str, ParagraphStyle], *,
                               font_name: str = "Helvetica",
                               emoji_size: int = 16) -> list:
-    """Return [Table(◆_image + title_paragraph)] or [Paragraph] for CJK.
+    """Return [Table(emoji_image + title_paragraph)] or [Paragraph] for CJK.
     
-    Model parity: ALL sections use the same yellow ◆ marker.
-    Rendered via PIL+NotoColorEmoji → PNG to guarantee glyph availability.
+    Model parity: each section uses a semantically-appropriate emoji marker
+    (📊 data, 🧠 analysis, 💰 cash flow, 🎯 efficiency, 🏆 verdict, etc.)
+    rendered via PIL+NotoColorEmoji → PNG to guarantee glyph availability.
     """
     prefix = _SECTION_PREFIXES.get(section.key, "◆")
     if not prefix or font_name in ("MS-PGothic", "HeiseiMin-W3"):
@@ -322,63 +323,34 @@ _CIRCLED_DIGIT_MAP = str.maketrans({
 # ── Inline emoji markers — KEEP as Unicode, render as images ─────────
 # No more ASCII replacements. Emojis are structural markers (model parity):
 #   👉 = investor implication   🧠 = Nami analysis   🎯 = verdict
-#   ⚠️ = warning/lowlight   📊 = data table   📌 = formula
+#   ⚠️ = warning/lowlight   📊 = data table   💰 = cash flow
+#   🏆 = final verdict   🌟 = highlight   🔮 = guidance   📈 = growth
+#   ● = bullet   ■ = subsection   ◆ = diamond (fallback only)
 # Rendered as inline PIL+NotoColorEmoji images via _paragraph_with_emojis()
 _STRUCTURAL_EMOJIS = re.compile(
-    '[\U0001F300-\U0001F9FF'  # Misc Symbols, Emoticons, Supplemental, etc.
-    '\U00002600-\U000027BF'    # Misc Symbols, Dingbats
-    '\U0001F000-\U0001F02F'    # Mahjong, Domino
+    '[\U0001F300-\U0001F9FF'   # Misc Symbols, Emoticons, Supplemental, etc.
+    '\U00002600-\U000027BF'     # Misc Symbols, Dingbats
+    '\U0001F000-\U0001F02F'     # Mahjong, Domino
+    '\U000025A0-\U000025FF'     # Geometric Shapes (●■◆▲▼)
     ']'
 )
 
-# Only strip truly useless emojis (redundant with other markers)
+# Only strip truly redundant decorators (not structural markers)
 _EMOJI_STRIP_MAP = str.maketrans({
-    '\U0001F4B0': '',   # 💰 → redundant (revenue numbers speak)
-    '\U0001F4C8': '',   # 📈 → redundant
-    '\U0001F4E6': '',   # 📦 → redundant
-    '\U0001F4A1': '',   # 💡 → redundant
-    '\U0001F4CB': '',   # 📋 → redundant
-    '\U0001F514': '',   # 🔔 → redundant
+    '\U0001F4A1': '',   # 💡 → redundant (lightbulb — context makes it clear)
 })
 
-# ── Emoji → text fallback — standard PDF fonts (Helvetica/DejaVu) have ──
-# ── NO glyphs for emoji-range codepoints (0x1F300-0x1F9FF).  Replace  ──
-# ── with Unicode equivalents that DO render (Dingbats, Geometric Shapes, ──
-# ── Misc Symbols blocks).  Applied in _glyph_safe AFTER _EMOJI_STRIP_MAP. ──
+# ── Emoji → text fallback — KEEP structural emojis for PIL+NotoColorEmoji ──
+# ── rendering in _paragraph_with_emojis().  Only downgrade TRUE unknowns  ──
+# ── that NotoColorEmoji doesn't cover.  Structural emojis (👉🧠🎯⚠️📊📌✅❌ ──
+# ── 💰🏆🔥✔●🟢🔴) pass through for PNG image rendering. ──
 _EMOJI_FALLBACK = str.maketrans({
-    # Stars / sparkles
-    '\U0001F31F': '\u2605',   # 🌟 → ★ (U+2605, in Dingbats)
+    # Stars / sparkles (NotoColorEmoji covers these, but keep safe fallbacks)
+    '\U0001F31F': '\u2605',   # 🌟 → ★
     '\U0001F320': '\u2606',   # 🌠 → ☆
     '\U0001F4AB': '\u2606',   # 💫 → ☆
-    # Indicators
-    '\U0001F449': '\u2192',   # 👉 → → (U+2192, in Arrows)
-    '\U0001F448': '\u2190',   # 👈 → ←
-    '\U0001F446': '\u2191',   # 👆 → ↑
-    '\U0001F4CC': '\u25C6',   # 📌 → ◆ (diamond)
-    '\U0001F3AF': '\u25C6',   # 🎯 → ◆
-    # Warning / caution
-    '\U000026A0': '\u26A0',   # ⚠️ already in Dingbats — keep as-is (codepoint pass-through)
-    # Check / cross
-    '\U00002705': '\u2713',   # ✅ → ✓
-    '\U0000274C': '\u2717',   # ❌ → ✗
-    '\U00002714': '\u2713',   # ✔ → ✓
-    '\U00002716': '\u2717',   # ✖ → ✗
-    # Data / chart
-    '\U0001F4CA': '\u25B2',   # 📊 → ▲ (bar chart fallback)
-    '\U0001F4C8': '\u25B2',   # 📈 → ▲
-    # Lightbulb / idea
-    '\U0001F4A1': '\u25C6',   # 💡 → ◆
-    # Brain
-    '\U0001F9E0': '\u25C6',   # 🧠 → ◆ fallback when not rendered as PNG
-    # Circles (red/green indicators)
-    '\U0001F534': '\u25CF',   # 🔴 → ●
-    '\U0001F7E2': '\u25CB',   # 🟢 → ○
-    # Box
-    '\U0001F4E6': '',         # 📦 → (remove)
-    # Clip
-    '\U0001F4CB': '',         # 📋 → (remove)
-    # Bell
-    '\U0001F514': '',         # 🔔 → (remove)
+    # Only downgrade emojis without PIL rendering:
+    '\U0001F4CC': '\u25C6',   # 📌 → ◆ (rare, acceptable fallback)
 })
 
 
@@ -397,7 +369,6 @@ _FULLWIDTH_MAP = str.maketrans({
 })
 
 _PDF_SAFE_PUNCTUATION_MAP = str.maketrans({
-    '\u25CF': '-',    # ● black circle can render as tofu in PDF viewers
     '\u2014': '-',    # — em dash
     '\u2192': '->',   # → rightwards arrow
 })
@@ -947,8 +918,10 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         # Spacing between title and table (model parity — prevents title touching table)
         story.append(Spacer(1, 0.10 * inch))
 
-        # Section question is used by the LLM as context — not displayed in PDF (model parity)
-        # The section title already identifies the topic
+        # Section question (model parity — rendered as context before table)
+        if section.question:
+            story.append(Spacer(1, 0.08 * inch))
+            story.extend(_paragraph_with_emojis(section.question, styles["question"], font_name=fonts.regular))
 
         # Prose-only sections (Highlights, Backlog when not applicable) skip the table
         if section.key == "Highlights":
@@ -962,31 +935,21 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             for paragraph in section.analysis:
                 story.extend(_paragraph_with_emojis(paragraph, styles["body"], font_name=fonts.regular))
 
-        # ── Nami takeaway callout box (shaded, left-accent border) ──
-        summary_text = section.summary.strip() if section.summary.strip() else "Not available."
-        summary_body = _paragraph_with_emojis(summary_text, styles["body"], font_name=fonts.regular)
-        callout_cells = [
-            Paragraph(f"<b>{escape(section.summary_label)}</b>", styles["body"]),
-        ] + summary_body
-        callout_table = Table([[cell] for cell in callout_cells], colWidths=[LETTER[0] - 1.65 * inch])
-        callout_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F5F0EB")),
-            ("LEFTPADDING", (0, 0), (-1, -1), 12),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-            ("TOPPADDING", (0, 0), (0, 0), 10),
-            ("BOTTOMPADDING", (-1, -1), (-1, -1), 10),
-            ("TOPPADDING", (0, 1), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (0, 0), 4),
-            ("LINEBEFORE", (0, 0), (0, -1), 2, _POSITIVE),
-            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#D4C5B9")),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ]))
-        summary_flowables = [
-            Spacer(1, 0.12 * inch),
-            callout_table,
-            Spacer(1, 0.18 * inch),
-        ]
-        story.append(KeepTogether(summary_flowables))
+        # ── Nami-san continuation (analysis guidance) ──
+        continuation_lines = _section_continuation(section, report)
+        if continuation_lines:
+            story.append(Spacer(1, 0.10 * inch))
+            for line in continuation_lines:
+                story.extend(_paragraph_with_emojis(line, styles["body"], font_name=fonts.regular))
+
+        # ── Nami takeaway (inline emoji-marked, model parity — no callout box) ──
+        if section.summary and section.summary.strip() and section.summary.strip().lower() not in {"not available.", "not available", "n/a"}:
+            story.append(Spacer(1, 0.12 * inch))
+            takeaway_header = f"👉 {section.summary_label}"
+            story.extend(_paragraph_with_emojis(takeaway_header, styles["small_bold"], font_name=fonts.regular))
+            story.append(Spacer(1, 0.04 * inch))
+            story.extend(_paragraph_with_emojis(section.summary, styles["body"], font_name=fonts.regular))
+            story.append(Spacer(1, 0.12 * inch))
 
     if report.sources:
         story.append(PageBreak())
