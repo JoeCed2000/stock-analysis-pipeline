@@ -2,6 +2,7 @@
 import pytest
 from pathlib import Path
 
+
 @pytest.fixture(scope="session")
 def browser_context_args(browser_context_args):
     """Global browser context settings."""
@@ -10,6 +11,17 @@ def browser_context_args(browser_context_args):
         "viewport": {"width": 1280, "height": 900},
         "locale": "en-US",
     }
+
+
+@pytest.fixture(scope="session")
+def browser_type_launch_args(browser_type_launch_args):
+    """Headless + no sandbox for WSL."""
+    return {
+        **browser_type_launch_args,
+        "headless": True,
+        "args": ["--no-sandbox", "--disable-setuid-sandbox"],
+    }
+
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "VITE_API_URL=${VITE_API_URL:-/stock-analysis/api} vite build",
+    "build": "VITE_API_URL=/stock-analysis/api vite build",
     "preview": "vite preview",
     "recette": "cd .. && .venv/bin/pytest tests_e2e/ -v",
     "recette:quick": "cd .. && .venv/bin/pytest tests_e2e/ -v -k 'not analysis_completes and not download_dossier'",
