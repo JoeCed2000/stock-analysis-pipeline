@@ -55,3 +55,4 @@ SSH_SETUP.txt
 .bak
 tmp/
 *.bak
+tests_e2e/screenshots/
