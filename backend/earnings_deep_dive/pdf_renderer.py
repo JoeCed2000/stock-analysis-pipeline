@@ -918,10 +918,8 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         # Spacing between title and table (model parity — prevents title touching table)
         story.append(Spacer(1, 0.10 * inch))
 
-        # Section question (model parity — rendered as context before table)
-        if section.question:
-            story.append(Spacer(1, 0.08 * inch))
-            story.extend(_paragraph_with_emojis(section.question, styles["question"], font_name=fonts.regular))
+        # Section question is used by the LLM as context — not displayed in PDF (model parity)
+        # The section title already identifies the topic
 
         # Prose-only sections (Highlights, Backlog when not applicable) skip the table
         if section.key == "Highlights":
