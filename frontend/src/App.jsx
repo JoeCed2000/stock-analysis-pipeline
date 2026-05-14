@@ -11,7 +11,7 @@ import { analyzeTickersAsync, getJobStatus, getDossierStatus, countDossierSectio
 import translations from './i18n.js';
 
 // BUILD: v2 — SmartLoader 4-step activity, t() interpolation, skeleton loading
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 const ESTIMATED_SEC_PER_TICKER = 22;
 
