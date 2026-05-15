@@ -176,19 +176,111 @@ def _investor_relations_url(yf_data: Dict[str, Any], fh_data: Optional[Dict[str,
     for value in candidates:
         if isinstance(value, str) and value.startswith(("http://", "https://")):
             return value
-    # Fallback: well-known companies
+    # Fallback: DuckDuckGo search for "{company} investor relations"
     ticker = (yf_data.get("ticker") or "").upper()
-    _KNOWN_IR = {
-        "TSLA": "https://ir.tesla.com",
-        "AAPL": "https://investor.apple.com",
-        "MSFT": "https://www.microsoft.com/en-us/Investor",
-        "GOOGL": "https://abc.xyz/investor",
-        "META": "https://investor.fb.com",
-        "AMZN": "https://ir.aboutamazon.com",
-        "NVDA": "https://investor.nvidia.com",
-        "NFLX": "https://ir.netflix.net",
-    }
-    return _KNOWN_IR.get(ticker)
+    company_name = yf_data.get("company_name") or yf_data.get("longName") or ticker
+    website = yf_data.get("website") or yf_data.get("weburl") or ""
+    return _discover_ir_url(company_name, ticker, website)
+
+
+def _discover_ir_url(company_name: str, ticker: str, website: str = "") -> Optional[str]:
+    """Discover the official investor relations page via pattern-based URL construction.
+    
+    Strategy (no web search needed — works offline, no rate limits):
+    1. Get company domain from known website field
+    2. Try common IR patterns: investor.{domain}, ir.{domain}, {domain}/investor
+    3. Verify each candidate with a HEAD request
+    4. Fall back to constructing domain from company name
+    
+    Generic — works for any company worldwide, not just US mega-caps."""
+    import re
+    from urllib.parse import urlparse
+    
+    def _try_url(url: str) -> Optional[str]:
+        """Try HEAD first, fall back to GET on 403 (Cloudflare WAF blocks HEAD but allows GET).
+        Returns final URL if page exists (including 403 = page exists, just bot-protected).
+        Returns None if truly unreachable (404/timeout/DNS failure)."""
+        try:
+            from backend.http_client import http
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            # Try HEAD first (fast, ~300ms)
+            resp = http.head(url, headers=headers, timeout=8, follow_redirects=True)
+            if resp.status_code in (200, 301, 302, 307, 308):
+                return str(resp.url)  # final URL after redirects
+            # 403 on HEAD → retry with GET (Cloudflare often allows GET but blocks HEAD)
+            if resp.status_code == 403:
+                resp2 = http.get(url, headers=headers, timeout=8, follow_redirects=True)
+                if resp2.status_code in (200, 403):
+                    # 200 = accessible, 403 = page exists but bot-protected (still valid IR URL)
+                    return str(resp2.url)
+        except Exception:
+            pass
+        return None
+    
+    def _extract_domain(url_str: str) -> Optional[str]:
+        """Extract 'example.com' from a URL string."""
+        try:
+            parsed = urlparse(url_str if "://" in url_str else f"https://{url_str}")
+            domain = parsed.netloc.lower()
+            domain = re.sub(r'^www\.', '', domain)
+            if '.' in domain and len(domain) > 5:
+                return domain
+        except Exception:
+            pass
+        return None
+    
+    # 1) Try to get domain from known website URL
+    domain = None
+    if website:
+        domain = _extract_domain(website)
+    
+    # 2) If no domain, construct from company name
+    if not domain:
+        # Extract the first word of the company name for domain construction
+        name_parts = company_name.lower().split()
+        # Remove common suffixes
+        skip_words = {"inc", "corp", "corporation", "ltd", "limited", "plc", "group", 
+                      "holdings", "sa", "nv", "se", "ag", "spa", "sarl", "gmbh", "co", 
+                      "company", "the", "llc", "lp"}
+        clean_parts = [p for p in name_parts if p not in skip_words]
+        if not clean_parts:
+            clean_parts = [ticker.lower()]
+        base = clean_parts[0].strip(".,;:()")
+        domain = f"{base}.com"
+    
+    if not domain:
+        return None
+    
+    # 3) Try common IR URL patterns
+    candidates = [
+        f"https://investor.{domain}",
+        f"https://ir.{domain}",
+        f"https://{domain}/investor",
+        f"https://{domain}/investors",
+        f"https://{domain}/investor-relations",
+        f"https://{domain}/ir",
+    ]
+    
+    IR_PATTERNS = [
+        r"investor\.[a-z]",      # investor.nvidia.com, investor.apple.com
+        r"ir\.[a-z]",            # ir.tesla.com, ir.netflix.net
+        r"/investor[/-]?",       # /investor, /investor-relations
+        r"/ir[/-]?",             # /ir/, /ir-
+        r"/en/investors?",       # ASML, LVMH pattern: /en/investors
+    ]
+    
+    for url in candidates:
+        result = _try_url(url)
+        if result:
+            # Verify final URL still looks like an IR page (not redirected to homepage)
+            result_lower = result.lower()
+            if any(re.search(pat, result_lower) for pat in IR_PATTERNS):
+                logger.info(f"IR URL discovered for {ticker} ({company_name}): {result}")
+                return result
+            logger.debug(f"IR candidate {url} redirected to non-IR page: {result}")
+    
+    logger.info(f"No IR URL found for {ticker} ({company_name}) — tried {len(candidates)} patterns on {domain}")
+    return None
 
 
 def _copy_non_report_sections_to_language_dirs(output_dir: str) -> None:
