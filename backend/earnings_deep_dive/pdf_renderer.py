@@ -873,6 +873,33 @@ def _section_has_renderable_content(section) -> bool:
     return has_table or has_analysis or has_summary
 
 
+# ── Callout box (model parity — blue-bordered insight box) ──────────────
+_CALLOUT_BORDER = colors.HexColor("#2563EB")
+_CALLOUT_BG = colors.HexColor("#EFF6FF")
+
+
+def _callout_box(header: str, body: str, styles: dict, font_name: str) -> list:
+    """Render a blue-bordered callout box matching the model PDF style."""
+    available_width = LETTER[0] - 1.24 * inch
+    padding = 8
+    
+    header_para = Paragraph(escape(_glyph_safe(header, font_name=font_name)), styles["small_bold"])
+    body_para = Paragraph(escape(_glyph_safe(body, font_name=font_name)), styles["body"])
+    
+    inner = Table([[header_para], [body_para]], colWidths=[available_width - 2*padding])
+    inner.setStyle(TableStyle([
+        ("LEFTPADDING", (0,0), (-1,-1), padding),
+        ("RIGHTPADDING", (0,0), (-1,-1), padding),
+        ("TOPPADDING", (0,0), (-1,-1), padding),
+        ("BOTTOMPADDING", (0,0), (-1,-1), padding),
+        ("BACKGROUND", (0,0), (-1,-1), _CALLOUT_BG),
+        ("BOX", (0,0), (-1,-1), 1.5, _CALLOUT_BORDER),
+        ("VALIGN", (0,0), (-1,-1), "TOP"),
+    ]))
+    
+    return [Spacer(1, 0.15*inch), inner, Spacer(1, 0.12*inch)]
+
+
 def _validate_report(report) -> list[str]:
     """Pre-render QA gate. Returns list of issues (empty = pass)."""
     issues = []
@@ -988,39 +1015,6 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         if section.summary and section.summary.strip() and section.summary.strip().lower() not in {"not available.", "not available", "n/a"}:
             takeaway_header = f"👉 {section.summary_label}"
             story.extend(_callout_box(takeaway_header, section.summary, styles, fonts.regular))
-
-# ── Callout box (model parity — blue-bordered insight box) ──────────────
-_CALLOUT_BORDER = colors.HexColor("#2563EB")
-_CALLOUT_BG = colors.HexColor("#EFF6FF")
-
-
-def _callout_box(header: str, body: str, styles: dict, font_name: str) -> list:
-    """Render a blue-bordered callout box matching the model PDF style.
-    
-    Returns a list of flowables: a bordered table with emoji header + body text.
-    """
-    available_width = LETTER[0] - 1.24 * inch  # left + right margins
-    padding = 10
-    
-    # Emoji header
-    emoji_flowables = _paragraph_with_emojis(header, styles["small_bold"], font_name=font_name)
-    # Body text
-    body_flowables = _paragraph_with_emojis(body, styles["body"], font_name=font_name)
-    
-    # Wrap header + body in a single-cell table with blue border + light blue bg
-    inner_story = emoji_flowables + [Spacer(1, 4)] + body_flowables
-    inner_table = Table([[inner_story]], colWidths=[available_width - 2 * padding])
-    inner_table.setStyle(TableStyle([
-        ("LEFTPADDING", (0, 0), (-1, -1), padding),
-        ("RIGHTPADDING", (0, 0), (-1, -1), padding),
-        ("TOPPADDING", (0, 0), (-1, -1), padding),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), padding),
-        ("BACKGROUND", (0, 0), (-1, -1), _CALLOUT_BG),
-        ("BOX", (0, 0), (-1, -1), 1.5, _CALLOUT_BORDER),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-    ]))
-    
-    return [Spacer(1, 0.15 * inch), inner_table, Spacer(1, 0.12 * inch)]
 
     if report.sources:
         story.append(PageBreak())
