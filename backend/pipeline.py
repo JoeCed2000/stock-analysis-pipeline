@@ -322,7 +322,8 @@ def _search_ir_url_tavily(company_name: str, ticker: str, domain: str) -> Option
             logger.info(f"Tavily: no results for {ticker}")
             return None
         
-        # Filter results for IR-like URLs
+        # Filter results for IR-like URLs, preferring official domains
+        import re
         IR_PATTERNS = [
             r"investor\.[a-z]",
             r"ir\.[a-z]",
@@ -331,23 +332,62 @@ def _search_ir_url_tavily(company_name: str, ticker: str, domain: str) -> Option
             r"/en/investors?",
             r"/global/ir",
         ]
-        import re
+        # Known third-party aggregators — skip these
+        THIRD_PARTY = [
+            "alphaspread.com", "annualreports.com", "macrotrends.net",
+            "simplywall.st", "stockanalysis.com", "marketbeat.com",
+            "zacks.com", "finviz.com", "morningstar.com", "yahoo.com",
+        ]
+        # First pass: prefer subdomain IR patterns on company domain (investor.{domain}, ir.{domain})
+        # These are the most official and reliable IR URLs
+        SUBDOMAIN_PATTERNS = [
+            r"investor\.[a-z]",
+            r"ir\.[a-z]",
+        ]
+        domain_clean = domain.replace("www.", "")
         for r in results[:5]:
             url = r.get("url", "")
             if not url:
                 continue
             url_lower = url.lower()
+            if any(tp in url_lower for tp in THIRD_PARTY):
+                continue
+            # Subdomain match + domain is related to company
+            if any(re.search(p, url_lower) for p in SUBDOMAIN_PATTERNS):
+                logger.info(f"Tavily found IR URL (subdomain) for {ticker}: {url}")
+                return url
+        
+        # Second pass: accept path-based IR URLs (/investor, /ir, /investors)
+        # but prefer those on the company's own domain
+        PATH_PATTERNS = [
+            r"/investor[/-]?",
+            r"/ir[/-]?",
+            r"/en/investors?",
+            r"/global/ir",
+        ]
+        # Try company domain first
+        for r in results[:5]:
+            url = r.get("url", "")
+            if not url:
+                continue
+            url_lower = url.lower()
+            if any(tp in url_lower for tp in THIRD_PARTY):
+                continue
+            if domain_clean in url_lower and any(re.search(p, url_lower) for p in PATH_PATTERNS):
+                logger.info(f"Tavily found IR URL (path on domain) for {ticker}: {url}")
+                return url
+        
+        # Third pass: any IR URL not on a third-party site
+        for r in results[:5]:
+            url = r.get("url", "")
+            if not url:
+                continue
+            url_lower = url.lower()
+            if any(tp in url_lower for tp in THIRD_PARTY):
+                continue
             if any(re.search(p, url_lower) for p in IR_PATTERNS):
                 logger.info(f"Tavily found IR URL for {ticker}: {url}")
                 return url
-        
-        # If no IR-specific URL found, use first result if it looks corporate
-        first = results[0].get("url", "")
-        if first and domain.replace("www.", "") in first.lower():
-            logger.info(f"Tavily: using first result for {ticker}: {first}")
-            return first
-        
-        logger.info(f"Tavily: no IR URL found for {ticker} among {len(results)} results")
     except Exception as e:
         logger.warning(f"Tavily search failed for {ticker}: {e}")
     
