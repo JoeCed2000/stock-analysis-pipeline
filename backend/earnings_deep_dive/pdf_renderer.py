@@ -888,14 +888,41 @@ _CALLOUT_BG = colors.HexColor("#EFF6FF")
 
 
 def _callout_box(header: str, body: str, styles: dict, font_name: str) -> list:
-    """Render a blue-bordered callout box matching the model PDF style."""
+    """Render a blue-bordered callout box matching the model PDF style.
+    
+    The 👉 emoji prefix (used in takeaway headers) is rendered as a PIL+NotoColorEmoji
+    image to avoid tofu/null bytes in the PDF output."""
     available_width = LETTER[0] - 1.24 * inch
     padding = 8
     
-    header_para = Paragraph(escape(_glyph_safe(header, font_name=font_name)), styles["small_bold"])
+    # ── Render 👉 as emoji image (PIL+NotoColorEmoji) to avoid empty squares ──
+    emoji_img = None
+    header_text = header
+    _TAKEAWAY_EMOJI = '👉'
+    if header.startswith(_TAKEAWAY_EMOJI):
+        emoji_img = _emoji_to_image(_TAKEAWAY_EMOJI, size=16)
+        header_text = header[len(_TAKEAWAY_EMOJI):].strip()
+    
+    header_para = Paragraph(escape(_glyph_safe(header_text, font_name=font_name)), styles["small_bold"])
     body_para = Paragraph(escape(_glyph_safe(body, font_name=font_name)), styles["body"])
     
-    inner = Table([[header_para], [body_para]], colWidths=[available_width - 2*padding])
+    if emoji_img:
+        emoji_w = 20
+        text_w = available_width - 2*padding - emoji_w - 4
+        header_cell = Table([[emoji_img, header_para]], colWidths=[emoji_w, text_w], hAlign="LEFT")
+        header_cell.setStyle(TableStyle([
+            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+            ("LEFTPADDING", (0,0), (-1,-1), 0),
+            ("RIGHTPADDING", (0,0), (0,0), 3),
+            ("TOPPADDING", (0,0), (-1,-1), 0),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+            ("BOX", (0,0), (-1,-1), 0, colors.white),
+            ("INNERGRID", (0,0), (-1,-1), 0, colors.white),
+        ]))
+    else:
+        header_cell = header_para
+    
+    inner = Table([[header_cell], [body_para]], colWidths=[available_width - 2*padding])
     inner.setStyle(TableStyle([
         ("LEFTPADDING", (0,0), (-1,-1), padding),
         ("RIGHTPADDING", (0,0), (-1,-1), padding),
