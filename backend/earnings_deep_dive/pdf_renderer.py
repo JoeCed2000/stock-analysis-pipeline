@@ -380,6 +380,10 @@ def _glyph_safe(text: str, *, font_name: str = "Helvetica", keep_emojis: bool = 
     keep_emojis=True: preserve emoji-range characters for PIL image rendering
     (used by _paragraph_with_emojis)."""
     value = str(text)
+    # LLM artifacts: LaTeX-escaped characters (\$35.6B → $35.6B)
+    value = value.replace('\\$', '$')
+    for ch in ('%', '&', '#', '_'):
+        value = value.replace(f'\\{ch}', ch)
     # Replace circled digits with parenthesized numbers — DejaVu has no glyphs
     value = value.translate(_CIRCLED_DIGIT_MAP)
     # Strip redundant emojis (💰📈📦💡📋🔔) but keep structural ones (👉🧠🎯⚠️📊📌✅❌)
@@ -423,6 +427,11 @@ def _format_markdown(text: str) -> str:
     # Strip markdown headings that leak into the PDF
     text = re.sub(r'^###\s+', '', text, flags=re.MULTILINE)
     text = re.sub(r'^##\s+', '', text, flags=re.MULTILINE)
+    # LLM artifacts: LaTeX-escaped dollar signs (\$35.6B → $35.6B)
+    text = text.replace('\\$', '$')
+    # LLM artifacts: backslash-escaped percent, ampersand, hash
+    for ch in ('%', '&', '#', '_'):
+        text = text.replace(f'\\{ch}', ch)
     return text
 
 
@@ -1029,20 +1038,20 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
                 dt = datetime.strptime(report.next_earnings_date, "%Y-%m-%d")
                 formatted_date = dt.strftime("%B %d, %Y")
                 days_left = (dt.date() - datetime.now().date()).days
-                urgency = "🔴" if days_left <= 7 else "🟡" if days_left <= 30 else ""
+                urgency = "URGENT — " if days_left <= 7 else ("SOON — " if days_left <= 30 else "")
                 key_items.append(
-                    f"<b>{urgency} Next Earnings:</b> {formatted_date} "
+                    f"<b>{urgency}Next Earnings:</b> {formatted_date} "
                     f'<font size="8" color="#666666">({days_left} days)</font>'
                 )
             except Exception:
-                key_items.append(f"<b>📅 Next Earnings:</b> {report.next_earnings_date}")
+                key_items.append(f"<b>Next Earnings:</b> {report.next_earnings_date}")
         if report.earnings_audio_url:
             key_items.append(
-                f'<b>🎧 Earnings Call Audio:</b> '
+                f'<b>Earnings Call Audio:</b> '
                 f'<font size="8"><a href="{escape(report.earnings_audio_url)}" color="blue">{escape(report.earnings_audio_url)}</a></font>'
             )
         if key_items:
-            story.append(Paragraph("<b>📅 Key Dates</b>", styles["body"]))
+            story.append(Paragraph("<b>Key Dates</b>", styles["body"]))
             for item in key_items:
                 story.append(Paragraph(item, styles["small"]))
                 story.append(Spacer(1, 0.08 * inch))
