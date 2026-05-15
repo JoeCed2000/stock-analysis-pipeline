@@ -176,7 +176,19 @@ def _investor_relations_url(yf_data: Dict[str, Any], fh_data: Optional[Dict[str,
     for value in candidates:
         if isinstance(value, str) and value.startswith(("http://", "https://")):
             return value
-    return None
+    # Fallback: well-known companies
+    ticker = (yf_data.get("ticker") or "").upper()
+    _KNOWN_IR = {
+        "TSLA": "https://ir.tesla.com",
+        "AAPL": "https://investor.apple.com",
+        "MSFT": "https://www.microsoft.com/en-us/Investor",
+        "GOOGL": "https://abc.xyz/investor",
+        "META": "https://investor.fb.com",
+        "AMZN": "https://ir.aboutamazon.com",
+        "NVDA": "https://investor.nvidia.com",
+        "NFLX": "https://ir.netflix.net",
+    }
+    return _KNOWN_IR.get(ticker)
 
 
 def _copy_non_report_sections_to_language_dirs(output_dir: str) -> None:
