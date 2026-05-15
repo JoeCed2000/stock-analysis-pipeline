@@ -56,10 +56,11 @@ def _apply_verification_status(status: dict) -> dict:
         verification_issues.append("Required dossier deliverables are not complete.")
 
     deep_dive_validated = status.get("deep_dive_validated")
+    verification_warnings = []  # non-blocking — shown to user but don't block download
     if deep_dive_validated is not True:
         if deep_dive_validated is None:
             # Not yet validated — allow download but warn (non-blocking)
-            verification_issues.append("Deep-dive validation pending — review before relying on PDF.")
+            verification_warnings.append("Deep-dive validation pending — review before relying on PDF.")
             deep_dive_validated = True  # treat as passed for download purposes
         else:
             issues = status.get("deep_dive_issues") or []
@@ -72,6 +73,7 @@ def _apply_verification_status(status: dict) -> dict:
     status["verified"] = verified
     status["download_enabled"] = verified
     status["verification_issues"] = verification_issues
+    status["verification_warnings"] = verification_warnings
     return status
 
 
