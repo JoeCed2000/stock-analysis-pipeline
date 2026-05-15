@@ -258,7 +258,7 @@ def _get_stock_data_finnhub(ticker: str) -> Optional[Dict[str, Any]]:
         # Merge existing query params with token (token never in URL)
         params = {k: v[0] for k, v in parse_qs(parsed.query).items()}
         params["token"] = api_key
-        url = f"https://finnhub.io/api/v1{parsed.path}"
+        url = f"https://finnhub.io{parsed.path}"
         last_error = None
         for attempt in range(retries + 1):
             try:
