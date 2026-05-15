@@ -283,7 +283,74 @@ def _discover_ir_url(company_name: str, ticker: str, website: str = "") -> Optio
                 return result
             logger.debug(f"IR candidate {url} redirected to non-IR page: {result}")
     
-    logger.info(f"No IR URL found for {ticker} ({company_name}) — tried {len(candidates)} patterns on {domain}")
+    logger.info(f"No IR URL found via patterns for {ticker} ({company_name}) — trying Tavily search...")
+    return _search_ir_url_tavily(company_name, ticker, domain)
+
+
+def _search_ir_url_tavily(company_name: str, ticker: str, domain: str) -> Optional[str]:
+    """Search Tavily API for investor relations page. 
+    Free tier: 1,000 searches/month. Built for AI agent pipelines.
+    Used as second fallback when pattern-based URL discovery fails (~30% of companies)."""
+    import os, json
+    
+    api_key = os.getenv("TAVILY_API_KEY", "")
+    if not api_key:
+        logger.debug(f"Tavily skipped for {ticker} — TAVILY_API_KEY not set")
+        return None
+    
+    try:
+        from backend.http_client import http
+        query = f"{company_name} investor relations official site"
+        resp = http.post(
+            "https://api.tavily.com/search",
+            json={
+                "api_key": api_key,
+                "query": query,
+                "max_results": 5,
+                "search_depth": "basic",
+            },
+            headers={"Content-Type": "application/json"},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            logger.warning(f"Tavily search failed for {ticker}: HTTP {resp.status_code}")
+            return None
+        
+        data = resp.json()
+        results = data.get("results", [])
+        if not results:
+            logger.info(f"Tavily: no results for {ticker}")
+            return None
+        
+        # Filter results for IR-like URLs
+        IR_PATTERNS = [
+            r"investor\.[a-z]",
+            r"ir\.[a-z]",
+            r"/investor[/-]?",
+            r"/ir[/-]?",
+            r"/en/investors?",
+            r"/global/ir",
+        ]
+        import re
+        for r in results[:5]:
+            url = r.get("url", "")
+            if not url:
+                continue
+            url_lower = url.lower()
+            if any(re.search(p, url_lower) for p in IR_PATTERNS):
+                logger.info(f"Tavily found IR URL for {ticker}: {url}")
+                return url
+        
+        # If no IR-specific URL found, use first result if it looks corporate
+        first = results[0].get("url", "")
+        if first and domain.replace("www.", "") in first.lower():
+            logger.info(f"Tavily: using first result for {ticker}: {first}")
+            return first
+        
+        logger.info(f"Tavily: no IR URL found for {ticker} among {len(results)} results")
+    except Exception as e:
+        logger.warning(f"Tavily search failed for {ticker}: {e}")
+    
     return None
 
 
