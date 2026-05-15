@@ -116,3 +116,47 @@ def test_pdf_renderer_resolves_model_fonts_when_available():
     assert english_fonts.regular in {"Arial", "Helvetica"}
     assert english_fonts.bold in {"Arial-Bold", "Helvetica-Bold"}
     assert japanese_fonts.regular in {"MS-PGothic", "HeiseiMin-W3", "Helvetica"}
+
+
+def test_pdf_renderer_has_no_tofu_or_null_bytes(tmp_path):
+    """Regression test: emoji must be rendered as PIL images, not as
+    raw Unicode in the PDF text stream.  Raw emoji codepoints that escape
+    _paragraph_with_emojis() will produce tofu (empty squares) or null
+    bytes because standard PDF fonts lack those glyphs.
+
+    This test asserts:
+      - Zero null bytes (\\x00) — the symptom of the 👉 callout bug
+      - Zero Unicode replacement chars (U+FFFD) — general tofu flag
+      - Zero raw emoji-range codepoints in extracted text
+    """
+    pdf_path = tmp_path / "earnings_deep_dive.pdf"
+    render_earnings_deep_dive_pdf(_sample_report(), pdf_path)
+
+    doc = fitz.open(pdf_path)
+    for i, page in enumerate(doc):
+        text = page.get_text()
+
+        # ── Null bytes: primary symptom of emoji-in-Paragraph bug ──
+        null_count = text.count('\x00')
+        assert null_count == 0, (
+            f"Page {i+1}: found {null_count} null byte(s) — "
+            f"emoji character leaked into Paragraph without PIL image rendering"
+        )
+
+        # ── Unicode replacement char: generic tofu indicator ──
+        replacement_count = text.count('\ufffd')
+        assert replacement_count == 0, (
+            f"Page {i+1}: found {replacement_count} U+FFFD replacement char(s) — "
+            f"font cannot render one or more glyphs"
+        )
+
+        # ── Raw emoji-range codepoints: must be rendered as images ──
+        emoji_codepoints = [
+            ch for ch in text if 0x1F300 <= ord(ch) <= 0x1F9FF
+        ]
+        assert not emoji_codepoints, (
+            f"Page {i+1}: found raw emoji codepoint(s) {emoji_codepoints!r} in extracted text — "
+            f"emoji must be rendered as PIL+NotoColorEmoji images, not as text glyphs"
+        )
+
+    doc.close()

@@ -378,7 +378,11 @@ def _glyph_safe(text: str, *, font_name: str = "Helvetica", keep_emojis: bool = 
     """Keep characters renderable by standard PDF fonts. Strip the rest silently.
     
     keep_emojis=True: preserve emoji-range characters for PIL image rendering
-    (used by _paragraph_with_emojis)."""
+    (used by _paragraph_with_emojis). When False, emoji-range chars (0x1F300-0x1F9FF)
+    are stripped — standard PDF fonts lack these glyphs and will render tofu/null bytes.
+    
+    Geometric Shapes (●◆▲▼) and Dingbats (⚠️✅❌) are kept as they have partial
+    DejaVu/Helvetica coverage and are managed by _EMOJI_FALLBACK/_EMOJI_STRIP_MAP."""
     value = str(text)
     # LLM artifacts: LaTeX-escaped characters (\$35.6B → $35.6B)
     value = value.replace('\\$', '$')
@@ -407,7 +411,7 @@ def _glyph_safe(text: str, *, font_name: str = "Helvetica", keep_emojis: bool = 
             or (0x25A0 <= cp <= 0x26FF)                           # Geometric Shapes + Misc Symbols
             or (0x2700 <= cp <= 0x27BF)                           # Dingbats (✔✘✪★⚠️)
             or (0x2650 <= cp <= 0x265F)                           # Chess symbols
-            or (0x1F300 <= cp <= 0x1F9FF)):                       # Emoji (👉🧠🎯📊📌✅❌ etc.)
+            or (keep_emojis and (0x1F300 <= cp <= 0x1F9FF))):     # Emoji — gated: only when PIL rendering follows
             safe.append(ch)
         else:
             continue  # Strip silently — never inject '?'
@@ -887,40 +891,67 @@ _CALLOUT_BORDER = colors.HexColor("#2563EB")
 _CALLOUT_BG = colors.HexColor("#EFF6FF")
 
 
-def _callout_box(header: str, body: str, styles: dict, font_name: str) -> list:
+def _inline_icon_label(icon: str, text: str, style: ParagraphStyle, *,
+                       font_name: str, icon_size: int = 16,
+                       available_width: float | None = None) -> Table:
+    """Render an emoji icon + text label as a ReportLab Table flowable.
+    
+    The icon is rendered as a PIL+NotoColorEmoji PNG image to guarantee
+    glyph availability regardless of the PDF font. Returns a Table suitable
+    for use in section headers, callout headers, and other inline icon
+    contexts.
+    
+    Args:
+        icon: Single emoji character (e.g. '👉', '🧠', '🎯')
+        text: Label text rendered as a Paragraph
+        style: ParagraphStyle for the text
+        font_name: Font used for _glyph_safe
+        icon_size: Rendered size of the emoji image in points
+        available_width: Total available width; if None, uses default LETTER width"""
+    if available_width is None:
+        available_width = LETTER[0] - 1.24 * inch
+    
+    emoji_img = _emoji_to_image(icon, size=icon_size)
+    text_para = Paragraph(escape(_glyph_safe(text, font_name=font_name)), style)
+    
+    icon_w = icon_size + 4
+    text_w = available_width - icon_w - 6
+    
+    table = Table([[emoji_img, text_para]], colWidths=[icon_w, max(text_w, 60)], hAlign="LEFT")
+    table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (0, 0), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("BOX", (0, 0), (-1, -1), 0, colors.white),
+        ("INNERGRID", (0, 0), (-1, -1), 0, colors.white),
+    ]))
+    return table
+
+
+def _callout_box(header: str, body: str, styles: dict, font_name: str,
+                 *, icon: str | None = None) -> list:
     """Render a blue-bordered callout box matching the model PDF style.
     
-    The 👉 emoji prefix (used in takeaway headers) is rendered as a PIL+NotoColorEmoji
+    When icon is provided (e.g. '👉'), it is rendered as a PIL+NotoColorEmoji
     image to avoid tofu/null bytes in the PDF output."""
     available_width = LETTER[0] - 1.24 * inch
     padding = 8
     
-    # ── Render 👉 as emoji image (PIL+NotoColorEmoji) to avoid empty squares ──
-    emoji_img = None
-    header_text = header
-    _TAKEAWAY_EMOJI = '👉'
-    if header.startswith(_TAKEAWAY_EMOJI):
-        emoji_img = _emoji_to_image(_TAKEAWAY_EMOJI, size=16)
-        header_text = header[len(_TAKEAWAY_EMOJI):].strip()
-    
-    header_para = Paragraph(escape(_glyph_safe(header_text, font_name=font_name)), styles["small_bold"])
-    body_para = Paragraph(escape(_glyph_safe(body, font_name=font_name)), styles["body"])
-    
-    if emoji_img:
-        emoji_w = 20
-        text_w = available_width - 2*padding - emoji_w - 4
-        header_cell = Table([[emoji_img, header_para]], colWidths=[emoji_w, text_w], hAlign="LEFT")
-        header_cell.setStyle(TableStyle([
-            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-            ("LEFTPADDING", (0,0), (-1,-1), 0),
-            ("RIGHTPADDING", (0,0), (0,0), 3),
-            ("TOPPADDING", (0,0), (-1,-1), 0),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 0),
-            ("BOX", (0,0), (-1,-1), 0, colors.white),
-            ("INNERGRID", (0,0), (-1,-1), 0, colors.white),
-        ]))
+    if icon:
+        header_cell = _inline_icon_label(
+            icon, header, styles["small_bold"],
+            font_name=font_name, icon_size=16,
+            available_width=available_width - 2*padding,
+        )
     else:
-        header_cell = header_para
+        header_cell = Paragraph(
+            escape(_glyph_safe(header, font_name=font_name)),
+            styles["small_bold"]
+        )
+    
+    body_para = Paragraph(escape(_glyph_safe(body, font_name=font_name)), styles["body"])
     
     inner = Table([[header_cell], [body_para]], colWidths=[available_width - 2*padding])
     inner.setStyle(TableStyle([
@@ -1049,8 +1080,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
 
         # ── Nami takeaway (callout box — model parity) ──
         if section.summary and section.summary.strip() and section.summary.strip().lower() not in {"not available.", "not available", "n/a"}:
-            takeaway_header = f"👉 {section.summary_label}"
-            story.extend(_callout_box(takeaway_header, section.summary, styles, fonts.regular))
+            story.extend(_callout_box(section.summary_label, section.summary, styles, fonts.regular, icon='👉'))
 
     if report.sources or report.next_earnings_date or report.earnings_audio_url:
         story.append(PageBreak())
