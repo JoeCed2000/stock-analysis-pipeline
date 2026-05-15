@@ -846,6 +846,12 @@ any hallucinated numbers with data-driven corrections.
 - Never convert, annualize, or TTM-adjust the Metrics values. Use them as-is.
 - If you need a number that is not in Metrics, write — in the table and
   "Data not available" in prose. Never guess.
+🔴 CROSS-SECTION CONSISTENCY — ALL sections MUST agree on these facts:
+- If any CRITICAL OVERRIDE in this prompt states EPS/Revenue BEAT or MISSED,
+  you MUST use that exact direction. Do not contradict it.
+- The EPS & Revenue section is the single source of truth for beat/miss status.
+  All other sections (Highlights, Verdict) must echo the SAME direction.
+- Never write "EPS did not beat" if the override says EPS BEAT.
 
 Analysis question for context only; do not print it in the output:
 {question}
@@ -873,7 +879,59 @@ PDF-aligned section skeleton:
 
 
 def eps_revenue_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    return _base_prompt(
+    # 🔴 CRITICAL OVERRIDE: inject exact EPS & Revenue values so the LLM
+    # cannot invent conflicting numbers. This section is the single source
+    # of truth that all other sections cross-reference against.
+    eps_actual = metrics.get("eps_actual")
+    eps_est = metrics.get("eps_estimate")
+    rev_actual = metrics.get("revenue_actual")
+    rev_est = metrics.get("revenue_estimate")
+    rev_q = metrics.get("revenue_quarterly")
+    eps_yoy = metrics.get("eps_yoy")
+    rev_yoy = metrics.get("revenue_yoy")
+    extra = ""
+    def _vs(actual, estimate):
+        try:
+            return (float(actual) - float(estimate)) / float(estimate)
+        except (TypeError, ValueError, ZeroDivisionError):
+            return None
+    # EPS
+    eps_vs = _vs(eps_actual, eps_est) if eps_actual is not None and eps_est is not None else None
+    if eps_vs is not None:
+        pct = eps_vs * 100
+        direction = "BEAT" if pct > 0 else "MISSED"
+        try: eps_actual_f = float(eps_actual); eps_est_f = float(eps_est)
+        except (TypeError, ValueError): eps_actual_f = eps_actual; eps_est_f = eps_est
+        extra += f"\n\n🔴 CRITICAL OVERRIDE — EPS: {direction} consensus by {abs(pct):.1f}% (actual=${eps_actual_f:.2f}, estimate=${eps_est_f:.2f}). USE THESE EXACT VALUES in the EPS row of the table. State '{direction}' in prose."
+    elif eps_actual is not None:
+        try: extra += f"\n⚠️  EPS actual = ${float(eps_actual):.2f}. Use in table. Estimate unavailable — mark vs Estimate as —."
+        except (TypeError, ValueError): pass
+    # EPS YoY
+    if eps_yoy is not None:
+        try: extra += f"\n⚠️  EPS YoY change = {float(eps_yoy):+.1f}%. Use in YoY Change column."
+        except (TypeError, ValueError): pass
+    # Revenue
+    rev_vs = _vs(rev_actual, rev_est) if rev_actual is not None and rev_est is not None else None
+    if rev_vs is not None:
+        pct = rev_vs * 100
+        direction = "BEAT" if pct > 0 else "MISSED"
+        try: rev_f = float(rev_actual) / 1e9; rev_est_f = float(rev_est) / 1e9
+        except (TypeError, ValueError): rev_f = rev_actual; rev_est_f = rev_est
+        extra += f"\n🔴 CRITICAL OVERRIDE — Revenue: {direction} consensus by {abs(pct):.1f}% (actual=${rev_f:.2f}B, estimate=${rev_est_f:.2f}B). USE THESE EXACT VALUES in the Revenue row. State '{direction}' in prose."
+    # Use revenue_quarterly if revenue_actual is missing
+    if rev_actual is None and rev_q is not None:
+        try: extra += f"\n⚠️  Revenue (quarterly) = ${float(rev_q)/1e9:.2f}B. Use in Revenue row."
+        except (TypeError, ValueError): pass
+    # Revenue YoY
+    if rev_yoy is not None:
+        try: extra += f"\n⚠️  Revenue YoY change = {float(rev_yoy):+.1f}%. Use in YoY Change column."
+        except (TypeError, ValueError): pass
+    # 3-quarter EPS trend
+    eps_quarterly = metrics.get("eps_quarterly")
+    if isinstance(eps_quarterly, list) and len(eps_quarterly) >= 3:
+        vals = [f"${float(e):.2f}" for e in eps_quarterly[-3:]]
+        extra += f"\n⚠️  EPS 3-quarter trend: {' → '.join(vals)}. Include in trend analysis."
+    base = _base_prompt(
         section="EPS & Revenue",
         language=language,
         ticker=ticker,
@@ -882,6 +940,7 @@ def eps_revenue_prompt(language: str, ticker: str, company: str, quarter: str, m
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
     )
+    return base + extra
 
 
 def highlights_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
@@ -992,7 +1051,28 @@ def operating_metrics_prompt(language: str, ticker: str, company: str, quarter: 
 
 
 def cash_flow_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    return _base_prompt(
+    # 🔴 CRITICAL OVERRIDE: surface exact cash flow numbers to prevent hallucination.
+    ocf = metrics.get("operating_cash_flow")
+    capex = metrics.get("capex")
+    fcf = metrics.get("free_cash_flow")
+    extra = ""
+    if ocf is not None:
+        try: extra += f"\n\n🔴 CRITICAL OVERRIDE: Operating Cash Flow = ${float(ocf)/1e9:.2f}B. USE THIS EXACT VALUE in the OCF row of the table."
+        except (TypeError, ValueError): pass
+    if capex is not None:
+        try: extra += f"\n⚠️  CapEx = ${float(capex)/1e9:.2f}B. Use in CapEx row."
+        except (TypeError, ValueError): pass
+    if fcf is not None:
+        try: extra += f"\n⚠️  Free Cash Flow (FCF) = ${float(fcf)/1e9:.2f}B (= OCF - CapEx). Use in FCF row."
+        except (TypeError, ValueError): pass
+    if ocf is not None and capex is not None:
+        try:
+            calculated_fcf = float(ocf) - float(capex)
+            if calculated_fcf >= 0: qual = "positive"
+            else: qual = "negative"
+            extra += f"\n⚠️  FCF is {qual} (${calculated_fcf/1e9:.2f}B). Frame cash analysis accordingly."
+        except (TypeError, ValueError): pass
+    base = _base_prompt(
         section="Cash Flow",
         language=language,
         ticker=ticker,
@@ -1001,10 +1081,33 @@ def cash_flow_prompt(language: str, ticker: str, company: str, quarter: str, met
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
     )
+    return base + extra
 
 
 def capital_efficiency_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    return _base_prompt(
+    # 🔴 CRITICAL OVERRIDE: surface exact capital efficiency ratios to prevent hallucination.
+    roe = metrics.get("roe")
+    roa = metrics.get("roa")
+    roic = metrics.get("roic")
+    rotce = metrics.get("rotce") or metrics.get("rote")
+    net_income = metrics.get("net_income") or metrics.get("net_income_quarterly")
+    extra = ""
+    if roe is not None:
+        try: extra += f"\n\n🔴 CRITICAL OVERRIDE: ROE = {float(roe):.1f}%. USE THIS EXACT VALUE in the ROE row of the table."
+        except (TypeError, ValueError): pass
+    if rotce is not None:
+        try: extra += f"\n⚠️  ROTCE/ROTE = {float(rotce):.1f}%. Use in ROTCE/ROTE row."
+        except (TypeError, ValueError): pass
+    if roa is not None:
+        try: extra += f"\n⚠️  ROA = {float(roa):.1f}%. Use in ROA row."
+        except (TypeError, ValueError): pass
+    if roic is not None:
+        try: extra += f"\n⚠️  ROIC = {float(roic):.1f}%. Use in ROIC row."
+        except (TypeError, ValueError): pass
+    if net_income is not None:
+        try: extra += f"\n⚠️  Net Income = ${float(net_income)/1e9:.2f}B. Reference in capital efficiency analysis."
+        except (TypeError, ValueError): pass
+    base = _base_prompt(
         section="Capital Efficiency",
         language=language,
         ticker=ticker,
@@ -1013,6 +1116,7 @@ def capital_efficiency_prompt(language: str, ticker: str, company: str, quarter:
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
     )
+    return base + extra
 
 
 def segments_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
