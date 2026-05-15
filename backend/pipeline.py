@@ -394,6 +394,173 @@ def _search_ir_url_tavily(company_name: str, ticker: str, domain: str) -> Option
     return None
 
 
+def _extract_next_earnings_from_ir(ir_url: str, ticker: str) -> Optional[str]:
+    """Scrape the IR page for the next earnings date.
+    
+    Most IR pages prominently display upcoming events. Common patterns:
+    - "Next Earnings Date: May 28, 2026"
+    - "Q2 2026 Earnings Call — July 23, 2026"
+    - "Upcoming Events" table with date
+    - JSON-LD structured data with startDate
+    - <time> elements with datetime attribute
+    
+    Returns formatted date string (YYYY-MM-DD) or None."""
+    import re
+    try:
+        from backend.http_client import http
+        resp = http.get(
+            ir_url,
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            timeout=12,
+            follow_redirects=True,
+        )
+        if resp.status_code not in (200, 403):
+            return None
+        html = resp.text[:50000]
+        
+        # Remove scripts/styles to avoid false matches
+        html_clean = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        
+        date_patterns = [
+            r'(?:Next\s+)?Earnings?\s*(?:Call|Release|Date|Report|Announcement)?[:\s-]+(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})',
+            r'(?:Next\s+)?Earnings?\s*(?:Call|Release|Date|Report|Announcement)?[:\s-]+(\d{4}-\d{2}-\d{2})',
+            r'Q[1-4]\s+\d{4}\s+Earnings.*?[—–-]\s*(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})',
+            r'Upcoming\s+Events?.*?(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})',
+            r'"startDate"\s*:\s*"(\d{4}-\d{2}-\d{2})"',
+            r'<time[^>]*datetime=["\'](\d{4}-\d{2}-\d{2})["\']',
+        ]
+        
+        for pattern in date_patterns:
+            match = re.search(pattern, html_clean, re.IGNORECASE | re.DOTALL)
+            if match:
+                raw_date = match.group(1).strip()
+                parsed = _parse_ir_date(raw_date)
+                if parsed and _is_future_date(parsed):
+                    logger.info(f"IR scrape: next earnings for {ticker} = {parsed}")
+                    return parsed
+        
+        logger.debug(f"IR scrape: no earnings date found on {ir_url}")
+    except Exception as e:
+        logger.warning(f"IR scrape failed for {ticker}: {e}")
+    
+    # Fallback: Tavily search for "Company next earnings date"
+    return _search_next_earnings_tavily(ticker, ir_url)
+
+
+def _search_next_earnings_tavily(ticker: str, ir_url: str = "") -> Optional[str]:
+    """Search Tavily for next earnings date when IR page is blocked by Cloudflare.
+    Tavily's own crawlers bypass WAF and return date snippets directly."""
+    import os, re
+    api_key = os.getenv("TAVILY_API_KEY", "")
+    if not api_key:
+        return None
+    
+    try:
+        from backend.http_client import http
+        # Extract company name from IR URL domain for better query
+        company_hint = ticker
+        if ir_url:
+            from urllib.parse import urlparse
+            domain = urlparse(ir_url).netloc.replace("www.", "").replace("investor.", "").replace("ir.", "")
+            company_hint = domain.split(".")[0].title()
+        
+        resp = http.post(
+            "https://api.tavily.com/search",
+            json={
+                "api_key": api_key,
+                "query": f"{company_hint} {ticker} upcoming next earnings date 2026",
+                "max_results": 5,
+                "search_depth": "basic",
+            },
+            headers={"Content-Type": "application/json"},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return None
+        
+        data = resp.json()
+        # Scan all result content snippets for date patterns
+        for r in data.get("results", []):
+            content = r.get("content", "")
+            # Common patterns in Tavily snippets:
+            # "next earnings date is CONFIRMED for Wednesday 05/20/2026"
+            # "will report their next quarter earnings on July 22, 2026"
+            # "next earnings date is May 28, 2026"
+            date_patterns = [
+                r'(?:next\s+)?earnings?\s*(?:date|report|release).*?(?:is\s+|on\s+|for\s+)?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
+                r'earnings?\s*(?:date|report|release).*?(?:is\s+|on\s+|for\s+)?(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})',
+                r'(?:report|announce)\s+(?:their\s+)?(?:next\s+)?(?:quarter\s+)?earnings?\s+(?:on\s+)?(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})',
+                # "earnings on August 06, 2026" — month name first
+                r'(?:report|announce|release)\s+(?:their\s+)?(?:next\s+)?(?:quarter\s+)?earnings?\s+(?:on\s+)?((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4})',
+            ]
+            for pattern in date_patterns:
+                match = re.search(pattern, content, re.IGNORECASE)
+                if match:
+                    raw = match.group(1)
+                    parsed = _parse_ir_date(raw)
+                    if parsed:
+                        # Only accept future dates (reject past earnings)
+                        if _is_future_date(parsed):
+                            logger.info(f"Tavily found next earnings for {ticker}: {parsed}")
+                            return parsed
+                        logger.debug(f"Tavily: rejected past date {parsed} for {ticker}")
+        
+        logger.debug(f"Tavily: no earnings date found for {ticker}")
+    except Exception as e:
+        logger.warning(f"Tavily earnings search failed for {ticker}: {e}")
+    
+    return None
+
+
+def _parse_ir_date(raw: str) -> Optional[str]:
+    """Parse various date formats to 'YYYY-MM-DD'. Returns None on failure."""
+    import re
+    
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', raw):
+        return raw
+    
+    # "05/20/2026" or "5/20/2026" (MM/DD/YYYY)
+    match = re.match(r'(\d{1,2})/(\d{1,2})/(\d{4})$', raw)
+    if match:
+        m, d, y = int(match.group(1)), int(match.group(2)), int(match.group(3))
+        if 1 <= m <= 12 and 1 <= d <= 31:
+            return f"{y}-{m:02d}-{d:02d}"
+    
+    # "26-2-25" or "26-02-25" (YY-M-D or YY-MM-DD)
+    match = re.match(r'(\d{2})-(\d{1,2})-(\d{1,2})$', raw)
+    if match:
+        yy, m, d = int(match.group(1)), int(match.group(2)), int(match.group(3))
+        y = 2000 + yy if yy < 50 else 1900 + yy
+        if 1 <= m <= 12 and 1 <= d <= 31:
+            return f"{y}-{m:02d}-{d:02d}"
+    
+    months = {"jan":1,"feb":2,"mar":3,"apr":4,"may":5,"jun":6,"jul":7,"aug":8,"sep":9,"oct":10,"nov":11,"dec":12}
+    
+    # "28 May 2026" or "28 May, 2026"
+    match = re.match(r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*(?:\s+|,\s*)(\d{4})', raw, re.IGNORECASE)
+    if match:
+        day, mon, year = int(match.group(1)), months[match.group(2).lower()[:3]], int(match.group(3))
+        return f"{year}-{mon:02d}-{day:02d}"
+    
+    # "May 28, 2026" or "May 28 2026"
+    match = re.match(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})(?:,?\s+)(\d{4})', raw, re.IGNORECASE)
+    if match:
+        mon, day, year = months[match.group(1).lower()[:3]], int(match.group(2)), int(match.group(3))
+        return f"{year}-{mon:02d}-{day:02d}"
+    
+    return None
+
+
+def _is_future_date(date_str: str) -> bool:
+    """Check if a YYYY-MM-DD date is in the future (or today)."""
+    from datetime import date
+    try:
+        d = date.fromisoformat(date_str)
+        return d >= date.today()
+    except (ValueError, TypeError):
+        return False
+
+
 def _copy_non_report_sections_to_language_dirs(output_dir: str) -> None:
     for language in ("en", "jp"):
         language_dir = os.path.join(output_dir, language)
@@ -1014,6 +1181,11 @@ def _add_earnings_deep_dive_if_transcript(
             deep_dive_metrics = deep_dive_metrics.model_copy(update={"company_website": website})
         if investor_relations:
             deep_dive_metrics = deep_dive_metrics.model_copy(update={"investor_relations_url": investor_relations})
+            # Extract next earnings date from IR page — high-value for Nami
+            next_earnings = _extract_next_earnings_from_ir(investor_relations, ticker)
+            if next_earnings:
+                deep_dive_metrics = deep_dive_metrics.model_copy(update={"next_earnings_date": next_earnings})
+                logger.info(f"Next earnings date for {ticker}: {next_earnings}")
         if transcript_source_name:
             deep_dive_metrics = deep_dive_metrics.model_copy(update={"transcript_source": transcript_source_name})
         if re.search(r"(?:FY)?20\d{2}\s*Q[1-4]|20\d{2}Q[1-4]", transcript_quarter, re.IGNORECASE):
@@ -1026,6 +1198,9 @@ def _add_earnings_deep_dive_if_transcript(
                     deep_dive_metrics = deep_dive_metrics.model_copy(update={"company_website": website})
                 if investor_relations:
                     deep_dive_metrics = deep_dive_metrics.model_copy(update={"investor_relations_url": investor_relations})
+                    next_earnings = _extract_next_earnings_from_ir(investor_relations, ticker)
+                    if next_earnings:
+                        deep_dive_metrics = deep_dive_metrics.model_copy(update={"next_earnings_date": next_earnings})
                 if transcript_source_name:
                     deep_dive_metrics = deep_dive_metrics.model_copy(update={"transcript_source": transcript_source_name})
 
