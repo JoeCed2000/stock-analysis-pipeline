@@ -953,12 +953,12 @@ def operating_metrics_prompt(language: str, ticker: str, company: str, quarter: 
             pass
     if gross_margin is not None:
         try:
-            extra += f"\n⚠️  Gross Margin = {float(gross_margin):.4f} (decimal ratio; multiply by 100 for %). Use in Gross Margin row."
+            extra += f"\n⚠️  Gross Margin = {float(gross_margin):.2f}% (already a percentage — DO NOT multiply). Use in Gross Margin row."
         except (TypeError, ValueError):
             pass
     if op_margin is not None:
         try:
-            extra += f"\n⚠️  Operating Margin = {float(op_margin):.4f} (decimal ratio; multiply by 100 for %). Use in Operating Margin row."
+            extra += f"\n⚠️  Operating Margin = {float(op_margin):.2f}% (already a percentage — DO NOT multiply). Use in Operating Margin row."
         except (TypeError, ValueError):
             pass
     if op_income is not None:

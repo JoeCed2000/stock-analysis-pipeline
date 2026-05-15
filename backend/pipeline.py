@@ -735,6 +735,8 @@ def _strip_prompt_leak_text(text: str) -> str:
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     # Fix line breaks before Nami-san (LLM puts "For" at end of line, "Nami-san" at next)
     cleaned = re.sub(r"For\n(Nami-san)", r"For \1", cleaned)
+    # Strip orphaned markdown headers that LLM echos as content (## Highlights etc.)
+    cleaned = re.sub(r"(?im)^##\s+(Highlights|Forward P/E|EPS|Cash Flow|Operating Metrics|Capital Efficiency|Segments|Valuation|Backlog|Guidance|Verdict)\s*\n", "", cleaned)
     # Remove Unicode replacement characters (empty squares □) 
     cleaned = cleaned.replace("\ufffd", "")
     return cleaned.strip()
