@@ -1368,6 +1368,23 @@ async def get_report_pdf(ticker: str, lang: str = "en", background_tasks: Backgr
                     sector=q_data.get("sector"),
                 )
                 metrics = _deep_dive_metrics(dummy, q_data)
+                
+                # ── IR scraping (mirrors _add_earnings_deep_dive_if_transcript) ──
+                from backend.pipeline import _investor_relations_url, _company_website, \
+                    _extract_next_earnings_from_ir, _extract_audio_webcast_from_ir
+                website = _company_website(q_data)
+                investor_relations = _investor_relations_url(q_data)
+                if investor_relations:
+                    metrics = metrics.model_copy(update={"investor_relations_url": investor_relations})
+                    next_earnings = _extract_next_earnings_from_ir(investor_relations, ticker)
+                    if next_earnings:
+                        metrics = metrics.model_copy(update={"next_earnings_date": next_earnings})
+                    audio_url = _extract_audio_webcast_from_ir(investor_relations, ticker)
+                    if audio_url:
+                        metrics = metrics.model_copy(update={"earnings_audio_url": audio_url})
+                if website:
+                    metrics = metrics.model_copy(update={"company_website": website})
+                
                 # Find analysis directory for output_dir (required by schema)
                 # dd_path is .../07_final_report/earnings_deep_dive.pdf, parent.parent = analysis_dir
                 output_dir = str(dd_path.parent.parent)
