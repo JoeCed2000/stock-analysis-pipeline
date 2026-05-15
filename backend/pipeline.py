@@ -251,7 +251,7 @@ def _discover_ir_url(company_name: str, ticker: str, website: str = "") -> Optio
     if not domain:
         return None
     
-    # 3) Try common IR URL patterns
+    # 3) Try common IR URL patterns (both bare domain and www subdomain)
     candidates = [
         f"https://investor.{domain}",
         f"https://ir.{domain}",
@@ -259,6 +259,10 @@ def _discover_ir_url(company_name: str, ticker: str, website: str = "") -> Optio
         f"https://{domain}/investors",
         f"https://{domain}/investor-relations",
         f"https://{domain}/ir",
+        f"https://www.{domain}/investor",
+        f"https://www.{domain}/investors",
+        f"https://www.{domain}/investor-relations",
+        f"https://www.{domain}/ir",
     ]
     
     IR_PATTERNS = [
