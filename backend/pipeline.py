@@ -512,6 +512,127 @@ def _search_next_earnings_tavily(ticker: str, ir_url: str = "") -> Optional[str]
     return None
 
 
+def _extract_audio_webcast_from_ir(ir_url: str, ticker: str) -> Optional[str]:
+    """Find earnings call audio/webcast link from IR page.
+    
+    Most IR pages link to the webcast prominently:
+    - "Listen to Webcast" → /events/event=...
+    - "Earnings Call Webcast" → /investor/.../webcast
+    - "Audio Archive" → .mp3 / .m4a
+    
+    Falls back to Tavily search if IR page is blocked or no link found."""
+    import re
+    try:
+        from backend.http_client import http
+        resp = http.get(
+            ir_url,
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            timeout=12,
+            follow_redirects=True,
+        )
+        if resp.status_code not in (200, 403):
+            return _search_audio_webcast_tavily(ticker)
+        
+        html = resp.text[:80000]
+        html_lower = html.lower()
+        
+        # Pattern 1: Direct links with "webcast" in href
+        webcast_patterns = [
+            r'href=["\']([^"\']*webcast[^"\']*)["\']',
+            r'href=["\']([^"\']*earnings[^"\']*(?:call|audio|listen)[^"\']*)["\']',
+            r'href=["\']([^"\']*(?:webcast|audio|listen|replay)[^"\']*)["\']',
+        ]
+        SKIP_EXTENSIONS = ('.pdf', '.ics', '.xml', '.csv', '.xls', '.doc')
+        SKIP_DOMAINS = ('shacknews.com', 'yahoo.com', 'fool.com', 'seekingalpha.com', 
+                       'marketbeat.com', 'zacks.com', 'cnbc.com', 'bloomberg.com')
+        for pattern in webcast_patterns:
+            matches = re.findall(pattern, html, re.IGNORECASE)
+            for href in matches[:5]:
+                href_lower = href.lower()
+                if any(x in href_lower for x in SKIP_EXTENSIONS):
+                    continue
+                if any(x in href_lower for x in ('calendar', 'add-to-cal')):
+                    continue
+                if href.startswith("/"):
+                    from urllib.parse import urlparse
+                    base = urlparse(ir_url)
+                    href = f"{base.scheme}://{base.netloc}{href}"
+                elif not href.startswith("http"):
+                    continue
+                logger.info(f"IR scrape: audio webcast for {ticker}: {href}")
+                return href
+        
+        # Pattern 2: "Webcast" or "Audio" keyword with nearby href
+        for keyword in ['webcast', 'listen to', 'audio replay', 'earnings call audio']:
+            idx = html_lower.find(keyword)
+            if idx >= 0:
+                nearby = html[max(0,idx-100):idx+500]
+                href_match = re.search(r'href=["\']([^"\']+)["\']', nearby)
+                if href_match:
+                    href = href_match.group(1)
+                    if href.startswith("/"):
+                        from urllib.parse import urlparse
+                        base = urlparse(ir_url)
+                        href = f"{base.scheme}://{base.netloc}{href}"
+                    logger.info(f"IR scrape: audio ({keyword}) for {ticker}: {href}")
+                    return href
+        
+        logger.debug(f"IR scrape: no audio webcast found on {ir_url}")
+    except Exception as e:
+        logger.warning(f"IR audio scrape failed for {ticker}: {e}")
+    
+    return _search_audio_webcast_tavily(ticker)
+
+
+def _search_audio_webcast_tavily(ticker: str) -> Optional[str]:
+    """Search Tavily for earnings call audio/webcast link."""
+    import os, re
+    api_key = os.getenv("TAVILY_API_KEY", "")
+    if not api_key:
+        return None
+    
+    try:
+        from backend.http_client import http
+        resp = http.post(
+            "https://api.tavily.com/search",
+            json={
+                "api_key": api_key,
+                "query": f"{ticker} earnings call webcast audio listen",
+                "max_results": 3,
+                "search_depth": "basic",
+            },
+            headers={"Content-Type": "application/json"},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return None
+        
+        data = resp.json()
+        for r in data.get("results", []):
+            url = r.get("url", "")
+            if not url:
+                continue
+            url_lower = url.lower()
+            # Skip PDFs and news aggregators
+            if '.pdf' in url_lower:
+                continue
+            if any(x in url_lower for x in ('shacknews', 'fool.com', 'seekingalpha', 'marketbeat', 'zacks.com')):
+                continue
+            if any(x in url_lower for x in ('webcast', 'audio', 'listen', 'events', 'earnings-call', 'q4inc.com', 'podcasts.apple')):
+                logger.info(f"Tavily found audio webcast for {ticker}: {url}")
+                return url
+        
+        if data.get("results"):
+            url = data["results"][0].get("url", "")
+            if url:
+                logger.info(f"Tavily: using first result as audio for {ticker}: {url}")
+                return url
+    except Exception as e:
+        logger.warning(f"Tavily audio search failed for {ticker}: {e}")
+    
+    return None
+
+
 def _parse_ir_date(raw: str) -> Optional[str]:
     """Parse various date formats to 'YYYY-MM-DD'. Returns None on failure."""
     import re
@@ -1186,6 +1307,11 @@ def _add_earnings_deep_dive_if_transcript(
             if next_earnings:
                 deep_dive_metrics = deep_dive_metrics.model_copy(update={"next_earnings_date": next_earnings})
                 logger.info(f"Next earnings date for {ticker}: {next_earnings}")
+            # Extract earnings call audio/webcast URL
+            audio_url = _extract_audio_webcast_from_ir(investor_relations, ticker)
+            if audio_url:
+                deep_dive_metrics = deep_dive_metrics.model_copy(update={"earnings_audio_url": audio_url})
+                logger.info(f"Earnings audio for {ticker}: {audio_url}")
         if transcript_source_name:
             deep_dive_metrics = deep_dive_metrics.model_copy(update={"transcript_source": transcript_source_name})
         if re.search(r"(?:FY)?20\d{2}\s*Q[1-4]|20\d{2}Q[1-4]", transcript_quarter, re.IGNORECASE):
@@ -1201,6 +1327,9 @@ def _add_earnings_deep_dive_if_transcript(
                     next_earnings = _extract_next_earnings_from_ir(investor_relations, ticker)
                     if next_earnings:
                         deep_dive_metrics = deep_dive_metrics.model_copy(update={"next_earnings_date": next_earnings})
+                    audio_url = _extract_audio_webcast_from_ir(investor_relations, ticker)
+                    if audio_url:
+                        deep_dive_metrics = deep_dive_metrics.model_copy(update={"earnings_audio_url": audio_url})
                 if transcript_source_name:
                     deep_dive_metrics = deep_dive_metrics.model_copy(update={"transcript_source": transcript_source_name})
 
