@@ -1915,7 +1915,17 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
     # ── Step 1: Identification ──
     logger.info(f"[{ticker}] Fast: Step 1 — stock data")
     yf_data = get_stock_data(ticker)
-    price_native = yf_data.get("price")
+    
+    # Sanitize: yfinance returns "NA" strings when data is unavailable
+    def _safe_float(v):
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return None
+    
+    price_native = _safe_float(yf_data.get("price"))
     currency_fast = yf_data.get("currency", "USD")
     company_name = yf_data.get("company_name", ticker)
     
