@@ -817,6 +817,7 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
             from backend.sources_collector import get_yahoo_data_for_quarter
             from backend.pipeline import _deep_dive_metrics
             from backend.models import AnalysisResult
+            from backend.earnings_deep_dive.errors import ValidationError
             from datetime import datetime, timezone
             q_data = get_yahoo_data_for_quarter(ticker, quarter)
             if q_data:
@@ -864,20 +865,30 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
                 from backend.pipeline import _strip_prompt_leaks_from_sections
                 response.sections = _strip_prompt_leaks_from_sections(response.sections)
 
-                # ── Pre-render validation (non-blocking) ──
+                # ── Pre-render validation (BLOCKING — hard data contract gate) ──
                 from backend.earnings_deep_dive.pre_render_validator import (
                     validate_pre_render,
                     annotate_sections_with_warnings,
+                    format_validation_error,
                 )
+                from backend.earnings_deep_dive.errors import ValidationError
                 pre_val = validate_pre_render(
                     ticker=ticker,
                     quarter=quarter,
                     metrics=metrics,
                     section_analysis=response.sections,
                 )
-                if not pre_val.passed:
+                if pre_val.errors:
+                    error_msg = format_validation_error(pre_val, ticker)
+                    logger.error(error_msg)
+                    raise ValidationError(
+                        ticker=ticker,
+                        errors=pre_val.errors,
+                        message=error_msg,
+                    )
+                elif pre_val.warnings:
                     logger.warning(
-                        f"[{ticker}] Pre-render validation: {len(pre_val.warnings)} issue(s) "
+                        f"[{ticker}] Pre-render validation: {len(pre_val.warnings)} warning(s) "
                         f"— sections flagged with ⚠️"
                     )
                     response.sections = annotate_sections_with_warnings(
@@ -912,6 +923,15 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
                 with open(val_path, "w") as f:
                     _json.dump(val_result, f, indent=2)
                 logger.info(f"[{ticker}] Deep-dive PDF rendered + validated (passed={passed})")
+        except ValidationError as ve:
+            logger.error(f"[{ticker}] Data contract violation: {ve}")
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": f"PDF build blocked — data contract violation for {ticker}",
+                    "errors": [{"check": e.check, "detail": e.detail} for e in (ve.errors or [])],
+                }
+            )
         except Exception as e:
             logger.warning(f"[{ticker}] Deep-dive regeneration for {quarter} failed: {e}")
 
@@ -1392,11 +1412,13 @@ async def get_report_pdf(ticker: str, lang: str = "en", background_tasks: Backgr
                                          output_dir=output_dir, metrics=metrics)
                 dd_response = generate_deep_dive(dd_req)
                 
-                # ── Pre-render validation (non-blocking) ──
+                # ── Pre-render validation (BLOCKING — hard data contract gate) ──
                 from backend.earnings_deep_dive.pre_render_validator import (
                     validate_pre_render,
                     annotate_sections_with_warnings,
+                    format_validation_error,
                 )
+                from backend.earnings_deep_dive.errors import ValidationError
                 sections = getattr(dd_response, 'sections', None)
                 pre_val = validate_pre_render(
                     ticker=ticker,
@@ -1404,7 +1426,15 @@ async def get_report_pdf(ticker: str, lang: str = "en", background_tasks: Backgr
                     metrics=metrics,
                     section_analysis=sections,
                 )
-                if not pre_val.passed:
+                if pre_val.errors:
+                    error_msg = format_validation_error(pre_val, ticker)
+                    logger.error(error_msg)
+                    raise ValidationError(
+                        ticker=ticker,
+                        errors=pre_val.errors,
+                        message=error_msg,
+                    )
+                elif pre_val.warnings:
                     sections = annotate_sections_with_warnings(
                         sections or {}, pre_val,
                     )
@@ -1422,6 +1452,19 @@ async def get_report_pdf(ticker: str, lang: str = "en", background_tasks: Backgr
                 )
                 os.makedirs(dd_path.parent, exist_ok=True)
                 render_earnings_deep_dive_pdf(report_model, str(dd_path))
+            except ValidationError as ve:
+                import logging
+                logging.getLogger("uvicorn.error").error(
+                    f"Data contract violation for {ticker}: {ve}"
+                )
+                # Return 422 immediately — don't launch async, data is bad
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "message": f"PDF build blocked — data contract violation for {ticker}",
+                        "errors": [{"check": e.check, "detail": e.detail} for e in (ve.errors or [])],
+                    }
+                )
             except Exception as e:
                 import logging
                 logging.getLogger("uvicorn.error").error(f"Deep-dive generation failed for {ticker}: {e}")

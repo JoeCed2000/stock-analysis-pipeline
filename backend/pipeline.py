@@ -1356,20 +1356,30 @@ def _add_earnings_deep_dive_if_transcript(
         )
         en_response.sections = _strip_prompt_leaks_from_sections(en_response.sections)
 
-        # ── Pre-render validation (non-blocking) ──
+        # ── Pre-render validation (BLOCKING — hard data contract gate) ──
         from backend.earnings_deep_dive.pre_render_validator import (
             validate_pre_render,
             annotate_sections_with_warnings,
+            format_validation_error,
         )
+        from backend.earnings_deep_dive.errors import ValidationError
         en_validation = validate_pre_render(
             ticker=ticker,
             quarter=transcript_quarter,
             metrics=deep_dive_metrics,
             section_analysis=en_response.sections,
         )
-        if not en_validation.passed:
+        if en_validation.errors:
+            error_msg = format_validation_error(en_validation, ticker)
+            logger.error(error_msg)
+            raise ValidationError(
+                ticker=ticker,
+                errors=en_validation.errors,
+                message=error_msg,
+            )
+        elif en_validation.warnings:
             logger.warning(
-                f"[{ticker}] Pre-render validation: {len(en_validation.warnings)} issue(s) — "
+                f"[{ticker}] Pre-render validation: {len(en_validation.warnings)} warning(s) — "
                 f"sections flagged with ⚠️"
             )
             en_response.sections = annotate_sections_with_warnings(
@@ -1389,14 +1399,22 @@ def _add_earnings_deep_dive_if_transcript(
         )
         jp_response.sections = _strip_prompt_leaks_from_sections(jp_response.sections)
 
-        # ── Pre-render validation for JP (non-blocking) ──
+        # ── Pre-render validation for JP (BLOCKING) ──
         jp_validation = validate_pre_render(
             ticker=ticker,
             quarter=transcript_quarter,
             metrics=deep_dive_metrics,
             section_analysis=jp_response.sections,
         )
-        if not jp_validation.passed:
+        if jp_validation.errors:
+            error_msg = format_validation_error(jp_validation, ticker)
+            logger.error(error_msg)
+            raise ValidationError(
+                ticker=ticker,
+                errors=jp_validation.errors,
+                message=error_msg,
+            )
+        elif jp_validation.warnings:
             logger.warning(
                 f"[{ticker}] Pre-render validation (JP): {len(jp_validation.warnings)} issue(s) — "
                 f"sections flagged with ⚠️"
