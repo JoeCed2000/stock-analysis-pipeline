@@ -1016,10 +1016,37 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             takeaway_header = f"👉 {section.summary_label}"
             story.extend(_callout_box(takeaway_header, section.summary, styles, fonts.regular))
 
-    if report.sources:
+    if report.sources or report.next_earnings_date or report.earnings_audio_url:
         story.append(PageBreak())
         story.append(Paragraph("Sources", styles["section"]))
         story.append(Spacer(1, 0.15 * inch))
+
+        # --- Key Dates (prominent, before document sources) ---
+        key_items = []
+        if report.next_earnings_date:
+            try:
+                from datetime import datetime
+                dt = datetime.strptime(report.next_earnings_date, "%Y-%m-%d")
+                formatted_date = dt.strftime("%B %d, %Y")
+                days_left = (dt.date() - datetime.now().date()).days
+                urgency = "🔴" if days_left <= 7 else "🟡" if days_left <= 30 else ""
+                key_items.append(
+                    f"<b>{urgency} Next Earnings:</b> {formatted_date} "
+                    f'<font size="8" color="#666666">({days_left} days)</font>'
+                )
+            except Exception:
+                key_items.append(f"<b>📅 Next Earnings:</b> {report.next_earnings_date}")
+        if report.earnings_audio_url:
+            key_items.append(
+                f'<b>🎧 Earnings Call Audio:</b> '
+                f'<font size="8"><a href="{escape(report.earnings_audio_url)}" color="blue">{escape(report.earnings_audio_url)}</a></font>'
+            )
+        if key_items:
+            story.append(Paragraph("<b>📅 Key Dates</b>", styles["body"]))
+            for item in key_items:
+                story.append(Paragraph(item, styles["small"]))
+                story.append(Spacer(1, 0.08 * inch))
+            story.append(Spacer(1, 0.15 * inch))
 
         # Separate document sources from data sources
         doc_sources = []

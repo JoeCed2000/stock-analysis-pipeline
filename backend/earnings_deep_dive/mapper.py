@@ -1938,6 +1938,9 @@ def build_earnings_deep_dive_report(
                 return True
         return False
 
+    next_earnings_date = _metric_text(metrics, "next_earnings_date")
+    earnings_audio = _metric_url(metrics, "earnings_audio_url")
+    
     return EarningsDeepDiveReport(
         ticker=ticker_clean,
         company=company_name,
@@ -1947,4 +1950,6 @@ def build_earnings_deep_dive_report(
         title=f"{company_name} ({ticker_clean}) - Earnings Deep-Dive",
         sections=[s for s in sections if not _skip_section(s)],
         sources=sources,
+        next_earnings_date=next_earnings_date,
+        earnings_audio_url=earnings_audio,
     )

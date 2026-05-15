@@ -1,5 +1,5 @@
 """Structured render model for earnings deep-dive reports."""
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -42,3 +42,5 @@ class EarningsDeepDiveReport(BaseModel):
     title: str
     sections: list[RenderedSection]
     sources: list[SourceRef] = Field(default_factory=list)
+    next_earnings_date: Optional[str] = None
+    earnings_audio_url: Optional[str] = None
