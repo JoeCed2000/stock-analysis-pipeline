@@ -805,7 +805,48 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
     return [table] + [Paragraph(escape(_glyph_safe(t[:300], font_name=fonts.regular)), cell_style) for t in explanation_rows]
 
 
+# ── Page header/footer (dark bar model parity) ──────────────────────────
+_HEADER_BG = colors.HexColor("#2A2A2A")
+_HEADER_HEIGHT = 0.45 * inch
+
+
+def _on_first_page(canvas, doc) -> None:
+    """First page: dark header bar with company name + page number."""
+    _draw_header_bar(canvas, doc, page_num=1)
+
+
+def _on_later_pages(canvas, doc) -> None:
+    """Later pages: dark header bar with page number."""
+    _draw_header_bar(canvas, doc, page_num=canvas.getPageNumber())
+
+
+def _draw_header_bar(canvas, doc, page_num: int) -> None:
+    """Draw a dark gray header bar at the top of the page."""
+    width = LETTER[0]
+    height = LETTER[1]
+    
+    # Dark gray rectangle across the full page width at the top
+    canvas.saveState()
+    canvas.setFillColor(_HEADER_BG)
+    canvas.rect(0, height - _HEADER_HEIGHT, width, _HEADER_HEIGHT, fill=1, stroke=0)
+    
+    # Page number — right-aligned in white
+    canvas.setFillColor(colors.white)
+    canvas.setFont("Helvetica", 8)
+    total_pages = doc.page if hasattr(doc, 'page') else "—"
+    page_text = f"{page_num} / {total_pages}" if total_pages != "—" else str(page_num)
+    canvas.drawRightString(width - 0.55 * inch, height - 0.30 * inch, page_text)
+    
+    # Thin dark footer line
+    canvas.setStrokeColor(_HEADER_BG)
+    canvas.setLineWidth(0.5)
+    canvas.line(0.62 * inch, 0.55 * inch, width - 0.62 * inch, 0.55 * inch)
+    
+    canvas.restoreState()
+
+
 def _footer(canvas, doc, font_name: str = "Helvetica") -> None:
+    """Footer is now handled by _on_first_page / _on_later_pages callbacks."""
     return None
 
 
@@ -885,12 +926,15 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         pagesize=LETTER,
         rightMargin=0.62 * inch,
         leftMargin=0.62 * inch,
-        topMargin=0.58 * inch,
+        topMargin=(0.58 + 0.45) * inch,  # extra space for dark header bar
         bottomMargin=0.62 * inch,
         pageCompression=0,
         title=report.title,
         author="stock-analysis-pipeline",
     )
+    # Register dark header bar on every page
+    doc.onFirstPage = _on_first_page
+    doc.onLaterPages = _on_later_pages
 
     story: list = [
         Paragraph(escape(f"{report.company} ({report.ticker})"), styles["title"]),
@@ -940,14 +984,43 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             for line in continuation_lines:
                 story.extend(_paragraph_with_emojis(line, styles["body"], font_name=fonts.regular))
 
-        # ── Nami takeaway (inline emoji-marked, model parity — no callout box) ──
+        # ── Nami takeaway (callout box — model parity) ──
         if section.summary and section.summary.strip() and section.summary.strip().lower() not in {"not available.", "not available", "n/a"}:
-            story.append(Spacer(1, 0.12 * inch))
             takeaway_header = f"👉 {section.summary_label}"
-            story.extend(_paragraph_with_emojis(takeaway_header, styles["small_bold"], font_name=fonts.regular))
-            story.append(Spacer(1, 0.04 * inch))
-            story.extend(_paragraph_with_emojis(section.summary, styles["body"], font_name=fonts.regular))
-            story.append(Spacer(1, 0.12 * inch))
+            story.extend(_callout_box(takeaway_header, section.summary, styles, fonts.regular))
+
+# ── Callout box (model parity — blue-bordered insight box) ──────────────
+_CALLOUT_BORDER = colors.HexColor("#2563EB")
+_CALLOUT_BG = colors.HexColor("#EFF6FF")
+
+
+def _callout_box(header: str, body: str, styles: dict, font_name: str) -> list:
+    """Render a blue-bordered callout box matching the model PDF style.
+    
+    Returns a list of flowables: a bordered table with emoji header + body text.
+    """
+    available_width = LETTER[0] - 1.24 * inch  # left + right margins
+    padding = 10
+    
+    # Emoji header
+    emoji_flowables = _paragraph_with_emojis(header, styles["small_bold"], font_name=font_name)
+    # Body text
+    body_flowables = _paragraph_with_emojis(body, styles["body"], font_name=font_name)
+    
+    # Wrap header + body in a single-cell table with blue border + light blue bg
+    inner_story = emoji_flowables + [Spacer(1, 4)] + body_flowables
+    inner_table = Table([[inner_story]], colWidths=[available_width - 2 * padding])
+    inner_table.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), padding),
+        ("RIGHTPADDING", (0, 0), (-1, -1), padding),
+        ("TOPPADDING", (0, 0), (-1, -1), padding),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), padding),
+        ("BACKGROUND", (0, 0), (-1, -1), _CALLOUT_BG),
+        ("BOX", (0, 0), (-1, -1), 1.5, _CALLOUT_BORDER),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    
+    return [Spacer(1, 0.15 * inch), inner_table, Spacer(1, 0.12 * inch)]
 
     if report.sources:
         story.append(PageBreak())
@@ -1025,9 +1098,11 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         doc2 = SimpleDocTemplate(
             str(output), pagesize=LETTER,
             rightMargin=0.62*inch, leftMargin=0.62*inch,
-            topMargin=0.58*inch, bottomMargin=0.62*inch, pageCompression=0,
+            topMargin=(0.58 + 0.45)*inch, bottomMargin=0.62*inch, pageCompression=0,
             title=report.title, author="stock-analysis-pipeline"
         )
+        doc2.onFirstPage = _on_first_page
+        doc2.onLaterPages = _on_later_pages
         doc2.build(story)
         print(f"[PDF RENDER] Recovered with {len(report.sections)} sections (1 dropped)", file=sys.stderr)
     return str(output)
