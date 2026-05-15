@@ -532,11 +532,19 @@ def _paragraph_with_emojis(text: str, style: ParagraphStyle, *, font_name: str, 
         cursor = 0
         for match in _STRUCTURAL_EMOJIS.finditer(line):
             prefix = line[cursor:match.start()].strip()
-            if prefix:
-                flowables.append(_paragraph_md(prefix, style, font_name=font_name))
             next_match = _STRUCTURAL_EMOJIS.search(line, match.end())
             end = next_match.start() if next_match else len(line)
             segment = line[match.end():end]
+
+            # ── Keep short labels like "(1)" / "(2)" inline with the marker ──
+            # instead of creating a separate Paragraph that forces a line break.
+            _SHORT_LABEL = re.compile(r'^\(\d{1,2}\)$')
+            if prefix and _SHORT_LABEL.match(prefix):
+                segment = f"{prefix} {segment}"
+                prefix = ""
+
+            if prefix:
+                flowables.append(_paragraph_md(prefix, style, font_name=font_name))
             flowables.append(marker_row(match.group(0), segment))
             cursor = end
 
