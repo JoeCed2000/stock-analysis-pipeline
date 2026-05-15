@@ -523,6 +523,10 @@ def _validate_section(
 
 def _clean_section_output(output: str, max_chars: int) -> str:
     cleaned = output.strip().rstrip("!").rstrip()
+    # Fix line breaks before Nami-san (LLM puts "For" at end of line, "Nami-san" at next)
+    cleaned = cleaned.replace("For\nNami-san", "For Nami-san")
+    # Remove Unicode replacement characters (empty squares □)
+    cleaned = cleaned.replace("\ufffd", "")
     if len(cleaned) <= max_chars:
         return cleaned
     return _truncate_clean(cleaned, max_chars)

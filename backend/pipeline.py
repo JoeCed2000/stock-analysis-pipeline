@@ -733,6 +733,10 @@ def _strip_prompt_leak_text(text: str) -> str:
     cleaned = re.sub(r"(?im)^\s*\?\s*$", "", cleaned)
     # Collapse multiple blank lines
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    # Fix line breaks before Nami-san (LLM puts "For" at end of line, "Nami-san" at next)
+    cleaned = re.sub(r"For\n(Nami-san)", r"For \1", cleaned)
+    # Remove Unicode replacement characters (empty squares □) 
+    cleaned = cleaned.replace("\ufffd", "")
     return cleaned.strip()
 
 
