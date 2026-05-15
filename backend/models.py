@@ -137,6 +137,7 @@ class AnalysisResult(BaseModel):
     key_phrase: str = ""
     report_path: Optional[str] = None
     sources_manifest_path: Optional[str] = None
+    data_quality: str = "unknown"  # complete, partial, sparse
 
 
 class AnalysisJobResponse(BaseModel):

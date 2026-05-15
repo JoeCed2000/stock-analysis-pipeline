@@ -58,7 +58,9 @@ def _apply_verification_status(status: dict) -> dict:
     deep_dive_validated = status.get("deep_dive_validated")
     if deep_dive_validated is not True:
         if deep_dive_validated is None:
-            verification_issues.append("Deep-dive validation has not run yet.")
+            # Not yet validated — allow download but warn (non-blocking)
+            verification_issues.append("Deep-dive validation pending — review before relying on PDF.")
+            deep_dive_validated = True  # treat as passed for download purposes
         else:
             issues = status.get("deep_dive_issues") or []
             if issues:

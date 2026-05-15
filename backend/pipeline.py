@@ -1536,6 +1536,24 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
     decision = scoring.decision()
     conviction = _conviction_text(scoring)
     
+    # ── Data quality badge ──
+    _fin = yf_data.get("financials", {}) if isinstance(yf_data, dict) else {}
+    _quality_fields = {
+        "market_cap": yf_data.get("market_cap"),
+        "sector": yf_data.get("sector"),
+        "pe_current": yf_data.get("pe_current"),
+        "pe_forward": yf_data.get("pe_forward"),
+        "revenue_quarterly": _fin.get("revenue_quarterly"),
+        "net_income": _fin.get("net_income"),
+        "free_cash_flow": _fin.get("free_cash_flow"),
+        "gross_margin": _fin.get("gross_margin"),
+        "eps_actual": _fin.get("eps_actual"),
+        "operating_margin": _fin.get("operating_margin"),
+    }
+    _present = sum(1 for v in _quality_fields.values() if v is not None)
+    _total = len(_quality_fields)
+    data_quality = "complete" if _present >= 8 else "partial" if _present >= 5 else "sparse"
+    
     # ── Build result ──
     result = AnalysisResult(
         ticker=ticker,
@@ -1557,6 +1575,7 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
         key_phrase=_key_phrase(decision, company_name, scoring.total),
         report_path=os.path.join(output_dir, "07_final_report", "report.md"),
         sources_manifest_path=os.path.join(output_dir, "06_extracted_data", "sources_manifest.json"),
+        data_quality=data_quality,
     )
     
     # Save Yahoo Finance snapshot (lightweight)

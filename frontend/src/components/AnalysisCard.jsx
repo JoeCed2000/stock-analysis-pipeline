@@ -216,6 +216,20 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
         <div style={{ fontSize: 8, color: '#484f58', marginTop: 2, textTransform: 'uppercase', letterSpacing: 1 }}>
           Composite Score
         </div>
+        {/* Data quality badge */}
+        {result.data_quality && (
+          <div style={{
+            display: 'inline-block', marginTop: 4, padding: '1px 8px', borderRadius: 3,
+            fontSize: 8, fontWeight: 700,
+            background: result.data_quality === 'complete' ? '#23863620' : result.data_quality === 'partial' ? '#d2992220' : '#da363320',
+            color: result.data_quality === 'complete' ? '#238636' : result.data_quality === 'partial' ? '#d29922' : '#da3633',
+            border: `1px solid ${result.data_quality === 'complete' ? '#23863640' : result.data_quality === 'partial' ? '#d2992240' : '#da363340'}`,
+            textTransform: 'uppercase', letterSpacing: 0.5,
+          }}>
+            {result.data_quality === 'complete' ? '🟢 ' : result.data_quality === 'partial' ? '🟡 ' : '🔴 '}
+            {t(result.data_quality) || result.data_quality}
+          </div>
+        )}
         {/* Score bar */}
         <div style={{
           marginTop: 6, background: '#161b22', borderRadius: 3, height: 4, overflow: 'hidden',
