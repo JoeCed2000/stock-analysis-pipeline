@@ -1154,7 +1154,44 @@ def guidance_prompt(language: str, ticker: str, company: str, quarter: str, metr
 
 
 def verdict_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    return _base_prompt(
+    # CRITICAL OVERRIDE: the Verdict MUST be consistent with EPS & Revenue results.
+    # Without this the LLM will contradict its own earlier sections (e.g. "EPS beat"
+    # in Highlights then "EPS did not beat consensus" in Verdict).
+    eps_actual = metrics.get("eps_actual")
+    eps_est = metrics.get("eps_estimate")
+    rev_actual = metrics.get("revenue_actual")
+    rev_est = metrics.get("revenue_estimate")
+    gross_margin = metrics.get("gross_margin")
+    op_margin = metrics.get("operating_margin")
+    extra = ""
+    def _vs(actual, estimate):
+        try:
+            return (float(actual) - float(estimate)) / float(estimate)
+        except (TypeError, ValueError, ZeroDivisionError):
+            return None
+    eps_vs = _vs(eps_actual, eps_est) if eps_actual is not None and eps_est is not None else None
+    if eps_vs is not None:
+        pct = eps_vs * 100
+        direction = "BEAT" if pct > 0 else "MISSED"
+        try: eps_actual_f = float(eps_actual); eps_est_f = float(eps_est)
+        except (TypeError, ValueError): eps_actual_f = eps_actual; eps_est_f = eps_est
+        extra += f"\n\n🔴 VERDICT DATA: EPS {direction} consensus by {abs(pct):.1f}% (${eps_actual_f:.2f} vs ${eps_est_f:.2f}). Your Verdict MUST state this direction. NEVER contradict beat/miss status."
+    rev_vs = _vs(rev_actual, rev_est) if rev_actual is not None and rev_est is not None else None
+    if rev_vs is not None:
+        pct = rev_vs * 100
+        direction = "BEAT" if pct > 0 else "MISSED"
+        try: rev_b = float(rev_actual) / 1e9
+        except (TypeError, ValueError): rev_b = rev_actual
+        try: rev_est_b = float(rev_est) / 1e9
+        except (TypeError, ValueError): rev_est_b = rev_est
+        extra += f"\n⚠️  Revenue {direction} consensus by {abs(pct):.1f}% (${rev_b:.2f}B vs ${rev_est_b:.2f}B). Verdict MUST state this direction."
+    if gross_margin is not None:
+        try: extra += f"\n⚠️  Gross Margin = {float(gross_margin):.1f}% — do NOT say margins are missing or unavailable."
+        except (TypeError, ValueError): pass
+    if op_margin is not None:
+        try: extra += f"\n⚠️  Operating Margin = {float(op_margin):.1f}% — do NOT say margins are missing or unavailable."
+        except (TypeError, ValueError): pass
+    base = _base_prompt(
         section="Verdict",
         language=language,
         ticker=ticker,
@@ -1163,6 +1200,7 @@ def verdict_prompt(language: str, ticker: str, company: str, quarter: str, metri
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
     )
+    return base + extra
 
 
 PROMPT_BUILDERS: Dict[str, Callable[[str, str, str, str, Dict[str, Any], str], str]] = {

@@ -1515,11 +1515,22 @@ def _resolved_quarter_label(quarter: str, metrics: FinancialMetrics) -> str:
     )
     if explicit and explicit.lower() != "latest quarter":
         return explicit
-    # Fallback: derive calendar quarter from today
+    # Fallback: derive from metrics available financial data, not calendar
     from datetime import date
+    # Try to extract fiscal quarter from yfinance filing date in metrics
+    filing_date = _metric_text(metrics, "filing_date", "latest_filing_date", "period_end_date")
+    if filing_date:
+        try:
+            fd = date.fromisoformat(filing_date[:10])
+            # Fiscal quarter: use the actual period end month/year from the filing
+            fq = (fd.month - 1) // 3 + 1
+            return f"FY{fd.year} Q{fq}"
+        except (ValueError, TypeError):
+            pass
+    # Last resort: today's date but mark as estimated
     today = date.today()
     q = (today.month - 1) // 3 + 1
-    return f"{today.year}Q{q}"
+    return f"FY{today.year} Q{q} (est.)"
 
 
 def build_earnings_deep_dive_report(
