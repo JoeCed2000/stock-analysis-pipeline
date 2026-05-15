@@ -1144,11 +1144,13 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         pagesize=LETTER,
         rightMargin=0.62 * inch,
         leftMargin=0.62 * inch,
-        topMargin=(0.58 + 0.45) * inch,  # extra space for dark header bar
+        topMargin=(0.58 + 0.45) * inch,
         bottomMargin=0.62 * inch,
         pageCompression=0,
         title=report.title,
-        author="stock-analysis-pipeline",
+        author="Stock Analysis Pipeline — AI-assisted buy-side research",
+        subject=f"Earnings Deep-Dive: {report.company} ({report.ticker}) — {report.quarter}",
+        creator="stock-analysis-pipeline v2",
     )
     # Register dark header bar on every page
     doc.onFirstPage = _on_first_page
@@ -1318,7 +1320,9 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             str(output), pagesize=LETTER,
             rightMargin=0.62*inch, leftMargin=0.62*inch,
             topMargin=(0.58 + 0.45)*inch, bottomMargin=0.62*inch, pageCompression=0,
-            title=report.title, author="stock-analysis-pipeline"
+            title=report.title,
+            author="Stock Analysis Pipeline — AI-assisted buy-side research",
+            subject=f"Earnings Deep-Dive: {report.company} ({report.ticker}) — {report.quarter}",
         )
         doc2.onFirstPage = _on_first_page
         doc2.onLaterPages = _on_later_pages
