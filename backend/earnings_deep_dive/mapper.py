@@ -7,6 +7,7 @@ import os
 import re
 
 from backend.earnings_deep_dive.report_model import (
+    ChartData,
     EarningsDeepDiveReport,
     RenderedSection,
     RenderedTable,
@@ -1951,7 +1952,10 @@ def build_earnings_deep_dive_report(
 
     next_earnings_date = _metric_text(metrics, "next_earnings_date")
     earnings_audio = _metric_url(metrics, "earnings_audio_url")
-    
+
+    # ── Chart data for PDF rendering ──
+    chart_data = _build_chart_data(metrics)
+
     return EarningsDeepDiveReport(
         ticker=ticker_clean,
         company=company_name,
@@ -1963,4 +1967,57 @@ def build_earnings_deep_dive_report(
         sources=sources,
         next_earnings_date=next_earnings_date,
         earnings_audio_url=earnings_audio,
+        charts=chart_data,
+    )
+
+
+def _build_chart_data(metrics: Any) -> ChartData | None:
+    """Extract pre-computed chart data from FinancialMetrics."""
+    try:
+        raw = metrics.model_dump() if hasattr(metrics, 'model_dump') else {}
+    except Exception:
+        return None
+
+    def _get(key: str):
+        val = raw.get(key)
+        if val is None or val == "Not disclosed" or val == "":
+            return None
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return None
+
+    eps_actual = _get("eps_actual")
+    eps_estimate = _get("eps_estimate")
+    eps_vs_pct = None
+    if eps_actual is not None and eps_estimate is not None and eps_estimate != 0:
+        eps_vs_pct = (eps_actual - eps_estimate) / abs(eps_estimate)
+
+    rev_actual = _get("revenue_actual")
+    rev_estimate = _get("revenue_estimate")
+    rev_vs_pct = None
+    if rev_actual is not None and rev_estimate is not None and rev_estimate != 0:
+        rev_vs_pct = (rev_actual - rev_estimate) / abs(rev_estimate)
+
+    sector = raw.get("sector") or raw.get("sector_name")
+    industry = raw.get("industry") or raw.get("industry_name")
+    if isinstance(sector, str) and not sector.strip():
+        sector = None
+    if isinstance(industry, str) and not industry.strip():
+        industry = None
+
+    return ChartData(
+        eps_actual=eps_actual,
+        eps_estimate=eps_estimate,
+        eps_vs_pct=eps_vs_pct,
+        revenue_actual=rev_actual,
+        revenue_estimate=rev_estimate,
+        revenue_vs_pct=rev_vs_pct,
+        gross_margin=_get("gross_margin"),
+        operating_margin=_get("operating_margin"),
+        pe_forward=_get("pe_forward"),
+        fcf=_get("free_cash_flow"),
+        roic=_get("roic"),
+        sector=str(sector) if sector else None,
+        industry=str(industry) if industry else None,
     )

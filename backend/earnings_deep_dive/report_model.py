@@ -33,6 +33,23 @@ class RenderedSection(BaseModel):
     summary: str
 
 
+class ChartData(BaseModel):
+    """Pre-computed chart data extracted from metrics for PDF rendering."""
+    eps_actual: float | None = None
+    eps_estimate: float | None = None
+    eps_vs_pct: float | None = None
+    revenue_actual: float | None = None
+    revenue_estimate: float | None = None
+    revenue_vs_pct: float | None = None
+    gross_margin: float | None = None
+    operating_margin: float | None = None
+    pe_forward: float | None = None
+    fcf: float | None = None
+    roic: float | None = None
+    sector: str | None = None
+    industry: str | None = None
+
+
 class EarningsDeepDiveReport(BaseModel):
     ticker: str
     company: str
@@ -44,3 +61,4 @@ class EarningsDeepDiveReport(BaseModel):
     sources: list[SourceRef] = Field(default_factory=list)
     next_earnings_date: Optional[str] = None
     earnings_audio_url: Optional[str] = None
+    charts: ChartData | None = None

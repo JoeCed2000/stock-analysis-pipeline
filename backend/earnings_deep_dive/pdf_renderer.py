@@ -1008,6 +1008,122 @@ def _validate_report(report) -> list[str]:
     return issues
 
 
+def _generate_metrics_chart(chart_data, ticker: str) -> RLImage | None:
+    """Generate a bar chart showing EPS/Revenue actual vs estimate as a ReportLab Image.
+
+    Uses matplotlib to render a compact, dark-themed chart (matching the PDF header style)
+    showing two comparison panels: EPS and Revenue.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.ticker as mticker
+
+    try:
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.0, 1.8), facecolor="#FAFAFA")
+    except Exception:
+        return None
+
+    # Colors matching the PDF aesthetic
+    actual_color = "#0B6B3A"   # dark green
+    est_color = "#8B8B8B"      # medium gray
+    beat_color = "#2563EB"     # blue
+    miss_color = "#A33A2A"     # dark red
+
+    # ── Left panel: EPS ──
+    eps_actual = chart_data.eps_actual
+    eps_estimate = chart_data.eps_estimate
+    eps_vs = chart_data.eps_vs_pct
+
+    if eps_actual is not None and eps_estimate is not None:
+        bars = ax1.bar(["Estimate", "Actual"], [eps_estimate, eps_actual],
+                        color=[est_color, actual_color], width=0.55, edgecolor="white", linewidth=0.5)
+        ax1.set_title(f"EPS (${eps_actual:.2f})", fontsize=9, fontweight="bold", color="#111111", pad=8)
+        # Annotate bars
+        for bar, val in zip(bars, [eps_estimate, eps_actual]):
+            ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
+                     f"${val:.2f}", ha="center", va="bottom", fontsize=8, color="#111111")
+        # Beat/miss annotation
+        if eps_vs is not None:
+            pct = abs(eps_vs) * 100
+            direction = "▲ Beat" if eps_vs > 0 else "▼ Miss"
+            color = beat_color if eps_vs > 0 else miss_color
+            ax1.text(0.5, 0.90, f"{direction} {pct:.1f}%", transform=ax1.transAxes,
+                     ha="center", fontsize=8, fontweight="bold", color=color,
+                     bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor=color, alpha=0.9))
+    else:
+        ax1.text(0.5, 0.5, "EPS data\nnot available", transform=ax1.transAxes,
+                 ha="center", va="center", fontsize=8, color="#999999")
+        ax1.set_title("EPS", fontsize=9, fontweight="bold", color="#111111")
+
+    # ── Right panel: Revenue ──
+    rev_actual = chart_data.revenue_actual
+    rev_estimate = chart_data.revenue_estimate
+    rev_vs = chart_data.revenue_vs_pct
+
+    if rev_actual is not None and rev_estimate is not None:
+        # Format in billions
+        rev_ab = rev_actual / 1e9
+        rev_eb = rev_estimate / 1e9
+        bars = ax2.bar(["Estimate", "Actual"], [rev_eb, rev_ab],
+                        color=[est_color, actual_color], width=0.55, edgecolor="white", linewidth=0.5)
+        ax2.set_title(f"Revenue (${rev_ab:.1f}B)", fontsize=9, fontweight="bold", color="#111111", pad=8)
+        for bar, val in zip(bars, [rev_eb, rev_ab]):
+            ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.02,
+                     f"${val:.1f}B", ha="center", va="bottom", fontsize=8, color="#111111")
+        if rev_vs is not None:
+            pct = abs(rev_vs) * 100
+            direction = "▲ Beat" if rev_vs > 0 else "▼ Miss"
+            color = beat_color if rev_vs > 0 else miss_color
+            ax2.text(0.5, 0.90, f"{direction} {pct:.1f}%", transform=ax2.transAxes,
+                     ha="center", fontsize=8, fontweight="bold", color=color,
+                     bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor=color, alpha=0.9))
+    else:
+        ax2.text(0.5, 0.5, "Revenue data\nnot available", transform=ax2.transAxes,
+                 ha="center", va="center", fontsize=8, color="#999999")
+        ax2.set_title("Revenue", fontsize=9, fontweight="bold", color="#111111")
+
+    # Style both axes
+    for ax in (ax1, ax2):
+        ax.set_facecolor("#FAFAFA")
+        ax.tick_params(labelsize=7, colors="#666666", length=0)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_color("#DDDDDD")
+        ax.spines["bottom"].set_color("#DDDDDD")
+        ax.yaxis.set_major_formatter(mticker.FormatStrFormatter('$%.1f'))
+
+    # Subtitle showing key ratios
+    lines = []
+    if chart_data.gross_margin is not None:
+        lines.append(f"Gross Margin: {chart_data.gross_margin:.1f}%")
+    if chart_data.operating_margin is not None:
+        lines.append(f"Op Margin: {chart_data.operating_margin:.1f}%")
+    if chart_data.pe_forward is not None:
+        lines.append(f"Fwd P/E: {chart_data.pe_forward:.1f}x")
+    if chart_data.fcf is not None:
+        fcf_b = chart_data.fcf / 1e9
+        lines.append(f"FCF: ${fcf_b:.1f}B")
+    if lines:
+        subtitle = " | ".join(lines)
+        fig.text(0.5, 0.02, subtitle, ha="center", fontsize=6.5, color="#888888",
+                 fontstyle="italic")
+
+    plt.tight_layout(pad=0.8, rect=[0, 0.06, 1, 0.95])
+
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+    plt.close(fig)
+    buf.seek(0)
+
+    img = PILImage.open(buf)
+    # Scale to fit within margins (~6.1 inches at 150 DPI)
+    target_width = 6.1 * inch
+    aspect = img.height / img.width
+    target_height = target_width * aspect
+    return RLImage(buf, width=target_width, height=target_height)
+
+
 # ── Main entry point ────────────────────────────────────────────────────
 def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: str | Path) -> str:
     """Render a structured earnings deep-dive report to an extractable PDF."""
@@ -1046,6 +1162,14 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
     if website:
         story.append(Paragraph(escape(f"Official Website: {website}"), styles["meta"]))
     story.extend(_earnings_documents_story(report, styles, fonts))
+
+    # ── Charts: key metrics at a glance ──
+    if report.charts and (report.charts.eps_actual or report.charts.revenue_actual):
+        story.append(Spacer(1, 0.20 * inch))
+        chart_image = _generate_metrics_chart(report.charts, report.ticker)
+        if chart_image:
+            story.append(chart_image)
+        story.append(Spacer(1, 0.15 * inch))
 
     rendered_sections = [section for section in report.sections if _section_has_renderable_content(section)]
 
