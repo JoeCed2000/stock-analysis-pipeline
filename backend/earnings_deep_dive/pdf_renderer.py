@@ -1301,51 +1301,93 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         # ── Claim Traceability Appendix ──
         if report.claim_sources:
             story.append(PageBreak())
-            story.append(Paragraph("Claim Traceability Appendix", styles["section"]))
-            story.append(Spacer(1, 0.1 * inch))
+            story.append(Paragraph("Claim Traceability", styles["section"]))
+            story.append(Spacer(1, 0.08 * inch))
             story.append(Paragraph(
-                "The table below maps key financial claims to their data sources. "
-                "Each row represents a claim in the report traceable to a specific source field. "
-                "Grounding levels: <b>direct_metric</b> = exact value from source; "
-                "<b>calculated</b> = formula from source data; <b>inference</b> = analyst interpretation.",
+                "<i>Every analytical claim in this report is traceable to a specific data source. "
+                "This appendix provides the audit trail.</i>",
                 styles["small"]
             ))
             story.append(Spacer(1, 0.12 * inch))
 
-            # Build appendix table
-            appendix_data = [["Claim ID", "Section", "Source", "Field", "Value", "Grounding"]]
-            for cs in report.claim_sources[:60]:  # Cap at 60 rows to avoid page overflow
-                appendix_data.append([
-                    cs.claim_id,
-                    cs.section,
-                    cs.source_id,
-                    cs.source_field or "—",
-                    cs.source_value or "—",
-                    cs.grounding,
-                ])
+            # Group claims by section for readability
+            from collections import defaultdict
+            by_section: dict[str, list] = defaultdict(list)
+            for cs in report.claim_sources[:80]:
+                by_section[cs.section].append(cs)
 
-            col_widths = [0.9*inch, 1.5*inch, 0.8*inch, 1.8*inch, 1.2*inch, 1.1*inch]
-            appendix_table = Table(appendix_data, colWidths=col_widths, repeatRows=1)
-            appendix_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2A2A2A')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('FONTNAME', (0, 0), (-1, -1), fonts.regular),
-                ('FONTSIZE', (0, 0), (-1, -1), 7),
-                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#CCCCCC')),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F5F5')]),
-                ('TOPPADDING', (0, 0), (-1, -1), 3),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-            ]))
-            story.append(appendix_table)
+            # ── Source legend (compact) ──
+            story.append(Paragraph("<b>Source Legend</b>", styles["body"]))
+            legend_items = []
+            seen_ids = set()
+            for cs in report.claim_sources:
+                if cs.source_id not in seen_ids:
+                    seen_ids.add(cs.source_id)
+                    src_name = cs.source_name or cs.source_id
+                    src_url = cs.source_url or ""
+                    grounding_info = f" [{cs.grounding}]" if cs.grounding != "direct_metric" else ""
+                    if src_url:
+                        legend_items.append(
+                            f'<font size="8"><b>{cs.source_id}</b> = {_glyph_safe(src_name, font_name=fonts.regular)}'
+                            f'{grounding_info} — <a href="{escape(src_url)}" color="blue">link</a></font>'
+                        )
+                    else:
+                        legend_items.append(
+                            f'<font size="8"><b>{cs.source_id}</b> = {_glyph_safe(src_name, font_name=fonts.regular)}{grounding_info}</font>'
+                        )
+            for item in legend_items:
+                story.append(Paragraph(item, styles["small"]))
+                story.append(Spacer(1, 0.04 * inch))
 
-            if len(report.claim_sources) > 60:
-                story.append(Spacer(1, 0.1 * inch))
+            story.append(Spacer(1, 0.12 * inch))
+
+            # ── Per-section claim summaries ──
+            story.append(Paragraph("<b>Claims by Section</b>", styles["body"]))
+            story.append(Spacer(1, 0.08 * inch))
+
+            grounding_colors = {
+                "direct_metric": "#1A6B3C",   # green — high confidence
+                "calculated": "#2563EB",       # blue — formula
+                "direct_quote": "#7C3AED",     # purple — quote
+                "document_fact": "#0891B2",    # teal — filing fact
+                "inference": "#D97706",        # amber — interpretation
+                "unsupported": "#DC2626",      # red — blocked
+            }
+
+            for section_name in sorted(by_section.keys()):
+                claims = by_section[section_name]
                 story.append(Paragraph(
-                    f"<i>({len(report.claim_sources) - 60} additional claims omitted — see full report data)</i>",
-                    styles["small"]
+                    f'<font size="9"><b>{_glyph_safe(section_name, font_name=fonts.regular)}</b> '
+                    f'({len(claims)} claims)</font>',
+                    styles["body"]
                 ))
+                for cs in claims[:8]:  # Max 8 per section
+                    gcolor = grounding_colors.get(cs.grounding, "#666666")
+                    claim_text = cs.claim_text or f"{cs.source_field}: {cs.source_value}"
+                    story.append(Paragraph(
+                        f'<font size="7" color="{gcolor}">[{cs.grounding}]</font> '
+                        f'<font size="8"><b>{cs.source_id}</b> → {_glyph_safe(str(claim_text)[:120], font_name=fonts.regular)}'
+                        f'{(" <i>(" + cs.confidence + ")</i>") if cs.confidence else ""}</font>',
+                        styles["small"]
+                    ))
+                    story.append(Spacer(1, 0.03 * inch))
+                if len(claims) > 8:
+                    story.append(Paragraph(
+                        f'<font size="7" color="#888888">  … and {len(claims) - 8} more claims (see machine-readable export)</font>',
+                        styles["small"]
+                    ))
+                story.append(Spacer(1, 0.08 * inch))
+
+            story.append(Spacer(1, 0.1 * inch))
+            story.append(Paragraph(
+                "<font size='7' color='#888888'>"
+                "<b>Grounding levels:</b> direct_metric = exact source value | "
+                "calculated = formula from source data | direct_quote = transcript | "
+                "document_fact = filing fact | inference = analyst interpretation | "
+                "unsupported = blocked"
+                "</font>",
+                styles["small"]
+            ))
 
     try:
         doc.build(story)
