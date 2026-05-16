@@ -8,6 +8,7 @@ import re
 
 from backend.earnings_deep_dive.report_model import (
     ChartData,
+    ClaimSource,
     EarningsDeepDiveReport,
     RenderedSection,
     RenderedTable,
@@ -83,8 +84,56 @@ def _has(value: Any) -> bool:
     return value is not None and value != ""
 
 
-def _source(*values: Any) -> str:
-    return SOURCE_COMPANY if any(_has(value) for value in values) else MISSING_EN
+def _source(*values: Any, source_type: str = "sec_edgar") -> str:
+    """Return source label. Use source_type='yfinance' for yfinance-derived data."""
+    if not any(_has(value) for value in values):
+        return MISSING_EN
+    if source_type == "yfinance":
+        return SOURCE_YFINANCE
+    return SOURCE_COMPANY
+
+
+def _source_descriptor(
+    *values: Any,
+    field: str | None = None,
+    grounding: str = "direct_metric",
+    source_type: str = "sec_edgar",
+) -> dict:
+    """Return a display string + structured source provenance for a table row.
+
+    This replaces simple _source() strings with machine-readable metadata
+    that enables claim→source traceability in the PDF appendix.
+    """
+    has_data = any(_has(value) for value in values)
+    if source_type == "yfinance":
+        display = SOURCE_YFINANCE if has_data else MISSING_EN
+    elif source_type == "sec_edgar":
+        display = SOURCE_COMPANY if has_data else MISSING_EN
+    elif source_type == "transcript":
+        display = "Earnings Transcript" if has_data else MISSING_EN
+    elif source_type == "calculated":
+        display = "Calculated from source data" if has_data else MISSING_EN
+    else:
+        display = source_type if has_data else MISSING_EN
+
+    raw_value = None
+    for v in values:
+        if _has(v):
+            raw_value = str(v)[:128]
+            break
+
+    return {
+        "display": display,
+        "field": field,
+        "value": raw_value,
+        "grounding": grounding,
+        "source_type": source_type,
+    }
+
+
+def _source_display(sd: dict) -> str:
+    """Derive the old Source column display text from a source descriptor."""
+    return sd.get("display", MISSING_EN) if sd else MISSING_EN
 
 
 def _money(value: Any) -> str:
@@ -1886,6 +1935,12 @@ def build_earnings_deep_dive_report(
     # Build transcript source entry — use the real source name and URL.
     # If no transcript was actually obtained, omit this source row entirely.
     sources = []
+    source_counter = 1
+    def _next_sid() -> str:
+        nonlocal source_counter
+        sid = f"S{source_counter}"
+        source_counter += 1
+        return sid
     if transcript_url or transcript_source not in ("Transcript", ""):
         transcript_label = f"Earnings Transcript — {transcript_source}"
         transcript_display_url = transcript_url or (
@@ -1893,31 +1948,43 @@ def build_earnings_deep_dive_report(
             if "seeking alpha" in transcript_source.lower() else None
         )
         sources.append(SourceRef(
+            source_id=_next_sid(),
+            source_type="seeking_alpha",
             label=transcript_label,
             url=transcript_display_url,
             note="Primary earnings transcript source" if transcript_display_url else MISSING,
         ))
     sources.append(SourceRef(
+        source_id=_next_sid(),
+        source_type="ir_page",
         label="Official Investor Relations",
         url=investor_relations_url,
         note="Press release / earnings presentation source" if investor_relations_url else MISSING,
     ))
     if company_website_url and company_website_url != investor_relations_url:
-        sources.append(SourceRef(label="Official Website", url=company_website_url))
+        sources.append(SourceRef(
+            source_id=_next_sid(), source_type="ir_page",
+            label="Official Website", url=company_website_url))
     press_release_url = _metric_url(metrics, "press_release_url")
     if press_release_url:
-        sources.append(SourceRef(label="Press Release", url=press_release_url))
+        sources.append(SourceRef(
+            source_id=_next_sid(), source_type="press_release",
+            label="Press Release", url=press_release_url))
     presentation_url = _metric_url(metrics, "earnings_presentation_url", "presentation_url")
     if presentation_url:
-        sources.append(SourceRef(label="Earnings Call Presentation", url=presentation_url))
+        sources.append(SourceRef(
+            source_id=_next_sid(), source_type="press_release",
+            label="Earnings Call Presentation", url=presentation_url))
 
     # --- Data Sources (always relevant) ---
     sources.append(SourceRef(
+        source_id=_next_sid(), source_type="yfinance",
         label="Financial Data",
         url=f"https://finance.yahoo.com/quote/{ticker_clean}",
         note="Price, estimates, and key metrics via yfinance"
     ))
     sources.append(SourceRef(
+        source_id=_next_sid(), source_type="sec_edgar",
         label="SEC EDGAR Filings",
         url=f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker_clean}",
         note="10-K, 10-Q, and 8-K filings — primary data source"
@@ -1925,11 +1992,13 @@ def build_earnings_deep_dive_report(
     finnhub_api_key = os.environ.get("FINNHUB_API_KEY", "")
     if finnhub_api_key:
         sources.append(SourceRef(
+            source_id=_next_sid(), source_type="finnhub",
             label="Finnhub",
             url="https://finnhub.io",
             note="Real-time estimates, transcripts, and SEC filings index"
         ))
     sources.append(SourceRef(
+        source_id=_next_sid(), source_type="seeking_alpha",
         label="Seeking Alpha Transcripts",
         url=f"https://seekingalpha.com/symbol/{ticker_clean}/earnings/transcripts",
         note="Earnings call transcripts (when available)"
@@ -1956,6 +2025,9 @@ def build_earnings_deep_dive_report(
     # ── Chart data for PDF rendering ──
     chart_data = _build_chart_data(metrics)
 
+    # ── Build claim→source traceability ──
+    claim_sources = _build_claim_sources(sections, sources, metrics, ticker_clean)
+
     return EarningsDeepDiveReport(
         ticker=ticker_clean,
         company=company_name,
@@ -1965,6 +2037,7 @@ def build_earnings_deep_dive_report(
         title=f"{company_name} ({ticker_clean}) - Earnings Deep-Dive",
         sections=[s for s in sections if not _skip_section(s)],
         sources=sources,
+        claim_sources=claim_sources,
         next_earnings_date=next_earnings_date,
         earnings_audio_url=earnings_audio,
         charts=chart_data,
@@ -1977,6 +2050,73 @@ def _build_chart_data(metrics: Any) -> ChartData | None:
         raw = metrics.model_dump() if hasattr(metrics, 'model_dump') else {}
     except Exception:
         return None
+
+
+def _build_claim_sources(
+    sections: list[RenderedSection],
+    sources: list[SourceRef],
+    metrics: Any,
+    ticker: str,
+) -> list[ClaimSource]:
+    """Build claim→source traceability from section data and source bibliography.
+
+    For each section with a populated table, create ClaimSource entries linking
+    key financial figures back to their data sources. This is deterministic
+    table provenance — LLM prose claims are out of scope for V1.
+    """
+    claim_sources: list[ClaimSource] = []
+    claim_counter = 1
+    sid_map = {s.source_type: s.source_id for s in sources if s.source_id and s.source_type}
+
+    # Map section keys to their primary source types
+    SECTION_SOURCE_MAP = {
+        "EPS & Revenue": "yfinance",
+        "Operating Metrics": "sec_edgar",
+        "Cash Flow": "sec_edgar",
+        "Capital Efficiency": "sec_edgar",
+        "Forward P/E": "yfinance",
+        "Guidance": "yfinance",
+        "Backlog": "sec_edgar",
+        "Segments": "sec_edgar",
+        "Margins": "sec_edgar",
+        "Risks": "sec_edgar",  # sourced from filing narrative
+        "Verdict": "sec_edgar",  # synthesis — no single source
+    }
+
+    for section in sections:
+        sk = section.key
+        source_type = SECTION_SOURCE_MAP.get(sk, "sec_edgar")
+        sid = sid_map.get(source_type, "S?")
+
+        # Generate claim entries for each table row with concrete data
+        for row in section.table.rows:
+            if not row.cells or len(row.cells) < 2:
+                continue
+            # Skip placeholder rows
+            first_cell = row.cells[0] if len(row.cells) > 0 else ""
+            if any(marker in str(first_cell) for marker in ("N/A", "Not available", "Not disclosed", "Not calculable")):
+                continue
+
+            # Determine grounding level
+            grounding: str = "direct_metric"
+            if sk in ("Verdict", "Risks", "Highlights"):
+                grounding = "inference"
+            elif sk == "Guidance":
+                grounding = "inference"  # guidance is inherently forward-looking
+
+            claim_id = f"{sk[:3].upper()}-{claim_counter:03d}"
+            claim_counter += 1
+
+            claim_sources.append(ClaimSource(
+                claim_id=claim_id,
+                section=sk,
+                source_id=sid,
+                source_field=row.source_field or row.label.lower().replace(" ", "_"),
+                source_value=row.cells[0] if len(row.cells) > 0 else None,
+                grounding=grounding,  # type: ignore
+            ))
+
+    return claim_sources
 
     def _get(key: str):
         val = raw.get(key)

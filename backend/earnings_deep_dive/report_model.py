@@ -6,16 +6,46 @@ from pydantic import BaseModel, Field
 
 ReportLanguage = Literal["en", "jp"]
 
+# ── Source grounding levels ──
+GroundingLevel = Literal[
+    "direct_metric",   # exact field from yfinance/SEC/Finnhub
+    "calculated",      # deterministic formula from direct metrics
+    "direct_quote",    # transcript quote
+    "document_fact",   # filing/press release fact
+    "inference",       # analyst interpretation from sourced facts
+    "unsupported",     # should be blocked or flagged
+]
 
 class SourceRef(BaseModel):
+    """Report-level bibliography entry — answers 'what sources exist?'"""
+    source_id: str | None = None  # e.g. "S1", "S2"
     label: str
     url: str | None = None
     note: str | None = None
+    source_type: str | None = None  # "sec_edgar", "yfinance", "seeking_alpha", "ir_page", "press_release"
+    publisher: str | None = None
+    retrieved_at: str | None = None
+    period: str | None = None  # "FY2026 Q1", "2026-03-15"
+
+
+class ClaimSource(BaseModel):
+    """Evidence link — answers 'what evidence supports this exact claim?'"""
+    claim_id: str  # e.g. "EPS-001"
+    section: str   # "EPS & Revenue"
+    source_id: str  # references SourceRef.source_id
+    source_field: str | None = None   # "eps_actual", "revenue_estimate"
+    source_value: str | None = None   # "$2.94", "$22.4B"
+    as_of_date: str | None = None
+    grounding: GroundingLevel = "inference"
 
 
 class RenderedTableRow(BaseModel):
     label: str
     cells: list[str]
+    # Row-level source provenance (optional — populated for tables)
+    source_field: str | None = None
+    source_value_raw: str | None = None
+    grounding: GroundingLevel | None = None
 
 
 class RenderedTable(BaseModel):
@@ -59,6 +89,7 @@ class EarningsDeepDiveReport(BaseModel):
     title: str
     sections: list[RenderedSection]
     sources: list[SourceRef] = Field(default_factory=list)
+    claim_sources: list[ClaimSource] = Field(default_factory=list)
     next_earnings_date: Optional[str] = None
     earnings_audio_url: Optional[str] = None
     charts: ChartData | None = None
