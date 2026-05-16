@@ -2144,9 +2144,13 @@ def _build_claim_sources(
         for row in section.table.rows:
             if not row.cells or len(row.cells) < 2:
                 continue
-            # Skip placeholder rows
-            first_cell = row.cells[0] if len(row.cells) > 0 else ""
-            if any(marker in str(first_cell) for marker in ("N/A", "Not available", "Not disclosed", "Not calculable")):
+            # Skip placeholder rows — check ALL cells, not just the label
+            skip_row = False
+            for cell in row.cells:
+                if any(marker in str(cell) for marker in ("N/A", "Not available", "Not disclosed", "Not calculable")):
+                    skip_row = True
+                    break
+            if skip_row:
                 continue
 
             # Determine grounding level
