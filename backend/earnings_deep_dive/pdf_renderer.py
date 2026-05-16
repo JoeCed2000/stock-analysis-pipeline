@@ -33,7 +33,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from backend.earnings_deep_dive.report_model import EarningsDeepDiveReport
+from backend.earnings_deep_dive.report_model import ClaimSource, EarningsDeepDiveReport
 
 
 _DARK_RED = colors.HexColor("#8B1E1E")
@@ -1297,6 +1297,55 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             "Ratings reflect Nami-grade buy-side analysis standards.",
             styles["small"]
         ))
+
+        # ── Claim Traceability Appendix ──
+        if report.claim_sources:
+            story.append(PageBreak())
+            story.append(Paragraph("Claim Traceability Appendix", styles["section"]))
+            story.append(Spacer(1, 0.1 * inch))
+            story.append(Paragraph(
+                "The table below maps key financial claims to their data sources. "
+                "Each row represents a claim in the report traceable to a specific source field. "
+                "Grounding levels: <b>direct_metric</b> = exact value from source; "
+                "<b>calculated</b> = formula from source data; <b>inference</b> = analyst interpretation.",
+                styles["small"]
+            ))
+            story.append(Spacer(1, 0.12 * inch))
+
+            # Build appendix table
+            appendix_data = [["Claim ID", "Section", "Source", "Field", "Value", "Grounding"]]
+            for cs in report.claim_sources[:60]:  # Cap at 60 rows to avoid page overflow
+                appendix_data.append([
+                    cs.claim_id,
+                    cs.section,
+                    cs.source_id,
+                    cs.source_field or "—",
+                    cs.source_value or "—",
+                    cs.grounding,
+                ])
+
+            col_widths = [0.9*inch, 1.5*inch, 0.8*inch, 1.8*inch, 1.2*inch, 1.1*inch]
+            appendix_table = Table(appendix_data, colWidths=col_widths, repeatRows=1)
+            appendix_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2A2A2A')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, -1), fonts.regular),
+                ('FONTSIZE', (0, 0), (-1, -1), 7),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#CCCCCC')),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F5F5')]),
+                ('TOPPADDING', (0, 0), (-1, -1), 3),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ]))
+            story.append(appendix_table)
+
+            if len(report.claim_sources) > 60:
+                story.append(Spacer(1, 0.1 * inch))
+                story.append(Paragraph(
+                    f"<i>({len(report.claim_sources) - 60} additional claims omitted — see full report data)</i>",
+                    styles["small"]
+                ))
 
     try:
         doc.build(story)
