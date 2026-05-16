@@ -2051,73 +2051,6 @@ def _build_chart_data(metrics: Any) -> ChartData | None:
     except Exception:
         return None
 
-
-def _build_claim_sources(
-    sections: list[RenderedSection],
-    sources: list[SourceRef],
-    metrics: Any,
-    ticker: str,
-) -> list[ClaimSource]:
-    """Build claim→source traceability from section data and source bibliography.
-
-    For each section with a populated table, create ClaimSource entries linking
-    key financial figures back to their data sources. This is deterministic
-    table provenance — LLM prose claims are out of scope for V1.
-    """
-    claim_sources: list[ClaimSource] = []
-    claim_counter = 1
-    sid_map = {s.source_type: s.source_id for s in sources if s.source_id and s.source_type}
-
-    # Map section keys to their primary source types
-    SECTION_SOURCE_MAP = {
-        "EPS & Revenue": "yfinance",
-        "Operating Metrics": "sec_edgar",
-        "Cash Flow": "sec_edgar",
-        "Capital Efficiency": "sec_edgar",
-        "Forward P/E": "yfinance",
-        "Guidance": "yfinance",
-        "Backlog": "sec_edgar",
-        "Segments": "sec_edgar",
-        "Margins": "sec_edgar",
-        "Risks": "sec_edgar",  # sourced from filing narrative
-        "Verdict": "sec_edgar",  # synthesis — no single source
-    }
-
-    for section in sections:
-        sk = section.key
-        source_type = SECTION_SOURCE_MAP.get(sk, "sec_edgar")
-        sid = sid_map.get(source_type, "S?")
-
-        # Generate claim entries for each table row with concrete data
-        for row in section.table.rows:
-            if not row.cells or len(row.cells) < 2:
-                continue
-            # Skip placeholder rows
-            first_cell = row.cells[0] if len(row.cells) > 0 else ""
-            if any(marker in str(first_cell) for marker in ("N/A", "Not available", "Not disclosed", "Not calculable")):
-                continue
-
-            # Determine grounding level
-            grounding: str = "direct_metric"
-            if sk in ("Verdict", "Risks", "Highlights"):
-                grounding = "inference"
-            elif sk == "Guidance":
-                grounding = "inference"  # guidance is inherently forward-looking
-
-            claim_id = f"{sk[:3].upper()}-{claim_counter:03d}"
-            claim_counter += 1
-
-            claim_sources.append(ClaimSource(
-                claim_id=claim_id,
-                section=sk,
-                source_id=sid,
-                source_field=row.source_field or row.label.lower().replace(" ", "_"),
-                source_value=row.cells[0] if len(row.cells) > 0 else None,
-                grounding=grounding,  # type: ignore
-            ))
-
-    return claim_sources
-
     def _get(key: str):
         val = raw.get(key)
         if val is None or val == "Not disclosed" or val == "":
@@ -2139,12 +2072,13 @@ def _build_claim_sources(
     if rev_actual is not None and rev_estimate is not None and rev_estimate != 0:
         rev_vs_pct = (rev_actual - rev_estimate) / abs(rev_estimate)
 
-    sector = raw.get("sector") or raw.get("sector_name")
-    industry = raw.get("industry") or raw.get("industry_name")
-    if isinstance(sector, str) and not sector.strip():
-        sector = None
-    if isinstance(industry, str) and not industry.strip():
-        industry = None
+    gross_margin = _get("gross_margin")
+    operating_margin = _get("operating_margin")
+    pe_forward = _get("pe_forward")
+    fcf = _get("free_cash_flow")
+    roic = _get("roic")
+    sector = raw.get("sector")
+    industry = raw.get("industry")
 
     return ChartData(
         eps_actual=eps_actual,
@@ -2153,11 +2087,101 @@ def _build_claim_sources(
         revenue_actual=rev_actual,
         revenue_estimate=rev_estimate,
         revenue_vs_pct=rev_vs_pct,
-        gross_margin=_get("gross_margin"),
-        operating_margin=_get("operating_margin"),
-        pe_forward=_get("pe_forward"),
-        fcf=_get("free_cash_flow"),
-        roic=_get("roic"),
-        sector=str(sector) if sector else None,
-        industry=str(industry) if industry else None,
+        gross_margin=gross_margin,
+        operating_margin=operating_margin,
+        pe_forward=pe_forward,
+        fcf=fcf,
+        roic=roic,
+        sector=sector,
+        industry=industry,
     )
+
+
+def _build_claim_sources(
+    sections: list[RenderedSection],
+    sources: list[SourceRef],
+    metrics: Any,
+    ticker: str,
+) -> list[ClaimSource]:
+    """Build claim→source traceability from section data and source bibliography.
+
+    For each section with a populated table, create ClaimSource entries linking
+    key financial figures back to their data sources. This is deterministic
+    table provenance — LLM prose claims are out of scope for V1.
+    """
+    claim_sources: list[ClaimSource] = []
+    claim_counter = 1
+    # Build lookup tables from the source bibliography
+    sid_to_source = {s.source_id: s for s in sources if s.source_id}
+    type_to_sid = {}
+    for s in sources:
+        if s.source_type and s.source_id:
+            # Keep the FIRST source_id for each type (avoid overwriting)
+            type_to_sid.setdefault(s.source_type, s.source_id)
+
+    # Map section keys to their primary source types
+    SECTION_SOURCE_MAP = {
+        "EPS & Revenue": "yfinance",
+        "Operating Metrics": "sec_edgar",
+        "Cash Flow": "sec_edgar",
+        "Capital Efficiency": "sec_edgar",
+        "Forward P/E": "yfinance",
+        "Guidance": "yfinance",
+        "Backlog": "sec_edgar",
+        "Segments": "sec_edgar",
+        "Margins": "sec_edgar",
+        "Risks": "sec_edgar",  # sourced from filing narrative
+        "Verdict": "sec_edgar",  # synthesis — no single source
+    }
+
+    for section in sections:
+        sk = section.key
+        source_type = SECTION_SOURCE_MAP.get(sk, "sec_edgar")
+        sid = type_to_sid.get(source_type, "S?")
+        source_ref = sid_to_source.get(sid)
+
+        # Generate claim entries for each table row with concrete data
+        for row in section.table.rows:
+            if not row.cells or len(row.cells) < 2:
+                continue
+            # Skip placeholder rows
+            first_cell = row.cells[0] if len(row.cells) > 0 else ""
+            if any(marker in str(first_cell) for marker in ("N/A", "Not available", "Not disclosed", "Not calculable")):
+                continue
+
+            # Determine grounding level
+            grounding: str = "direct_metric"
+            confidence: str | None = "high"
+            if sk in ("Verdict", "Risks", "Highlights"):
+                grounding = "inference"
+                confidence = "low"
+            elif sk == "Guidance":
+                grounding = "inference"  # guidance is inherently forward-looking
+                confidence = "medium"
+            elif sk == "Segments":
+                # Segments may be LLM-parsed — lower confidence
+                confidence = "medium"
+
+            claim_id = f"{sk[:3].upper()}-{claim_counter:03d}"
+            claim_counter += 1
+
+            # Build claim_text from the row label + first cell value
+            row_label = row.label or ""
+            cell_val = row.cells[0] if len(row.cells) > 0 else ""
+            claim_text_val = f"{row_label}: {cell_val}" if row_label and cell_val else None
+
+            claim_sources.append(ClaimSource(
+                claim_id=claim_id,
+                section=sk,
+                claim_text=claim_text_val,
+                source_type=source_type,
+                source_name=source_ref.label if source_ref else source_type,
+                source_id=sid,
+                source_url=source_ref.url if source_ref else None,
+                source_field=row.source_field or row.label.lower().replace(" ", "_"),
+                source_value=cell_val if cell_val else None,
+                grounding=grounding,  # type: ignore
+                confidence=confidence,
+            ))
+
+    return claim_sources

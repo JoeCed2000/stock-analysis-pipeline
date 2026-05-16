@@ -29,14 +29,24 @@ class SourceRef(BaseModel):
 
 
 class ClaimSource(BaseModel):
-    """Evidence link — answers 'what evidence supports this exact claim?'"""
-    claim_id: str  # e.g. "EPS-001"
-    section: str   # "EPS & Revenue"
-    source_id: str  # references SourceRef.source_id
-    source_field: str | None = None   # "eps_actual", "revenue_estimate"
-    source_value: str | None = None   # "$2.94", "$22.4B"
-    as_of_date: str | None = None
-    grounding: GroundingLevel = "inference"
+    """Evidence link — answers 'what evidence supports this exact claim?'
+
+    Machine-readable mapping from every analytical claim back to its data source.
+    Designed for auditability: each claim can be traced to a specific field,
+    value, date, and grounding level.
+    """
+    claim_id: str                 # e.g. "EPS-001"
+    section: str                  # "EPS & Revenue", "Cash Flow", etc.
+    claim_text: str | None = None # The actual claim text from the report
+    source_type: str | None = None   # "yfinance", "sec_edgar", "seeking_alpha", "finnhub"
+    source_name: str | None = None   # Human-readable source name (matches SourceRef.label)
+    source_id: str                   # references SourceRef.source_id
+    source_url: str | None = None    # Direct URL to the source if available
+    source_field: str | None = None  # "eps_actual", "revenue_estimate"
+    source_value: str | None = None  # "$2.94", "$22.4B"
+    as_of_date: str | None = None    # ISO date when the data was retrieved
+    grounding: GroundingLevel = "inference"  # Evidence quality tier
+    confidence: str | None = None    # "high" / "medium" / "low" — qualitative confidence
 
 
 class RenderedTableRow(BaseModel):
