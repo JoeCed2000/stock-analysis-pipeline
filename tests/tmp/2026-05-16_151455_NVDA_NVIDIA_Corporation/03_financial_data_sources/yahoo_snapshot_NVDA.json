@@ -1,0 +1,29 @@
+{
+  "ticker": "NVDA",
+  "company_name": "NVIDIA Corporation",
+  "price": 225.0,
+  "prev_close": 222.0,
+  "currency": "USD",
+  "sector": "Technology",
+  "industry": "Semiconductors",
+  "market_cap": 5500000000000.0,
+  "pe_current": 45.0,
+  "pe_forward": 35.0,
+  "peg_ratio": 1.5,
+  "beta": 1.7,
+  "52w_high": 250.0,
+  "52w_low": 100.0,
+  "expected_growth": 0.3,
+  "financials": {
+    "total_revenue": 39000000000.0,
+    "revenue_growth": 0.8,
+    "gross_margin": 0.75,
+    "operating_margin": 0.62,
+    "net_income": 22000000000.0,
+    "eps_diluted": 0.89,
+    "free_cash_flow": 16000000000.0,
+    "total_debt": 10000000000.0,
+    "cash_and_equivalents": 25000000000.0,
+    "guidance_next_quarter_revenue": 42000000000.0
+  }
+}

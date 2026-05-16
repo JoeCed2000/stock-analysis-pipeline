@@ -1,0 +1,17 @@
+[
+  {
+    "id": "SRC-001",
+    "category": "financial_data_sources",
+    "title": "Yahoo Finance \u2014 NVDA snapshot (source: yfinance)",
+    "url": "https://finance.yahoo.com/quote/NVDA/",
+    "retrieved_at": "2026-05-16T15:17:25.682170+02:00",
+    "source_type": "financial_aggregator",
+    "publisher": "Yahoo Finance",
+    "used_for": [
+      "price",
+      "financials",
+      "valuation",
+      "identification"
+    ]
+  }
+]
