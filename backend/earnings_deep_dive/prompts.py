@@ -869,8 +869,17 @@ Section output contract:
 - Use direct transcript or supplied-metric evidence. Never invent financial data.
 - If the transcript excerpt says no transcript is available, use only Metrics and mark qualitative call evidence as Data not available in transcript.
 - Every table cell must contain a sourced value or —. Never leave cells empty and never invent missing values.
-- CRITICAL Source column format: Every source cell MUST identify the real data origin with specificity. Use exact provenance — SEC 10-Q page and line number, yfinance key name, transcript quote with timestamp, or calculation formula with inputs. Generic labels like "Company filing" or "Calculated" are INSUFFICIENT.
+- CRITICAL Source column format: Every source cell MUST identify the real data origin with specificity. Use exact provenance — SEC 10-Q page and line number, yfinance key name, transcript quote with timestamp, or calculation formula with inputs. Generic labels like \"Company filing\" or \"Calculated\" are INSUFFICIENT.
 - CRITICAL: Never write \"Section unavailable\" or similar placeholder text. If specific data is missing, use — in table cells and provide qualitative analysis based on the company's known business model, sector position, and total revenue/growth trends from Metrics.
+🔴 CLAIM SOURCE GROUNDING — Every analytical claim in your prose MUST fall into one of these categories:
+  1. SOURCED — backed by a specific number from Metrics, a transcript quote, or an SEC filing fact. When sourced, cite the evidence inline: (source: yfinance eps_actual) or (source: 10-Q p.42).
+  2. INFERRED — analyst interpretation based on sourced data. Label explicitly: \"Based on the metrics above, we infer that...\" or \"Model interpretation: ...\"
+  3. UNSUPPORTED — do NOT emit. If you lack data to support an analytical claim, omit the claim entirely rather than inventing reasoning. A missing claim is better than a fabricated one.
+🔴 FORBIDDEN CLAIM PATTERNS — These are BLOCKED at PDF generation:
+  - Sector-specific language applied to wrong sectors (e.g. \"hyperscaler capex\" for non-tech companies)
+  - Consensus estimates presented as company guidance
+  - LLM output presented as source data (e.g. \"source: LLM analysis\")
+  - Price targets, investment recommendations, or forward-looking predictions not explicitly requested
 - End with exactly one final blockquote line: {summary_label}
 
 PDF-aligned section skeleton:
