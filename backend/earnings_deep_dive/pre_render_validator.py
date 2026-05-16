@@ -11,6 +11,9 @@ NON-BLOCKING RULES (warning severity → ⚠️ flag, build continues):
 5. Forbidden markers ("Not available", "DATA NOT AVAILABLE")
 6. Number consistency vs source metrics (±5%)
 7. Score-commentary alignment in Verdict
+8. Backlog hard-coded sector language (hyperscaler for non-tech)
+9. Segments LLM fallback (inference vs direct_metric)
+10. Guidance source-type conflation (consensus ≠ guidance)
 
 Always returns a ValidationResult — never raises on bad input.
 """
@@ -262,6 +265,9 @@ def validate_pre_render(
     5. Forbidden markers
     6. Number consistency vs source metrics
     7. Score-commentary alignment
+    8. Backlog hard-coded sector language
+    9. Segments LLM fallback
+    10. Guidance source-type conflation
 
     Always returns a ValidationResult — never raises on bad input.
     """
@@ -542,6 +548,69 @@ def validate_pre_render(
                             f"(e.g. 'sell immediately', 'crash', 'avoid')"
                         ),
                     ))
+
+    # ── RULE 8 (WARNING): Backlog hard-coded sector language ──────────
+    # The mapper injects "hyperscaler capex commitments" language for all
+    # companies, but this only applies to tech/semiconductor firms.
+    backlog_text = _sec.get("Backlog", "")
+    if isinstance(backlog_text, str) and backlog_text:
+        hyperscaler_keywords = ["hyperscaler", "capex commitments", "supply chain constraints"]
+        if any(kw.lower() in backlog_text.lower() for kw in hyperscaler_keywords):
+            # Check if company is actually in tech/semiconductor sector
+            sector = getattr(metrics, 'sector', '') or ''
+            industry = getattr(metrics, 'industry', '') or ''
+            is_tech = any(t in (sector + ' ' + industry).lower()
+                         for t in ('technology', 'semiconductor', 'software',
+                                   'hardware', 'cloud', 'data center'))
+            if not is_tech:
+                warnings.append(ValidationWarning(
+                    check="backlog_sector_language",
+                    section="Backlog",
+                    detail=(
+                        "Backlog section uses 'hyperscaler/supply chain' language "
+                        f"but company sector is '{sector or 'unknown'}'. "
+                        "This may be incorrect sector color for non-tech firms."
+                    ),
+                ))
+
+    # ── RULE 9 (WARNING): Segments LLM fallback trace ──────────────────
+    segments_text = _sec.get("Segments", "")
+    if isinstance(segments_text, str) and segments_text:
+        llm_fallback_markers = [
+            "LLM-generated", "LLM analysis", "model interpretation",
+            "Transcript / LLM", "approximate segment",
+        ]
+        if any(m.lower() in segments_text.lower() for m in llm_fallback_markers):
+            warnings.append(ValidationWarning(
+                check="segments_llm_fallback",
+                section="Segments",
+                detail=(
+                    "Segments section relies on LLM-generated data (not "
+                    "deterministic financial metrics). Segment claims should be "
+                    "flagged as 'inference' not 'direct_metric'."
+                ),
+            ))
+
+    # ── RULE 10 (WARNING): Guidance source-type conflation ─────────────
+    guidance_text = _sec.get("Guidance", "")
+    if isinstance(guidance_text, str) and guidance_text:
+        # Check if consensus/estimate language is used without distinguishing
+        # from company guidance
+        consensus_markers = ["consensus estimate", "analyst consensus", "analyst estimate"]
+        guidance_markers = ["company guidance", "management guidance", "company guide",
+                           "management outlook", "company outlook"]
+        has_consensus = any(m.lower() in guidance_text.lower() for m in consensus_markers)
+        has_guidance = any(m.lower() in guidance_text.lower() for m in guidance_markers)
+        if has_consensus and not has_guidance:
+            warnings.append(ValidationWarning(
+                check="guidance_source_conflation",
+                section="Guidance",
+                detail=(
+                    "Guidance section references consensus/analyst estimates but not "
+                    "company/management guidance. Consensus ≠ guidance: estimates are "
+                    "external predictions, guidance is company-issued forward outlook."
+                ),
+            ))
 
     # ── Determine pass/fail ────────────────────────────────────────────
 
