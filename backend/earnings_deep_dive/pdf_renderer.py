@@ -1014,10 +1014,14 @@ def _generate_metrics_chart(chart_data, ticker: str) -> RLImage | None:
     Uses matplotlib to render a compact, dark-themed chart (matching the PDF header style)
     showing two comparison panels: EPS and Revenue.
     """
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    import matplotlib.ticker as mticker
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import matplotlib.ticker as mticker
+    except ImportError:
+        # matplotlib not installed — skip chart generation gracefully
+        return None
 
     try:
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.0, 1.8), facecolor="#FAFAFA")
