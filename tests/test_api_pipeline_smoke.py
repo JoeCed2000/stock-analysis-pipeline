@@ -61,12 +61,14 @@ class TestAPIPipelineSmoke:
             f"Not a ZIP: {r.headers.get('content-type')}"
 
     def test_health_endpoint(self):
-        """GET /api/health returns commit info."""
+        """GET /api/health returns commit info, timestamp, and version."""
         r = requests.get(f"{BASE}/api/health")
         assert r.status_code == 200
         data = r.json()
         assert data.get("status") == "ok"
         assert "commit" in data, f"No commit in health: {data}"
+        assert "timestamp" in data, f"No timestamp in health: {data}"
+        assert "version" in data, f"No version in health: {data}"
 
     def test_no_root_path_double_prefix(self):
         """Regression: /stock-analysis/stock-analysis/ should not exist."""
