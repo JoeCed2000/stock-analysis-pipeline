@@ -153,3 +153,12 @@ class AnalysisJobStatus(BaseModel):
     status: str  # processing / completed / partial / failed
     results: List[AnalysisResult] = Field(default_factory=list)
     errors: List[str] = Field(default_factory=list)
+
+
+class HealthResponse(BaseModel):
+    """Response model for /api/health endpoint."""
+    status: str
+    service: str
+    timestamp: str  # ISO 8601
+    version: str
+    commit: str = "unknown"

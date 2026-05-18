@@ -61,7 +61,7 @@ def _should_convert_dossier_text_to_pdf(fpath: Path, *, refresh_pdf: bool) -> bo
         return False
     return refresh_pdf or not pdf_path.exists()
 
-from backend.models import TickerRequest, AnalysisResult
+from backend.models import TickerRequest, AnalysisResult, HealthResponse
 from backend.orchestrator import run_analysis_parallel
 from backend.earnings_deep_dive.schemas import DeepDiveRequest, DeepDiveResponse
 from backend.sources_collector import list_available_quarters, get_yahoo_data, get_yahoo_data_for_quarter
@@ -612,18 +612,30 @@ async def ticker_download(ticker: str):
     )
 
 
-@app.get("/api/health")
+@app.get("/api/health", response_model=HealthResponse)
 async def health():
+    import subprocess
     try:
-        import subprocess
         commit = subprocess.check_output(
             ["git", "log", "-1", "--format=%h"],
             cwd=Path(__file__).parent.parent,
             text=True
         ).strip()
-    except Exception:
+        version = subprocess.check_output(
+            ["git", "describe", "--tags", "--always"],
+            cwd=Path(__file__).parent.parent,
+            text=True
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
         commit = "unknown"
-    return {"status": "ok", "service": "stock-analysis-pipeline", "commit": commit}
+        version = "unknown"
+    return {
+        "status": "ok",
+        "service": "stock-analysis-pipeline",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "version": version,
+        "commit": commit,
+    }
 
 
 # ═══════════ DEBUG ENDPOINTS — disabled in production ═══════════

@@ -22,6 +22,19 @@ class TestHealthEndpoint:
         assert data["service"] == "stock-analysis-pipeline"
         assert "commit" in data
 
+    def test_health_returns_timestamp_and_version(self):
+        """RED: health endpoint must include timestamp (ISO 8601) and version fields."""
+        response = client.get("/api/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert "timestamp" in data, f"Missing timestamp in: {data}"
+        assert "version" in data, f"Missing version in: {data}"
+        # timestamp must be parseable ISO 8601
+        from datetime import datetime
+        datetime.fromisoformat(data["timestamp"])
+        # version must be a non-empty string
+        assert isinstance(data["version"], str) and data["version"], \
+            f"version must be non-empty string, got: {data['version']!r}"
 
 class TestAnalysesList:
     """GET /api/analyses — list completed dossiers."""
