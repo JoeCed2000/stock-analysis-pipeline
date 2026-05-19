@@ -1831,18 +1831,16 @@ def _generate_report(result: AnalysisResult, yf_data: Dict, sources: List[Source
     # 7. Scoring
     lines.append(f"## 7. Scoring")
     lines.append(f"")
-    for criterion, score in [
-        ("Growth", sc.growth),
-        ("Profitability", sc.profitability),
-        ("Financial Strength", sc.financial_strength),
-        ("Moat", sc.moat),
-        ("Management", sc.management),
-        ("Valuation Risk", sc.valuation_risk),
-        ("Geopolitical Risk", sc.geopolitical_risk),
-        ("Business Momentum", sc.business_momentum),
+    for criterion, score, max_val in [
+        ("Growth", sc.growth, 10),
+        ("Financial Health", sc.financial_health, 10),
+        ("Valuation", sc.valuation, 8),
+        ("Management", sc.management, 5),
+        ("Moat", sc.moat, 4),
+        ("Sentiment", sc.sentiment, 3),
     ]:
-        bar = "█" * score + "░" * (5 - score)
-        lines.append(f"- **{criterion}:** {bar} {score}/5")
+        bar = "█" * score + "░" * (max_val - score)
+        lines.append(f"- **{criterion}:** {bar} {score}/{max_val}")
     lines.append(f"")
     lines.append(f"**Total: {sc.total}/40**")
     lines.append(f"")
@@ -1868,17 +1866,16 @@ def _generate_report(result: AnalysisResult, yf_data: Dict, sources: List[Source
 
 def _decision_rationale(sc: Scoring) -> str:
     """Generate a one-line rationale for the decision."""
-    strong = [name for name, score in [
-        ("growth", sc.growth),
-        ("profitability", sc.profitability),
-        ("financial strength", sc.financial_strength),
-        ("moat", sc.moat),
-    ] if score >= 4]
-    weak = [name for name, score in [
-        ("valuation", 5 - sc.valuation_risk),
-        ("geopolitical", 5 - sc.geopolitical_risk),
-        ("momentum", sc.business_momentum),
-    ] if score <= 2]
+    strong = [name for name, score, threshold in [
+        ("growth", sc.growth, 8),
+        ("financial health", sc.financial_health, 8),
+        ("moat", sc.moat, 3),
+    ] if score >= threshold]
+    weak = [name for name, score, threshold in [
+        ("valuation", sc.valuation, 3),
+        ("management", sc.management, 2),
+        ("sentiment", sc.sentiment, 1),
+    ] if score <= threshold]
 
     parts = []
     if strong:

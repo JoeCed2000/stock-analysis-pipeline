@@ -5,9 +5,8 @@ import FeedbackPanel from './FeedbackPanel.jsx';
 
 const SCORE_COLORS = {
   BUY: '#238636',
-  'HOLD / BUY ON PULLBACK': '#d29922',
-  'HOLD fragile': '#d29922',
-  'SELL or AVOID': '#da3633',
+  HOLD: '#d29922',
+  SELL: '#da3633',
 };
 
 const CONVICTION_COLORS = {
@@ -19,8 +18,8 @@ const CONVICTION_COLORS = {
 function getConvictionLevel(conviction, scoring) {
   // Use scoring for language-agnostic classification
   // Falls back to string matching for backward compat
-  if (scoring?.total >= 32) return 'High';
-  if (scoring?.total >= 26) return 'Moderate';
+  if (scoring?.total >= 28) return 'High';
+  if (scoring?.total >= 18) return 'Moderate';
   if (scoring?.total < 18) return 'Low';
   // Fallback: string matching (EN only)
   if (!conviction) return 'Moderate';
@@ -33,15 +32,15 @@ function getConvictionLevel(conviction, scoring) {
 function getInsight(scoring, t) {
   if (!scoring) return null;
   const s = scoring;
+  // 6 canonical categories — all higher-is-better
   const key = (() => {
-    if (s.business_momentum >= 4) return 'insight_momentum';
-    if (s.valuation_risk <= 2 && s.business_momentum >= 3) return 'insight_undervalued';
-    if (s.financial_strength >= 4 && s.profitability >= 4) return 'insight_fundamentals';
-    if (s.moat >= 4) return 'insight_moat';
+    if (s.growth >= 8) return 'insight_growth';
+    if (s.valuation >= 6 && s.growth >= 6) return 'insight_undervalued';
+    if (s.financial_health >= 8) return 'insight_fundamentals';
+    if (s.moat >= 3) return 'insight_moat';
     if (s.management >= 4) return 'insight_management';
-    if (s.growth >= 4 && s.business_momentum >= 3) return 'insight_growth';
-    if (s.valuation_risk <= 2) return 'insight_valuation_concern';
-    if (s.geopolitical_risk <= 2) return 'insight_geopolitical';
+    if (s.valuation <= 3) return 'insight_valuation_concern';
+    if (s.sentiment <= 1) return 'insight_geopolitical';
     return 'insight_mixed';
   })();
   return t ? t(key) : key;
@@ -150,7 +149,7 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
   }, []);
 
   const scorePercent = (total / 40) * 100;
-  const scoreBarColor = total >= 32 ? '#238636' : total >= 26 ? '#d29922' : '#da3633';
+  const scoreBarColor = total >= 28 ? '#238636' : total >= 18 ? '#d29922' : '#da3633';
   const downloadReady = canDownloadDossier(dossierStatus, countdown);
   const verificationBlocked = dossierStatus?.ready === true
     && dossierStatus?.verified === false

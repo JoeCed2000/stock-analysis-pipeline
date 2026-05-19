@@ -1,30 +1,27 @@
 import { useState } from 'react';
 
 const CRITERIA = [
-  { key: 'growth', label: 'Growth' },
-  { key: 'profitability', label: 'Profit' },
-  { key: 'financial_strength', label: 'Finance' },
-  { key: 'moat', label: 'Moat' },
-  { key: 'management', label: 'Mgmt' },
-  { key: 'valuation_risk', label: 'Value' },
-  { key: 'geopolitical_risk', label: 'Geo' },
-  { key: 'business_momentum', label: 'Mom' },
+  { key: 'financial_health', label: 'Financial', max: 10 },
+  { key: 'growth', label: 'Growth', max: 10 },
+  { key: 'valuation', label: 'Value', max: 8 },
+  { key: 'management', label: 'Mgmt', max: 5 },
+  { key: 'moat', label: 'Moat', max: 4 },
+  { key: 'sentiment', label: 'Sentiment', max: 3 },
 ];
 
 const DESCRIPTIONS = {
-  growth: 'Revenue & earnings growth trajectory',
-  profitability: 'Margins, ROE, cash flow quality',
-  financial_strength: 'Debt levels, liquidity, balance sheet',
-  moat: 'Competitive advantage durability',
+  financial_health: 'Profitability, margins & balance sheet strength',
+  growth: 'Revenue growth, business momentum & catalysts',
+  valuation: 'Price vs intrinsic value assessment',
   management: 'Leadership quality & capital allocation',
-  valuation_risk: 'Price vs intrinsic value assessment',
-  geopolitical_risk: 'Regulatory, trade, political exposure',
-  business_momentum: 'Recent catalysts, product pipeline',
+  moat: 'Competitive advantage durability',
+  sentiment: 'Geopolitical, regulatory & macro exposure',
 };
 
-function barColor(score) {
-  if (score >= 4) return '#238636';
-  if (score >= 3) return '#d29922';
+function barColor(score, max) {
+  const pct = score / max;
+  if (pct >= 0.8) return '#238636';
+  if (pct >= 0.5) return '#d29922';
   return '#da3633';
 }
 
@@ -33,11 +30,10 @@ export default function ScoringChart({ scoring, height = 120 }) {
   if (!scoring) return null;
 
   const total = scoring.total || 0;
-  const barW = 18;
-  const gap = 8;
+  const barW = 22;
+  const gap = 10;
   const chartW = CRITERIA.length * (barW + gap);
-  const maxVal = 5;
-  const labelH = 26;
+  const labelH = 28;
   const chartH = height;
 
   return (
@@ -53,22 +49,23 @@ export default function ScoringChart({ scoring, height = 120 }) {
         width="100%"
         style={{ display: 'block' }}
       >
-        {/* Grid lines */}
-        {[1, 2, 3, 4, 5].map(v => (
+        {/* Grid lines: percentage-based (25%, 50%, 75%) */}
+        {[0.25, 0.5, 0.75].map(pct => (
           <line
-            key={v}
-            x1={0} y1={chartH - (v / maxVal) * chartH}
-            x2={chartW} y2={chartH - (v / maxVal) * chartH}
+            key={pct}
+            x1={0} y1={chartH - pct * chartH}
+            x2={chartW} y2={chartH - pct * chartH}
             stroke="#21262d" strokeWidth={0.5}
           />
         ))}
         {/* Bars */}
         {CRITERIA.map((c, i) => {
           const val = scoring[c.key] || 0;
-          const barH = Math.max((val / maxVal) * chartH, val > 0 ? 4 : 0);
+          const pct = val / c.max;
+          const barH = Math.max(pct * chartH, val > 0 ? 4 : 0);
           const x = i * (barW + gap);
           const y = chartH - barH;
-          const color = barColor(val);
+          const color = barColor(val, c.max);
           return (
             <g key={c.key}>
               {/* Bar */}
@@ -79,7 +76,7 @@ export default function ScoringChart({ scoring, height = 120 }) {
                 onMouseEnter={(e) => {
                   const rect = e.target.getBoundingClientRect();
                   setTooltip({
-                    key: c.key, label: c.label, val,
+                    key: c.key, label: c.label, val, max: c.max,
                     desc: DESCRIPTIONS[c.key],
                     x: rect.left + rect.width / 2,
                     y: rect.top,
@@ -101,7 +98,7 @@ export default function ScoringChart({ scoring, height = 120 }) {
               {/* Label below */}
               <text
                 x={x + barW / 2} y={chartH + 14}
-                textAnchor="middle" fill="#8b949e" fontSize={6}
+                textAnchor="middle" fill="#8b949e" fontSize={7}
               >
                 {c.label}
               </text>
@@ -124,7 +121,7 @@ export default function ScoringChart({ scoring, height = 120 }) {
           pointerEvents: 'none',
           boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
         }}>
-          <div style={{ fontWeight: 700, marginBottom: 2 }}>{tooltip.label} — {tooltip.val}/5</div>
+          <div style={{ fontWeight: 700, marginBottom: 2 }}>{tooltip.label} — {tooltip.val}/{tooltip.max}</div>
           <div style={{ color: '#8b949e', fontSize: 10 }}>{tooltip.desc}</div>
         </div>
       )}

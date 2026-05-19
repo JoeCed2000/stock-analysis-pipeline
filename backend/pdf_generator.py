@@ -146,15 +146,14 @@ def generate_pdf(result, report_md: str, output_path: str) -> str:
     story.append(Paragraph("Scoring (/40)", h2_style))
     story.append(HRFlowable(width="100%", thickness=0.5, color=MUTED))
     sc = result.scoring
+    # 6 canonical categories with variable max values (Growth 10, Financial Health 10, Valuation 8, Management 5, Moat 4, Sentiment 3)
     sc_data = [
-        ["Growth", _bar(sc.growth), str(sc.growth)],
-        ["Profitability", _bar(sc.profitability), str(sc.profitability)],
-        ["Financial Strength", _bar(sc.financial_strength), str(sc.financial_strength)],
-        ["Moat", _bar(sc.moat), str(sc.moat)],
-        ["Management", _bar(sc.management), str(sc.management)],
-        ["Valuation Risk", _bar(sc.valuation_risk), str(sc.valuation_risk)],
-        ["Geopolitical", _bar(sc.geopolitical_risk), str(sc.geopolitical_risk)],
-        ["Momentum", _bar(sc.business_momentum), str(sc.business_momentum)],
+        ["Growth", _bar(sc.growth, 10), f"{sc.growth}/10"],
+        ["Financial Health", _bar(sc.financial_health, 10), f"{sc.financial_health}/10"],
+        ["Valuation", _bar(sc.valuation, 8), f"{sc.valuation}/8"],
+        ["Management", _bar(sc.management, 5), f"{sc.management}/5"],
+        ["Moat", _bar(sc.moat, 4), f"{sc.moat}/4"],
+        ["Sentiment", _bar(sc.sentiment, 3), f"{sc.sentiment}/3"],
         ["TOTAL", "", f"{sc.total}/40"],
     ]
     t2 = Table(sc_data, colWidths=[100, 100, 60])
@@ -217,8 +216,10 @@ def _pct(val):
     return f"{val*100:.1f}%"
 
 
-def _bar(score):
-    return "█" * score + "░" * (5 - score)
+def _bar(score, max_val=5):
+    """Render a proportional bar of width max_val chars."""
+    clamped = max(0, min(score, max_val))
+    return "█" * clamped + "░" * (max_val - clamped)
 
 
 def md_to_pdf(md_path: str, pdf_path: str, title: str = "") -> str:
