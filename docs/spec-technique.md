@@ -166,9 +166,10 @@ Vérifié via `grep -n '@app\.' backend/main.py` — 29 routes uniques.
 ### 4.2 Auth
 
 ```python
-# X-API-Key header requis pour write endpoints (POST /api/dossier/{ticker}/upload)
+# X-API-Key header requis pour tous les endpoints write + admin (15 routes protégées)
 # Configuré via .env : CED_CONTROL_KEY
-# Lecture endpoints (GET) = public
+# Lecture endpoints (GET) = public (sauf admin/debug)
+# Bypass: localhost + same-origin (frontend sur sa.cedlabusa.net)
 ```
 
 ### 4.3 Static Files
@@ -179,9 +180,14 @@ Vérifié via `grep -n '@app\.' backend/main.py` — 29 routes uniques.
 # Fallback SPA : index.html pour routes React inconnues
 ```
 
-### 4.4 Rate limiting (implicite)
+### 4.4 Rate limiting
 
-Pas de rate limiter middleware — les limites sont gérées par les API sources externes (BR-006 : backoff exponentiel). Le batch est limité à 10 tickers dans le code.
+Rate limiter middleware (in-memory token bucket, 60s window) :
+- **Heavy** (10 req/min) : `/api/analyze`, `/api/analyze/async`, `/api/earnings/deep-dive`, `/api/batch/analyze`
+- **Moderate** (30 req/min) : `/api/feedback`, `/api/cache/financials/*`, `/api/dossier/*`, `/api/batch/upload`
+- **Default** (120 req/min) : tous les autres endpoints
+- **Skipped** : `/api/health` uniquement
+- Les limites externes (BR-006 : backoff exponentiel) restent en complément. Le batch est limité à 10 tickers dans le code.
 
 ## 5. Modèle de scoring
 
