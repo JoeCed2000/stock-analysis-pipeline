@@ -23,7 +23,7 @@
 | BR-008 | Batch max 10 | BR-008 | §5 | — | ⚠️ |
 | BR-009 | Cache invalidation | BR-009 | §5 | — | ⚠️ |
 | PIP-001 → 009 | Pipeline 9 étapes | UC-001 | §3 | test_pipeline.py | ✅ |
-| EF-005 | Sélection langue EN/JP/bilingual | UC-001 | §1.2 | generator.py (lang param) | ✅ |
+| EF-005 | Sélection langue EN/JP/bilingual | UC-001 | §1.2 | earnings_deep_dive/prompts.py (lang param, bilingual support) | ✅ |
 | EF-006 | Batch CSV | UC-004 | §1.2 | — | ⚠️ |
 
 ## Exigences non fonctionnelles → Vérification

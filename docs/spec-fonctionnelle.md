@@ -8,7 +8,7 @@
 | Prédécesseur | v1.0 (2026-05-18) |
 | Auteurs | Hermes + Codex CLI (review) |
 | Validateur métier | Ced |
-| Statut | Brouillon en review externe |
+| Statut | Review externe complétée (Codex 2026-05-19 + Hermes self-audit) — corrections appliquées |
 | Date | 2026-05-18 |
 
 ## 1. Périmètre et définitions
