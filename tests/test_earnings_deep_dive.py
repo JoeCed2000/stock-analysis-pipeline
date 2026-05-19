@@ -65,11 +65,19 @@ def test_pdf_aligned_prompts_require_nami_template_shape():
         assert "①" in prompt and "②" in prompt and "③" in prompt
         assert "Namiさん" in prompt
         assert "> 一言まとめ:" in prompt
-        assert TABLE_REQUIREMENTS[str.__str__(section)] in prompt
+        # F3: Dynamic column labels — for sections with "Actual"/"Prior Year" or "Estimate",
+        # the table_header now uses quarter-specific labels ("Q1 2026", "Q1 2025", "Q1 2026 Est")
+        raw_header = TABLE_REQUIREMENTS[str.__str__(section)]
+        expected = raw_header.replace("Actual", "Q1 2026").replace("Prior Year", "Q1 2025")
+        expected = expected.replace("| Estimate |", "| Q1 2026 Est |")
+        expected = expected.replace("vs Estimate", "vs Q1 2026 Est")
+        assert expected in prompt or raw_header in prompt, \
+            f"Section {section}: neither dynamic nor raw header found in prompt"
         assert PROMPT_BUILDERS[str.__str__(section)]
 
     eps_prompt = build_prompt("EPS & Revenue", "jp", "GEV", "GE Vernova Inc.", "2026 Q1", {}, "")
-    assert "| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |" in eps_prompt
+    assert "| Metric | Q1 2026 Est | Q1 2026 | vs Q1 2026 Est | YoY Change | Source |" in eps_prompt, \
+        f"F3: EPS&Revenue header should use dynamic quarter labels — found header mismatch"
     assert "No transcript available. Use ONLY the financial_metrics data below." in eps_prompt
 
     guidance_prompt = build_prompt("Guidance", "jp", "SNDK", "SanDisk", "2026 Q4", {}, "")
