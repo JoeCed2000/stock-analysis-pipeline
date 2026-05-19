@@ -1,16 +1,26 @@
-"""Scoring engine — 8 criteria × 5 points = /40."""
+"""Scoring engine — 8 internal criteria mapped to 6 canonical categories, total /40."""
 from typing import Dict, Any, Optional
 from backend.models import Scoring, FinancialData, ValuationData
 
 
+def _scale_to_8(score_0_5: int) -> int:
+    """Map 0–5 sub-score to 0–8 valuation score."""
+    return round(score_0_5 * 8 / 5)
+
+
+def _scale_to_3(score_0_5: int) -> int:
+    """Map 0–5 sub-score to 0–3 sentiment score."""
+    return round(score_0_5 * 3 / 5)
+
+
 def score_ticker(data: Dict[str, Any], tone_data: Optional[Dict] = None) -> Scoring:
-    """Compute the 8-criterion scoring from collected data.
-    If tone_data is provided from 10-K analysis, uses real management tone."""
+    """Compute scoring: 8 raw sub-scores → 6 canonical categories.
+    All 8 internal _score_*() functions unchanged. Mapping is pure post-processing."""
     fin = data.get("financials", {})
     val = data.get("valuation", {})
 
     # 1. Growth (0-5)
-    growth = _score_growth(fin.get("revenue_yoy_growth"), fin.get("revenue_annual_growth"))
+    growth_sub = _score_growth(fin.get("revenue_yoy_growth"), fin.get("revenue_annual_growth"))
 
     # 2. Profitability (0-5)
     profitability = _score_profitability(fin.get("gross_margin"), fin.get("operating_margin"))
@@ -19,10 +29,10 @@ def score_ticker(data: Dict[str, Any], tone_data: Optional[Dict] = None) -> Scor
     financial_strength = _score_financial_strength(fin.get("net_debt"), fin.get("free_cash_flow"), fin.get("net_income"))
 
     # 4. Moat (0-5)
-    moat = _score_moat(data.get("sector"), data.get("market_cap"), fin.get("gross_margin"))
+    moat_sub = _score_moat(data.get("sector"), data.get("market_cap"), fin.get("gross_margin"))
 
     # 5. Management (0-5) — use tone data if available, else guidance
-    management = _score_management_realtime(tone_data) if tone_data else _score_management(fin.get("guidance_official"), fin.get("revenue_yoy_growth"), fin.get("revenue_annual_growth"))
+    management_sub = _score_management_realtime(tone_data) if tone_data else _score_management(fin.get("guidance_official"), fin.get("revenue_yoy_growth"), fin.get("revenue_annual_growth"))
 
     # 6. Valuation risk (0-5)
     valuation_risk = _score_valuation(val.get("pe_current"), val.get("pe_forward"), val.get("peg_ratio"))
@@ -33,16 +43,42 @@ def score_ticker(data: Dict[str, Any], tone_data: Optional[Dict] = None) -> Scor
     # 8. Business momentum (0-5)
     business_momentum = _score_momentum(fin.get("revenue_yoy_growth"), data.get("price"), data.get("52w_high"))
 
-    return Scoring(
-        growth=growth,
-        profitability=profitability,
-        financial_strength=financial_strength,
-        moat=moat,
-        management=management,
-        valuation_risk=valuation_risk,
-        geopolitical_risk=geopolitical_risk,
-        business_momentum=business_momentum,
+    # ── Map 8 raw sub-scores → 6 canonical categories ──
+    # Financial Health = profitability + financial_strength (0–10)
+    financial_health = profitability + financial_strength
+    # Growth = growth + business_momentum (0–10)
+    growth_cat = growth_sub + business_momentum
+    # Valuation = valuation_risk scaled to 0–8
+    valuation_cat = _scale_to_8(valuation_risk)
+    # Management = direct (0–5)
+    management_cat = management_sub
+    # Moat = capped at 4
+    moat_cat = min(moat_sub, 4)
+    # Sentiment = geopolitical_risk scaled to 0–3
+    sentiment_cat = _scale_to_3(geopolitical_risk)
+
+    scoring = Scoring(
+        financial_health=financial_health,
+        growth=growth_cat,
+        valuation=valuation_cat,
+        management=management_cat,
+        moat=moat_cat,
+        sentiment=sentiment_cat,
     )
+
+    # Preserve raw sub-scores for audit trail
+    scoring._raw_subscores = {
+        "growth": growth_sub,
+        "profitability": profitability,
+        "financial_strength": financial_strength,
+        "moat": moat_sub,
+        "management": management_sub,
+        "valuation_risk": valuation_risk,
+        "geopolitical_risk": geopolitical_risk,
+        "business_momentum": business_momentum,
+    }
+
+    return scoring
 
 
 def _score_growth(yoy: Any, annual: Any) -> int:

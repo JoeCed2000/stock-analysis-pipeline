@@ -1,6 +1,6 @@
 """Tests for the scoring engine."""
 import pytest
-from backend.scorer import score_ticker, Scoring
+from backend.scorer import score_ticker, Scoring, _scale_to_8, _scale_to_3
 
 
 class TestScoreTicker:
@@ -31,10 +31,12 @@ class TestScoreTicker:
             "52w_high": 150,
         }
         s = score_ticker(data)
-        assert s.total >= 28  # strong but expensive
-        assert s.growth == 5
-        assert s.profitability == 5
-        assert "BUY" in s.decision() or "HOLD" in s.decision()
+        assert s.total >= 23  # strong but expensive
+        # growth (growth + momentum) should be high
+        assert s.growth >= 6
+        # Financial health (profitability + financial_strength) should be high
+        assert s.financial_health >= 6
+        assert s.decision() in ("BUY", "HOLD")
 
     def test_stable_big_tech(self):
         """MSFT-like: steady growth, excellent margins, reasonable PE."""
@@ -61,11 +63,13 @@ class TestScoreTicker:
             "52w_high": 440,
         }
         s = score_ticker(data)
-        assert s.total >= 25
-        assert s.profitability == 5
+        assert s.total >= 20
+        # Financial health should be high (good margins + decent balance sheet)
+        assert s.financial_health >= 6
 
     def test_struggling_value(self):
-        """Legacy retailer: low growth, low margins, cheap."""
+        """Legacy retailer: low growth, low margins, cheap.
+        Cheap valuation (P/E=10→8) compensates for poor fundamentals, giving a low-HOLD."""
         data = {
             "financials": {
                 "revenue_yoy_growth": -0.02,
@@ -89,8 +93,9 @@ class TestScoreTicker:
             "52w_high": 80,
         }
         s = score_ticker(data)
-        assert s.total < 25
-        assert "SELL" in s.decision() or "HOLD fragile" in s.decision()
+        # Low growth/margins but cheap valuation pushes it to ~24
+        assert 20 <= s.total <= 28
+        assert s.decision() == "HOLD"
 
     def test_all_none_data_returns_neutral(self):
         """Completely missing data should not crash and return a neutral score."""
@@ -104,8 +109,95 @@ class TestScoreTicker:
             "52w_high": None,
         }
         s = score_ticker(data)
-        assert 10 <= s.total <= 25  # neutral-ish
+        assert 8 <= s.total <= 22  # neutral-ish
         assert isinstance(s, Scoring)
+
+    def test_raw_subscores_preserved(self):
+        """score_ticker() must preserve all 8 raw sub-scores in _raw_subscores."""
+        data = {
+            "financials": {
+                "revenue_yoy_growth": 0.30,
+                "revenue_annual_growth": 0.25,
+                "gross_margin": 0.60,
+                "operating_margin": 0.40,
+                "net_income": 1e9,
+                "free_cash_flow": 5e8,
+                "net_debt": -1e8,
+                "guidance_official": 0.15,
+            },
+            "valuation": {
+                "pe_current": 25,
+                "pe_forward": 22,
+                "peg_ratio": 1.5,
+            },
+            "sector": "Technology",
+            "industry": "Software",
+            "market_cap": 1e12,
+            "price": 150,
+            "52w_high": 155,
+        }
+        s = score_ticker(data)
+        raw = s._raw_subscores
+        assert len(raw) == 8
+        for key in ("growth", "profitability", "financial_strength", "moat",
+                     "management", "valuation_risk", "geopolitical_risk", "business_momentum"):
+            assert key in raw, f"Missing raw sub-score: {key}"
+            assert 1 <= raw[key] <= 5, f"{key} = {raw[key]}, expected 1-5"
+
+    def test_canonical_mapping_consistency(self):
+        """Verify the 8→6 mapping matches the spec."""
+        data = {
+            "financials": {
+                "revenue_yoy_growth": 0.30,
+                "revenue_annual_growth": 0.25,
+                "gross_margin": 0.60,
+                "operating_margin": 0.40,
+                "net_income": 1e9,
+                "free_cash_flow": 5e8,
+                "net_debt": -1e8,
+                "guidance_official": 0.15,
+            },
+            "valuation": {
+                "pe_current": 25,
+                "pe_forward": 22,
+                "peg_ratio": 1.5,
+            },
+            "sector": "Technology",
+            "industry": "Software",
+            "market_cap": 1e12,
+            "price": 150,
+            "52w_high": 155,
+        }
+        s = score_ticker(data)
+        raw = s._raw_subscores
+
+        # Financial Health = profitability + financial_strength (0–10)
+        assert s.financial_health == raw["profitability"] + raw["financial_strength"]
+        assert 0 <= s.financial_health <= 10
+
+        # Growth = growth + business_momentum (0–10)
+        assert s.growth == raw["growth"] + raw["business_momentum"]
+        assert 0 <= s.growth <= 10
+
+        # Valuation = scaled val_risk (0–8)
+        assert s.valuation == _scale_to_8(raw["valuation_risk"])
+        assert 0 <= s.valuation <= 8
+
+        # Management = direct (0–5)
+        assert s.management == raw["management"]
+        assert 0 <= s.management <= 5
+
+        # Moat = capped at 4
+        assert s.moat == min(raw["moat"], 4)
+        assert 0 <= s.moat <= 4
+
+        # Sentiment = scaled geo (0–3)
+        assert s.sentiment == _scale_to_3(raw["geopolitical_risk"])
+        assert 0 <= s.sentiment <= 3
+
+        # Total = sum of 6 canonical
+        assert s.total == s.financial_health + s.growth + s.valuation + s.management + s.moat + s.sentiment
+        assert 0 <= s.total <= 40
 
 
 class TestIndividualScoreFunctions:

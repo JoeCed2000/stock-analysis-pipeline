@@ -1,6 +1,6 @@
 """Pydantic models for Stock Analysis Pipeline."""
-from pydantic import BaseModel, Field
-from typing import Optional, List
+from pydantic import BaseModel, Field, PrivateAttr
+from typing import Optional, List, Dict
 from datetime import datetime
 
 
@@ -59,34 +59,37 @@ class ValuationData(BaseModel):
 
 
 class Scoring(BaseModel):
-    """8-criterion scoring out of 5 each, total /40."""
-    growth: int = 0
-    profitability: int = 0
-    financial_strength: int = 0
-    moat: int = 0
-    management: int = 0
-    valuation_risk: int = 0
-    geopolitical_risk: int = 0
-    business_momentum: int = 0
+    """6-category weighted scoring model. Total = /40.
+    All 6 canonical fields are higher-is-better.
+    Raw 8 sub-scores preserved in _raw_subscores for audit trail."""
+
+    # ── 6 canonical categories (EXTERNALLY VISIBLE) ──
+    financial_health: int = 0   # 0–10 (profitability + financial_strength)
+    growth: int = 0             # 0–10 (growth + business_momentum)
+    valuation: int = 0          # 0–8  (valuation_risk, scaled)
+    management: int = 0         # 0–5  (management, direct)
+    moat: int = 0               # 0–4  (moat, capped)
+    sentiment: int = 0          # 0–3  (geopolitical_risk, scaled)
+
+    # ── Audit trail (INTERNAL — not serialized by default) ──
+    _raw_subscores: Dict[str, int] = PrivateAttr(default_factory=dict)
 
     @property
     def total(self) -> int:
         return sum([
-            self.growth, self.profitability, self.financial_strength,
-            self.moat, self.management, self.valuation_risk,
-            self.geopolitical_risk, self.business_momentum
+            self.financial_health, self.growth, self.valuation,
+            self.management, self.moat, self.sentiment,
         ])
 
     def decision(self) -> str:
+        """BUY ≥ 28, HOLD 18–27, SELL < 18."""
         t = self.total
-        if t >= 32:
+        if t >= 28:
             return "BUY"
-        elif t >= 26:
-            return "HOLD / BUY ON PULLBACK"
         elif t >= 18:
-            return "HOLD fragile"
+            return "HOLD"
         else:
-            return "SELL or AVOID"
+            return "SELL"
 
 
 class Source(BaseModel):

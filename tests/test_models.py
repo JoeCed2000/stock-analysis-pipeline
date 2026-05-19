@@ -25,43 +25,83 @@ class TestTickerRequest:
 
 
 class TestScoring:
-    def test_total_sums_all_criteria(self):
-        s = Scoring(growth=5, profitability=4, financial_strength=3,
-                     moat=5, management=4, valuation_risk=3,
-                     geopolitical_risk=4, business_momentum=4)
-        assert s.total == 32
+    """Tests for 6-category Scoring model with new thresholds."""
+
+    def test_total_sums_all_categories(self):
+        s = Scoring(financial_health=7, growth=8, valuation=6,
+                     management=4, moat=3, sentiment=2)
+        assert s.total == 30
 
     def test_default_all_zero(self):
         s = Scoring()
         assert s.total == 0
+        assert s.decision() == "SELL"
 
     def test_decision_buy(self):
-        s = Scoring(growth=5, profitability=5, financial_strength=5,
-                     moat=5, management=4, valuation_risk=3,
-                     geopolitical_risk=3, business_momentum=5)
-        assert s.total == 35
+        s = Scoring(financial_health=8, growth=8, valuation=6,
+                     management=4, moat=3, sentiment=3)
+        assert s.total == 32
         assert s.decision() == "BUY"
 
-    def test_decision_hold_pullback(self):
-        s = Scoring(growth=4, profitability=4, financial_strength=3,
-                     moat=4, management=3, valuation_risk=3,
-                     geopolitical_risk=3, business_momentum=4)
+    def test_decision_buy_boundary(self):
+        """Exactly 28 = BUY."""
+        s = Scoring(financial_health=7, growth=7, valuation=5,
+                     management=4, moat=3, sentiment=2)
         assert s.total == 28
-        assert "HOLD" in s.decision()
+        assert s.decision() == "BUY"
 
-    def test_decision_hold_fragile(self):
-        s = Scoring(growth=3, profitability=3, financial_strength=2,
-                     moat=3, management=3, valuation_risk=2,
-                     geopolitical_risk=3, business_momentum=3)
+    def test_decision_hold(self):
+        s = Scoring(financial_health=6, growth=5, valuation=4,
+                     management=3, moat=2, sentiment=2)
         assert s.total == 22
-        assert s.decision() == "HOLD fragile"
+        assert s.decision() == "HOLD"
+
+    def test_decision_hold_boundary(self):
+        """Exactly 18 = HOLD (lowest HOLD)."""
+        s = Scoring(financial_health=5, growth=4, valuation=3,
+                     management=3, moat=2, sentiment=1)
+        assert s.total == 18
+        assert s.decision() == "HOLD"
 
     def test_decision_sell(self):
-        s = Scoring(growth=2, profitability=2, financial_strength=1,
-                     moat=2, management=2, valuation_risk=2,
-                     geopolitical_risk=2, business_momentum=2)
+        s = Scoring(financial_health=4, growth=3, valuation=3,
+                     management=2, moat=2, sentiment=1)
         assert s.total == 15
-        assert "SELL" in s.decision()
+        assert s.decision() == "SELL"
+
+    def test_decision_sell_boundary(self):
+        """17 = SELL (just below HOLD)."""
+        s = Scoring(financial_health=5, growth=4, valuation=2,
+                     management=3, moat=2, sentiment=1)
+        assert s.total == 17
+        assert s.decision() == "SELL"
+
+    def test_private_attr_not_serialized(self):
+        """_raw_subscores must NOT appear in model_dump()."""
+        s = Scoring(financial_health=7, growth=8, valuation=6,
+                     management=4, moat=3, sentiment=2)
+        s._raw_subscores = {"growth": 4, "profitability": 3, "financial_strength": 4,
+                            "moat": 5, "management": 3, "valuation_risk": 4,
+                            "geopolitical_risk": 3, "business_momentum": 3}
+        dumped = s.model_dump()
+        assert "_raw_subscores" not in dumped
+        assert "financial_health" in dumped
+        assert "growth" in dumped
+
+    def test_private_attr_direct_access(self):
+        """_raw_subscores is directly accessible in Python."""
+        s = Scoring(financial_health=7, growth=8, valuation=6,
+                     management=4, moat=3, sentiment=2)
+        s._raw_subscores = {"profitability": 3, "financial_strength": 4}
+        assert s._raw_subscores["profitability"] == 3
+        assert s._raw_subscores["financial_strength"] == 4
+
+    def test_max_total_is_40(self):
+        """Maximum possible: 10 + 10 + 8 + 5 + 4 + 3 = 40."""
+        s = Scoring(financial_health=10, growth=10, valuation=8,
+                     management=5, moat=4, sentiment=3)
+        assert s.total == 40
+        assert s.decision() == "BUY"
 
 
 class TestFinancialData:
