@@ -1140,11 +1140,11 @@ async def dossier_upload(
 
 
 @app.post("/api/analyze", dependencies=[Depends(_require_auth)])
-async def analyze(request: TickerRequest, lang: str = "en", fastapi_request: Request = None):
+async def analyze(request: TickerRequest, lang: str = "en", force_refresh: bool = False, fastapi_request: Request = None):
     """Submit tickers for analysis. Runs sequentially, returns results immediately.
-    Use ?lang=ja for Japanese labels."""
+    Use ?lang=ja for Japanese labels. Use ?force_refresh=true to bypass cache."""
     tickers = request.tickers
-    logger.info(f"Analyze request: {tickers} [lang={lang}]")
+    logger.info(f"Analyze request: {tickers} [lang={lang}, force_refresh={force_refresh}]")
     t_start = time.time()
 
     # Normalize: resolve ISINs to tickers before validation
@@ -1173,7 +1173,7 @@ async def analyze(request: TickerRequest, lang: str = "en", fastapi_request: Req
 
     try:
         import asyncio as _asyncio
-        batch = await _asyncio.to_thread(run_analysis_parallel, normalized_tickers, output_base=str(ANALYSES_DIR), language=lang)
+        batch = await _asyncio.to_thread(run_analysis_parallel, normalized_tickers, output_base=str(ANALYSES_DIR), language=lang, force_refresh=force_refresh)
     except Exception as e:
         logger.exception("Batch analysis failed")
         raise HTTPException(status_code=500, detail=str(e))

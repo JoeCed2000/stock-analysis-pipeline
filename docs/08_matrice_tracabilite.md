@@ -21,7 +21,7 @@
 | BR-006 | Rate limit cascade | BR-006 | §5 | — | ⚠️ |
 | BR-007 | Timeout source | BR-007 | §5 | — | ⚠️ |
 | BR-008 | Batch max 10 | BR-008 | §5 | — | ⚠️ |
-| BR-009 | Cache invalidation | BR-009 | §5 | — | ⚠️ |
+| BR-009 | Cache invalidation | BR-009 | §5 | sources_collector.py (CACHE_TTL_SECONDS=3600 + force_refresh param) | ✅ |
 | PIP-001 → 009 | Pipeline 9 étapes | UC-001 | §3 | test_pipeline.py | ✅ |
 | EF-005 | Sélection langue EN/JP/bilingual | UC-001 | §1.2 | earnings_deep_dive/prompts.py (lang param, bilingual support) | ✅ |
 | EF-006 | Batch CSV | UC-004 | §1.2 | — | ⚠️ |

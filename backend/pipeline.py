@@ -1888,7 +1888,7 @@ def _decision_rationale(sc: Scoring) -> str:
     return ". ".join(parts) if parts else "Balanced profile with no extreme strengths or weaknesses."
 
 
-def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: str = "en") -> AnalysisResult:
+def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: str = "en", force_refresh: bool = False) -> AnalysisResult:
     """
     Fast-path analysis: returns result in <5s.
     Skips heavy file I/O (PDF/Excel/10-K conversion) — those run in background.
@@ -1913,8 +1913,8 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
     retrieved_at = datetime.now(PARIS).isoformat()
     
     # ── Step 1: Identification ──
-    logger.info(f"[{ticker}] Fast: Step 1 — stock data")
-    yf_data = get_stock_data(ticker)
+    logger.info(f"[{ticker}] Fast: Step 1 — stock data [force_refresh={force_refresh}]")
+    yf_data = get_stock_data(ticker, force_refresh=force_refresh)
     
     # Sanitize: yfinance returns "NA" strings when data is unavailable
     def _safe_float(v):

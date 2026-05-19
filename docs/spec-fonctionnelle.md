@@ -273,7 +273,7 @@ Feedback {
 | BR-006 | Rate limit cascade | API retourne 429 | Exponential backoff (1s, 2s, 4s, 8s), max 3 retries, puis skip source | ✅ |
 | BR-007 | Timeout source externe | > 30s sans réponse | Abandonner la source, logger l'erreur, continuer avec les autres | ✅ |
 | BR-008 | CSV batch max 10 tickers | Batch upload | Rejeter si > 10 tickers avec message d'erreur | ✅ |
-| BR-009 | Cache invalidation | Cache > 1h ou refresh forcé | Invalider et re-collecter | ⚠️ |
+| BR-009 | Cache invalidation | Cache > 1h ou refresh forcé | Invalider et re-collecter | ✅ |
 
 ## 6. Exigences non fonctionnelles
 
