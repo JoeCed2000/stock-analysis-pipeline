@@ -1371,9 +1371,9 @@ async def get_job_status(job_id: str):
 
 @app.head("/api/report/{ticker}/pdf")
 @app.get("/api/report/{ticker}/pdf")
-async def get_report_pdf(ticker: str, lang: str = "en", background_tasks: BackgroundTasks = None):
+async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest", background_tasks: BackgroundTasks = None):
     """Serve the earnings deep-dive PDF for a ticker in the requested language.
-    Use ?lang=ja or ?lang=jp for Japanese. Defaults to English."""
+    Use ?lang=ja or ?lang=jp for Japanese, ?quarter=2026Q1 for specific quarter. Defaults to English."""
     ticker = ticker.strip().upper()
     matches = _find_analysis_dirs(ticker)
     if not matches:
@@ -1435,7 +1435,7 @@ async def get_report_pdf(ticker: str, lang: str = "en", background_tasks: Backgr
                 # Find analysis directory for output_dir (required by schema)
                 # dd_path is .../07_final_report/earnings_deep_dive.pdf, parent.parent = analysis_dir
                 output_dir = str(dd_path.parent.parent)
-                dd_req = DeepDiveRequest(ticker=ticker, quarter="latest quarter", language=lang,
+                dd_req = DeepDiveRequest(ticker=ticker, quarter=quarter, language=lang,
                                          output_dir=output_dir, metrics=metrics)
                 dd_response = generate_deep_dive(dd_req)
                 

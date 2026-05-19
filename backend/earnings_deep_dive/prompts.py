@@ -830,6 +830,9 @@ def _base_prompt(
     if parsed:
         current_label, prior_label = parsed
         table_header = table_header.replace("Actual", current_label).replace("Prior Year", prior_label)
+        # EPS & Revenue table: "Estimate" column → "{quarter} Est"
+        table_header = table_header.replace("| Estimate |", f"| {current_label} Est |")
+        table_header = table_header.replace("vs Estimate", f"vs {current_label} Est")
     is_jp = language.lower() in {"jp", "ja"}
     format_source = SECTION_FORMATS if is_jp else EN_SECTION_FORMATS
     section_format = format_source[canonical].format(table_header=table_header)
