@@ -29,7 +29,7 @@
 | IN-002 | Scoring BUY/HOLD/SELL (40 points, 6 catégories) | Décision d'investissement |
 | IN-003 | PDF deep-dive formaté (10–14 pages, ReportLab) | Livrable principal |
 | IN-004 | Dossier ZIP téléchargeable (PDF + analysis.json + sources.json) | Auditabilité |
-| IN-005 | Sélection langue EN/JP — LLM génère le deep-dive dans la langue choisie (mêmes données, même template PDF) | Usage international |
+| IN-005 | Sélection langue EN/JP/bilingual — LLM génère le deep-dive dans la langue choisie (mêmes données, même template PDF). Mode bilingual = EN+JP côte à côte (modele.pdf original) | Usage international |
 | IN-006 | Batch analysis API (upload CSV, traitement séquentiel) — UI batch en v1.2 | Efficacité |
 | IN-007 | Feedback utilisateur horodaté avec correction | Amélioration continue |
 | IN-008 | Collecte IR sites (dates earnings, webcasts) | Enrichissement données |
