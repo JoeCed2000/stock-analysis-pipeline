@@ -23,7 +23,7 @@
 | BR-008 | Batch max 10 | BR-008 | §5 | — | ⚠️ |
 | BR-009 | Cache invalidation | BR-009 | §5 | — | ⚠️ |
 | PIP-001 → 009 | Pipeline 9 étapes | UC-001 | §3 | test_pipeline.py | ✅ |
-| EF-005 | Traduction FR/JP | UC-001 | §1.2 | — | ❌ |
+| EF-005 | Sélection langue EN/JP | UC-001 | §1.2 | — | ⚠️ |
 | EF-006 | Batch CSV | UC-004 | §1.2 | — | ⚠️ |
 
 ## Exigences non fonctionnelles → Vérification
@@ -61,9 +61,9 @@
 
 | Catégorie | Total | ✅ | ⚠️ | ❌ |
 |---|---|---|---|---|
-| Exigences fonctionnelles | 22 | 10 | 9 | 3 |
+| Exigences fonctionnelles | 22 | 10 | 10 | 2 |
 | Exigences non fonctionnelles | 9 | 5 | 3 | 1 |
 | Routes API | 29 | 4 | 6 | 0 |
 | Règles métier | 9 | 4 | 4 | 1 |
 
-**Score de couverture : 23/40 exigences testées (58 %).** Les ⚠️ sont majoritairement des tests manquants (à implémenter). Les ❌ sont des features non implémentées (batch UI, traduction FR/JP, feedback UI).
+**Score de couverture v1.1 : 23/40 exigences testées (58 %).** Les ⚠️ sont majoritairement des tests manquants (à implémenter). Les ❌ sont : UC-001-ERR (ticker invalide non testé) et BR-005 (feedback avant réanalyse). Batch UI et feedback UI → v1.2.

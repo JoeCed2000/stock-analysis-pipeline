@@ -37,14 +37,14 @@ Navigateur ──→ sa.cedlabusa.net (Cloudflare Edge)
        ┌────────────┼───────────────┐
        ▼            ▼               ▼
    StaticFiles   Middleware       Router API
-   (dist/)       (CORS, API-Key)  (30 routes, 6 groupes)
+   (dist/)       (CORS, API-Key)  (29 routes, 6 groupes)
        │            │               │
        └────────────┴───────────────┘
                     │
        ┌────────────┼───────────────┬────────────┬──────────┐
        ▼            ▼               ▼            ▼          ▼
-   yfinance     Finnhub          EDGAR       SeekingA    Tavily
-   (pricing)    (financials)     (filings)   (transcr.)  (IR web)
+   yfinance     Finnhub          EDGAR       SeekingA    Tavily       AlphaV
+   (pricing)    (financials)     (filings)   (transcr.)  (IR web)    (backup)
 ```
 
 ### 2.2 Structure des modules

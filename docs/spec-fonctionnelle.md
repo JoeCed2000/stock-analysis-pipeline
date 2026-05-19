@@ -28,9 +28,9 @@
 | IN-001 | Analyse fondamentale par ticker (9 étapes) | Cœur du produit |
 | IN-002 | Scoring BUY/HOLD/SELL (40 points, 6 catégories) | Décision d'investissement |
 | IN-003 | PDF deep-dive formaté (10–14 pages, ReportLab) | Livrable principal |
-| IN-004 | Dossier ZIP téléchargeable (PDF + XLSX + JSON + sources) | Auditabilité |
-| IN-005 | Traduction FR/JP optionnelle | Investisseur japonais |
-| IN-006 | Batch analysis (CSV upload, traitement séquentiel) | Efficacité |
+| IN-004 | Dossier ZIP téléchargeable (PDF + analysis.json + sources.json) | Auditabilité |
+| IN-005 | Sélection langue EN/JP — LLM génère le deep-dive dans la langue choisie (mêmes données, même template PDF) | Usage international |
+| IN-006 | Batch analysis API (upload CSV, traitement séquentiel) — UI batch en v1.2 | Efficacité |
 | IN-007 | Feedback utilisateur horodaté avec correction | Amélioration continue |
 | IN-008 | Collecte IR sites (dates earnings, webcasts) | Enrichissement données |
 | IN-009 | Health check et monitoring (endpoint + auto-recovery) | Production |
@@ -57,7 +57,7 @@
 | Postconditions | PDF deep-dive + ZIP disponibles au téléchargement |
 
 **Scénario nominal (AC-001) :**
-> **Given** le backend est actif sur le port 8780, **and** les 6 API externes sont accessibles, **and** le ticker AAPL est valide
+> **Given** le backend est actif sur le port 8780, **and** les 6 API externes (yfinance, Finnhub, EDGAR, Seeking Alpha, Tavily, Alpha Vantage) sont accessibles, **and** le ticker AAPL est valide
 > **When** l'utilisateur saisit « AAPL » et clique « Analyze »
 > **Then** le pipeline exécute les 9 étapes séquentiellement, **and** un PDF deep-dive ≥ 10 pages est généré, **and** le score est affiché avec BUY/HOLD/SELL, **and** le bouton « Download ZIP » est actif
 
@@ -173,7 +173,7 @@ Scoring {
 }
 ```
 
-**Seuils :** BUY si total ≥ 28, HOLD si 18–27, SELL si < 18
+**Seuils :** BUY si total ≥ 28, HOLD si 18–27, SELL si < 18. **INSUFFISANT** si < 3 sources valides (données insuffisantes — pas de recommandation, cf. BR-002).
 
 ### 4.2 AnalysisResult
 
@@ -188,7 +188,7 @@ AnalysisResult {
     management_tone: ManagementTone | null
     risks: RiskItem[] (≤ 20)
     valuation: ValuationData
-    sources: Source[] (≥ 1, idéalement ≥ 5)
+    sources: Source[] (≥ 1, idéalement ≥ 5 ; scoring désactivé si < 3 — cf. BR-002)
     pdf_path: str | null
     dossier_path: str | null
 }
