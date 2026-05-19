@@ -30,6 +30,7 @@ NOT_CALCULABLE = "計算不可"
 NOT_CALCULABLE_EN = "Not calculable"
 SOURCE_COMPANY = "SEC Filing (10-Q/10-K) via EDGAR"
 SOURCE_YFINANCE = "yfinance (Yahoo Finance)"
+SOURCE_CONSENSUS = "Yahoo Finance (consensus)"
 
 _PLACEHOLDER_PATTERNS = {
     "?", "N/A", "NA", "Not available", "データ未取得",
@@ -85,9 +86,16 @@ def _has(value: Any) -> bool:
 
 
 def _source(*values: Any, source_type: str = "sec_edgar") -> str:
-    """Return source label. Use source_type='yfinance' for yfinance-derived data."""
+    """Return source label. Use source_type='yfinance' for yfinance-derived data,
+    'yfinance_consensus' for analyst consensus estimates (checks first value)."""
     if not any(_has(value) for value in values):
         return MISSING_EN
+    if source_type == "yfinance_consensus":
+        # Only label as consensus if the estimate (first value) is actually present;
+        # otherwise fall through to standard SEC/company source for the actual.
+        if _has(values[0]) if values else False:
+            return SOURCE_CONSENSUS
+        return SOURCE_COMPANY
     if source_type == "yfinance":
         return SOURCE_YFINANCE
     return SOURCE_COMPANY
@@ -197,6 +205,20 @@ def _yoy_pct(value: Any) -> str:
         number *= 100
     sign = "+" if number > 0 else ""
     return f"{sign}{number:.1f}%"
+
+
+def _yoy_pts(current: Any, prior: Any) -> str:
+    """Format margin change in percentage points (e.g., 58.3% → 55.6% = +2.7 pts)."""
+    if not _has(current) or not _has(prior):
+        return MISSING
+    try:
+        current_val = float(current)
+        prior_val = float(prior)
+    except (TypeError, ValueError):
+        return MISSING
+    diff = current_val - prior_val
+    sign = "+" if diff > 0 else ""
+    return f"{sign}{diff:.1f} pts"
 
 
 def _yoy_comment(value: Any) -> str:
@@ -482,7 +504,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 _eps(metrics.eps_actual),
                 _variance(metrics.eps_actual, metrics.eps_estimate, getattr(metrics, "eps_vs_estimate", None)),
                 _yoy_pct(getattr(metrics, "eps_yoy", None)),
-                _source(metrics.eps_estimate, metrics.eps_actual, getattr(metrics, "eps_vs_estimate", None), getattr(metrics, "eps_yoy", None)),
+                _source(metrics.eps_estimate, metrics.eps_actual, getattr(metrics, "eps_vs_estimate", None), getattr(metrics, "eps_yoy", None), source_type="yfinance_consensus"),
             ],
             [
                 row_labels[1],
@@ -517,7 +539,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 row_labels[2],
                 _pct(metrics.gross_margin),
                 _pct(getattr(metrics, "gross_margin_prior_year", None)),
-                _yoy_pct(getattr(metrics, "gross_margin_yoy", None)),
+                _yoy_pts(metrics.gross_margin, getattr(metrics, "gross_margin_prior_year", None)),
                 metrics.gross_margin,
             ),
             (
@@ -538,7 +560,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 row_labels[5],
                 _pct(metrics.operating_margin),
                 _pct(getattr(metrics, "operating_margin_prior_year", None)),
-                _yoy_pct(getattr(metrics, "operating_margin_yoy", None)),
+                _yoy_pts(metrics.operating_margin, getattr(metrics, "operating_margin_prior_year", None)),
                 metrics.operating_margin,
             ),
             (
@@ -2034,7 +2056,7 @@ def build_earnings_deep_dive_report(
         quarter=_resolved_quarter_label(quarter, metrics),
         language=report_language,
         generated_at=generated_at or datetime.now(timezone.utc).isoformat(),
-        title=f"{company_name} ({ticker_clean}) - Earnings Deep-Dive",
+        title=f"{company_name} ({ticker_clean}) - Earnings Deep-Dive ({_resolved_quarter_label(quarter, metrics)})",
         sections=[s for s in sections if not _skip_section(s)],
         sources=sources,
         claim_sources=claim_sources,
