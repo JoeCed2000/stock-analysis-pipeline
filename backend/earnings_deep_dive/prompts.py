@@ -796,6 +796,22 @@ def _language_rules(language: str) -> str:
     )
 
 
+def _parse_quarter(quarter: str):
+    """Parse quarter like '2026Q1' → ('Q1 2026', 'Q1 2025'). Returns None if unparseable."""
+    try:
+        s = str(quarter)
+        if 'Q' not in s:
+            return None
+        year_part, q_part = s.split('Q', 1)
+        year = int(year_part)
+        q = int(q_part)
+        if q < 1 or q > 4:
+            return None
+        return (f"Q{q} {year}", f"Q{q} {year - 1}")
+    except (ValueError, TypeError):
+        return None
+
+
 def _base_prompt(
     *,
     section: str,
@@ -809,6 +825,11 @@ def _base_prompt(
     canonical = _canonical_section(section)
     title = _section_title(section)
     table_header = TABLE_REQUIREMENTS[canonical]
+    # F3: Dynamic column labels — "Q1 2026" / "Q1 2025" instead of "Actual" / "Prior Year"
+    parsed = _parse_quarter(quarter)
+    if parsed:
+        current_label, prior_label = parsed
+        table_header = table_header.replace("Actual", current_label).replace("Prior Year", prior_label)
     is_jp = language.lower() in {"jp", "ja"}
     format_source = SECTION_FORMATS if is_jp else EN_SECTION_FORMATS
     section_format = format_source[canonical].format(table_header=table_header)
