@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Stock Analysis Pipeline — Architecture</title>
+<style>
+  body { background: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', system-ui, sans-serif; padding: 2rem; margin: 0; }
+  h1 { text-align: center; color: #22d3ee; margin-bottom: 2rem; font-weight: 300; }
+  h2 { color: #a78bfa; font-weight: 400; border-bottom: 1px solid #334155; padding-bottom: .5rem; }
+  .container { max-width: 1000px; margin: 0 auto; }
+  svg { max-width: 100%; height: auto; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 1rem; }
+  .card h3 { margin: 0 0 .5rem; font-size: .9rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .05em; }
+  .card .value { font-size: 1.5rem; font-weight: 600; }
+  .card .value.green { color: #22c55e; }
+  .card .value.purple { color: #a78bfa; }
+  .card .value.cyan { color: #22d3ee; }
+
+  .pipeline { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1.5rem 0; }
+  .step { background: #1e293b; border: 1px solid #334155; padding: .5rem 1rem; border-radius: 8px; font-size: .8rem; flex: 1; min-width: 120px; text-align: center; }
+  .step .num { color: #22d3ee; font-weight: 600; }
+  .step .label { color: #cbd5e1; }
+
+  table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: .85rem; }
+  th, td { padding: .6rem 1rem; text-align: left; border-bottom: 1px solid #334155; }
+  th { color: #a78bfa; font-weight: 500; }
+  tr:hover { background: rgba(255,255,255,.03); }
+
+  .badge { display: inline-block; padding: .15rem .6rem; border-radius: 12px; font-size: .75rem; font-weight: 600; }
+  .badge-fastapi { background: #7c3aed; color: #fff; }
+  .badge-react { background: #2563eb; color: #fff; }
+  .badge-infra { background: #059669; color: #fff; }
+  .badge-data { background: #d97706; color: #fff; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>📈 Stock Analysis Pipeline — Architecture</h1>
+
+<!-- KPI Cards -->
+<div class="cards">
+  <div class="card">
+    <h3>Endpoints API</h3>
+    <div class="value cyan">30+</div>
+  </div>
+  <div class="card">
+    <h3>Lignes backend</h3>
+    <div class="value purple">~8,000</div>
+  </div>
+  <div class="card">
+    <h3>Sources data</h3>
+    <div class="value green">5+</div>
+  </div>
+  <div class="card">
+    <h3>Score max</h3>
+    <div class="value green">40 pts</div>
+  </div>
+</div>
+
+<!-- Architecture SVG -->
+<svg width="900" viewBox="0 0 900 520" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7c3aed"/><stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#059669"/><stop offset="100%" stop-color="#22c55e"/>
+    </linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity=".3"/></filter>
+  </defs>
+
+  <rect width="900" height="520" fill="#0f172a" rx="8"/>
+
+  <!-- Title -->
+  <text x="450" y="35" text-anchor="middle" fill="#22d3ee" font-size="18" font-weight="300">Stock Analysis Pipeline — Flux de données</text>
+
+  <!-- User row -->
+  <rect x="370" y="60" width="160" height="44" rx="22" fill="url(#g2)" filter="url(#shadow)"/>
+  <text x="450" y="87" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">👤 Ced / Nami</text>
+
+  <!-- Arrow down -->
+  <line x1="450" y1="104" x2="450" y2="140" stroke="#22c55e" stroke-width="2"/>
+  <polygon points="445,136 450,148 455,136" fill="#22c55e"/>
+
+  <!-- Cloudflare Tunnel -->
+  <rect x="300" y="148" width="300" height="50" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="450" y="170" text-anchor="middle" fill="#94a3b8" font-size="12">🔒 Cloudflare Tunnel → sa.cedlabusa.net</text>
+  <text x="450" y="186" text-anchor="middle" fill="#64748b" font-size="11">Port 8780 → Named tunnel e92cfcfb</text>
+
+  <!-- Arrow down -->
+  <line x1="450" y1="198" x2="450" y2="230" stroke="#334155" stroke-width="1.5"/>
+  <polygon points="445,226 450,238 455,226" fill="#334155"/>
+
+  <!-- FastAPI Box -->
+  <rect x="250" y="238" width="400" height="70" rx="12" fill="url(#g1)" filter="url(#shadow)"/>
+  <text x="450" y="264" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">⚡ FastAPI (main.py) — Port 8780</text>
+  <text x="450" y="284" text-anchor="middle" fill="#c4b5fd" font-size="11">30 endpoints · Pipeline orchestration · Static files</text>
+  <text x="450" y="298" text-anchor="middle" fill="#c4b5fd" font-size="10">Batch · Async jobs · Feedback · Admin</text>
+
+  <!-- Arrow down -->
+  <line x1="450" y1="308" x2="450" y2="340" stroke="#7c3aed" stroke-width="1.5"/>
+  <polygon points="445,336 450,348 455,336" fill="#7c3aed"/>
+
+  <!-- Pipeline row -->
+  <rect x="30" y="348" width="840" height="80" rx="12" fill="#1e293b" stroke="#334155" stroke-width="1" filter="url(#shadow)"/>
+  <text x="450" y="370" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">📊 Pipeline 9 étapes</text>
+
+  <rect x="50" y="382" width="78" height="34" rx="6" fill="#2d1b69"/>
+  <text x="89" y="403" text-anchor="middle" fill="#a78bfa" font-size="9">1. Profile</text>
+
+  <rect x="140" y="382" width="78" height="34" rx="6" fill="#1e3a5f"/>
+  <text x="179" y="403" text-anchor="middle" fill="#93c5fd" font-size="9">2. Collecte</text>
+
+  <rect x="230" y="382" width="78" height="34" rx="6" fill="#1a3a3a"/>
+  <text x="269" y="403" text-anchor="middle" fill="#6ee7b7" font-size="9">3. Transcripts</text>
+
+  <rect x="320" y="382" width="78" height="34" rx="6" fill="#3a1a1a"/>
+  <text x="359" y="403" text-anchor="middle" fill="#fca5a5" font-size="9">4. SEC</text>
+
+  <rect x="410" y="382" width="78" height="34" rx="6" fill="#3a2a1a"/>
+  <text x="449" y="403" text-anchor="middle" fill="#fbbf24" font-size="9">5. Mgmt</text>
+
+  <rect x="500" y="382" width="78" height="34" rx="6" fill="#2d1b69"/>
+  <text x="539" y="403" text-anchor="middle" fill="#a78bfa" font-size="9">6. Score</text>
+
+  <rect x="590" y="382" width="78" height="34" rx="6" fill="#1e3a5f"/>
+  <text x="629" y="403" text-anchor="middle" fill="#93c5fd" font-size="9">7. Deep-dive</text>
+
+  <rect x="680" y="382" width="78" height="34" rx="6" fill="#1a3a3a"/>
+  <text x="719" y="403" text-anchor="middle" fill="#6ee7b7" font-size="9">8. PDF</text>
+
+  <rect x="770" y="382" width="78" height="34" rx="6" fill="#3a1a1a"/>
+  <text x="809" y="403" text-anchor="middle" fill="#fca5a5" font-size="9">9. Archive</text>
+
+  <!-- Sources row -->
+  <rect x="30" y="440" width="840" height="60" rx="12" fill="#0f172a" stroke="#334155" stroke-width="1" filter="url(#shadow)"/>
+  <text x="450" y="458" text-anchor="middle" fill="#64748b" font-size="11" font-weight="600">💾 Sources de données</text>
+  <text x="450" y="478" text-anchor="middle" fill="#475569" font-size="10">
+    yfinance  ·  Finnhub  ·  SEC EDGAR  ·  Seeking Alpha  ·  Tavily Search  ·  Alpha Vantage
+  </text>
+  <text x="450" y="492" text-anchor="middle" fill="#334155" font-size="9">
+    Tous les appels API gèrent rate limits + retry + fallback
+  </text>
+
+  <!-- Legend -->
+  <rect x="40" y="510" width="10" height="10" rx="2" fill="#7c3aed"/>
+  <text x="56" y="519" fill="#94a3b8" font-size="10">FastAPI</text>
+  <rect x="140" y="510" width="10" height="10" rx="2" fill="#059669"/>
+  <text x="156" y="519" fill="#94a3b8" font-size="10">Client</text>
+  <rect x="230" y="510" width="10" height="10" rx="2" fill="#1e293b" stroke="#334155"/>
+  <text x="246" y="519" fill="#94a3b8" font-size="10">Pipeline</text>
+  <rect x="320" y="510" width="10" height="10" rx="2" fill="#0f172a" stroke="#334155"/>
+  <text x="336" y="519" fill="#94a3b8" font-size="10">Sources</text>
+</svg>
+
+<!-- Stack -->
+<h2>🔧 Stack technique</h2>
+<table>
+  <tr><th>Composant</th><th>Technologie</th><th>Rôle</th></tr>
+  <tr><td><span class="badge badge-fastapi">Backend</span></td><td>FastAPI 0.115+</td><td>Routes, orchestration, static</td></tr>
+  <tr><td><span class="badge badge-react">Frontend</span></td><td>React 18 + Vite</td><td>Interface utilisateur</td></tr>
+  <tr><td><span class="badge badge-data">PDF</span></td><td>ReportLab 4.x</td><td>Génération PDF formaté</td></tr>
+  <tr><td><span class="badge badge-data">Scoring</span></td><td>Custom (règles)</td><td>Scoring 40 pts</td></tr>
+  <tr><td><span class="badge badge-data">Sources</span></td><td>yfinance, Finnhub, EDGAR</td><td>Données financières</td></tr>
+  <tr><td><span class="badge badge-infra">Tunnel</span></td><td>Cloudflare Tunnel</td><td>Exposition HTTPS</td></tr>
+  <tr><td><span class="badge badge-infra">Runtime</span></td><td>WSL2 + venv</td><td>Exécution</td></tr>
+  <tr><td><span class="badge badge-infra">Tests</span></td><td>pytest + Playwright</td><td>QA</td></tr>
+</table>
+
+<!-- Pipeline description -->
+<h2>📋 Pipeline d'analyse</h2>
+<div class="pipeline">
+  <div class="step"><span class="num">1</span> <span class="label">Company Profile</span></div>
+  <div class="step"><span class="num">2</span> <span class="label">Financial Data</span></div>
+  <div class="step"><span class="num">3</span> <span class="label">Transcripts</span></div>
+  <div class="step"><span class="num">4</span> <span class="label">SEC Filings</span></div>
+  <div class="step"><span class="num">5</span> <span class="label">Management</span></div>
+  <div class="step"><span class="num">6</span> <span class="label">Scoring</span></div>
+  <div class="step"><span class="num">7</span> <span class="label">Deep-dive</span></div>
+  <div class="step"><span class="num">8</span> <span class="label">PDF</span></div>
+  <div class="step"><span class="num">9</span> <span class="label">Archive</span></div>
+</div>
+
+<hr style="border-color:#334155; margin:2rem 0;">
+<div style="text-align:center; color:#475569; font-size:.8rem;">
+  Généré le 2026-05-18 — Hermes Agent · Spec v1.0
+</div>
+
+</div>
+</body>
+</html>

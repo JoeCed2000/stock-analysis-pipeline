@@ -267,6 +267,104 @@ def test_no_critical_console_errors(page: Page):
 
 
 # ═══════════════════════════════════════════════════════════════
+# F1-F5 — Nami Feedback Fixes (PDF Content Verification)
+# ═══════════════════════════════════════════════════════════════
+
+import requests
+from pypdf import PdfReader
+import io
+
+API_BASE = "http://localhost:8780/stock-analysis/api"
+
+
+def _fetch_pdf(ticker: str, lang: str = "en", quarter: str = "2026Q1", max_retries: int = 30) -> bytes:
+    """Download a deep-dive PDF for the given ticker/language/quarter.
+    Handles async generation (202 polling)."""
+    import time
+    url = f"{API_BASE}/report/{ticker}/pdf"
+    for attempt in range(max_retries):
+        resp = requests.get(url, params={"lang": lang, "quarter": quarter}, timeout=180)
+        resp.raise_for_status()
+        ct = resp.headers.get("Content-Type", "")
+        if "application/pdf" in ct:
+            return resp.content
+        if resp.status_code == 202:
+            retry = int(resp.headers.get("Retry-After", 10))
+            time.sleep(retry)
+            continue
+        # If not 202 and not PDF, fail
+        raise AssertionError(
+            f"Expected PDF, got status={resp.status_code} content-type={ct} "
+            f"body={resp.text[:200]}"
+        )
+    raise TimeoutError(f"PDF still generating after {max_retries} retries")
+
+
+def _pdf_text(pdf_bytes: bytes) -> str:
+    """Extract all text from a PDF byte stream."""
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    return "\n".join(page.extract_text() or "" for page in reader.pages)
+
+
+# F1 — EPS Source
+def test_f1_eps_source_is_consensus():
+    """F1: EPS source must be 'Yahoo Finance (consensus)' NOT 'SEC 10-Q/K'."""
+    text = _pdf_text(_fetch_pdf("GOOGL"))
+    assert "Yahoo Finance" in text and "consensus" in text, \
+        f"F1 FAIL: EPS source 'Yahoo Finance (consensus)' missing in PDF"
+    assert "SEC 10-Q" not in text, \
+        f"F1 FAIL: Found 'SEC 10-Q' — should use 'Yahoo Finance (consensus)'"
+
+
+# F2 — PDF Title contains quarter
+def test_f2_pdf_title_contains_quarter():
+    """F2: PDF title must contain 'Q1 2026'."""
+    text = _pdf_text(_fetch_pdf("GOOGL"))
+    assert "Q1 2026" in text, \
+        "F2 FAIL: PDF title does not contain 'Q1 2026'"
+
+
+# F3 — Column Labels
+def test_f3_column_labels_quarter_not_generic():
+    """F3: Table columns must use 'Q1 2026'/'Q1 2025' NOT 'Actual'/'Prior Year'."""
+    text = _pdf_text(_fetch_pdf("GOOGL"))
+    # Must have specific quarter labels
+    assert "Q1 2026" in text, \
+        "F3 FAIL: Missing 'Q1 2026' column label"
+    assert "Q1 2025" in text, \
+        "F3 FAIL: Missing 'Q1 2025' column label"
+    # Must NOT have generic labels
+    has_generic = "Actual" in text and "Prior Year" in text
+    # "Actual" may appear in prose, but the combination of both as column headers is the issue
+    # We check: if "Prior Year" appears, it's likely the old column format
+    assert "Prior Year" not in text, \
+        "F3 FAIL: 'Prior Year' column label found — should use 'Q1 2025'"
+
+
+# F4 — Margins show change in pts
+def test_f4_margins_show_points_change():
+    """F4: Margins must display change in percentage points (e.g. '+2.7 pts')."""
+    text = _pdf_text(_fetch_pdf("GOOGL"))
+    import re
+    pts_pattern = re.compile(r'[+\-−]\d+\.?\d*\s*pts?', re.IGNORECASE)
+    matches = pts_pattern.findall(text)
+    assert len(matches) > 0, \
+        "F4 FAIL: No margin changes in pts found (e.g. '+2.7 pts')"
+
+
+# F5 — Japanese PDF
+def test_f5_japanese_pdf_generates():
+    """F5: lang=ja must generate a Japanese PDF (contains Japanese characters)."""
+    pdf_bytes = _fetch_pdf("GOOGL", lang="ja")
+    text = _pdf_text(pdf_bytes)
+    import re
+    # Check for Japanese characters (Hiragana, Katakana, Kanji)
+    jp_chars = re.findall(r'[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]', text)
+    assert len(jp_chars) > 20, \
+        f"F5 FAIL: Only {len(jp_chars)} Japanese characters found — expected >20"
+
+
+# ═══════════════════════════════════════════════════════════════
 # Helpers
 # ═══════════════════════════════════════════════════════════════
 

@@ -1,493 +1,427 @@
-# Spécification Fonctionnelle — Stock Analysis Pipeline
+# Spécification fonctionnelle — Stock Analysis Pipeline v1.1
 
-**Version :** 1.1  
-**Date :** 2026-05-12  
-**Nature :** Document de référence — spécification testable et auditable  
-**Prédécesseur :** Architecture Plan v1 (docs/plans/architecture-plan.md, 2026-05-04)  
-**Confidentiel —** 2026-05-12
+| Métadonnée | Valeur |
+|---|---|
+| Projet | Stock Analysis Pipeline |
+| Version | 1.1 |
+| Nature | Testable, auditable, vérifiable |
+| Prédécesseur | v1.0 (2026-05-18) |
+| Auteurs | Hermes + Codex CLI (review) |
+| Validateur métier | Ced |
+| Statut | Brouillon en review externe |
+| Date | 2026-05-18 |
 
----
+## 1. Périmètre et définitions
 
-## 1. Résumé
+### 1.1 Acteurs
 
-Stock Analysis Pipeline est une application web d'analyse financière automatisée produisant des rapports d'investissement action par action. Elle exécute un pipeline en 9 étapes par ticker — collecte de données financières, analyse des discours de direction, évaluation des risques, scoring quantitatif sur 40 points, et génération de rapports — avec traçabilité complète des sources. L'interface React affiche des fiches de décision (BUY / HOLD / SELL) et permet le téléchargement de dossiers de sources vérifiables au format ZIP, ainsi que des rapports d'analyse approfondie (earnings deep-dive) bilingues (EN/JP) au format PDF.
+| ID | Acteur | Description | Compétences |
+|---|---|---|---|
+| ACT-001 | Investisseur principal | Utilisateur unique, investisseur particulier francophone | Analyse financière, tickers US |
+| ACT-002 | Auditeur externe | Vérifie la conformité des analyses produites | Contrôle qualité |
+| ACT-003 | Veilleur automatique | Cron jobs Hermes de monitoring | Aucune (système) |
 
----
+### 1.2 Périmètre fonctionnel
 
-## 2. Problématique
+| ID | Élément | Justification |
+|---|---|---|
+| IN-001 | Analyse fondamentale par ticker (9 étapes) | Cœur du produit |
+| IN-002 | Scoring BUY/HOLD/SELL (40 points, 6 catégories) | Décision d'investissement |
+| IN-003 | PDF deep-dive formaté (10–14 pages, ReportLab) | Livrable principal |
+| IN-004 | Dossier ZIP téléchargeable (PDF + XLSX + JSON + sources) | Auditabilité |
+| IN-005 | Traduction FR/JP optionnelle | Investisseur japonais |
+| IN-006 | Batch analysis (CSV upload, traitement séquentiel) | Efficacité |
+| IN-007 | Feedback utilisateur horodaté avec correction | Amélioration continue |
+| IN-008 | Collecte IR sites (dates earnings, webcasts) | Enrichissement données |
+| IN-009 | Health check et monitoring (endpoint + auto-recovery) | Production |
 
-L'investisseur particulier ou le gérant indépendant fait face à trois problèmes structurels :
+### 1.3 Hors périmètre
 
-1. **Asymétrie d'information** — Les analyses sell-side et les rapports de courtage sont orientés, tardifs, ou inaccessibles sans abonnement coûteux (Bloomberg, FactSet).
-2. **Charge cognitive** — Croiser manuellement les données financières (Yahoo Finance), les rapports réglementaires (SEC EDGAR), les transcripts de conférences téléphoniques (Seeking Alpha), et les actualités de marché est ingérable pour plus de quelques tickers.
-3. **Absence de traçabilité** — Une recommandation d'achat sans source vérifiable est inopposable. Sans dossier de sources, impossible d'auditer une décision d'investissement.
+| ID | Élément | Raison |
+|---|---|---|
+| OUT-001 | Trading automatisé | Analyse seulement, pas exécution |
+| OUT-002 | Données temps réel (streaming) | Fondamentale uniquement |
+| OUT-003 | Screening de marché (scanner) | Analyse individuelle par ticker |
+| OUT-004 | API publique / multi-utilisateur | Usage personnel |
+| OUT-005 | Backtesting de stratégies | Projet séparé (hedge-fund-local) |
 
----
+## 2. Exigences fonctionnelles
 
-## 3. Proposition de valeur
+### UC-001 — Analyser un ticker
 
-Stock Analysis Pipeline résout ces problèmes en automatisant la chaîne complète — de la donnée brute à la décision tracée :
+| Champ | Valeur |
+|---|---|
+| Acteur | ACT-001 |
+| Préconditions | Ticker valide sur marché US, API keys configurées |
+| Déclencheur | Saisie ticker + clic « Analyze » |
+| Postconditions | PDF deep-dive + ZIP disponibles au téléchargement |
 
-- **Pipeline automatisé** — 9 étapes exécutées séquentiellement par ticker, parallélisables.
-- **Scoring objectif** — 8 critères pondérés produisant un score /40 et un verdict BUY / HOLD / SELL, reproductible.
-- **Dossier de sources** — Chaque chiffre cité dans un rapport est relié à un document source horodaté et haché (SHA-256), stocké localement. Audit complet possible.
-- **Deep-dive earnings** — Analyse qualitative des appels résultats avec contexte concurrentiel, valorisation, et résumé bilingue (anglais/japonais).
-- **Zéro coût externe** — Utilise exclusivement des APIs publiques et gratuites (Yahoo Finance, SEC EDGAR, Finnhub free tier).
+**Scénario nominal (AC-001) :**
+> **Given** le backend est actif sur le port 8780, **and** les 6 API externes sont accessibles, **and** le ticker AAPL est valide
+> **When** l'utilisateur saisit « AAPL » et clique « Analyze »
+> **Then** le pipeline exécute les 9 étapes séquentiellement, **and** un PDF deep-dive ≥ 10 pages est généré, **and** le score est affiché avec BUY/HOLD/SELL, **and** le bouton « Download ZIP » est actif
 
----
+**Scénario ticker invalide (AC-002) :**
+> **Given** le backend est actif
+> **When** l'utilisateur saisit « ZZZZYX » (ticker inexistant)
+> **Then** le système retourne un message d'erreur dans les 30 secondes, **and** aucune analyse n'est stockée
 
-## 4. Périmètre et définitions
+**Scénario API source partiellement down (AC-003) :**
+> **Given** le backend est actif, **and** l'API Seeking Alpha est indisponible
+> **When** l'utilisateur analyse NVDA
+> **Then** les données encore disponibles sont collectées (≥ 3 sources), **and** les sections manquantes affichent « DONNÉE NON DISPONIBLE », **and** le score est calculé avec les sources disponibles
 
-### 4.1 Acteurs
+### UC-002 — Consulter le PDF deep-dive
 
-| Acteur | Rôle |
-|--------|------|
-| **Utilisateur principal** | Saisit des tickers, lit les rapports, télécharge les dossiers de sources |
-| **Auditeur de sécurité** | Vérifie la traçabilité des affirmations via le dossier de sources |
-| **Partie prenante externe** | Lit les rapports PDF produits (version investisseur) |
+| Champ | Valeur |
+|---|---|
+| Acteur | ACT-001 |
+| Préconditions | Analyse complète disponible pour le ticker |
+| Déclencheur | Clic « View Full Report » |
 
-### 4.2 Dans le périmètre
+**Scénario nominal (AC-004) :**
+> **Given** une analyse de NVDA est terminée
+> **When** l'utilisateur clique « View Full Report »
+> **Then** un PDF s'ouvre dans le navigateur, **and** le PDF contient les 5 sections majeures (Synthèse, Scoring, Finances, Management, Risques), **and** le header bar est dark (#2A2A2A), **and** les callout boxes bleues (#2563EB) sont visibles
 
-- Analyse unitaire et par lot (batch) de tickers actions (US, Europe via suffixes .PA, .AS, etc.)
-- 9 étapes de pipeline : identification → chiffres financiers → segments → discours management → risques officiels → valorisation → scoring → décision → sortie
-- Scoring sur 8 critères (/40) avec verdict BUY / HOLD / SELL
-- Dossier de sources complet (6 répertoires + manifest JSON + matrice de traçabilité CSV)
-- Rapport earnings deep-dive (10 sections, bilingue EN/JP, PDF)
-- Conversion automatique de tous les fichiers texte en PDF dans le dossier de sortie
-- Recherche et récupération des transcripts de conférences téléphoniques
-- Profil société et documents 8-K téléchargeables
-- API REST documentée (21 endpoints)
-- Interface React responsive (single-page app)
-- Rate limiting et gate d'authentification admin
+**Scénario donnée manquante dans le PDF (AC-005) :**
+> **Given** l'analyse de TSLA est terminée, **and** le transcript Q3 est indisponible
+> **When** l'utilisateur ouvre le PDF
+> **Then** la section transcript affiche « DONNÉE NON DISPONIBLE », **and** aucune donnée n'est inventée ou extrapolée
 
-### 4.3 Hors périmètre
+### UC-003 — Télécharger le dossier ZIP
 
-- Analyse technique (chartisme, indicateurs)
-- Backtesting de portefeuille
-- Données temps réel (streaming)
-- Gestion de portefeuille
-- Exécution d'ordres
-- Indices, ETF, obligations, cryptomonnaies
-- Comptes utilisateurs et authentification (sauf admin gate)
+| Champ | Valeur |
+|---|---|
+| Acteur | ACT-001 |
+| Préconditions | Analyse complète disponible |
+| Déclencheur | Clic « Download ZIP » |
 
-### 4.4 Définitions
+**Scénario nominal (AC-006) :**
+> **Given** une analyse de NVDA est terminée
+> **When** l'utilisateur clique « Download ZIP »
+> **Then** un fichier `.zip` est téléchargé, **and** le ZIP contient au minimum : `deep_dive_report.pdf`, `analysis.json`, `sources.json`
 
-| Terme | Définition |
-|-------|-----------|
-| **Ticker** | Symbole boursier (ex: AAPL, MC.PA). Format : 1-5 lettres majuscules, suffixe optionnel à 1-2 lettres. |
-| **ISIN** | International Securities Identification Number — 12 caractères alphanumériques. Accepté en entrée et résolu vers un ticker. |
-| **Pipeline** | Séquence des 9 étapes d'analyse exécutées par ticker. |
-| **Deep-dive** | Analyse qualitative approfondie d'un appel résultats trimestriel (10 sections). |
-| **Dossier de sources** | Arborescence de fichiers organisée en 7 répertoires contenant tous les documents sources, extractions, et le rapport final. |
-| **Manifest** | Fichier JSON listant toutes les sources utilisées avec métadonnées (URL, date, fiabilité). |
-| **Matrice de traçabilité** | Fichier CSV liant chaque affirmation du rapport à son document source. |
-| **Scoring** | Notation quantitative sur 8 critères (0-5 chacun, total /40). |
+### UC-004 — Batch analysis
 
----
+| Champ | Valeur |
+|---|---|
+| Acteur | ACT-001 |
+| Préconditions | Fichier CSV valide avec ≤ 10 tickers |
+| Déclencheur | Upload CSV + clic « Batch Analyze » |
 
-## 5. Architecture fonctionnelle
+**Scénario nominal (AC-007) :**
+> **Given** un CSV contenant 3 tickers (AAPL, MSFT, GOOGL)
+> **When** l'utilisateur uploade le CSV et lance le batch
+> **Then** les 3 tickers sont traités séquentiellement, **and** un job_id est retourné, **and** le statut est consultable via GET /api/batch/{job_id}/status
 
-### 5.1 Vue d'ensemble
+### UC-005 — Feedback et correction
+
+| Champ | Valeur |
+|---|---|
+| Acteur | ACT-001 |
+| Préconditions | Une analyse existe pour le ticker |
+| Déclencheur | Envoi d'un feedback (score incorrect, donnée manquante) |
+
+**Scénario nominal (AC-008) :**
+> **Given** une analyse de NVDA avec score 32/40 est affichée
+> **When** l'utilisateur envoie un feedback « Score surévalué, PER trop bas »
+> **Then** le feedback est horodaté (timestamp + message), **and** la réanalyse prend en compte le feedback
+
+### UC-006 — Health check système
+
+| Champ | Valeur |
+|---|---|
+| Acteur | ACT-003 (Veilleur automatique) |
+| Préconditions | Cron job actif |
+| Déclencheur | Toutes les 15 minutes |
+
+**Scénario nominal (AC-009) :**
+> **Given** le backend tourne sur le port 8780
+> **When** le cron job appelle GET /api/health
+> **Then** le endpoint retourne 200 avec `{"status": "healthy", "uptime": <N>}`, **and** si le code est ≠ 200, le script auto-recovery est déclenché
+
+## 3. Pipeline d'analyse (9 étapes)
+
+| Étape | ID | Module | Entrée | Sortie | Dépendance sources |
+|---|---|---|---|---|---|
+| 1 | PIP-001 | Profil entreprise | Ticker | CompanyProfile | yfinance |
+| 2 | PIP-002 | Collecte données | Ticker, profile | FinancialData | yfinance + Finnhub + EDGAR |
+| 3 | PIP-003 | Transcripts earnings | Ticker | Transcript[] | Seeking Alpha + Tavily |
+| 4 | PIP-004 | Dépôts SEC | Ticker | SECFilings | EDGAR (edgartools) |
+| 5 | PIP-005 | Analyse management | Transcript[] | ManagementTone | LLM local/externe |
+| 6 | PIP-006 | Scoring (40 pts) | FinancialData + ManagementTone + Risques | Scoring | Calcul déterministe |
+| 7 | PIP-007 | Synthèse LLM | Toutes données | DeepDiveReport | DeepSeek / GPT |
+| 8 | PIP-008 | Génération PDF | DeepDiveReport | PDF (10–14 pages) | ReportLab |
+| 9 | PIP-009 | Archivage | PDF + sources | ZIP + analyses/ | Disque local |
+
+## 4. Schémas de données
+
+### 4.1 Scoring (40 points)
 
 ```
-┌─────────────────────────────────────────────────┐
-│  Frontend React + Vite (SPA)                    │
-│  - Saisie tickers (individuel ou batch)         │
-│  - Dashboard : cartes par ticker                │
-│  - Rapports complets avec sources               │
-│  - Téléchargement ZIP + PDF                     │
-└──────────────────┬──────────────────────────────┘
-                   │ HTTP (REST JSON)
-┌──────────────────▼──────────────────────────────┐
-│  FastAPI Backend                                │
-│  - Orchestrateur d'analyse                      │
-│  - Générateur de rapports                       │
-│  - Convertisseur PDF                            │
-│  - Rate limiter + Admin gate                    │
-└──────────────────┬──────────────────────────────┘
-                   │ APIs externes
-     ┌─────────────┼─────────────┬──────────────┐
-     ▼             ▼             ▼              ▼
-  Yahoo        Finnhub       SEC EDGAR     Seeking Alpha
-  Finance      (gratuit)     (public)      (transcripts)
-```
-
-### 5.2 Pipeline en 9 étapes
-
-Chaque ticker est analysé en exécutant séquentiellement les 9 étapes ci-dessous. Les résultats intermédiaires sont stockés dans un répertoire horodaté sous `analyses/`.
-
-| # | Étape | Sources | Livrable |
-|---|-------|---------|----------|
-| 1 | **Identification** | yfinance | Ticker validé, nom société, secteur, capitalisation, prix natif et EUR |
-| 2 | **Chiffres financiers** | yfinance + Finnhub | CA, croissance YoY, marges brutes/opérationnelles, RN, FCF, dette nette, guidance |
-| 3 | **Segments** | Finnhub + site entreprise | Segment principal, %CA, croissance segmentaire, dépendance excessive |
-| 4 | **Discours management** | SEC EDGAR (dernier 10-K/10-Q) | Ton général, confiance, promesses concrètes, signaux défensifs |
-| 5 | **Risques officiels** | SEC EDGAR (Risk Factors) | Concentration, cyclicité, supply chain, régulation — sévérité haute/moyenne/basse |
-| 6 | **Valorisation** | yfinance | PE courant, PE forward, PEG, croissance attendue, marge de sécurité |
-| 7 | **Scoring** | Calculé (données étapes 1-6) | 8 critères × 5 points = /40 |
-| 8 | **Décision** | Règles de scoring | Verdict BUY / HOLD / SELL + niveau de conviction + phrase clé |
-| 9 | **Sortie** | Généré | report.md + sources_manifest.json + claim_traceability_matrix.csv + PDFs |
-
-### 5.3 Structure du dossier de sortie
-
-```
-analyses/{YYYY-MM-DD}_{TICKER}_{NOM}/
-├── 01_official_company_sources/    # Site officiel, communiqués
-├── 02_sec_or_regulatory_filings/   # 10-K, 10-Q, 8-K en PDF
-├── 03_financial_data_sources/      # Données YF, Finnhub (JSON/XLSX)
-├── 04_transcripts_and_management/  # Transcripts earnings calls
-├── 05_market_and_context/          # Actualités, contexte marché
-├── 06_extracted_data/
-│   ├── extracted_financials.json
-│   ├── extracted_risks.json
-│   ├── extracted_management_quotes.json
-│   ├── sources_manifest.json
-│   └── claim_traceability_matrix.csv
-├── 07_final_report/                # report.md + PDFs
-│   └── earnings_deep_dive.pdf
-├── en/                             # Miroir en anglais
-│   └── 07_final_report/
-└── jp/                             # Miroir en japonais
-    └── 07_final_report/
-```
-
----
-
-## 6. Sources de données
-
-### 6.1 Providers
-
-| Provider | Type | Gratuit ? | Utilisé pour | Limites |
-|----------|------|-----------|-------------|---------|
-| **Yahoo Finance** (yfinance) | API non officielle | Oui | Cours, financiers, valorisation, segments, identification | Rate limit implicite, pas de SLA |
-| **Finnhub** | API REST | Oui (60 req/min gratuit) | Profil société, actualités, segments | Free tier limité |
-| **SEC EDGAR** | API publique | Oui | Filings 10-K, 10-Q, 8-K, risk factors | Données US uniquement |
-| **Seeking Alpha** | Web scraping | Oui | Transcripts d'earnings calls | Accès non garanti, fallback nécessaire |
-| **Site officiel entreprise** | HTTP | Oui | Profil, communiqués | Structure variable par société |
-| **Recherche web** (fallback) | DuckDuckGo/Google | Oui | Transcripts non trouvés sur SA | Qualité variable |
-
-### 6.2 Règles de sourcing
-
-- **BR-SRC-01 :** Toute donnée financière doit être rattachée à un document source horodaté.
-- **BR-SRC-02 :** Si une donnée est indisponible, le rapport doit indiquer « Not available » (jamais de donnée inventée).
-- **BR-SRC-03 :** Chaque source est identifiée par un hash SHA-256 de son contenu pour vérification d'intégrité.
-- **BR-SRC-04 :** Les données de marché (cours) sont horodatées à la seconde près et périment après 24h.
-
----
-
-## 7. Modèle de scoring
-
-### 7.1 Critères
-
-Le scoring évalue chaque ticker sur 8 critères, chacun noté de 0 à 5 :
-
-| # | Critère | Pondération | Ce qui est mesuré |
-|---|---------|------------|-------------------|
-| 1 | **Croissance** (growth) | /5 | Croissance du CA YoY, tendance sur 3 ans |
-| 2 | **Rentabilité** (profitability) | /5 | Marge brute, marge opérationnelle, RN positif |
-| 3 | **Solidité financière** (financial_strength) | /5 | Ratio d'endettement, FCF, couverture des intérêts |
-| 4 | **Avantage concurrentiel** (moat) | /5 | Part de marché, barrières à l'entrée, pricing power |
-| 5 | **Qualité du management** (management) | /5 | Ton, transparence, track record, guidance |
-| 6 | **Risque de valorisation** (valuation_risk) | /5 | PE vs historique, PEG, marge de sécurité |
-| 7 | **Risque géopolitique** (geopolitical_risk) | /5 | Exposition Chine, régulation, sanctions |
-| 8 | **Momentum business** (business_momentum) | /5 | Catalyseurs court-terme, innovations, contrats |
-
-### 7.2 Verdict
-
-| Score total | Décision |
-|-------------|----------|
-| ≥ 32 | **BUY** |
-| 26 – 31 | **HOLD / BUY ON PULLBACK** |
-| 18 – 25 | **HOLD fragile** |
-| ≤ 17 | **SELL or AVOID** |
-
-### 7.3 Règles de scoring
-
-- **BR-SCO-01 :** Le verdict est calculé automatiquement à partir du score total. Aucune intervention manuelle.
-- **BR-SCO-02 :** Chaque critère doit être justifié par au moins une donnée tracée dans le sources_manifest.json.
-- **BR-SCO-03 :** Le niveau de conviction (« Élevée », « Modérée », « Spéculative ») est déterminé par la complétude des données disponibles.
-
----
-
-## 8. Interface utilisateur
-
-### 8.1 Composants React
-
-| Composant | Rôle |
-|-----------|------|
-| **TickerInput** | Saisie de tickers (champ texte, séparateur virgule), validation format, bouton « Analyser » |
-| **AnalysisCard** | Carte par ticker : score /40, verdict coloré (vert BUY, orange HOLD, rouge SELL), KPIs (PE, marge, croissance) |
-| **ReportView** | Rapport complet avec toutes les sections du pipeline, liens vers sources |
-| **SourcesView** | Manifest des sources (tableau triable) |
-| **BatchUpload** | Upload de fichier CSV/texte de tickers pour analyse par lot |
-| **DeepDivePanel** | Interface de déclenchement et visualisation du deep-dive earnings |
-| **DossierDownload** | Téléchargement ZIP du dossier de sources complet |
-| **AdminPage** | Interface d'administration protégée (statistiques, cache, jobs) |
-| **LanguageSelector** | Sélecteur de langue pour les rapports (EN / JP) |
-| **StatusIndicator** | Indicateur de progression pour les analyses longues (polling) |
-
-### 8.2 Parcours utilisateur principal
-
-1. L'utilisateur saisit un ou plusieurs tickers (ex: « NVDA, MSFT, ASML »).
-2. Il clique sur « Analyser ».
-3. Le backend lance l'analyse (job asynchrone), retourne un `job_id`.
-4. Le frontend affiche des indicateurs de progression via polling.
-5. Une fois l'analyse terminée, les AnalysisCards apparaissent avec le score et le verdict.
-6. L'utilisateur peut :
-   - Cliquer sur une carte pour voir le rapport complet.
-   - Télécharger le dossier de sources (ZIP).
-   - Lancer un deep-dive earnings.
-   - Télécharger le rapport deep-dive en PDF.
-
-### 8.3 Règles d'interface
-
-- **BR-UI-01 :** Le verdict doit être immédiatement visible (couleur + score).
-- **BR-UI-02 :** Les données « Not available » sont affichées en grisé, jamais omises.
-- **BR-UI-03 :** Les sources sont cliquables et ouvrent le document original dans un nouvel onglet.
-- **BR-UI-04 :** L'interface est responsive (desktop prioritaire, mobile acceptable).
-
----
-
-## 9. API REST
-
-### 9.1 Liste des endpoints
-
-| Méthode | Path | Rôle |
-|---------|------|------|
-| GET | `/api/health` | Healthcheck |
-| POST | `/api/analyze` | Analyse unitaire (synchrone) |
-| POST | `/api/analyze/async` | Analyse unitaire (asynchrone) |
-| GET | `/api/analyze/job/{job_id}` | Statut d'un job asynchrone |
-| GET | `/api/analyze/{ticker}/download` | Téléchargement ZIP du dossier |
-| POST | `/api/batch/upload` | Upload fichier CSV de tickers |
-| POST | `/api/batch/analyze` | Analyse batch (plusieurs tickers) |
-| GET | `/api/batch/{job_id}/status` | Statut job batch |
-| GET | `/api/batch/{job_id}/download` | Téléchargement ZIP batch |
-| GET | `/api/report/{ticker}` | Rapport complet (JSON) |
-| GET | `/api/report/{ticker}/pdf` | Rapport deep-dive PDF |
-| GET | `/api/sources/{ticker}` | Manifest des sources (JSON) |
-| GET | `/api/traceability/{ticker}` | Matrice de traçabilité (JSON) |
-| GET | `/api/earnings/quarters/{ticker}` | Liste des trimestres avec transcripts |
-| POST | `/api/earnings/deep-dive` | Génération deep-dive earnings |
-| GET | `/api/dossier/{ticker}/status` | Statut de génération du dossier |
-| GET | `/api/dossier/{ticker}/download` | Téléchargement ZIP du dossier |
-| POST | `/api/dossier/{ticker}/upload` | Upload de documents complémentaires |
-| GET | `/api/debug/yf-cache/{ticker}` | État du cache Yahoo Finance (debug) |
-| GET | `/api/debug/sources` | Sources disponibles par ticker (debug) |
-| GET | `/api/admin/*` | Endpoints d'administration (protégés par ADMIN_SECRET) |
-
-### 9.2 Règles API
-
-- **BR-API-01 :** Content-Type par défaut : `application/json`.
-- **BR-API-02 :** Les erreurs sont retournées au format `{"detail": "message"}` avec le code HTTP approprié.
-- **BR-API-03 :** Rate limiting : 30 req/min sur `/api/analyze`, 120 req/min sur les autres endpoints (par IP).
-- **BR-API-04 :** Les endpoints d'administration (`/api/admin/*`) requièrent le header `X-Admin-Secret` ou le paramètre `admin_secret` correspondant à la variable `ADMIN_SECRET`.
-- **BR-API-05 :** Timeout par défaut : 600s pour les endpoints synchrones, pas de timeout pour les endpoints asynchrones (polling).
-
-### 9.3 Contrats de données
-
-#### TickerRequest (POST /api/analyze)
-```json
-{
-  "tickers": ["NVDA", "MSFT"],
-  "deep_dive": false
+Scoring {
+    total: int ∈ [0, 40]
+    financial_health: int ∈ [0, 10]   // Dette, liquidité, cash flow
+    growth: int ∈ [0, 10]             // Croissance CA, BNA
+    valuation: int ∈ [0, 8]           // PER, PEG, P/B, EV/EBITDA
+    management: int ∈ [0, 5]          // Tone analysis, insider trades
+    moat: int ∈ [0, 4]                // Marge, part de marché
+    sentiment: int ∈ [0, 3]           // News, analystes
+    recommendation: enum["BUY", "HOLD", "SELL"]
+    summary: str (≤ 300 caractères)
 }
 ```
 
-#### AnalysisResult (réponse)
-```json
-{
-  "ticker": "NVDA",
-  "company_name": "NVIDIA Corporation",
-  "price_native": 950.50,
-  "price_eur": 875.30,
-  "currency": "USD",
-  "market_cap": 2350000000000,
-  "sector": "Technology",
-  "financials": { "revenue_quarterly": 26044000000, "revenue_yoy_growth": 262.0, "gross_margin": 78.4, "operating_margin": 65.0, "net_income": 14881000000, "free_cash_flow": 14500000000, "net_debt": -10000000000 },
-  "scoring": { "growth": 5, "profitability": 5, "financial_strength": 4, "moat": 5, "management": 4, "valuation_risk": 3, "geopolitical_risk": 3, "business_momentum": 5 },
-  "decision": "BUY",
-  "conviction": "Élevée"
+**Seuils :** BUY si total ≥ 28, HOLD si 18–27, SELL si < 18
+
+### 4.2 AnalysisResult
+
+```
+AnalysisResult {
+    ticker: str (1–5 caractères, uppercase)
+    timestamp: datetime (ISO 8601)
+    status: enum["running", "completed", "error"]
+    score: Scoring | null
+    company_profile: dict
+    financial_data: FinancialData
+    management_tone: ManagementTone | null
+    risks: RiskItem[] (≤ 20)
+    valuation: ValuationData
+    sources: Source[] (≥ 1, idéalement ≥ 5)
+    pdf_path: str | null
+    dossier_path: str | null
 }
 ```
 
----
+### 4.3 FinancialData
 
-## 10. Modules complémentaires
+```
+FinancialData {
+    ticker: str
+    market_cap: float | null          // en USD
+    revenue: float | null             // TTM, en USD
+    net_income: float | null
+    eps: float | null
+    pe_ratio: float | null
+    peg_ratio: float | null
+    debt_to_equity: float | null
+    current_ratio: float | null
+    free_cash_flow: float | null
+    dividend_yield: float | null
+    revenue_growth_yoy: float | null  // %
+    gross_margin: float | null        // %
+    operating_margin: float | null
+}
+```
 
-### 10.1 Earnings Deep-Dive
+### 4.4 Source
 
-Analyse qualitative approfondie d'un appel résultats trimestriel, structurée en 10 sections :
+```
+Source {
+    type: enum["yfinance", "finnhub", "edgar", "seeking_alpha", "tavily", "alpha_vantage", "web"]
+    name: str
+    url: str | null
+    retrieved_at: datetime
+    status: enum["success", "partial", "failed"]
+    data_points: int
+}
+```
 
-1. 📊 **EPS & Revenue Summary** — Tableau Estimation vs Réel vs Écart vs YoY
-2. 🌟 **Highlights & Lowlights** — Points positifs (numérotés, chiffrés) et points de vigilance (sévérité)
-3. 🧠 **Operating Metrics** — Tableau revenus, marges, OpEx, résultat net
-4. 💰 **Cash Flow** — OCF, CapEx, FCF avec analyse de soutenabilité
-5. 🎯 **Capital Efficiency** — ROE, ROTCE, ROA, ROIC
-6. 🧩 **Segments** — Par produit et zone géographique
-7. 📈 **Forward P/E** — Contexte secteur, historique 5 ans
-8. 📦 **Backlog Quality** — Conditionnel, si applicable
-9. 🔮 **Guidance** — Projections T+1 avec analyse QoQ
-10. 🏆 **Verdict** — Forces/Faiblesses/Opportunités/Risques, thèse d'investissement
+### 4.5 DeepDiveReport
 
-Chaque section inclut une question en anglais et japonais, une réponse structurée, et un résumé en une ligne (一言まとめ). Les rapports sont générés en PDF bilingue (EN + JP).
+```
+DeepDiveReport {
+    ticker: str
+    quarter: str                     // "2025-Q3"
+    generated_at: datetime
+    sections: Section[]
+    metadata: {model: str, tokens: int, cost_usd: float}
+}
 
-### 10.2 Profil société
+Section {
+    title: str
+    content: str                     // Markdown converti en PDF
+    sources: str[]                   // Références aux sources
+    confidence: enum["high", "medium", "low"]
+}
+```
 
-Génération automatique d'un profil société incluant : description, secteur, site web, page relations investisseurs, logo. Intégré en étape préalable du pipeline.
+### 4.6 Feedback
 
-### 10.3 Conversion PDF universelle
+```
+Feedback {
+    id: str (UUID v4)
+    ticker: str
+    timestamp: datetime
+    message: str (≤ 2000 caractères)
+    correction_type: enum["score", "data", "missing", "other"]
+    processed: bool
+    applied_at: datetime | null
+}
+```
 
-Tout fichier `.md` ou `.txt` dans le dossier de sortie est automatiquement converti en PDF via le renderer générique fpdf2, sauf exclusion explicite (README.md, earnings_deep_dive.md déjà traité).
+## 5. Règles de gestion
 
----
+| ID | Règle | Condition déclenchante | Comportement attendu | Testable |
+|---|---|---|---|---|
+| BR-001 | Pas d'invention de données | Source API retourne null/erreur | Afficher « DONNÉE NON DISPONIBLE » dans le PDF | ✅ |
+| BR-002 | Score minimum 3 sources | < 3 sources valides après collecte | Score = null, recommandation = « INSUFFISANT », ne pas générer de PDF complet | ✅ |
+| BR-003 | PDF 5 sections obligatoires | Génération PDF | Sections : Synthèse, Scoring, Finances, Management, Risques | ✅ |
+| BR-004 | Archivage obligatoire | Analyse terminée (completed) | Sauvegarder dans analyses/{ticker}_{timestamp}/ | ✅ |
+| BR-005 | Feedback avant réanalyse | Feedback non traité existe | Réanalyse uniquement après application du feedback | ✅ |
+| BR-006 | Rate limit cascade | API retourne 429 | Exponential backoff (1s, 2s, 4s, 8s), max 3 retries, puis skip source | ✅ |
+| BR-007 | Timeout source externe | > 30s sans réponse | Abandonner la source, logger l'erreur, continuer avec les autres | ✅ |
+| BR-008 | CSV batch max 10 tickers | Batch upload | Rejeter si > 10 tickers avec message d'erreur | ✅ |
+| BR-009 | Cache invalidation | Cache > 1h ou refresh forcé | Invalider et re-collecter | ⚠️ |
 
-## 11. Exigences non fonctionnelles
+## 6. Exigences non fonctionnelles
 
-### 11.1 Performance
+| ID | Catégorie | Exigence | Cible | Mesure |
+|---|---|---|---|---|
+| NFR-001 | Performance | Analyse complète | < 5 min | Chrono pipeline |
+| NFR-002 | Performance | Affichage PDF | < 2 s | Latence HTTP |
+| NFR-003 | Disponibilité | API health | 99 % uptime | Health check cron (15 min) |
+| NFR-004 | Sécurité | Auth write endpoints | X-API-Key obligatoire | 401 si absent |
+| NFR-005 | Fiabilité | Données manquantes | Pas d'invention | Audit visuel PDF |
+| NFR-006 | Observabilité | Logs structurés | Tous endpoints + pipeline | JSON logs avec timestamp |
+| NFR-007 | Résilience | Rate limit APIs | Retry/backoff automatique | BR-006 |
+| NFR-008 | Maintenabilité | Couverture de tests | ≥ 60 % pipeline | pytest --cov |
+| NFR-009 | Sécurité | Secrets | .env uniquement, .gitignore | Scan pre-commit |
 
-- **NFR-PERF-01 :** L'analyse unitaire (1 ticker, sans deep-dive) doit s'exécuter en moins de 60 secondes.
-- **NFR-PERF-02 :** L'analyse batch (5 tickers, sans deep-dive) doit s'exécuter en moins de 5 minutes.
-- **NFR-PERF-03 :** La génération deep-dive (1 ticker, bilingue) doit s'exécuter en moins de 3 minutes.
-- **NFR-PERF-04 :** Le cache Yahoo Finance a une TTL de 30 minutes pour les données de marché.
+## 7. Observabilité et audit
 
-### 11.2 Disponibilité
+### 7.1 Événements de log
 
-- **NFR-DISP-01 :** L'application est conçue pour un déploiement local (WSL/Windows) avec exposition via tunnel (Cloudflare/ngrok).
-- **NFR-DISP-02 :** Aucune dépendance à un service cloud payant. Toutes les APIs externes ont un fallback.
+| Événement | Niveau | Champs | Trigger |
+|---|---|---|---|
+| pipeline.start | INFO | ticker, timestamp | Début analyse |
+| pipeline.step | INFO | ticker, step (1–9), duration_ms | Fin de chaque étape |
+| pipeline.complete | INFO | ticker, total_ms, score, sources_count | Analyse terminée |
+| pipeline.error | ERROR | ticker, step, error_type, message | Erreur étape |
+| source.fetch | DEBUG | source_type, ticker, duration_ms, status | Après chaque appel API |
+| source.rate_limit | WARN | source_type, retry_after_ms | API retourne 429 |
+| pdf.render | INFO | ticker, pages, size_kb, duration_ms | PDF généré |
+| api.request | INFO | method, path, status_code, duration_ms | Chaque requête HTTP |
 
-### 11.3 Sécurité
+### 7.2 Métriques exposées
 
-- **NFR-SEC-01 :** Tous les secrets (clés API, tokens) sont stockés dans `.env`, hors versionnement Git.
-- **NFR-SEC-02 :** CORS est restreint aux origines autorisées (localhost, tunnel de production).
-- **NFR-SEC-03 :** Rate limiting par IP prévient les abus sur les endpoints coûteux.
-- **NFR-SEC-04 :** Les endpoints d'administration sont protégés par secret partagé (`ADMIN_SECRET`).
+| Métrique | Endpoint | Type |
+|---|---|---|
+| Uptime secondes | /api/health | HealthResponse |
+| Nombre sources par ticker | /api/traceability/{ticker} | JSON |
+| Statut batch job | /api/batch/{job_id}/status | JSON |
+| Recherches récentes | /api/admin/recent-searches | JSON |
+| Stats recherche | /api/admin/search-stats | JSON |
 
-### 11.4 Maintenabilité
+## 8. Politique de confidentialité
 
-- **NFR-MAINT-01 :** Le code est structuré en modules indépendants (pipeline, scoring, sources, rendering).
-- **NFR-MAINT-02 :** Les tests (pytest) couvrent a minima le pipeline, le scoring, et les modèles.
-- **NFR-MAINT-03 :** Les commits sont atomiques avec messages descriptifs.
+Le pipeline utilise des LLM externes pour la synthèse narrative (étape 7). Les données transmises sont des données financières publiques (ticker, chiffres trimestriels, transcripts publics).
 
----
+| ID | Principe | Implémentation |
+|---|---|---|
+| PR-001 | Données transmises au LLM | Uniquement données publiques (chiffres SEC, transcript publics, prix de marché) |
+| PR-002 | Pas de PII | Aucune donnée personnelle dans les prompts LLM |
+| PR-003 | Secrets API | Stockés dans .env, jamais transmis aux LLM |
+| PR-004 | Logs | Ne contiennent pas les prompts LLM complets (uniquement résumé) |
+| PR-005 | Cache local | Stocké dans backend/cache/, effaçable sans impact fonctionnel |
+| PR-006 | Réversibilité | Toute analyse peut être regénérée (données sources conservées dans analyses/) |
+| PR-007 | Consentement | Usage personnel uniquement, pas de partage de données avec des tiers au-delà du pipeline |
 
-## 12. Parties prenantes
+## 9. Rétention et restauration
 
-| Rôle | Responsabilité | Contact |
-|------|---------------|---------|
-| **Utilisateur principal** | Définition des besoins, validation des rapports, utilisation quotidienne | — |
-| **Auditeur de sécurité** | Vérification de la traçabilité, audit des sources | — |
-| **Partie prenante externe** | Lecture des rapports PDF, décision d'investissement | — |
-| **Mainteneur technique** | Développement, déploiement, maintenance | — |
+### 9.1 Rétention des analyses
 
----
+| Artefact | Emplacement | Rétention |
+|---|---|---|
+| Analyse JSON | analyses/{ticker}_{timestamp}/ | Illimitée (disque local) |
+| PDF deep-dive | analyses/{ticker}_{timestamp}/ | Illimitée |
+| ZIP dossier complet | analyses/{ticker}_{timestamp}/ | Illimitée |
+| Cache financier | backend/cache/ | Volatil (invalidé sur refresh) |
+| Logs | backend/logs/ | Rotation manuelle |
 
-## 13. Registre des risques
+### 9.2 Modes de défaillance et restauration
+
+| Mode de défaillance | Symptôme | Procédure de récupération | Délai cible |
+|---|---|---|---|
+| Tunnel CF down | HTTP 530/1033 | `systemctl --user restart cloudflared-tunnel` | < 2 min |
+| Backend down | Connection refused :8780 | `cd backend && PYTHONPATH=.. uvicorn main:app --host 0.0.0.0 --port 8780` | < 5 min |
+| API source rate limit | 429 sur yfinance/Finnhub | Automatique : backoff exponentiel, max 3 retries | < 30 s |
+| API source down | Timeout 30 s | Skip source, continuer avec ≥ 3 sources | Automatique |
+| Build frontend manquant | 404 sur fichiers JS/CSS | `cd frontend && npm run build` | < 2 min |
+| Double prefix CF | /stock-analysis/stock-analysis/ JS 404 | Accéder via https://sa.cedlabusa.net/ (pas /stock-analysis/) | Immédiat |
+| Port 8780 occupé | Address already in use | `lsof -i :8780` → `kill <PID>` | < 1 min |
+| Mémoire WSL saturée | OOM kill par Windows | `wsl --shutdown` + redémarrer le backend | < 3 min |
+| Crash pipeline | Erreur 500, état inconsistent | Supprimer l'analyse partielle, relancer | — |
+
+### 9.3 Vérification post-restauration
+
+```bash
+# 1. Backend health
+curl -s -w "%{http_code}" https://sa.cedlabusa.net/api/health
+
+# 2. Frontend reachable
+browser_navigate → https://sa.cedlabusa.net
+
+# 3. Analyse test
+saisir "AAPL" → lancer analyse → vérifier PDF + ZIP
+```
+
+## 10. Contraintes
+
+| ID | Contrainte | Type | Impact |
+|---|---|---|---|
+| C-001 | yfinance rate limit (~5 req/s informel) | Technique | Délai entre tickers batch |
+| C-002 | Finnhub free tier (60 req/min) | Source | Limitation collecte news/earnings |
+| C-003 | Alpha Vantage free tier (25 req/jour) | Source | Transcripts limités |
+| C-004 | Tavily API (1000 req/mois) | Source | IR enrichment limité |
+| C-005 | Cloudflare Tunnel exposition | Sécurité | Auth via X-API-Key obligatoire pour writes |
+| C-006 | WSL2 backend uniquement | Déploiement | Pas de containerisation, pas de scaling horizontal |
+| C-007 | React buildé en bundle JS | Frontend | Cache-busting obligatoire (CacheBustingStaticFiles) |
+| C-008 | Seeking Alpha HTML scraping | Source | Fragile, dépend de la structure HTML |
+
+## 11. Risques et décisions
+
+### 11.1 Risques identifiés
 
 | ID | Risque | Probabilité | Impact | Mitigation |
-|----|--------|------------|--------|-----------|
-| **R01** | API Yahoo Finance devient inaccessible (rate limit, blocage) | Moyenne | Élevé | Fallback Finnhub + cache local persistant |
-| **R02** | SEC EDGAR change son API ou impose des quotas | Faible | Élevé | Fallback via Finnhub filings |
-| **R03** | Transcript Seeking Alpha non disponible (paywall) | Moyenne | Moyen | Fallback recherche web + site officiel |
-| **R04** | Coût tokens LLM élevé pour deep-dive (si fournisseur externe) | Moyenne | Moyen | Utilisation prioritaire de Codex/GPT-5.5 inclus dans abonnement existant |
-| **R05** | Données financières erronées ou périmées (cache stale) | Moyenne | Élevé | TTL cache 30min, horodatage, hash SHA-256 |
-| **R06** | Hallucination LLM dans les rapports (données inventées) | Moyenne | Critique | Règle anti-invention, traçabilité SHA-256, « Not available » explicite |
-| **R07** | Corruption du cache disque (NTFS/WSL) | Faible | Moyen | Hash SHA-256 vérifiable, purge cache simple |
-| **R08** | Tunnel Cloudflare/ngrok instable (coupure réseau) | Faible | Faible | Fonctionne en local sans tunnel ; fallback ngrok si Cloudflare down |
+|---|---|---|---|---|
+| RSK-001 | API Seeking Alpha bloque le scraping | Moyenne | Transcripts indisponibles | Fallback Alpha Vantage + Tavily |
+| RSK-002 | yfinance change l'API | Faible | Données fondamentales HS | Finnhub + EDGAR en fallback |
+| RSK-003 | Double bookkeeping financier | Faible (fixé 2026-05-14) | Score erroné | Commit 3cf8f9b : sync EDGAR → financials ET fin |
+| RSK-004 | Quick tunnel au lieu de named tunnel | Faible | Domaine instable | Auto-recovery détecte quick tunnel |
+| RSK-005 | Indentation bug PDF renderer | Faible (fixé 2026-05-15) | PDF vide | Commit af2b3df : helpers BEFORE render function |
+| RSK-006 | Mémoire WSL insuffisante | Moyenne (> 3 batch) | OOM kill | Batch max 10 tickers, clean after each |
 
----
+### 11.2 Décisions d'architecture (renvoi aux ADR)
 
-## 14. Observabilité et audit
+- ADR-001 : Stack Python/FastAPI + React/Vite + ReportLab + Cloudflare Tunnel
+- ADR-002 : Scoring rules-based (40 pts, 6 catégories) plutôt que ML
 
-### 14.1 Logging
+## 12. Critères d'acceptation globaux
 
-- **OBS-LOG-01 :** Logging structuré avec rotation horaire (fichiers dans `backend/logs/`).
-- **OBS-LOG-02 :** Chaque étape du pipeline émet un log au niveau INFO avec le ticker et la durée.
-- **OBS-LOG-03 :** Les erreurs sont loggées avec traceback complet. Pas de `except: pass` silencieux.
-- **OBS-LOG-04 :** L'endpoint `/api/health` retourne l'état du service et des APIs externes.
+| ID | Critère | Méthode | Seuil |
+|---|---|---|---|
+| GA-001 | Analyse NVDA complète | Chronomètre | < 5 min |
+| GA-002 | PDF ≥ 10 pages, émojis ◆🧠●👉⚠️ visibles | Audit visuel | 100% des pages |
+| GA-003 | ZIP contient PDF + analysis.json + sources.json | Extraction manuelle | 3 fichiers min |
+| GA-004 | API health retourne 200 | curl -s -w "%{http_code}" | 200 |
+| GA-005 | Tests pipeline passent | pytest tests/ -v | 0 échec |
+| GA-006 | Aucune donnée inventée | Audit sources vs PDF | 0 invention |
+| GA-007 | Frontend accessible | browser_navigate | Page load < 5 s |
+| GA-008 | Feedback enregistré | POST /api/feedback → GET /api/admin/feedback | Message horodaté présent |
+| GA-009 | Erreur ticker invalide | Saisir ZZZZYX | Message erreur < 30 s |
+| GA-010 | Rate limit géré | Simuler 429 yfinance | Retry automatique, skip après 3 |
 
-### 14.2 Métriques
-
-- **OBS-MET-01 :** Nombre de tickers analysés par session.
-- **OBS-MET-02 :** Taux de succès/échec par étape du pipeline.
-- **OBS-MET-03 :** Temps d'exécution moyen par ticker.
-- **OBS-MET-04 :** Taux de complétude des données (ratio champs renseignés).
-
-### 14.3 Traçabilité
-
-- **OBS-TRC-01 :** Chaque rapport inclut un `sources_manifest.json` listant toutes les sources utilisées.
-- **OBS-TRC-02 :** Chaque affirmation chiffrée est liée à un document source via `claim_traceability_matrix.csv`.
-- **OBS-TRC-03 :** Les documents sources sont hachés (SHA-256) pour détecter toute altération.
-- **OBS-TRC-04 :** L'endpoint `/api/traceability/{ticker}` expose la matrice complète en JSON.
-
----
-
-## 15. Politique de confidentialité
-
-Ce pipeline utilise des fournisseurs LLM externes pour la génération de rapports (deep-dive earnings, analyse qualitative). Les règles suivantes s'appliquent :
-
-- **PR-01 :** Aucune donnée personnelle utilisateur n'est transmise aux LLM. Seuls les tickers (identifiants publics) et les données financières publiques sont envoyés.
-- **PR-02 :** Les clés API des fournisseurs LLM sont stockées exclusivement dans `.env`, hors versionnement.
-- **PR-03 :** Les rapports générés sont stockés localement dans `analyses/`. Aucune donnée n'est exfiltrée vers un serveur tiers.
-- **PR-04 :** Les transcripts d'earnings calls sont des documents publics (SEC EDGAR, Seeking Alpha). Leur traitement par LLM ne constitue pas une fuite de données.
-- **PR-05 :** Le cache local (`.cache/`) contient des données financières publiques. Il peut être purgé sans perte de données utilisateur.
-- **PR-06 :** Aucun cookie, tracker, ou mécanisme de profilage n'est présent dans l'interface web.
-- **PR-07 :** Le tunnel Cloudflare/ngrok est utilisé uniquement pour l'accès distant. Aucune donnée n'est stockée sur les serveurs de tunnel.
-
----
-
-## 16. Rétention et restauration
-
-### 16.1 Rétention
-
-- **RET-01 :** Les analyses sont conservées indéfiniment dans `analyses/` tant que l'espace disque le permet.
-- **RET-02 :** Le cache Yahoo Finance (`.cache/`) a une TTL de 30 minutes. Les entrées expirées peuvent être supprimées manuellement.
-- **RET-03 :** Les jobs batch persistés (`batches/`) survivent aux redémarrages du service.
-
-### 16.2 Restauration
-
-| Scénario de panne | Procédure de restauration |
-|-------------------|--------------------------|
-| **Cache corrompu** | `rm -rf backend/.cache/*` — le cache se reconstruit automatiquement |
-| **Analyse interrompue** | Relancer l'analyse — le répertoire horodaté est écrasé |
-| **Job batch perdu (redémarrage)** | Le job est rechargé depuis `batches/{job_id}.json` |
-| **Fichier .env corrompu** | Restaurer depuis `.env.example` et re-renseigner les clés API |
-| **Dossier de sources incomplet** | Relancer l'analyse — toutes les sources sont re-téléchargées |
-| **Déploiement tunnel cassé** | Redémarrer le tunnel (Cloudflare : `cloudflared tunnel run`, ngrok : `ngrok http 8780`) |
-
----
-
-## 17. Glossaire
+## 13. Glossaire
 
 | Terme | Définition |
-|-------|-----------|
-| **10-K** | Rapport annuel déposé auprès de la SEC (États-Unis) |
-| **10-Q** | Rapport trimestriel déposé auprès de la SEC |
-| **8-K** | Déclaration d'événement significatif auprès de la SEC |
-| **BUY / HOLD / SELL** | Verdict d'investissement : acheter / conserver / vendre |
-| **CapEx** | Capital Expenditures — dépenses d'investissement |
-| **Cloudflare Tunnel** | Service de tunneling TCP pour exposer un service local via un domaine |
-| **Deep-dive** | Analyse qualitative approfondie d'un appel résultats |
-| **EBITDA** | Earnings Before Interest, Taxes, Depreciation, and Amortization |
-| **EDGAR** | Electronic Data Gathering, Analysis, and Retrieval — base de données publique de la SEC |
-| **EPS** | Earnings Per Share — bénéfice par action |
-| **FCF** | Free Cash Flow — flux de trésorerie disponible |
-| **Finnhub** | Fournisseur de données financières (API REST, free tier 60 req/min) |
-| **ISIN** | International Securities Identification Number |
-| **Manifest** | Fichier JSON listant les sources utilisées avec métadonnées |
-| **ngrok** | Service de tunneling TCP pour exposer un service local |
-| **OCF** | Operating Cash Flow — flux de trésorerie d'exploitation |
-| **PEG** | Price/Earnings to Growth — ratio PE divisé par la croissance attendue |
-| **Pipeline** | Séquence des 9 étapes d'analyse |
-| **ROE** | Return on Equity — rendement des capitaux propres |
-| **ROIC** | Return on Invested Capital — rendement du capital investi |
-| **SEC** | Securities and Exchange Commission — régulateur financier américain |
-| **Seeking Alpha** | Plateforme de contenu financier incluant les transcripts d'earnings calls |
-| **Ticker** | Symbole boursier identifiant une action |
-| **Tunnel** | Connexion réseau exposant un service local sur internet |
-| **一言まとめ (hitokoto matome)** | Résumé en une phrase, obligatoire à la fin de chaque section du deep-dive |
-| **yfinance** | Bibliothèque Python non officielle pour accéder aux données Yahoo Finance |
-
----
-
-*Fin du document — Version 1.1 — 2026-05-12*
+|---|---|
+| Ticker | Symbole boursier (ex: AAPL, NVDA, MSFT) — 1 à 5 caractères, uppercase |
+| Deep-dive | Analyse narrative enrichie générée par LLM à partir des données collectées |
+| Scoring | Note sur 40 points répartis en 6 catégories, déterminant la recommandation BUY/HOLD/SELL |
+| EDGAR | Electronic Data Gathering, Analysis, and Retrieval — base de dépôts SEC |
+| Callout box | Encadré coloré dans le PDF mettant en valeur une information clé |
+| Quick tunnel | Tunnel Cloudflare éphémère sans nom de domaine stable (debug) |
+| Named tunnel | Tunnel Cloudflare permanent avec nom de domaine configuré (production) |
+| CacheBustingStaticFiles | Classe FastAPI qui ajoute Cache-Control: no-cache aux fichiers statiques |

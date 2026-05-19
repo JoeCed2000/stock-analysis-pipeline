@@ -56,3 +56,6 @@ SSH_SETUP.txt
 tmp/
 *.bak
 tests_e2e/screenshots/
+
+# External reference kits
+docs/ai-engineering-standards-kit-v2/
