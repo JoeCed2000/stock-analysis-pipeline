@@ -34,6 +34,7 @@ from reportlab.platypus import (
 )
 
 from backend.earnings_deep_dive.report_model import ClaimSource, EarningsDeepDiveReport
+from backend.i18n import translate
 
 
 _DARK_RED = colors.HexColor("#8B1E1E")
@@ -630,7 +631,11 @@ def _earnings_documents_story(
                 "DocumentsTable",
                 (),
                 {
-                    "columns": ["Document / Source", "Target-company URL or status", "Used for"],
+                    "columns": [
+                        translate("Document / Source", report.language),
+                        translate("Target-company URL or status", report.language),
+                        translate("Used for", report.language),
+                    ],
                     "rows": [
                         type("DocumentsRow", (), {"label": label, "cells": [value, used_for]})
                         for label, value, used_for in rows
@@ -639,7 +644,7 @@ def _earnings_documents_story(
             )()
         },
     )()
-    story = [Paragraph("Earnings Documents", styles["section"])] + _table(section, styles, fonts)
+    story = [Paragraph(translate("Earnings Documents", report.language), styles["section"])] + _table(section, styles, fonts)
     # Page break before sections is handled by the main render loop
     return story
 
@@ -1162,11 +1167,11 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
 
     story: list = [
         Paragraph(escape(f"{report.company} ({report.ticker})"), styles["title"]),
-        Paragraph(escape(f"Earnings Deep-Dive - {report.quarter}"), styles["meta"]),
+        Paragraph(escape(f"{translate('Earnings Deep-Dive', report.language)} - {report.quarter}"), styles["meta"]),
     ]
     website = _official_website(report)
     if website:
-        story.append(Paragraph(escape(f"Official Website: {website}"), styles["meta"]))
+        story.append(Paragraph(escape(f"{translate('Official Website', report.language)}: {website}"), styles["meta"]))
     story.extend(_earnings_documents_story(report, styles, fonts))
 
     # ── Charts: key metrics at a glance ──
@@ -1222,7 +1227,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
 
     if report.sources or report.next_earnings_date or report.earnings_audio_url:
         story.append(PageBreak())
-        story.append(Paragraph("Sources", styles["section"]))
+        story.append(Paragraph(translate("Sources", report.language), styles["section"]))
         story.append(Spacer(1, 0.15 * inch))
 
         # --- Key Dates (prominent, before document sources) ---
@@ -1246,7 +1251,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
                 f'<font size="8"><a href="{escape(report.earnings_audio_url)}" color="blue">{escape(report.earnings_audio_url)}</a></font>'
             )
         if key_items:
-            story.append(Paragraph("<b>Key Dates</b>", styles["body"]))
+            story.append(Paragraph(f"<b>{translate('Key Dates', report.language)}</b>", styles["body"]))
             for item in key_items:
                 story.append(Paragraph(item, styles["small"]))
                 story.append(Spacer(1, 0.08 * inch))
@@ -1267,7 +1272,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
 
         # --- Document Sources ---
         if doc_sources:
-            story.append(Paragraph("<b>Earnings Documents</b>", styles["body"]))
+            story.append(Paragraph(f"<b>{translate('Earnings Documents', report.language)}</b>", styles["body"]))
             for source in doc_sources:
                 if source.url:
                     url_text = f'<font size="8"><a href="{escape(source.url)}" color="blue">{escape(source.url)}</a></font>'
@@ -1281,7 +1286,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
 
         # --- Data Sources ---
         if data_sources:
-            story.append(Paragraph("<b>Data &amp; Analytics</b>", styles["body"]))
+            story.append(Paragraph(f"<b>{translate('Data & Analytics', report.language)}</b>", styles["body"]))
             for source in data_sources:
                 if source.url:
                     url_text = f'<font size="8"><a href="{escape(source.url)}" color="blue">{escape(source.url)}</a></font>'
@@ -1294,22 +1299,26 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
 
         # Methodology note
         story.append(Spacer(1, 0.2 * inch))
-        story.append(Paragraph(
-            "<b>Methodology:</b> This deep-dive combines quantitative metrics from SEC filings "
+        methodology_label = translate("Methodology", report.language)
+        methodology_text = translate(
+            "This deep-dive combines quantitative metrics from SEC filings "
             "(via yfinance/Finnhub) with qualitative analysis of the earnings call transcript. "
             "All figures are sourced; no data is invented. "
             "Ratings reflect Nami-grade buy-side analysis standards.",
+            report.language,
+        )
+        story.append(Paragraph(
+            f"<b>{methodology_label}:</b> {methodology_text}",
             styles["small"]
         ))
 
         # ── Claim Traceability Appendix ──
         if report.claim_sources:
             story.append(PageBreak())
-            story.append(Paragraph("Claim Traceability", styles["section"]))
+            story.append(Paragraph(translate("Claim Traceability", report.language), styles["section"]))
             story.append(Spacer(1, 0.08 * inch))
             story.append(Paragraph(
-                "<i>Every analytical claim in this report is traceable to a specific data source. "
-                "This appendix provides the audit trail.</i>",
+                f"<i>{translate('Every analytical claim in this report is traceable to a specific data source. This appendix provides the audit trail.', report.language)}</i>",
                 styles["small"]
             ))
             story.append(Spacer(1, 0.12 * inch))
@@ -1321,7 +1330,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
                 by_section[cs.section].append(cs)
 
             # ── Source legend (compact) ──
-            story.append(Paragraph("<b>Source Legend</b>", styles["body"]))
+            story.append(Paragraph(f"<b>{translate('Source Legend', report.language)}</b>", styles["body"]))
             legend_items = []
             seen_ids = set()
             for cs in report.claim_sources:
@@ -1346,7 +1355,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             story.append(Spacer(1, 0.12 * inch))
 
             # ── Per-section claim summaries ──
-            story.append(Paragraph("<b>Claims by Section</b>", styles["body"]))
+            story.append(Paragraph(f"<b>{translate('Claims by Section', report.language)}</b>", styles["body"]))
             story.append(Spacer(1, 0.08 * inch))
 
             grounding_colors = {
@@ -1377,19 +1386,21 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
                     story.append(Spacer(1, 0.03 * inch))
                 if len(claims) > 8:
                     story.append(Paragraph(
-                        f'<font size="7" color="#888888">  … and {len(claims) - 8} more claims (see machine-readable export)</font>',
+                        f'<font size="7" color="#888888">'
+                        + translate("… and {n} more claims (see machine-readable export)", report.language).replace(
+                            "{n}", str(len(claims) - 8)
+                        )
+                        + '</font>',
                         styles["small"]
                     ))
                 story.append(Spacer(1, 0.08 * inch))
 
             story.append(Spacer(1, 0.1 * inch))
             story.append(Paragraph(
-                "<font size='7' color='#888888'>"
-                "<b>Grounding levels:</b> direct_metric = exact source value | "
-                "calculated = formula from source data | direct_quote = transcript | "
-                "document_fact = filing fact | inference = analyst interpretation | "
-                "unsupported = blocked"
-                "</font>",
+                f"<font size='7' color='#888888'>"
+                f"<b>{translate('Grounding levels:', report.language)}</b> "
+                f"{translate('direct_metric = exact source value | calculated = formula from source data | direct_quote = transcript | document_fact = filing fact | inference = analyst interpretation | unsupported = blocked', report.language)}"
+                f"</font>",
                 styles["small"]
             ))
 

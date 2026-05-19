@@ -108,6 +108,22 @@ def test_pdf_renderer_generates_language_specific_japanese_report(tmp_path):
     assert "総合評価" in text
     assert "DONNÉE NON DISPONIBLE" not in normalized_text
 
+    # F5: Japanese labels must appear in the JP PDF
+    jp_labels = [
+        "決算詳細分析",       # "Earnings Deep-Dive"
+        "ソース",            # "Sources"
+        "決算資料",          # "Earnings Documents"
+        "ソース凡例",        # "Source Legend"
+        "セクション別主張",  # "Claims by Section"
+        "主張の追跡可能性",  # "Claim Traceability"
+        "データ & アナリティクス",  # "Data & Analytics"
+        "手法",              # "Methodology"
+    ]
+    # Note: "主要日程" (Key Dates) is conditional — only appears when
+    # next_earnings_date is present. The translation is applied when rendered.
+    for label in jp_labels:
+        assert label in text, f"JP PDF missing label: {label}"
+
 
 def test_pdf_renderer_resolves_model_fonts_when_available():
     english_fonts = resolve_pdf_fonts("en")
