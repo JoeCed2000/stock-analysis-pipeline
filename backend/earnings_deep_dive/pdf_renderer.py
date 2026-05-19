@@ -1434,4 +1434,18 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         doc2.onLaterPages = _on_later_pages
         doc2.build(story)
         print(f"[PDF RENDER] Recovered with {len(report.sections)} sections (1 dropped)", file=sys.stderr)
+
+    # ── URL validation (BL-SA-003) — non-blocking, advisory only ──
+    try:
+        from backend.url_validator import validate_report_urls_sync
+        vr = validate_report_urls_sync(report, ticker=getattr(report, 'ticker', ''))
+        if vr.dead > 0:
+            print(f"[URL VALIDATOR] 🔴 {vr.dead}/{vr.total_urls} DEAD links in {vr.ticker}", file=__import__('sys').stderr)
+            for c in vr.dead_urls:
+                print(f"  DEAD: [{c.label}] {c.url} — {c.error or c.status_code}", file=__import__('sys').stderr)
+        else:
+            print(f"[URL VALIDATOR] ✅ {vr.total_urls}/{vr.total_urls} URLs OK in {vr.ticker}", file=__import__('sys').stderr)
+    except Exception as val_err:
+        print(f"[URL VALIDATOR] ⚠️ Validation skipped: {val_err}", file=__import__('sys').stderr)
+
     return str(output)
