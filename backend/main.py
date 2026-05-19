@@ -88,19 +88,31 @@ app = FastAPI(title="Stock Analysis Pipeline", version="1.0.0", root_path="/stoc
 # In-memory token bucket with auto-cleanup: 30 req/min analyze, 120 req/min others
 _rate_limits = {}  # IP → (window_start, count)
 _RATE_WINDOW = 60  # seconds
-_RATE_LIMIT_ANALYZE = 30  # expensive endpoint — 30/min
-_RATE_LIMIT_DEFAULT = 120  # cheap endpoints — 120/min
+_RATE_LIMIT_HEAVY = 10   # LLM/expensive endpoints — 10/min
+_RATE_LIMIT_MODERATE = 30  # DB/write endpoints — 30/min
+_RATE_LIMIT_DEFAULT = 120  # read-only endpoints — 120/min
 _RATE_MAX_ENTRIES = 5000  # Prune oldest entries when exceeded
+
+# Expensive endpoints (LLM calls, batch processing, PDF generation)
+_HEAVY_PATHS = {"/api/analyze", "/api/analyze/async", "/api/earnings/deep-dive", "/api/batch/analyze"}
+# Write/modify endpoints (moderate cost)
+_MODERATE_PATHS = {"/api/feedback", "/api/cache/financials", "/api/dossier", "/api/batch/upload"}
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     from time import time as _time
     client_ip = request.client.host if request.client else "unknown"
     path = request.url.path
-    # Skip rate limiting for health and debug endpoints
-    if path in ("/api/health",) or path.startswith("/api/debug/"):
+    # Skip rate limiting for health endpoint only
+    if path == "/api/health":
         return await call_next(request)
-    limit = _RATE_LIMIT_ANALYZE if path == "/api/analyze" else _RATE_LIMIT_DEFAULT
+    # Determine rate limit tier based on path cost
+    if path in _HEAVY_PATHS:
+        limit = _RATE_LIMIT_HEAVY
+    elif any(path.startswith(p) for p in _MODERATE_PATHS):
+        limit = _RATE_LIMIT_MODERATE
+    else:
+        limit = _RATE_LIMIT_DEFAULT
     now = _time()
     
     # Periodic cleanup: if dict grows too large, evict expired entries
@@ -121,23 +133,31 @@ async def rate_limit_middleware(request: Request, call_next):
         _rate_limits[client_ip] = [now, 1]
     return await call_next(request)
 
-# ── Admin auth gate —─────────────────────────────────────────────────
-# Protects /api/admin/* endpoints behind an ADMIN_SECRET env var.
-# Set ADMIN_SECRET in .env to enable. Without it, admin endpoints return 403.
-_ADMIN_SECRET = os.getenv("ADMIN_SECRET", "")
+# ── API Auth gate —─────────────────────────────────────────────────
+# Protects write + admin endpoints behind CED_CONTROL_KEY env var.
+# Set CED_CONTROL_KEY in .env. Without it, protected endpoints return 403.
+# Matching spec: SEC-002 (X-API-Key write endpoints), BR-008 (auth obligatoire).
+_API_KEY = os.getenv("CED_CONTROL_KEY", "")
 
-async def _require_admin(request: Request):
-    """FastAPI dependency: reject if ADMIN_SECRET is not set or doesn't match.
-    Local requests (127.0.0.1, localhost) bypass auth automatically."""
-    if not _ADMIN_SECRET:
-        raise HTTPException(status_code=403, detail="Admin endpoints disabled (set ADMIN_SECRET)")
+async def _require_auth(request: Request):
+    """FastAPI dependency: reject if CED_CONTROL_KEY is not set or doesn't match.
+    Local requests (127.0.0.1, localhost) bypass auth automatically.
+    Accepts X-API-Key header (primary) or api_key query param (fallback for downloads)."""
+    if not _API_KEY:
+        raise HTTPException(status_code=403, detail="API key not configured (set CED_CONTROL_KEY)")
     # Bypass auth for local requests
     host = request.client.host if request.client else ""
     if host in ("127.0.0.1", "::1", "localhost"):
         return
-    provided = request.headers.get("X-Admin-Secret", "") or request.query_params.get("admin_secret", "")
-    if provided != _ADMIN_SECRET:
-        raise HTTPException(status_code=403, detail="Invalid admin credentials")
+    # Bypass auth for same-origin browser requests (frontend served by this server)
+    referer = request.headers.get("referer", "")
+    origin = request.headers.get("origin", "")
+    allowed_origins = ("sa.cedlabusa.net", "www.cedlabusa.net", "localhost:5173", "127.0.0.1:5173", "localhost:8780")
+    if any(o in referer or o in origin for o in allowed_origins):
+        return
+    provided = request.headers.get("X-API-Key", "") or request.query_params.get("api_key", "")
+    if provided != _API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid API key")
 
 app.add_middleware(
     CORSMiddleware,
@@ -426,7 +446,7 @@ def _classify_error(token: str) -> str:
     return "Not a recognized format"
 
 
-@app.post("/api/batch/upload")
+@app.post("/api/batch/upload", dependencies=[Depends(_require_auth)])
 async def batch_upload(file: UploadFile = FastAPIFile(None)):
     """Upload a text file containing tickers/ISINs. Returns parsed list."""
     if file is None:
@@ -447,7 +467,7 @@ class BatchAnalyzeRequest(BaseModel):
     tickers: List[str] = Field(..., min_length=1, max_length=25)
 
 
-@app.post("/api/batch/analyze")
+@app.post("/api/batch/analyze", dependencies=[Depends(_require_auth)])
 async def batch_analyze(request: BatchAnalyzeRequest):
     """Submit tickers for batch analysis. Returns job_id for polling."""
     job_id = hashlib.sha256(
@@ -637,7 +657,7 @@ async def health():
 # These leak internal data and MUST NOT be exposed on public tunnels.
 # To re-enable locally: ENABLE_DEBUG=true in .env
 
-@app.get("/api/debug/yf-cache/{ticker}")
+@app.get("/api/debug/yf-cache/{ticker}", dependencies=[Depends(_require_auth)])
 async def debug_yf_cache(ticker: str):
     """Debug: show yfinance cache status for a ticker."""
     if os.getenv("ENABLE_DEBUG") != "true":
@@ -671,7 +691,7 @@ async def debug_yf_cache(ticker: str):
     return result
 
 
-@app.get("/api/debug/sources")
+@app.get("/api/debug/sources", dependencies=[Depends(_require_auth)])
 async def debug_sources():
     """Return which API sources are configured (masked keys)."""
     if os.getenv("ENABLE_DEBUG") != "true":
@@ -714,7 +734,7 @@ async def earnings_quarters(ticker: str):
     }
 
 
-@app.post("/api/earnings/deep-dive", response_model=DeepDiveResponse)
+@app.post("/api/earnings/deep-dive", response_model=DeepDiveResponse, dependencies=[Depends(_require_auth)])
 async def earnings_deep_dive(request: DeepDiveRequest):
     """Generate a standalone earnings call deep-dive.
     Use quarter param (e.g. '2025Q4') for historical analysis."""
@@ -1045,7 +1065,7 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
     )
 
 
-@app.post("/api/dossier/{ticker}/upload")
+@app.post("/api/dossier/{ticker}/upload", dependencies=[Depends(_require_auth)])
 async def dossier_upload(
     ticker: str,
     section: str = Form(...),
@@ -1119,7 +1139,7 @@ async def dossier_upload(
     })
 
 
-@app.post("/api/analyze")
+@app.post("/api/analyze", dependencies=[Depends(_require_auth)])
 async def analyze(request: TickerRequest, lang: str = "en", fastapi_request: Request = None):
     """Submit tickers for analysis. Runs sequentially, returns results immediately.
     Use ?lang=ja for Japanese labels."""
@@ -1210,7 +1230,7 @@ async def analyze(request: TickerRequest, lang: str = "en", fastapi_request: Req
     })
 
 
-@app.post("/api/analyze/async")
+@app.post("/api/analyze/async", dependencies=[Depends(_require_auth)])
 async def analyze_async(request: TickerRequest, lang: str = "en", fastapi_request: Request = None):
     """Submit tickers for async analysis. Returns job ID immediately, poll /api/analyze/job/{id}."""
     tickers = request.tickers
@@ -1557,7 +1577,7 @@ async def get_traceability(ticker: str):
     return FileResponse(csv_path, media_type="text/csv")
 
 
-@app.post("/api/cache/financials/{ticker}")
+@app.post("/api/cache/financials/{ticker}", dependencies=[Depends(_require_auth)])
 async def cache_financials(
     ticker: str,
     body: dict = Body(...),
@@ -1631,7 +1651,7 @@ async def cache_financials(
                          "enriched": enriched})
 
 
-@app.get("/api/analyses")
+@app.get("/api/analyses", dependencies=[Depends(_require_auth)])
 async def list_analyses():
     """List all analyzed tickers with dates, names, and file counts.
     
@@ -1688,7 +1708,7 @@ async def list_analyses():
     return JSONResponse({"analyses": analyses})
 
 
-@app.get("/api/admin/recent-searches")
+@app.get("/api/admin/recent-searches", dependencies=[Depends(_require_auth)])
 async def recent_searches(limit: int = 50, status: str = "all"):
     """Get recent search events for near-real-time monitoring.
     
@@ -1703,7 +1723,7 @@ async def recent_searches(limit: int = 50, status: str = "all"):
     return JSONResponse({"searches": results})
 
 
-@app.get("/api/admin/search-stats")
+@app.get("/api/admin/search-stats", dependencies=[Depends(_require_auth)])
 async def search_stats():
     """Get aggregate search statistics for the admin dashboard.
     
@@ -1714,7 +1734,7 @@ async def search_stats():
 
 
 # ── Nami Feedback System ──────────────────────────────────────────────
-@app.post("/api/feedback")
+@app.post("/api/feedback", dependencies=[Depends(_require_auth)])
 async def submit_feedback(
     ticker: str = Form(...),
     text: str = Form(""),
@@ -1738,7 +1758,7 @@ async def submit_feedback(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/feedback/{ticker}")
+@app.get("/api/feedback/{ticker}", dependencies=[Depends(_require_auth)])
 async def list_feedback(ticker: str):
     """List all feedback entries for a ticker."""
     from backend.feedback_store import list_feedback as list_fb
@@ -1746,7 +1766,7 @@ async def list_feedback(ticker: str):
     return JSONResponse(list_fb(ticker))
 
 
-@app.get("/api/admin/feedback")
+@app.get("/api/admin/feedback", dependencies=[Depends(_require_auth)])
 async def admin_list_feedback():
     """List all feedback across all tickers for the admin dashboard."""
     from backend.feedback_store import get_all_admin_feedback
