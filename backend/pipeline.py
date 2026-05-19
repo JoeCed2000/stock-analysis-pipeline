@@ -1981,6 +1981,7 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
                 edgar_val = edgar.get(edgar_key)
                 if (current is None or current == 0) and edgar_val is not None:
                     setattr(financials, attr, edgar_val)
+                    fin[attr] = edgar_val  # P0-001: sync dict for scorer
                     logger.info(f"[{ticker}] Enriched {attr} = {edgar_val:,.0f} from SEC XBRL")
             
             # Also enrich operating_margin if missing
@@ -1989,6 +1990,7 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
                 op_inc = edgar.get("operating_income")
                 if rev and op_inc and rev > 0:
                     financials.operating_margin = round(op_inc / rev, 4)
+                    fin["operating_margin"] = financials.operating_margin  # P0-001: sync dict
                     logger.info(f"[{ticker}] Enriched operating_margin = {financials.operating_margin:.1%} from SEC XBRL")
     except Exception as e:
         logger.debug(f"[{ticker}] edgartools enrichment skipped: {e}")
