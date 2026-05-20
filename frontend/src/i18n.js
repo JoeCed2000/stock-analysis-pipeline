@@ -119,7 +119,7 @@ const translations = {
       ["Alpha Vantage", "Earnings call transcripts — management tone & sentiment analysis"],
       ["The Motley Fool", "Fallback transcript source for US-listed stocks"],
     ],
-    aboutScoring: "⚖️ Scoring Criteria (8 × /5 = /40)",
+    aboutScoring: "⚖️ Scoring Criteria (6 categories = /40)",
     aboutCriteria: [
       ["Growth", "Revenue growth (YoY + annual), guidance trajectory"],
       ["Profitability", "Gross margin, operating margin, net income"],
@@ -270,7 +270,7 @@ const translations = {
       ["Alpha Vantage", "決算説明会トランスクリプト — 経営陣のトーンとセンチメント分析"],
       ["The Motley Fool", "米国株向けフォールバックトランスクリプトソース"],
     ],
-    aboutScoring: "⚖️ スコアリング基準（8項目 × /5 = /40）",
+    aboutScoring: "⚖️ スコアリング基準（6カテゴリー = /40）",
     aboutCriteria: [
       ["成長性", "収益成長率（前年比 + 年間）、ガイダンスの軌道"],
       ["収益性", "粗利益率、営業利益率、純利益"],

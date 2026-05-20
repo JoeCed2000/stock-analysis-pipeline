@@ -161,7 +161,7 @@ def generate_pdf(result, report_md: str, output_path: str) -> str:
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
         ('FONTSIZE', (0, 0), (-1, -1), 9),
         ('TEXTCOLOR', (0, 0), (0, -1), MUTED),
-        ('FONTNAME', (8, 0), (8, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (6, 0), (6, -1), 'Helvetica-Bold'),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
     ]))
     story.append(t2)
