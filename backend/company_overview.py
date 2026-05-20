@@ -4,10 +4,16 @@ synthesizes via LLM into structured JSON, caches for 7 days.
 
 async get_company_overview(ticker, language="en") → Dict[str, Any]
 
+⚠️ LANGUAGE SEPARATION:
+  Step 1 — English: LLM generates EN content → cache
+  Step 2 — Japanese: translate EN content via separate LLM call → cache
+  NEVER generate mixed-language content in a single LLM call.
+
 Phases:
   1. yfinance Ticker.info + Tavily web search
-  2. LLM synthesis to strict JSON schema
-  3. 7-day file-based JSON cache (ticker + language keyed)
+  2. LLM synthesis to strict JSON (EN only)
+  3. Optional: LLM translation to JP (separate call)
+  4. 7-day file-based JSON cache (ticker + language keyed)
 """
 
 import os
@@ -20,6 +26,7 @@ from typing import Optional, Dict, Any, List
 logger = logging.getLogger(__name__)
 
 # ── Cache layer ───────────────────────────────────────────────────────────
+# Cache key format: company_overview:{ticker}:en:v1 / company_overview:{ticker}:jp:v1
 
 CACHE_DIR = Path(__file__).parent / ".cache"
 OVERVIEW_CACHE_TTL = 7 * 24 * 3600  # 7 days
@@ -27,9 +34,9 @@ OVERVIEW_CACHE_VERSION = 1  # bump to invalidate all cached overviews
 
 
 def _overview_cache_path(ticker: str, language: str) -> Path:
-    """Cache file: .cache/overview_AAPL_en.json"""
+    """Cache file: .cache/company_overview_AAPL_en_v1.json"""
     CACHE_DIR.mkdir(exist_ok=True)
-    return CACHE_DIR / f"overview_{ticker.upper()}_{language}.json"
+    return CACHE_DIR / f"company_overview_{ticker.upper()}_{language}_v{OVERVIEW_CACHE_VERSION}.json"
 
 
 def _overview_cache_get(ticker: str, language: str) -> Optional[Dict[str, Any]]:
@@ -74,7 +81,7 @@ def _overview_cache_set(ticker: str, language: str, data: Dict[str, Any]) -> Non
 
 async def _fetch_yahoo_info(ticker: str) -> Dict[str, Any]:
     """Fetch yfinance Ticker.info for a ticker.
-    
+
     Wraps synchronous yfinance call in a thread to avoid blocking.
     """
     import asyncio
@@ -96,10 +103,7 @@ async def _fetch_yahoo_info(ticker: str) -> Dict[str, Any]:
 
 
 def _build_yahoo_info_dict(ticker: str, info: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract structured company data from yfinance Ticker.info.
-    
-    See https://github.com/ranaroussi/yfinance for field documentation.
-    """
+    """Extract structured company data from yfinance Ticker.info."""
     return {
         "ticker": ticker,
         "name": info.get("longName") or info.get("shortName"),
@@ -141,11 +145,7 @@ def _format_headquarters(info: Dict[str, Any]) -> Optional[str]:
 
 
 async def _search_tavily_overview(ticker: str, yf_info: Dict[str, Any]) -> List[Dict[str, str]]:
-    """Search Tavily for recent company news and developments.
-    
-    Uses the shared httpx client. Free tier: 1,000 searches/month.
-    Returns list of {title, url, content, date}.
-    """
+    """Search Tavily for recent company news and developments."""
     api_key = os.getenv("TAVILY_API_KEY", "")
     if not api_key:
         logger.debug(f"Tavily skipped for {ticker} overview — TAVILY_API_KEY not set")
@@ -193,14 +193,13 @@ async def _search_tavily_overview(ticker: str, yf_info: Dict[str, Any]) -> List[
             except Exception as e:
                 logger.warning(f"Tavily search failed for {ticker}: {e}")
 
-        # Deduplicate by URL
         seen = set()
         unique = []
         for item in all_results:
             if item["url"] not in seen:
                 seen.add(item["url"])
                 unique.append(item)
-        return unique[:8]  # max 8 results
+        return unique[:8]
 
     loop = asyncio.get_running_loop()
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
@@ -211,42 +210,22 @@ async def _search_tavily_overview(ticker: str, yf_info: Dict[str, Any]) -> List[
             return []
 
 
-# ── Phase 2: LLM synthesis ────────────────────────────────────────────────
+# ── Phase 2: LLM synthesis (EN only) ──────────────────────────────────────
 
 
-def _synthesize_overview(
+def _synthesize_overview_en(
     ticker: str,
     yf_info: Dict[str, Any],
     tavily_results: List[Dict[str, str]],
-    language: str,
 ) -> Dict[str, Any]:
-    """Use Codex CLI to synthesize yfinance + Tavily data into structured JSON.
+    """Step 1 — English: LLM generates structured company overview in English.
 
-    Returns a dict matching the company_overview schema:
-    {
-      company_profile: {...},
-      business_description: str,
-      key_financials: {...},
-      recent_developments: [{title, summary, date, sentiment}],
-      competitive_position: str
-    }
+    Returns a dict matching the company_overview schema with text_en fields.
     """
     from backend.codex_provider import _codex_chat
 
-    # ── Language instructions ──────────────────────────────────────
-    if language == "jp":
-        lang_instr = """ALL YOUR OUTPUT MUST BE IN JAPANESE (日本語).
-Section titles, descriptions, summaries, competitive_position — everything in Japanese.
-Company names and tickers stay in English."""
-        output_lang = "Japanese (日本語)"
-    else:
-        lang_instr = "ALL YOUR OUTPUT MUST BE IN ENGLISH."
-        output_lang = "English"
-
-    # ── Build context ──────────────────────────────────────────────
     yf_str = json.dumps(yf_info, indent=2, default=str)
 
-    tavily_str = ""
     if tavily_results:
         items = []
         for r in tavily_results[:8]:
@@ -255,9 +234,7 @@ Company names and tickers stay in English."""
     else:
         tavily_str = "(No recent news results available)"
 
-    prompt = f"""{lang_instr}
-
-Synthesize a professional company overview for {yf_info.get('name', ticker)} ({ticker}) in {output_lang}.
+    prompt = f"""Synthesize a professional company overview for {yf_info.get('name', ticker)} ({ticker}) in English.
 
 Data from Yahoo Finance:
 ```json
@@ -297,7 +274,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) with EXACTLY this 
   "recent_developments": [
     {{
       "title": "descriptive title",
-      "summary": "1-2 sentence summary",
+      "summary": "1-2 sentence summary in English",
       "date": "YYYY-MM-DD if known, else omit",
       "sentiment": "positive|neutral|negative"
     }}
@@ -315,19 +292,102 @@ RULES:
 
 Return ONLY the JSON object. No markdown fences, no explanations."""
 
-    system = f"You are a senior equity research analyst synthesizing company overviews. You write in {output_lang}. You return ONLY valid JSON with no markdown fences."
+    system = "You are a senior equity research analyst synthesizing company overviews. You write in English. You return ONLY valid JSON with no markdown fences."
 
     response = _codex_chat(prompt, system=system, max_tokens=2500)
 
     if response:
-        return _parse_llm_response(response, ticker, yf_info)
+        parsed = _parse_llm_response(response, ticker, yf_info)
+        return parsed if parsed is not None else _fallback_overview(ticker, yf_info)
     else:
         return _fallback_overview(ticker, yf_info)
 
 
-def _parse_llm_response(response: str, ticker: str, yf_info: Dict[str, Any]) -> Dict[str, Any]:
-    """Parse LLM JSON response, stripping markdown fences if present."""
-    # Strip markdown fences
+def _translate_overview_to_jp(en_overview: Dict[str, Any], ticker: str) -> Dict[str, Any]:
+    """Step 2 — Japanese: translate EN overview text fields to JP via separate LLM call.
+
+    NEVER generate mixed-language content. This is a standalone translation call.
+    Only text fields are translated; numeric data and structure are preserved.
+    """
+    from backend.codex_provider import _codex_chat
+
+    # Build a compact representation of text fields that need translation
+    text_fields = {
+        "business_description": en_overview.get("business_description", ""),
+        "competitive_position": en_overview.get("competitive_position", ""),
+    }
+
+    # Translate recent_developments summaries
+    devs = en_overview.get("recent_developments", [])
+    for i, dev in enumerate(devs):
+        text_fields[f"dev_{i}_title"] = dev.get("title", "")
+        text_fields[f"dev_{i}_summary"] = dev.get("summary", "")
+
+    prompt = f"""Translate the following English company overview text fields into professional Japanese (日本語).
+
+Translation rules:
+- Use natural, financial-analyst-level Japanese. No machine-translation feel.
+- Preserve all factual information and numerical precision.
+- Company names and tickers remain in English.
+- For recent_developments sentiment, keep as "positive", "neutral", or "negative" in English.
+- Return ONLY a valid JSON object with the translated fields. No markdown, no explanations.
+
+Fields to translate:
+```json
+{json.dumps(text_fields, indent=2, ensure_ascii=False)}
+```
+
+Return a JSON object with the SAME keys but Japanese values:
+{{
+  "business_description": "(Japanese translation)",
+  "competitive_position": "(Japanese translation)",
+  "dev_0_title": "(Japanese translation)",
+  "dev_0_summary": "(Japanese translation)",
+  ...
+}}
+
+Return ONLY the JSON object."""
+
+    system = "You are a professional financial translator specializing in English→Japanese. You return ONLY valid JSON with translated fields. Natural Japanese, no machine-translation feel."
+
+    response = _codex_chat(prompt, system=system, max_tokens=2000)
+
+    if not response:
+        logger.warning(f"JP translation LLM unavailable for {ticker} — returning EN content")
+        return _wrap_jp_fallback(en_overview)
+
+    translated = _parse_llm_response(response, ticker, {})
+    if translated is None:
+        return _wrap_jp_fallback(en_overview)
+
+    # Build JP overview: copy structure, replace text fields with translations
+    jp = json.loads(json.dumps(en_overview, default=str))  # deep copy
+    jp["business_description"] = translated.get("business_description", en_overview.get("business_description", ""))
+    jp["competitive_position"] = translated.get("competitive_position", en_overview.get("competitive_position", ""))
+
+    # Replace development titles and summaries
+    for i, dev in enumerate(jp.get("recent_developments", [])):
+        dev["title"] = translated.get(f"dev_{i}_title", dev.get("title", ""))
+        dev["summary"] = translated.get(f"dev_{i}_summary", dev.get("summary", ""))
+
+    return jp
+
+
+def _wrap_jp_fallback(en_overview: Dict[str, Any]) -> Dict[str, Any]:
+    """When JP translation fails, return EN content with a marker."""
+    result = json.loads(json.dumps(en_overview, default=str))
+    result["_translation_note"] = "JP translation unavailable — showing EN content"
+    return result
+
+
+# ── Parsing and fallback ──────────────────────────────────────────────────
+
+
+def _parse_llm_response(response: str, ticker: str, yf_info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Parse LLM JSON response, stripping markdown fences if present.
+
+    Returns None if parsing fails (caller should use fallback).
+    """
     text = response.strip()
     for fence in ("```json", "```"):
         if text.startswith(fence):
@@ -343,7 +403,6 @@ def _parse_llm_response(response: str, ticker: str, yf_info: Dict[str, Any]) -> 
 
     try:
         data = json.loads(text)
-        # Ensure required keys exist
         data.setdefault("company_profile", {})
         data.setdefault("business_description", "")
         data.setdefault("key_financials", {})
@@ -352,7 +411,7 @@ def _parse_llm_response(response: str, ticker: str, yf_info: Dict[str, Any]) -> 
         return data
     except (json.JSONDecodeError, ValueError) as e:
         logger.warning(f"LLM JSON parse failed for {ticker}: {e} | raw: {response[:200]}")
-        return _fallback_overview(ticker, yf_info)
+        return None
 
 
 def _fallback_overview(ticker: str, yf_info: Dict[str, Any]) -> Dict[str, Any]:
@@ -408,6 +467,11 @@ def _format_currency(value) -> Optional[str]:
 async def get_company_overview(ticker: str, language: str = "en") -> Dict[str, Any]:
     """Get structured company overview — cached for 7 days.
 
+    ⚠️ LANGUAGE SEPARATION:
+      EN: LLM generates English content directly.
+      JP: First fetches/caches EN overview, then translates via separate LLM call.
+      NEVER generates mixed-language content in a single LLM call.
+
     Args:
         ticker: Stock symbol (e.g. "AAPL", "NVDA")
         language: "en" (English) or "jp" (Japanese)
@@ -422,18 +486,31 @@ async def get_company_overview(ticker: str, language: str = "en") -> Dict[str, A
         logger.warning(f"Unsupported language '{language}', defaulting to 'en'")
         lang = "en"
 
-    # ── Phase 3: Check cache ───────────────────────────────────────
+    # ── Check cache ─────────────────────────────────────────────────
     cached = _overview_cache_get(ticker, lang)
     if cached is not None:
         return cached
 
-    # ── Phase 1: Fetch raw data ─────────────────────────────────────
     logger.info(f"Fetching company overview for {ticker}/{lang}...")
+
+    # ── Phase 1: Fetch raw data ─────────────────────────────────────
     yf_info = await _fetch_yahoo_info(ticker)
     tavily_results = await _search_tavily_overview(ticker, yf_info)
 
-    # ── Phase 2: LLM synthesis ──────────────────────────────────────
-    overview = _synthesize_overview(ticker, yf_info, tavily_results, lang)
+    if lang == "en":
+        # ── Phase 2a: LLM synthesis (EN) ────────────────────────────
+        overview = _synthesize_overview_en(ticker, yf_info, tavily_results)
+    else:
+        # ── Phase 2b: EN → JP translation (two-step) ─────────────────
+        # Step 1: Get English overview (from cache or generate)
+        en_cached = _overview_cache_get(ticker, "en")
+        if en_cached is None:
+            en_cached = _synthesize_overview_en(ticker, yf_info, tavily_results)
+            _overview_cache_set(ticker, "en", en_cached)
+
+        # Step 2: Translate EN → JP via separate LLM call
+        logger.info(f"Translating overview EN→JP for {ticker}...")
+        overview = _translate_overview_to_jp(en_cached, ticker)
 
     # ── Cache and return ────────────────────────────────────────────
     _overview_cache_set(ticker, lang, overview)
