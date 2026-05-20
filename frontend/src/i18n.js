@@ -6,7 +6,7 @@ const translations = {
   en: {
     // Header
     siteTitle: "📈 Stock Analysis",
-    siteSubtitle: "Automated fundamental analysis — BUY / HOLD / SELL based on 8 criteria",
+    siteSubtitle: "Automated fundamental analysis — BUY / HOLD / SELL based on 6 weighted categories",
     
     // Mode tabs
     quickAnalysis: "🔍 Quick Analysis",
@@ -108,9 +108,9 @@ const translations = {
     
     // About
     aboutTitle: "📊 How it works",
-    aboutDescription: "This pipeline analyzes stocks using 8 fundamental criteria. Each ticker gets a BUY / HOLD / SELL verdict with detailed scoring. The full dossier includes financial data, SEC filings analysis, management evaluation, and market context.",
+    aboutDescription: "This pipeline analyzes stocks using 6 weighted categories. Each ticker gets a BUY / HOLD / SELL verdict with detailed scoring. The full dossier includes financial data, SEC filings analysis, management evaluation, and market context.",
     aboutMainTitle: "About the Stock Analysis Pipeline",
-    aboutIntro: "This tool performs automated fundamental analysis on any publicly traded stock. For each ticker, it fetches data from multiple sources, scores the company across 8 weighted criteria, and produces a BUY, HOLD, or SELL decision with full traceability.",
+    aboutIntro: "This tool performs automated fundamental analysis on any publicly traded stock. For each ticker, it fetches data from multiple sources, scores the company across 6 weighted categories, and produces a BUY, HOLD, or SELL decision with full traceability.",
     aboutDataSources: "📊 Data Sources",
     aboutSources: [
       ["SEC EDGAR", "10-K / 10-Q filings — Items 1, 1A, 7, 7A, 8 (business, risks, MD&A, financials)"],
@@ -121,14 +121,12 @@ const translations = {
     ],
     aboutScoring: "⚖️ Scoring Criteria (6 categories = /40)",
     aboutCriteria: [
-      ["Growth", "Revenue growth (YoY + annual), guidance trajectory"],
-      ["Profitability", "Gross margin, operating margin, net income"],
-      ["Financial Strength", "Free cash flow, net debt, balance sheet health"],
-      ["Moat", "Competitive advantage, market position, barriers to entry"],
-      ["Management", "Tone, confidence, visibility from earnings calls"],
-      ["Valuation Risk", "P/E, forward P/E, PEG ratio vs. growth"],
-      ["Geopolitical Risk", "Tariff exposure, supply chain, regulatory pressure"],
-      ["Business Momentum", "Segment trends, product cycles, market demand"],
+      ["Financial Health", "Profitability, cash flow, balance sheet strength (max 10)"],
+      ["Growth", "Revenue growth YoY, guidance trajectory, market expansion (max 10)"],
+      ["Valuation", "P/E, forward P/E, PEG ratio — attractiveness vs growth (max 8)"],
+      ["Management", "Tone, confidence, execution quality from earnings calls (max 5)"],
+      ["Moat", "Competitive advantage, barriers to entry, market position (max 4)"],
+      ["Sentiment", "Market momentum, analyst sentiment, macro context (max 3)"],
     ],
     aboutDecisionRules: "📋 Decision Rules",
     aboutRules: [
@@ -157,7 +155,7 @@ const translations = {
   ja: {
     // Header
     siteTitle: "📈 株式分析",
-    siteSubtitle: "8つの基準に基づく自動ファンダメンタル分析 — BUY / HOLD / SELL",
+    siteSubtitle: "6つの加重カテゴリーに基づく自動ファンダメンタル分析 — BUY / HOLD / SELL",
     
     // Mode tabs
     quickAnalysis: "🔍 クイック分析",
@@ -259,9 +257,9 @@ const translations = {
     
     // About
     aboutTitle: "📊 仕組み",
-    aboutDescription: "このパイプラインは8つのファンダメンタル基準を使用して株式を分析します。各ティッカーにBUY / HOLD / SELLの判定と詳細なスコアリングが付与されます。完全なドシエには財務データ、SEC提出書類の分析、経営陣の評価、市場コンテキストが含まれます。",
+    aboutDescription: "このパイプラインは6つの加重カテゴリーを使用して株式を分析します。各ティッカーにBUY / HOLD / SELLの判定と詳細なスコアリングが付与されます。完全なドシエには財務データ、SEC提出書類の分析、経営陣の評価、市場コンテキストが含まれます。",
     aboutMainTitle: "株式分析パイプラインについて",
-    aboutIntro: "このツールは上場株式の自動ファンダメンタル分析を行います。各ティッカーについて複数のソースからデータを取得し、8つの加重基準でスコアリングし、完全なトレーサビリティ付きでBUY、HOLD、SELLの判断を下します。",
+    aboutIntro: "このツールは上場株式の自動ファンダメンタル分析を行います。各ティッカーについて複数のソースからデータを取得し、6つの加重カテゴリーでスコアリングし、完全なトレーサビリティ付きでBUY、HOLD、SELLの判断を下します。",
     aboutDataSources: "📊 データソース",
     aboutSources: [
       ["SEC EDGAR", "10-K / 10-Q 提出書類 — Items 1, 1A, 7, 7A, 8（事業、リスク、MD&A、財務）"],
@@ -272,14 +270,12 @@ const translations = {
     ],
     aboutScoring: "⚖️ スコアリング基準（6カテゴリー = /40）",
     aboutCriteria: [
-      ["成長性", "収益成長率（前年比 + 年間）、ガイダンスの軌道"],
-      ["収益性", "粗利益率、営業利益率、純利益"],
-      ["財務力", "フリーキャッシュフロー、純負債、バランスシートの健全性"],
-      ["競争優位性", "競争優位、市場ポジション、参入障壁"],
-      ["経営品質", "決算説明会からのトーン、自信、可視性"],
-      ["バリュエーションリスク", "P/E、フォワードP/E、PEGレシオ対成長率"],
-      ["地政学リスク", "関税エクスポージャー、サプライチェーン、規制圧力"],
-      ["ビジネスモメンタム", "セグメント動向、製品サイクル、市場需要"],
+      ["財務健全性", "収益性、キャッシュフロー、バランスシートの強さ（最大10）"],
+      ["成長性", "収益成長率（前年比）、ガイダンスの軌道、市場拡大（最大10）"],
+      ["バリュエーション", "P/E、フォワードP/E、PEGレシオ — 成長に対する割安度（最大8）"],
+      ["経営品質", "決算説明会からのトーン、自信、実行力（最大5）"],
+      ["競争優位性", "競争優位、参入障壁、市場ポジション（最大4）"],
+      ["センチメント", "市場モメンタム、アナリストセンチメント、マクロ環境（最大3）"],
     ],
     aboutDecisionRules: "📋 判断ルール",
     aboutRules: [
