@@ -284,37 +284,42 @@ def validate_pre_render(
     total_revenue = _extract_total_quarterly_revenue(metrics)
 
     if segment_revenues and total_revenue and total_revenue > 0:
-        seg_sum = sum(segment_revenues.values())
-        # Check individual segments vs total
-        for seg_name, seg_rev in segment_revenues.items():
-            if seg_rev > total_revenue * 1.01:  # 1% tolerance for rounding
-                pct_of_total = (seg_rev / total_revenue) * 100
+        # Skip segment coherence checks in annual context (10-K data will
+        # naturally exceed quarterly revenue — this is expected and handled
+        # by the FY label enforcement in RULE 2)
+        is_annual = _is_annual_context(metrics)
+        if not is_annual:
+            seg_sum = sum(segment_revenues.values())
+            # Check individual segments vs total
+            for seg_name, seg_rev in segment_revenues.items():
+                if seg_rev > total_revenue * 1.01:  # 1% tolerance for rounding
+                    pct_of_total = (seg_rev / total_revenue) * 100
+                    warnings.append(ValidationWarning(
+                        check="segment_coherence",
+                        section="Segments",
+                        detail=(
+                            f"FATAL: Segment '{seg_name}' revenue (${seg_rev:,.0f}) exceeds "
+                            f"total quarterly revenue (${total_revenue:,.0f}) — "
+                            f"that's {pct_of_total:.0f}% of total. "
+                            f"This means segment data is from a different period (likely annual 10-K) "
+                            f"and was not properly flagged as annual context."
+                        ),
+                        severity="error",
+                    ))
+
+            # Also check if sum of all segments significantly exceeds total
+            if seg_sum > total_revenue * 1.20:  # 20% tolerance — segments often don't sum exactly
                 warnings.append(ValidationWarning(
-                    check="segment_coherence",
+                    check="segment_sum_overflow",
                     section="Segments",
                     detail=(
-                        f"FATAL: Segment '{seg_name}' revenue (${seg_rev:,.0f}) exceeds "
-                        f"total quarterly revenue (${total_revenue:,.0f}) — "
-                        f"that's {pct_of_total:.0f}% of total. "
-                        f"This means segment data is from a different period (likely annual 10-K) "
-                        f"and was not properly flagged as annual context."
+                        f"FATAL: Sum of all segments (${seg_sum:,.0f}) exceeds "
+                        f"total quarterly revenue (${total_revenue:,.0f}) by "
+                        f"{((seg_sum/total_revenue)-1)*100:.0f}%. "
+                        f"Segment data is annual. Set _annual_context_only=True in metrics.segments."
                     ),
                     severity="error",
                 ))
-
-        # Also check if sum of all segments significantly exceeds total
-        if seg_sum > total_revenue * 1.20:  # 20% tolerance — segments often don't sum exactly
-            warnings.append(ValidationWarning(
-                check="segment_sum_overflow",
-                section="Segments",
-                detail=(
-                    f"FATAL: Sum of all segments (${seg_sum:,.0f}) exceeds "
-                    f"total quarterly revenue (${total_revenue:,.0f}) by "
-                    f"{((seg_sum/total_revenue)-1)*100:.0f}%. "
-                    f"Segment data is annual. Set _annual_context_only=True in metrics.segments."
-                ),
-                severity="error",
-            ))
 
     # ── RULE 2 (BLOCKING): FY label enforcement ────────────────────────
 
