@@ -1967,10 +1967,7 @@ def build_earnings_deep_dive_report(
         return sid
     if transcript_url or transcript_source not in ("Transcript", ""):
         transcript_label = f"Earnings Transcript — {transcript_source}"
-        transcript_display_url = transcript_url or (
-            f"https://seekingalpha.com/symbol/{ticker_clean}/earnings/transcripts"
-            if "seeking alpha" in transcript_source.lower() else None
-        )
+        transcript_display_url = transcript_url or ""
         sources.append(SourceRef(
             source_id=_next_sid(),
             source_type="seeking_alpha",
@@ -2021,12 +2018,14 @@ def build_earnings_deep_dive_report(
             url="https://finnhub.io",
             note="Real-time estimates, transcripts, and SEC filings index"
         ))
-    sources.append(SourceRef(
-        source_id=_next_sid(), source_type="seeking_alpha",
-        label="Seeking Alpha Transcripts",
-        url=f"https://seekingalpha.com/symbol/{ticker_clean}/earnings/transcripts",
-        note="Earnings call transcripts (when available)"
-    ))
+    # Only add generic Seeking Alpha reference if we don't already have a specific transcript source
+    if not transcript_url:
+        sources.append(SourceRef(
+            source_id=_next_sid(), source_type="seeking_alpha",
+            label="Seeking Alpha Transcripts",
+            url=f"https://seekingalpha.com/symbol/{ticker_clean}/earnings/transcripts",
+            note="Earnings call transcripts (when available)"
+        ))
 
     # Filter: skip Geographic Segments (never reported in quarterly filings)
     # and any truly empty sections
