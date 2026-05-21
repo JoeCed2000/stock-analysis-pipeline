@@ -159,7 +159,7 @@ export default function App() {
                 await new Promise(r2 => setTimeout(r2, 3000));
                 try {
                   const ds = await getDossierStatus(r.ticker);
-                  if (ds && ds.ready) {
+                  if (ds && ds.verified) {
                     dossierReady = true;
                     break;
                   }

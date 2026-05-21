@@ -14,11 +14,49 @@ import os
 import json
 import threading
 import logging
+from enum import Enum
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
+
+
+class DossierPhase(str, Enum):
+    """State machine phases for dossier generation.
+    
+    Flow: queued → scoring → scored → pdf_generating → pdf_validating → complete
+                                                              └→ failed
+    """
+    QUEUED = "queued"              # Analysis submitted, not yet started
+    SCORING = "scoring"            # Fast analysis running (scoring + report)
+    SCORED = "scored"              # Report ready (report.md + Excel), deep-dive pending
+    PDF_GENERATING = "pdf_generating"  # Deep-dive PDF being generated (Codex + render)
+    PDF_VALIDATING = "pdf_validating"  # PDF generated, running validation
+    COMPLETE = "complete"          # All deliverables ready, validated
+    FAILED = "failed"              # Terminal failure
+
+
+def set_dossier_phase(ticker: str, phase: str, **kwargs):
+    """Set the phase for a ticker's dossier generation in the in-memory registry.
+    
+    Called by background threads during deep-dive PDF generation.
+    Disk state takes priority for terminal phases (complete/failed/scored).
+    Registry state is the source of truth for transient phases (pdf_generating/pdf_validating).
+    
+    Args:
+        ticker: The ticker symbol (e.g., 'NVDA')
+        phase: One of DossierPhase values
+        **kwargs: Additional fields to store (error, progress_pct, etc.)
+    """
+    ticker_clean = ticker.replace(".", "_").upper()
+    with _registry_lock:
+        entry = _dossier_registry.get(ticker_clean, {})
+        entry["phase"] = phase
+        entry["phase_set_at"] = datetime.now(PARIS).isoformat()
+        entry.update(kwargs)
+        _dossier_registry[ticker_clean] = entry
+        logger.info(f"[{ticker_clean}] Phase → {phase}" + (f" ({list(kwargs.keys())})" if kwargs else ""))
 
 # In-memory registry: ticker → dossier status
 # Survives between requests, lost on server restart (acceptable — files on disk)
@@ -59,9 +97,10 @@ def _apply_verification_status(status: dict) -> dict:
     verification_warnings = []  # non-blocking — shown to user but don't block download
     if deep_dive_validated is not True:
         if deep_dive_validated is None:
-            # Not yet validated — allow download but warn (non-blocking)
-            verification_warnings.append("Deep-dive validation pending — review before relying on PDF.")
-            deep_dive_validated = True  # treat as passed for download purposes
+            # Not yet generated/validated — treat as still in progress
+            # DOWNLOAD stays blocked so the frontend spinner keeps running
+            # until the deep-dive PDF is truly ready (Ced UX mandate 2026-05-21)
+            pass  # Leave deep_dive_validated as None → verified stays False
         else:
             issues = status.get("deep_dive_issues") or []
             if issues:
@@ -191,6 +230,40 @@ def get_dossier_status(ticker: str) -> dict:
             status["deep_dive_validated"] = False
     else:
         status["deep_dive_validated"] = None  # Not yet generated
+
+    # ── Phase computation: disk truth > registry transient > inferred ──
+    # Priority: registry transient phases (pdf_generating, pdf_validating) for active
+    # background threads > disk-derived terminal states > inferred defaults
+    with _registry_lock:
+        reg_entry = _dossier_registry.get(ticker_clean, {})
+    reg_phase = reg_entry.get("phase")
+    
+    if reg_phase in (DossierPhase.PDF_GENERATING, DossierPhase.PDF_VALIDATING):
+        # Background thread is actively running — registry is authoritative
+        status["phase"] = reg_phase
+    elif status.get("deep_dive_validated") is True and status.get("ready"):
+        status["phase"] = DossierPhase.COMPLETE
+    elif status.get("deep_dive_validated") is False:
+        # Validation explicitly failed
+        status["phase"] = DossierPhase.FAILED
+        status["error"] = reg_entry.get("error") or "Deep-dive validation failed"
+    elif status.get("deep_dive_validated") is None and status.get("ready"):
+        # Report is ready but deep-dive hasn't been generated yet
+        status["phase"] = DossierPhase.SCORED
+    elif status.get("ready"):
+        status["phase"] = DossierPhase.COMPLETE
+    elif status.get("stage") == "in_progress":
+        status["phase"] = DossierPhase.SCORING
+    else:
+        status["phase"] = DossierPhase.QUEUED
+    
+    # Carry over error/progress from registry if present
+    if "error" in reg_entry and "error" not in status:
+        status["error"] = reg_entry["error"]
+    if "progress_pct" in reg_entry:
+        status["progress_pct"] = reg_entry["progress_pct"]
+    
+    # Phase is set, now apply verification status
 
     _apply_verification_status(status)
     

@@ -46,12 +46,12 @@ function getInsight(scoring, t) {
   return t ? t(key) : key;
 }
 
-export function canDownloadDossier(status, countdown) {
+export function canDownloadDossier(status) {
   return Boolean(
     status?.ready === true
     && status?.verified === true
     && status?.download_enabled === true
-    && countdown <= 0
+    && status?.phase === 'complete'
   );
 }
 
@@ -69,13 +69,10 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
 
   // ── Dossier polling ──
   const [dossierStatus, setDossierStatus] = useState({ sectionsReady: 0, pollFailures: 0 });
-  const [countdown, setCountdown] = useState(null);
   const [downloadState, setDownloadState] = useState('idle'); // idle | downloading | success | error
   const pollRef = useRef(null);
-  const countdownRef = useRef(null);
   const failedPollsRef = useRef(0);
   const downloadTimerRef = useRef(null);
-  const ESTIMATED_SECS = 5; // dossier is now synchronous — ready in <5s
 
   // ── Quarter selector ──
   const [quarters, setQuarters] = useState([]);
@@ -96,6 +93,7 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
   useEffect(() => {
     let cancelled = false;
     let poles = 0;
+    const MAX_POLLS = 240; // safety net: 20 min at 5s intervals
     const poll = async () => {
       try {
         const status = await getDossierStatus(ticker);
@@ -104,10 +102,9 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
           poles++;
           const sectionCount = countDossierSections(status.files || []);
           setDossierStatus({ ...status, sectionsReady: sectionCount, poles, pollFailures: 0 });
-          // Stop polling only after a terminal verification state or timeout.
-          const terminalVerification = status.download_enabled === true
-            || (status.ready === true && status.deep_dive_validated === false);
-          if ((terminalVerification && countdownRef.current <= 0) || poles >= 30) {
+          // Stop polling on terminal phases (backend truth, not countdown)
+          const terminal = status.phase === 'complete' || status.phase === 'failed' || poles >= MAX_POLLS;
+          if (terminal) {
             clearInterval(pollRef.current);
             pollRef.current = null;
           }
@@ -129,20 +126,6 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
     return () => { cancelled = true; clearInterval(pollRef.current); };
   }, [ticker]);
 
-  // Countdown timer — starts on first non-empty status, counts down from ESTIMATED_SECS
-  useEffect(() => {
-    if (dossierStatus && dossierStatus.sectionsReady > 0 && countdown === null) {
-      setCountdown(ESTIMATED_SECS);
-    }
-  }, [dossierStatus, countdown]);
-
-  useEffect(() => {
-    if (countdown === null || countdown <= 0) return;
-    countdownRef.current = countdown;
-    const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [countdown]);
-
   // Cleanup download timer on unmount
   useEffect(() => {
     return () => { if (downloadTimerRef.current) clearTimeout(downloadTimerRef.current); };
@@ -150,10 +133,10 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
 
   const scorePercent = (total / 40) * 100;
   const scoreBarColor = total >= 28 ? '#238636' : total >= 18 ? '#d29922' : '#da3633';
-  const downloadReady = canDownloadDossier(dossierStatus, countdown);
+  const downloadReady = canDownloadDossier(dossierStatus);
   const verificationBlocked = dossierStatus?.ready === true
     && dossierStatus?.verified === false
-    && countdown <= 0;
+    && (dossierStatus?.phase === 'failed' || dossierStatus?.deep_dive_validated === false);
 
   return (
     <div style={{
@@ -270,6 +253,8 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
 
       {/* ── ACTIONS ── */}
       <div style={{ padding: '8px 14px 6px', display: 'flex', gap: 6 }}>
+        {/* Deep-dive PDF button — gated until dossier verified (PDF ready) */}
+        {dossierStatus?.verified ? (
         <button
           onClick={() => onViewReport(result, selectedQuarter)}
           style={{
@@ -283,6 +268,15 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
         >
           📄 {t('viewFullReport')}
         </button>
+        ) : (
+        <div style={{
+          flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500,
+          background: '#161b22', border: '1px solid #30363d',
+          borderRadius: 5, color: '#8b949e', textAlign: 'center',
+        }}>
+          📄 {lang === 'ja' ? '生成中...' : 'Building PDF...'}
+        </div>
+        )}
         {downloadReady ? (
           <button
             onClick={async () => {
@@ -356,14 +350,17 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
             background: '#161b22', border: '1px solid #30363d',
             borderRadius: 5, color: '#8b949e', textAlign: 'center',
           }}>
-            {countdown > 0
-              ? `⏳ ${countdown}s · ${dossierStatus?.sectionsReady ?? '?'}/7`
+            {dossierStatus?.phase === 'scoring'
+              ? `⚡ ${t('scoringAnalysis')} ${dossierStatus?.sectionsReady ?? '?'}/7`
+              : dossierStatus?.phase === 'scored'
+              ? `📊 ${lang === 'ja' ? 'スコア完了・PDF生成待ち' : 'Score ready. PDF pending...'}`
+              : dossierStatus?.phase === 'pdf_generating'
+              ? `⏳ ${lang === 'ja' ? 'PDF生成中... (4〜7分)' : 'Generating PDF... (4-7 min)'}`
+              : dossierStatus?.phase === 'pdf_validating'
+              ? `📋 ${lang === 'ja' ? 'PDF検証中...' : 'Validating PDF...'}`
+              : dossierStatus?.phase === 'failed'
+              ? `⚠️ ${lang === 'ja' ? '生成失敗' : 'Generation failed'}`
               : `${t('buildingDossier')} ${dossierStatus?.sectionsReady ?? '?'}/7`}
-            {dossierStatus?.estimated_seconds > 0 && (
-              <span style={{ display: 'block', fontSize: 9, color: '#484f58', marginTop: 2 }}>
-                {lang === 'ja' ? t('estimatedSingle') : t('estimatedSingle')}
-              </span>
-            )}
             {dossierStatus?.pollFailures >= 3 && (
               <span style={{ display: 'block', fontSize: 9, color: '#d29922', marginTop: 2 }}>
                 {lang === 'ja' ? 'ステータス再試行中' : 'Retrying status'}

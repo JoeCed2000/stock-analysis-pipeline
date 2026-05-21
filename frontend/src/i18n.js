@@ -30,6 +30,7 @@ const translations = {
     
     // Progress
     buildingDossier: "📊 Building dossier…",
+    scoringAnalysis: "⚡ Scoring analysis…",
     sections: "sections",
     of: "of",
     estimatedBilingual: "Bilingual EN+JP package — estimated ~2 min",
@@ -179,6 +180,7 @@ const translations = {
     
     // Progress
     buildingDossier: "📊 ドシエ作成中…",
+    scoringAnalysis: "⚡ スコアリング分析中…",
     sections: "セクション",
     of: "/",
     estimatedBilingual: "バイリンガルEN+JPパッケージ — 推定約2分",

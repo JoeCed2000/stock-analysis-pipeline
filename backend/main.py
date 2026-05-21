@@ -840,6 +840,8 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
     # If quarter specified, regenerate deep-dive for that quarter
     if quarter and quarter != "latest":
         logger.info(f"[{ticker}] Regenerating deep-dive for quarter={quarter}...")
+        from backend.async_dossier import set_dossier_phase, DossierPhase
+        set_dossier_phase(ticker, DossierPhase.PDF_GENERATING)
         try:
             from backend.sources_collector import get_yahoo_data_for_quarter
             from backend.pipeline import _deep_dive_metrics
@@ -893,6 +895,7 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
                 response.sections = _strip_prompt_leaks_from_sections(response.sections)
 
                 # ── Pre-render validation (BLOCKING — hard data contract gate) ──
+                set_dossier_phase(ticker, DossierPhase.PDF_VALIDATING)
                 from backend.earnings_deep_dive.pre_render_validator import (
                     validate_pre_render,
                     annotate_sections_with_warnings,
@@ -950,7 +953,9 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
                 with open(val_path, "w") as f:
                     _json.dump(val_result, f, indent=2)
                 logger.info(f"[{ticker}] Deep-dive PDF rendered + validated (passed={passed})")
+                set_dossier_phase(ticker, DossierPhase.COMPLETE)
         except ValidationError as ve:
+            set_dossier_phase(ticker, DossierPhase.FAILED, error=str(ve))
             logger.error(f"[{ticker}] Data contract violation: {ve}")
             raise HTTPException(
                 status_code=422,
@@ -960,6 +965,7 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
                 }
             )
         except Exception as e:
+            set_dossier_phase(ticker, DossierPhase.FAILED, error=str(e))
             logger.warning(f"[{ticker}] Deep-dive regeneration for {quarter} failed: {e}")
 
     status = get_dossier_status(ticker)
@@ -1394,6 +1400,8 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
         
         async def _generate_deep_dive_async(ticker: str, lang: str, dd_path: Path):
             """Background deep-dive generation — runs in thread to not block."""
+            from backend.async_dossier import set_dossier_phase, DossierPhase
+            set_dossier_phase(ticker, DossierPhase.PDF_GENERATING)
             try:
                 from backend.earnings_deep_dive.generator import generate_deep_dive
                 from backend.earnings_deep_dive.schemas import DeepDiveRequest
@@ -1440,6 +1448,7 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                 dd_response = generate_deep_dive(dd_req)
                 
                 # ── Pre-render validation (BLOCKING — hard data contract gate) ──
+                set_dossier_phase(ticker, DossierPhase.PDF_VALIDATING)
                 from backend.earnings_deep_dive.pre_render_validator import (
                     validate_pre_render,
                     annotate_sections_with_warnings,
@@ -1479,7 +1488,9 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                 )
                 os.makedirs(dd_path.parent, exist_ok=True)
                 render_earnings_deep_dive_pdf(report_model, str(dd_path))
+                set_dossier_phase(ticker, DossierPhase.COMPLETE)
             except ValidationError as ve:
+                set_dossier_phase(ticker, DossierPhase.FAILED, error=str(ve))
                 import logging
                 logging.getLogger("uvicorn.error").error(
                     f"Data contract violation for {ticker}: {ve}"
@@ -1493,6 +1504,7 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                     }
                 )
             except Exception as e:
+                set_dossier_phase(ticker, DossierPhase.FAILED, error=str(e))
                 import logging
                 logging.getLogger("uvicorn.error").error(f"Deep-dive generation failed for {ticker}: {e}")
         
