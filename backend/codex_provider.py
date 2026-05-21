@@ -12,73 +12,102 @@ from typing import Optional, Dict, Any, List
 logger = logging.getLogger(__name__)
 
 CODEX_BIN = os.path.expanduser("~/.hermes/node/bin/codex")
-CODEX_TIMEOUT = 90  # seconds (was 600 — reduced: Cloudflare blocks cause systematic 600s hangs, Codex works in 7-13s when healthy)
+CODEX_TIMEOUT = 90  # seconds per attempt (was 600 — Cloudflare blocks cause systematic hangs)
+CODEX_MAX_RETRIES = 2  # total attempts = 1 + MAX_RETRIES = 3
+CODEX_RETRY_BACKOFF = [2.0, 4.0]  # seconds between retries (jittered ±50%)
+
+# Global lock to serialize Codex subprocess launches (anti-thundering-herd for EN+JP parallelism)
+_codex_launch_lock = __import__("threading").Lock()
 
 
 def _codex_chat(prompt: str, system: str = "", max_tokens: int = 1000) -> Optional[str]:
-    """Send a prompt to Codex CLI via PTY and return the response text."""
+    """Send a prompt to Codex CLI via PTY and return the response text.
+    
+    Retries up to CODEX_MAX_RETRIES times with exponential backoff on timeout/failure.
+    Serializes subprocess launches via a global lock to avoid Cloudflare rate-limiting
+    when EN and JP deep-dive generations run in parallel.
+    """
     if not os.path.exists(CODEX_BIN):
         logger.warning("Codex CLI not found at %s", CODEX_BIN)
         return None
 
-    fd, output_file = tempfile.mkstemp(suffix=".txt")
-    os.close(fd)
-    full_prompt = f"{system}\n\n{prompt}\n\nReturn ONLY the requested output. No explanations."
+    last_error = None
 
-    try:
-        # Open PTY pair
-        master_fd, slave_fd = os.openpty()
-        
-        proc = subprocess.Popen(
-            [CODEX_BIN, "exec",
-             "--ephemeral",
-             "--skip-git-repo-check",
-             "--json",
-             "-c", "model_reasoning_effort=low",
-             "-o", output_file,
-             full_prompt],
-            stdin=slave_fd,
-            stdout=slave_fd,
-            stderr=slave_fd,
-            close_fds=True,
-        )
-        
-        # Close slave fd in parent (child uses it)
-        os.close(slave_fd)
-        
-        # Wait with timeout
-        start = time.time()
-        while proc.poll() is None:
-            if time.time() - start > CODEX_TIMEOUT:
-                proc.kill()
-                logger.warning("Codex CLI timeout after %ds", CODEX_TIMEOUT)
-                os.close(master_fd)
-                return None
-            time.sleep(0.5)
-        
-        os.close(master_fd)
-        
-        # Read output file
-        if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
-            with open(output_file) as f:
-                response = f.read().strip()
-            if response:
-                return response
-        
-        logger.warning("Codex: no output (rc=%d)", proc.returncode)
-        return None
-        
-    except FileNotFoundError:
-        logger.warning("Codex binary not found at %s", CODEX_BIN)
-        return None
-    except Exception as e:
-        logger.warning("Codex CLI exception: %s", e)
-        return None
-    finally:
+    for attempt in range(CODEX_MAX_RETRIES + 1):
+        if attempt > 0:
+            backoff = CODEX_RETRY_BACKOFF[min(attempt - 1, len(CODEX_RETRY_BACKOFF) - 1)]
+            jitter = backoff * 0.5 * (__import__("random").random())
+            wait = backoff + jitter
+            logger.info("Codex retry %d/%d after %.1fs…", attempt, CODEX_MAX_RETRIES, wait)
+            time.sleep(wait)
+
+        fd, output_file = tempfile.mkstemp(suffix=".txt")
+        os.close(fd)
+        full_prompt = f"{system}\n\n{prompt}\n\nReturn ONLY the requested output. No explanations."
+
         try:
-            os.unlink(output_file)
-        except OSError:
-            pass
+            # Serialize launches to avoid Cloudflare rate-limit on parallel EN+JP
+            with _codex_launch_lock:
+                master_fd, slave_fd = os.openpty()
+                
+                proc = subprocess.Popen(
+                    [CODEX_BIN, "exec",
+                     "--ephemeral",
+                     "--skip-git-repo-check",
+                     "--json",
+                     "-c", "model_reasoning_effort=low",
+                     "-o", output_file,
+                     full_prompt],
+                    stdin=slave_fd,
+                    stdout=slave_fd,
+                    stderr=slave_fd,
+                    close_fds=True,
+                )
+                
+                os.close(slave_fd)
+            
+            # Wait with timeout
+            start = time.time()
+            while proc.poll() is None:
+                if time.time() - start > CODEX_TIMEOUT:
+                    proc.kill()
+                    logger.warning("Codex CLI timeout after %ds (attempt %d/%d)",
+                                   CODEX_TIMEOUT, attempt + 1, CODEX_MAX_RETRIES + 1)
+                    os.close(master_fd)
+                    last_error = "timeout"
+                    break  # will retry
+                time.sleep(0.5)
+            else:
+                # Process exited normally
+                os.close(master_fd)
+                
+                # Read output file
+                if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
+                    with open(output_file) as f:
+                        response = f.read().strip()
+                    if response:
+                        if attempt > 0:
+                            logger.info("Codex succeeded on retry %d", attempt)
+                        return response
+                
+                logger.warning("Codex: no output (rc=%d, attempt %d)", proc.returncode, attempt + 1)
+                last_error = f"no_output(rc={proc.returncode})"
+
+        except FileNotFoundError:
+            logger.warning("Codex binary not found at %s", CODEX_BIN)
+            return None
+        except Exception as e:
+            logger.warning("Codex CLI exception (attempt %d): %s", attempt + 1, e)
+            last_error = str(e)
+        finally:
+            try:
+                os.unlink(output_file)
+            except OSError:
+                pass
+
+    logger.error("Codex CLI: all %d attempts failed. Last error: %s",
+                 CODEX_MAX_RETRIES + 1, last_error)
+    return None
 
 
 def codex_analyze_management(mda_text: str, risk_text: str) -> Dict[str, Any]:
