@@ -31,14 +31,14 @@ logger = logging.getLogger(__name__)
 MAX_CODEX_TOKENS = 16000
 
 def _llm_chat(prompt: str, system: str = "", max_tokens: int = MAX_CODEX_TOKENS) -> str | None:
-    """GPT-5.5 (Codex) primary → DeepSeek → Gemini Flash Lite."""
-    # 1. Codex (GPT-5.5 via ChatGPT Plus subscription) — best reasoning, required for financial data
-    result = codex_chat(prompt, system=system, max_tokens=max_tokens)
-    if result:
-        return result
-    # 2. DeepSeek — paid, reliable ($0.27/M tokens)
+    """DeepSeek (reliable, fast) → Codex GPT-5.5 (free but Cloudflare-blocked) → Gemini Flash Lite."""
+    # 1. DeepSeek — paid, reliable ($0.27/M tokens), fast
     from backend.kimi_provider import _deepseek_chat
     result = _deepseek_chat(prompt, system, max_tokens)
+    if result:
+        return result
+    # 2. Codex (GPT-5.5 via ChatGPT Plus) — free, but Cloudflare blocks cause hangs
+    result = codex_chat(prompt, system=system, max_tokens=max_tokens)
     if result:
         return result
     # 3. Gemini Flash Lite — free, fallback (may 429/503 under load)
