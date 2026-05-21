@@ -12,7 +12,7 @@ from typing import Optional, Dict, Any, List
 logger = logging.getLogger(__name__)
 
 CODEX_BIN = os.path.expanduser("~/.hermes/node/bin/codex")
-CODEX_TIMEOUT = 600  # seconds (was 120 — JP deep-dive generation is slow)
+CODEX_TIMEOUT = 90  # seconds (was 600 — reduced: Cloudflare blocks cause systematic 600s hangs, Codex works in 7-13s when healthy)
 
 
 def _codex_chat(prompt: str, system: str = "", max_tokens: int = 1000) -> Optional[str]:
