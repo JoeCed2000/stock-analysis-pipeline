@@ -12,7 +12,7 @@ from typing import Optional, Dict, Any, List
 logger = logging.getLogger(__name__)
 
 CODEX_BIN = os.path.expanduser("~/.hermes/node/bin/codex")
-CODEX_TIMEOUT = 300  # seconds (was 120 — JP deep-dive needs more)
+CODEX_TIMEOUT = 600  # seconds (was 120 — JP deep-dive generation is slow)
 
 
 def _codex_chat(prompt: str, system: str = "", max_tokens: int = 1000) -> Optional[str]:
