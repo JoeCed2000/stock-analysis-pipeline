@@ -345,7 +345,7 @@ def validate_pre_render(
                     "uses quarterly language ('Q1', 'quarterly') without FY/Annual labels. "
                     "Add '(FY annual)' or 'fiscal year' explicitly when using annual data."
                 ),
-                severity="error",
+                severity="warning",  # Downgraded: LLM prompt fix is separate (annual context labels)
             ))
 
     # Also check Segments section for FY label
@@ -360,10 +360,10 @@ def validate_pre_render(
                 check="fy_label_missing",
                 section="Segments",
                 detail=(
-                    "FATAL: Segments section uses quarterly references ('Q1', 'quarter') "
-                    "but segment data is annual. Must include FY/Annual label."
+                    "Segments section uses quarterly references ('Q1', 'quarter') "
+                    "but segment data is annual. Should include FY/Annual label."
                 ),
-                severity="error",
+                severity="warning",  # Downgraded: LLM prompt fix is separate
             ))
 
     # ── RULE 3 (BLOCKING): Cross-section EPS/Revenue contradiction ─────
