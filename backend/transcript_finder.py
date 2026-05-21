@@ -53,6 +53,35 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
     except Exception as e:
         logger.warning(f"RapidAPI Seeking Alpha unavailable for {ticker}: {e}")
 
+    # 0.5. StockAnalysis.com — FREE full-text transcripts, no auth needed.
+    if not _is_usable(primary_text):
+        try:
+            from backend.stockanalysis import search_transcripts as sa_search, fetch_transcript as sa_fetch
+            sa_results = sa_search(ticker, limit=3)
+            for sa_result in sa_results:
+                sa_url = sa_result.get("url", "")
+                if not sa_url:
+                    continue
+                sa_data = sa_fetch(sa_url)
+                sa_content = sa_data.get("content", "") if sa_data else ""
+                if not _is_usable(sa_content):
+                    continue
+                primary_text = sa_content
+                results.append({
+                    "source": "StockAnalysis.com",
+                    "type": "earnings_transcript",
+                    "title": sa_data.get("title") or sa_result.get("title", ""),
+                    "url": sa_url,
+                    "text": sa_content,
+                    "text_length": len(sa_content),
+                    "date": sa_data.get("date", ""),
+                    "id": sa_result.get("id", ""),
+                })
+                logger.info(f"StockAnalysis.com transcript: {len(sa_content)} chars for {ticker}")
+                break
+        except Exception as e:
+            logger.warning(f"StockAnalysis.com unavailable for {ticker}: {e}")
+
     # 1. Alpha Vantage API — fallback (structured JSON, 25 req/day free).
     if not _is_usable(primary_text):
         try:
