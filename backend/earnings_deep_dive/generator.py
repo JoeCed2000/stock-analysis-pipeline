@@ -172,6 +172,11 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
     except TranscriptMissingError as exc:
         transcript_text = ""
         transcript_meta = {"found": False, "error": str(exc)}
+        # Extract URL from error message if present (e.g. paywalled transcript)
+        import re as _re
+        url_match = _re.search(r"URL: (https?://\S+)", str(exc))
+        if url_match:
+            transcript_meta["url"] = url_match.group(1)
 
     excerpts = {
         section: _extract_relevant_excerpt(transcript_text, SECTION_KEYWORDS[section])
@@ -415,13 +420,29 @@ def _load_transcript(request: DeepDiveRequest) -> Tuple[str, Dict[str, Any]]:
         results = find_transcripts(request.ticker, output_dir=request.output_dir)
     sources = results.get("sources", []) if isinstance(results, dict) else []
     transcript_text, transcript_source = _best_transcript(sources)
+    
+    # Extract best URL from sources (even when text is unavailable/paywalled)
+    best_url = transcript_source.get("url") or transcript_source.get("link") or ""
+    if not best_url:
+        for src in sources:
+            url = src.get("url") or src.get("link") or ""
+            if url:
+                best_url = url
+                break
+    
     if transcript_text:
         return transcript_text, {
             "found": True,
             "source_count": len(sources),
             "primary_source": _primary_source_name(sources),
-            "url": transcript_source.get("url") or transcript_source.get("link"),
+            "url": best_url,
         }
+    # No usable text — but if we have URLs, pass them through for source attribution
+    if best_url:
+        raise TranscriptMissingError(
+            f"No usable transcript text found for {request.ticker} "
+            f"(paywalled or inaccessible). URL: {best_url[:120]}"
+        )
     raise TranscriptMissingError(f"No usable earnings call transcript found for {request.ticker}")
 
 
