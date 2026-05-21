@@ -293,8 +293,11 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
                 a.download = `${ticker}_dossier.zip`;
                 document.body.appendChild(a);
                 a.click();
-                document.body.removeChild(a);
-                setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+                // Delay removal so browser can process the download click event
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(blobUrl);
+                }, 100);
                 setDownloadState('success');
                 if (downloadTimerRef.current) clearTimeout(downloadTimerRef.current);
                 downloadTimerRef.current = setTimeout(() => setDownloadState('idle'), 3000);
