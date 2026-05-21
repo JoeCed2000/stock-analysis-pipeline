@@ -558,10 +558,34 @@ def _paragraph_with_emojis(text: str, style: ParagraphStyle, *, font_name: str, 
 
 # ── Document structure helpers ──────────────────────────────────────────
 def _official_website(report: EarningsDeepDiveReport) -> str | None:
+    """Return the official website URL, validated against known-good sources.
+    Falls back to yfinance company_website if LLM-generated sources contain hallucinations."""
+    
+    # Known-fake domains that LLMs hallucinate (add to blocklist as discovered)
+    _FAKE_DOMAINS = {
+        'eageroryx.dev', 'example.com', 'placeholder.com', 'test.com',
+        'fake-url.com', 'not-real.com', 'your-company.com',
+    }
+    
+    # First try: company_overview.company_profile.website (from yfinance, reliable)
+    if report.company_overview and report.company_overview.company_profile.website:
+        url = report.company_overview.company_profile.website.strip()
+        domain = url.split('/')[2] if '://' in url else url.split('/')[0]
+        domain = domain.replace('www.', '').lower()
+        if domain not in _FAKE_DOMAINS and '.' in domain:
+            return url
+    
+    # Second try: sources with "website"/"official" label (LLM-generated, validate)
     for source in report.sources:
         label = source.label.lower()
         if any(kw in label for kw in ("website", "official", "company site", "homepage")) and source.url:
-            return source.url
+            url = source.url.strip()
+            # Extract domain and validate
+            domain = url.split('/')[2] if '://' in url else url.split('/')[0]
+            domain = domain.replace('www.', '').lower()
+            if domain not in _FAKE_DOMAINS and '.' in domain and len(domain) > 5:
+                return url
+    
     return None
 
 
@@ -1369,8 +1393,15 @@ def render_company_overview(
 
 
 # ── Main entry point ────────────────────────────────────────────────────
-def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: str | Path) -> str:
-    """Render a structured earnings deep-dive report to an extractable PDF."""
+def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: str | Path, include_traceability: bool = False) -> str:
+    """Render a structured earnings deep-dive report to an extractable PDF.
+    
+    Args:
+        report: The deep-dive report model
+        output_path: Where to write the PDF
+        include_traceability: If True, include the Claim Traceability appendix (for internal audit).
+                             If False (default), omit it from the client-facing PDF.
+    """
     # ── QA gate ──
     validation_issues = _validate_report(report)
     if validation_issues:
@@ -1556,8 +1587,8 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             styles["small"]
         ))
 
-        # ── Claim Traceability Appendix ──
-        if report.claim_sources:
+        # ── Claim Traceability Appendix (INTERNAL ONLY — excluded from client PDF) ──
+        if include_traceability and report.claim_sources:
             story.append(PageBreak())
             story.append(Paragraph(translate("Claim Traceability", report.language), styles["section"]))
             story.append(Spacer(1, 0.08 * inch))
