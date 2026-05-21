@@ -1802,34 +1802,67 @@ def _generate_report(result: AnalysisResult, yf_data: Dict, sources: List[Source
     if overview:
         lines.append(f"## 3. Company Overview")
         lines.append(f"")
+
+        def _ov_text(val: Any, rich_keys=("text_en", "text", "summary", "name")) -> str:
+            """Extract display text from overview value (str, dict, or list)."""
+            if val is None:
+                return "N/A"
+            if isinstance(val, str):
+                return val
+            if isinstance(val, dict):
+                for k in rich_keys:
+                    if k in val and val[k]:
+                        return str(val[k])
+                # Fallback: first string value
+                for v in val.values():
+                    if isinstance(v, str) and v:
+                        return v
+                return "N/A"
+            if isinstance(val, list):
+                parts = []
+                for item in val[:5]:
+                    if isinstance(item, dict):
+                        title = item.get("title", "") or item.get("summary", "") or ""
+                        if title:
+                            parts.append(f"• {title}")
+                    elif isinstance(item, str):
+                        parts.append(f"• {item}")
+                return "\n".join(parts) if parts else "N/A"
+            return str(val)
+
         # Company Profile
         if "company_profile" in overview and overview["company_profile"]:
             profile = overview["company_profile"]
-            lines.append(f"**Company Profile:** {profile.get('text_en', 'N/A')}")
-            if profile.get("sources"):
+            text = _ov_text(profile)
+            lines.append(f"**Company Profile:** {text}")
+            if isinstance(profile, dict) and profile.get("sources"):
                 lines.append(f"> Sources: {', '.join(profile['sources'])}")
             lines.append(f"")
         # Business Description
         if "business_description" in overview and overview["business_description"]:
             biz = overview["business_description"]
-            lines.append(f"**Business Description:** {biz.get('text_en', 'N/A')}")
-            if biz.get("sources"):
+            text = _ov_text(biz)
+            lines.append(f"**Business Description:** {text}")
+            if isinstance(biz, dict) and biz.get("sources"):
                 lines.append(f"> Sources: {', '.join(biz['sources'])}")
             lines.append(f"")
         # Key Financials
         if "key_financials" in overview and overview["key_financials"]:
             kf = overview["key_financials"]
-            lines.append(f"**Key Financials:** {kf.get('text_en', 'N/A')}")
+            text = _ov_text(kf)
+            lines.append(f"**Key Financials:** {text}")
             lines.append(f"")
         # Recent Developments
         if "recent_developments" in overview and overview["recent_developments"]:
             rd = overview["recent_developments"]
-            lines.append(f"**Recent Developments:** {rd.get('text_en', 'N/A')}")
+            text = _ov_text(rd)
+            lines.append(f"**Recent Developments:**\n{text}")
             lines.append(f"")
         # Competitive Position
         if "competitive_position" in overview and overview["competitive_position"]:
             cp = overview["competitive_position"]
-            lines.append(f"**Competitive Position:** {cp.get('text_en', 'N/A')}")
+            text = _ov_text(cp)
+            lines.append(f"**Competitive Position:** {text}")
             lines.append(f"")
     else:
         # Fallback: thin yfinance description
