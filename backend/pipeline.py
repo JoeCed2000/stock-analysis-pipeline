@@ -1795,11 +1795,46 @@ def _generate_report(result: AnalysisResult, yf_data: Dict, sources: List[Source
 
     lines.append(f"")
 
-    # 3. Business
-    lines.append(f"## 3. Business")
-    lines.append(f"")
-    lines.append(f"{yf_data.get('description', 'DATA NOT AVAILABLE')[:800]}")
-    lines.append(f"")
+    # 3. Company Overview (LLM-generated — rich, sourced)
+    overview = result.company_overview
+    if overview:
+        lines.append(f"## 3. Company Overview")
+        lines.append(f"")
+        # Company Profile
+        if "company_profile" in overview and overview["company_profile"]:
+            profile = overview["company_profile"]
+            lines.append(f"**Company Profile:** {profile.get('text_en', 'N/A')}")
+            if profile.get("sources"):
+                lines.append(f"> Sources: {', '.join(profile['sources'])}")
+            lines.append(f"")
+        # Business Description
+        if "business_description" in overview and overview["business_description"]:
+            biz = overview["business_description"]
+            lines.append(f"**Business Description:** {biz.get('text_en', 'N/A')}")
+            if biz.get("sources"):
+                lines.append(f"> Sources: {', '.join(biz['sources'])}")
+            lines.append(f"")
+        # Key Financials
+        if "key_financials" in overview and overview["key_financials"]:
+            kf = overview["key_financials"]
+            lines.append(f"**Key Financials:** {kf.get('text_en', 'N/A')}")
+            lines.append(f"")
+        # Recent Developments
+        if "recent_developments" in overview and overview["recent_developments"]:
+            rd = overview["recent_developments"]
+            lines.append(f"**Recent Developments:** {rd.get('text_en', 'N/A')}")
+            lines.append(f"")
+        # Competitive Position
+        if "competitive_position" in overview and overview["competitive_position"]:
+            cp = overview["competitive_position"]
+            lines.append(f"**Competitive Position:** {cp.get('text_en', 'N/A')}")
+            lines.append(f"")
+    else:
+        # Fallback: thin yfinance description
+        lines.append(f"## 3. Business")
+        lines.append(f"")
+        lines.append(f"{yf_data.get('description', 'DATA NOT AVAILABLE')[:800]}")
+        lines.append(f"")
 
     # 4. Management
     lines.append(f"## 4. Management")
@@ -2099,7 +2134,24 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
     _present = sum(1 for v in _quality_fields.values() if v is not None)
     _total = len(_quality_fields)
     data_quality = "complete" if _present >= 8 else "partial" if _present >= 5 else "sparse"
-    
+
+    # ── Company Overview (after scoring, before earnings deep-dive) ──
+    company_overview = None
+    try:
+        import asyncio
+        from backend.company_overview import get_company_overview
+        company_overview = asyncio.run(get_company_overview(ticker, language=language))
+        logger.info(f"[{ticker}] Company overview generated successfully")
+        # Save to 01_official_company_sources
+        overview_path = os.path.join(
+            output_dir, "01_official_company_sources", f"company_overview_{ticker}.json"
+        )
+        with open(overview_path, "w") as f:
+            json.dump(company_overview, f, indent=2, default=str)
+    except Exception as e:
+        logger.warning(f"[{ticker}] Company overview skipped: {e}")
+        company_overview = None
+
     # ── Build result ──
     result = AnalysisResult(
         ticker=ticker,
@@ -2122,6 +2174,7 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
         report_path=os.path.join(output_dir, "07_final_report", "report.md"),
         sources_manifest_path=os.path.join(output_dir, "06_extracted_data", "sources_manifest.json"),
         data_quality=data_quality,
+        company_overview=company_overview,
     )
     
     # Save Yahoo Finance snapshot (lightweight)

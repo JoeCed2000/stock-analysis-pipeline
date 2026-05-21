@@ -1,7 +1,6 @@
 """Pydantic models for Stock Analysis Pipeline."""
 from pydantic import BaseModel, Field, PrivateAttr
-from typing import Optional, List, Dict
-from datetime import datetime
+from typing import Optional, List, Dict, Any
 
 
 class TickerRequest(BaseModel):
@@ -141,6 +140,7 @@ class AnalysisResult(BaseModel):
     report_path: Optional[str] = None
     sources_manifest_path: Optional[str] = None
     data_quality: str = "unknown"  # complete, partial, sparse
+    company_overview: Optional[Dict[str, Any]] = None  # wired from get_company_overview() after scoring
 
 
 class AnalysisJobResponse(BaseModel):
