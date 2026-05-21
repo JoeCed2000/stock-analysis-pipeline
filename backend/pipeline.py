@@ -1309,17 +1309,6 @@ def _add_earnings_deep_dive_if_transcript(
         # If transcript is for a specific quarter, use quarter-specific yfinance data
         deep_dive_metrics = _deep_dive_metrics(result, yf_data)
         deep_dive_metrics = _apply_press_release_metrics(deep_dive_metrics, press_release_data)
-
-        # ── No-transcript guard: mark segments as annual context ──
-        # When transcript is missing, we use yfinance data which is annual.
-        # Without this, the pre-render validator blocks with segment_sum_overflow.
-        if not has_transcript:
-            segments = getattr(deep_dive_metrics, 'segments', None) or {}
-            if isinstance(segments, dict) and not segments.get("_annual_context_only"):
-                segments["_annual_context_only"] = True
-                deep_dive_metrics = deep_dive_metrics.model_copy(update={"segments": segments})
-                logger.info(f"[{ticker}] Marked segments as annual context (no transcript)")
-
         website = company_website or _company_website(yf_data)
         investor_relations = _investor_relations_url(yf_data)
         if website:
@@ -1356,6 +1345,14 @@ def _add_earnings_deep_dive_if_transcript(
                         deep_dive_metrics = deep_dive_metrics.model_copy(update={"earnings_audio_url": audio_url})
                 if transcript_source_name:
                     deep_dive_metrics = deep_dive_metrics.model_copy(update={"transcript_source": transcript_source_name})
+
+        # ── Annual context guard (must be AFTER all metrics rebuilds above) ──
+        if not has_transcript:
+            segments = getattr(deep_dive_metrics, 'segments', None) or {}
+            if isinstance(segments, dict) and not segments.get("_annual_context_only"):
+                segments["_annual_context_only"] = True
+                deep_dive_metrics = deep_dive_metrics.model_copy(update={"segments": segments})
+                logger.info(f"[{ticker}] Marked segments as annual context (no transcript)")
 
         from backend.earnings_deep_dive.generator import generate_deep_dive
         from backend.earnings_deep_dive.mapper import build_earnings_deep_dive_report
