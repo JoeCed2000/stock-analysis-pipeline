@@ -1500,8 +1500,47 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         if section.summary and section.summary.strip() and section.summary.strip().lower() not in {"not available.", "not available", "n/a"}:
             story.extend(_callout_box(section.summary_label, section.summary, styles, fonts.regular, icon='👉'))
 
-    if report.sources or report.next_earnings_date or report.earnings_audio_url:
+    if report.sources or report.next_earnings_date or report.earnings_audio_url or report.scoring:
         story.append(PageBreak())
+
+        # ── 6-Category Scoring Summary (when available) ──
+        if report.scoring:
+            story.append(Paragraph(translate("Scoring Breakdown", report.language), styles["section"]))
+            story.append(Spacer(1, 0.12 * inch))
+
+            # Verdict banner
+            verdict_color = "#1A6B3C" if report.scoring.verdict == "BUY" else "#D97706" if report.scoring.verdict == "HOLD" else "#DC2626"
+            story.append(Paragraph(
+                f'<font size="14" color="{verdict_color}"><b>{report.scoring.verdict}</b></font> '
+                f'<font size="11">{translate("Composite Score", report.language)}: {report.scoring.total_score}/{report.scoring.max_total}</font>',
+                styles["body"]
+            ))
+            story.append(Spacer(1, 0.15 * inch))
+
+            # Category bars
+            for cat in report.scoring.categories:
+                label = cat.label_jp if report.language == "jp" and cat.label_jp else cat.label
+                pct = min(100, int(cat.score / cat.max_score * 100))
+                bar_width = max(2, int(pct * 1.5))  # scale to points
+
+                bar_color = "#1A6B3C" if pct >= 70 else "#D97706" if pct >= 40 else "#DC2626"
+
+                # Build a simple bar: ████████░░░░  score/max
+                filled = int(pct / 5)  # each block = 5%
+                empty = 20 - filled
+                bar = "█" * filled + "░" * empty
+
+                story.append(Paragraph(
+                    f'<font size="9"><b>{label}</b></font> '
+                    f'<font size="8" color="{bar_color}">{bar}</font> '
+                    f'<font size="9"><b>{cat.score}/{cat.max_score}</b></font>',
+                    styles["body"]
+                ))
+                story.append(Spacer(1, 0.08 * inch))
+
+            story.append(Spacer(1, 0.12 * inch))
+
+        # ── Sources ──
         story.append(Paragraph(translate("Sources", report.language), styles["section"]))
         story.append(Spacer(1, 0.15 * inch))
 

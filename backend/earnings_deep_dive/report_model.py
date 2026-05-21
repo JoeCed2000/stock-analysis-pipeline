@@ -185,6 +185,24 @@ class CompanyOverview(BaseModel):
     company_claims: list[CompanyClaim] = Field(default_factory=list)
 
 
+class ScoringCategory(BaseModel):
+    """One scoring category with label, score, max, and JP label."""
+    label: str
+    score: int
+    max_score: int = 10
+    label_jp: str | None = None
+
+
+class ScoringSummary(BaseModel):
+    """6-category scoring summary (total /40). Rendered in PDF when available."""
+    categories: list[ScoringCategory]
+    total_score: int
+    max_total: int = 40
+    verdict: str  # BUY / HOLD / SELL
+    ticker: str = ""
+    quarter: str = ""
+
+
 class EarningsDeepDiveReport(BaseModel):
     ticker: str
     company: str
@@ -199,3 +217,4 @@ class EarningsDeepDiveReport(BaseModel):
     earnings_audio_url: Optional[str] = None
     charts: ChartData | None = None
     company_overview: CompanyOverview | None = None
+    scoring: Optional[ScoringSummary] = None
