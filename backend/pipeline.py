@@ -1358,10 +1358,12 @@ def _add_earnings_deep_dive_if_transcript(
         from backend.earnings_deep_dive.mapper import build_earnings_deep_dive_report
         from backend.earnings_deep_dive.pdf_renderer import render_earnings_deep_dive_pdf
 
-        # Generate both EN and JP deep-dives (always bilingual)
+        # Generate EN deep-dive; JP only when language is Japanese
         en_output_dir = output_dir
-        jp_output_dir = os.path.join(output_dir, "jp")
-        os.makedirs(jp_output_dir, exist_ok=True)
+        generate_jp = (report_language == "jp")
+        if generate_jp:
+            jp_output_dir = os.path.join(output_dir, "jp")
+            os.makedirs(jp_output_dir, exist_ok=True)
 
         en_response = generate_deep_dive(
             DeepDiveRequest(
@@ -1408,53 +1410,55 @@ def _add_earnings_deep_dive_if_transcript(
             )
 
         # ── JP generation (best-effort; EN PDF renders regardless) ──
-        try:
-            jp_response = generate_deep_dive(
-                DeepDiveRequest(
-                    ticker=ticker,
-                    company=company_name,
-                    quarter=transcript_quarter,
-                    language="jp",
-                    output_dir=jp_output_dir,
-                    metrics=deep_dive_metrics,
-                    transcript_url=transcript_url,
-                )
-            )
-            jp_response.sections = _strip_prompt_leaks_from_sections(jp_response.sections)
-        except Exception as jp_exc:
-            logger.warning(f"[{ticker}] JP deep-dive generation failed ({jp_exc}) — EN PDF will still render")
-            jp_response = None
-
-        # ── Pre-render validation for JP (best-effort) ──
-        if jp_response is not None:
+        jp_response = None
+        if generate_jp:
             try:
-                jp_validation = validate_pre_render(
-                    ticker=ticker,
-                    quarter=transcript_quarter,
-                    metrics=deep_dive_metrics,
-                    section_analysis=jp_response.sections,
-                )
-                if jp_validation.errors:
-                    error_msg = format_validation_error(jp_validation, ticker)
-                    logger.error(error_msg)
-                    raise ValidationError(
+                jp_response = generate_deep_dive(
+                    DeepDiveRequest(
                         ticker=ticker,
-                        errors=jp_validation.errors,
-                        message=error_msg,
+                        company=company_name,
+                        quarter=transcript_quarter,
+                        language="jp",
+                        output_dir=jp_output_dir,
+                        metrics=deep_dive_metrics,
+                        transcript_url=transcript_url,
                     )
-                elif jp_validation.warnings:
-                    logger.warning(
-                        f"[{ticker}] Pre-render validation (JP): {len(jp_validation.warnings)} issue(s) — "
-                        f"sections flagged with ⚠️"
-                    )
-                    jp_response.sections = annotate_sections_with_warnings(
-                        jp_response.sections, jp_validation,
-                    )
-            except ValidationError:
-                raise
-            except Exception as jp_val_exc:
-                logger.warning(f"[{ticker}] JP validation failed ({jp_val_exc}) — EN PDF will still render")
+                )
+                jp_response.sections = _strip_prompt_leaks_from_sections(jp_response.sections)
+            except Exception as jp_exc:
+                logger.warning(f"[{ticker}] JP deep-dive generation failed ({jp_exc}) — EN PDF will still render")
                 jp_response = None
+
+            # ── Pre-render validation for JP (best-effort) ──
+            if jp_response is not None:
+                try:
+                    jp_validation = validate_pre_render(
+                        ticker=ticker,
+                        quarter=transcript_quarter,
+                        metrics=deep_dive_metrics,
+                        section_analysis=jp_response.sections,
+                    )
+                    if jp_validation.errors:
+                        error_msg = format_validation_error(jp_validation, ticker)
+                        logger.error(error_msg)
+                        raise ValidationError(
+                            ticker=ticker,
+                            errors=jp_validation.errors,
+                            message=error_msg,
+                        )
+                    elif jp_validation.warnings:
+                        logger.warning(
+                            f"[{ticker}] Pre-render validation (JP): {len(jp_validation.warnings)} issue(s) — "
+                            f"sections flagged with ⚠️"
+                        )
+                        jp_response.sections = annotate_sections_with_warnings(
+                            jp_response.sections, jp_validation,
+                        )
+                except ValidationError:
+                    raise
+                except Exception as jp_val_exc:
+                    logger.warning(f"[{ticker}] JP validation failed ({jp_val_exc}) — EN PDF will still render")
+                    jp_response = None
 
         # Render EN PDF (default location)
         en_pdf_path = os.path.join(en_output_dir, "07_final_report", "earnings_deep_dive.pdf")
@@ -1474,7 +1478,7 @@ def _add_earnings_deep_dive_if_transcript(
         render_earnings_deep_dive_pdf(en_report_model, en_pdf_path)
 
         # Render JP PDF (best-effort)
-        if jp_response is not None:
+        if generate_jp and jp_response is not None:
             jp_pdf_path = os.path.join(jp_output_dir, "07_final_report", "earnings_deep_dive.pdf")
             jp_report_model = build_earnings_deep_dive_report(
                 ticker=ticker,
@@ -1490,7 +1494,7 @@ def _add_earnings_deep_dive_if_transcript(
                 jp_report_model.sources.append(SourceRef(label="Official Website", url=website))
             render_earnings_deep_dive_pdf(jp_report_model, jp_pdf_path)
 
-        logger.info(f"[{ticker}] Earnings deep-dive added to dossier (EN + JP)")
+        logger.info(f"[{ticker}] Earnings deep-dive added to dossier (EN{'+ JP' if generate_jp else ''})")
 
         # ── Post-generation validation ──
         from backend.earnings_deep_dive.deep_dive_validator import validate_deep_dive, validate_render_model
