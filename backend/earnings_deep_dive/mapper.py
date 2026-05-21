@@ -9,6 +9,7 @@ import re
 from backend.earnings_deep_dive.report_model import (
     ChartData,
     ClaimSource,
+    CompanyOverview,
     EarningsDeepDiveReport,
     RenderedSection,
     RenderedTable,
@@ -1615,6 +1616,7 @@ def build_earnings_deep_dive_report(
     language: str = "en",
     section_analysis: dict[str, str] | None = None,
     generated_at: str | None = None,
+    company_overview: dict | None = None,
 ) -> EarningsDeepDiveReport:
     """Build the deterministic report model used by the PDF renderer."""
     report_language = _language(language)
@@ -2050,6 +2052,16 @@ def build_earnings_deep_dive_report(
     # ── Build claim→source traceability ──
     claim_sources = _build_claim_sources(sections, sources, metrics, ticker_clean)
 
+    # ── Convert company_overview dict to CompanyOverview model ──
+    co_model: CompanyOverview | None = None
+    if company_overview:
+        try:
+            co_model = CompanyOverview(**company_overview)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(f"CompanyOverview model conversion failed for {ticker_clean}: {exc}")
+            co_model = None
+
     return EarningsDeepDiveReport(
         ticker=ticker_clean,
         company=company_name,
@@ -2063,6 +2075,7 @@ def build_earnings_deep_dive_report(
         next_earnings_date=next_earnings_date,
         earnings_audio_url=earnings_audio,
         charts=chart_data,
+        company_overview=co_model,
     )
 
 

@@ -33,7 +33,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from backend.earnings_deep_dive.report_model import ClaimSource, EarningsDeepDiveReport
+from backend.earnings_deep_dive.report_model import ClaimSource, CompanyOverview, EarningsDeepDiveReport
 from backend.i18n import translate
 
 
@@ -1133,6 +1133,241 @@ def _generate_metrics_chart(chart_data, ticker: str) -> RLImage | None:
     return RLImage(buf, width=target_width, height=target_height)
 
 
+# ── Company Overview rendering ────────────────────────────────────────────
+
+def render_company_overview(
+    report: EarningsDeepDiveReport,
+    styles: dict[str, ParagraphStyle],
+    fonts: PdfFontSet,
+) -> list:
+    """Render the Company Overview section as PDF flowables.
+
+    Six subsections:
+    1. Company Profile (header block)
+    2. Business Description (text block)
+    3. Key Financials (bullet list)
+    4. Competitive Position (text block)
+    5. Recent Developments (bullet list with sentiment)
+    6. Competitors Table
+
+    Returns empty list if report.company_overview is None.
+    Uses report.language to select text_en/text_jp on bilingual fields.
+    """
+    co = report.company_overview
+    if co is None:
+        return []
+
+    lang = report.language
+    story: list = []
+
+    # ── Section header ──
+    story.append(Paragraph(
+        translate("Company Overview", lang),
+        styles["section"],
+    ))
+    story.append(Spacer(1, 0.08 * inch))
+
+    cp = co.company_profile
+
+    # ── 1. Company Profile block (compact 2-column) ──
+    profile_rows: list[list] = []
+    label_style = styles["small_bold"]
+    value_style = styles["small"]
+
+    def _add_row(label_en: str, value):
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return
+        label = translate(label_en, lang)
+        safe_val = escape(_glyph_safe(str(value), font_name=fonts.regular))
+        profile_rows.append([
+            Paragraph(f"<b>{label}:</b>", label_style),
+            Paragraph(safe_val, value_style),
+        ])
+
+    _add_row("Ticker", cp.ticker)
+    _add_row("Sector", cp.sector)
+    _add_row("Industry", cp.industry)
+    _add_row("Country", cp.country)
+    _add_row("Headquarters", cp.headquarters)
+    _add_row("Employees", f"{cp.employees:,}" if cp.employees else None)
+    if cp.founded:
+        _add_row("Founded", str(cp.founded))
+    if cp.website:
+        url = escape(cp.website)
+        profile_rows.append([
+            Paragraph(f"<b>{translate('Website', lang)}:</b>", label_style),
+            Paragraph(f'<font size="7"><a href="{url}" color="blue">{url}</a></font>', value_style),
+        ])
+
+    if profile_rows:
+        available_w = LETTER[0] - 1.24 * inch
+        profile_table = Table(profile_rows, colWidths=[1.65 * inch, available_w - 1.75 * inch], hAlign="LEFT")
+        profile_table.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("INNERGRID", (0, 0), (-1, -1), 0.25, _GRID),
+            ("BOX", (0, 0), (-1, -1), 0, colors.white),
+        ]))
+        story.append(profile_table)
+        story.append(Spacer(1, 0.10 * inch))
+
+    # ── 2. Business Description ──
+    if co.business_description and co.business_description.strip():
+        story.append(Paragraph(
+            f"<b>{translate('Business Description', lang)}</b>",
+            styles["body"],
+        ))
+        story.append(Spacer(1, 0.04 * inch))
+        safe_desc = escape(_glyph_safe(co.business_description.strip(), font_name=fonts.regular))
+        story.append(Paragraph(safe_desc, styles["body"]))
+        story.append(Spacer(1, 0.08 * inch))
+
+    # ── 3. Key Financials ──
+    kf = co.key_financials
+    has_kf = kf is not None and any([
+        kf.market_cap_display, kf.revenue_display, kf.pe_ratio,
+        kf.pe_forward, kf.dividend_yield, kf.beta,
+        kf.window_52w_high, kf.window_52w_low,
+    ])
+    if has_kf:
+        story.append(Paragraph(
+            f"<b>{translate('Key Financials', lang)}</b>",
+            styles["body"],
+        ))
+        story.append(Spacer(1, 0.04 * inch))
+        kf_items = []
+        if kf.market_cap_display:
+            kf_items.append(f"<b>{translate('Market Cap', lang)}:</b> {escape(kf.market_cap_display)}")
+        if kf.revenue_display:
+            kf_items.append(f"<b>{translate('Revenue', lang)}:</b> {escape(kf.revenue_display)}")
+        if kf.pe_ratio is not None:
+            kf_items.append(f"<b>{translate('P/E Ratio', lang)}:</b> {kf.pe_ratio:.1f}x")
+        if kf.pe_forward is not None:
+            kf_items.append(f"<b>{translate('Forward P/E', lang)}:</b> {kf.pe_forward:.1f}x")
+        if kf.dividend_yield is not None and kf.dividend_yield > 0:
+            kf_items.append(f"<b>{translate('Dividend Yield', lang)}:</b> {kf.dividend_yield * 100:.2f}%")
+        if kf.beta is not None:
+            kf_items.append(f"<b>{translate('Beta', lang)}:</b> {kf.beta:.2f}")
+        if kf.window_52w_high is not None and kf.window_52w_low is not None:
+            kf_items.append(
+                f"<b>{translate('52-Week Range', lang)}:</b> "
+                f"${kf.window_52w_low:.2f} – ${kf.window_52w_high:.2f}"
+            )
+        for item in kf_items:
+            story.append(Paragraph(
+                f'<font size="9">{_glyph_safe(item, font_name=fonts.regular)}</font>',
+                styles["small"],
+            ))
+            story.append(Spacer(1, 0.03 * inch))
+        story.append(Spacer(1, 0.05 * inch))
+
+    # ── 4. Competitive Position ──
+    if co.competitive_position and co.competitive_position.strip():
+        story.append(Paragraph(
+            f"<b>{translate('Competitive Position', lang)}</b>",
+            styles["body"],
+        ))
+        story.append(Spacer(1, 0.04 * inch))
+        safe_cp = escape(_glyph_safe(co.competitive_position.strip(), font_name=fonts.regular))
+        story.append(Paragraph(safe_cp, styles["body"]))
+        story.append(Spacer(1, 0.08 * inch))
+
+    # ── 5. Recent Developments ──
+    devs = co.recent_developments
+    if devs:
+        story.append(Paragraph(
+            f"<b>{translate('Recent Developments', lang)}</b>",
+            styles["body"],
+        ))
+        story.append(Spacer(1, 0.04 * inch))
+        for dev in devs[:5]:  # max 5
+            sentiment_color = "#0B6B3A" if dev.sentiment == "positive" else (
+                "#A33A2A" if dev.sentiment == "negative" else "#5D5D5D"
+            )
+            date_str = f" ({dev.date})" if dev.date else ""
+            dev_line = (
+                f'<font size="9">● <b>{escape(_glyph_safe(dev.title, font_name=fonts.regular))}</b>'
+                f'{date_str} — '
+                f'{escape(_glyph_safe(dev.summary, font_name=fonts.regular))}'
+            )
+            if dev.sentiment:
+                dev_line += (
+                    f' <font color="{sentiment_color}"><i>[{dev.sentiment}]</i></font>'
+                )
+            dev_line += '</font>'
+            story.append(Paragraph(dev_line, styles["small"]))
+            story.append(Spacer(1, 0.04 * inch))
+        story.append(Spacer(1, 0.05 * inch))
+
+    # ── 6. Competitors Table ──
+    competitors = co.competitors
+    if competitors:
+        story.append(Paragraph(
+            f"<b>{translate('Competitors', lang)}</b>",
+            styles["body"],
+        ))
+        story.append(Spacer(1, 0.06 * inch))
+
+        # Table header
+        header_style = styles["small_bold"]
+        cell_style_small = ParagraphStyle(
+            "CoTableCell",
+            fontName=fonts.regular,
+            fontSize=7.5,
+            leading=9.5,
+            textColor=_TEXT,
+            alignment=TA_LEFT,
+        )
+        available_w = LETTER[0] - 1.24 * inch
+        col_widths = [
+            1.50 * inch,         # Competitor name
+            available_w - 3.10 * inch,  # Comparison text
+            1.00 * inch,         # Advantage
+            0.55 * inch,         # Source
+        ]
+
+        comp_data = [[
+            Paragraph(f"<b>{translate('Competitor', lang)}</b>", header_style),
+            Paragraph(f"<b>{translate('Comparison', lang)}</b>", header_style),
+            Paragraph(f"<b>{translate('Advantage', lang)}</b>", header_style),
+            Paragraph("<b>Src</b>", header_style),
+        ]]
+
+        for comp in competitors[:6]:
+            text = comp.text_en if lang == "en" else (comp.text_jp or comp.text_en)
+            adv = comp.competitive_advantage or "—"
+            comp_data.append([
+                Paragraph(escape(_glyph_safe(comp.competitor_name, font_name=fonts.regular)), cell_style_small),
+                Paragraph(escape(_glyph_safe(text[:200], font_name=fonts.regular)), cell_style_small),
+                Paragraph(escape(_glyph_safe(adv[:80], font_name=fonts.regular)), cell_style_small),
+                Paragraph(
+                    f'<font size="7" color="#2563EB"><b>{escape(comp.source_id)}</b></font>',
+                    cell_style_small,
+                ),
+            ])
+
+        comp_table = Table(comp_data, colWidths=col_widths, hAlign="LEFT", splitByRow=1)
+        comp_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), _HEADER_FILL),
+            ("TEXTCOLOR", (0, 0), (-1, 0), _TEXT),
+            ("FONTNAME", (0, 0), (-1, 0), fonts.bold),
+            ("FONTNAME", (0, 1), (-1, -1), fonts.regular),
+            ("GRID", (0, 0), (-1, -1), 0.45, _GRID),
+            ("BOX", (0, 0), (-1, -1), 0.8, _GRID),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        story.append(comp_table)
+
+    return story
+
+
 # ── Main entry point ────────────────────────────────────────────────────
 def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: str | Path) -> str:
     """Render a structured earnings deep-dive report to an extractable PDF."""
@@ -1181,6 +1416,15 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         if chart_image:
             story.append(chart_image)
         story.append(Spacer(1, 0.15 * inch))
+
+    # ── Company Overview (after charts, before deep-dive sections) ──
+    co_story = render_company_overview(report, styles, fonts)
+    if co_story:
+        story.append(CondPageBreak(2.25 * inch))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=_GRID))
+        story.append(Spacer(1, 0.08 * inch))
+        story.extend(co_story)
+        story.append(Spacer(1, 0.10 * inch))
 
     rendered_sections = [section for section in report.sections if _section_has_renderable_content(section)]
 

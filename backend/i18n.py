@@ -110,6 +110,30 @@ TRANSLATIONS = {
             "calculated = ソースデータからの計算式 | direct_quote = トランスクリプト引用 | "
             "document_fact = 提出書類の事実 | inference = アナリスト解釈 | "
             "unsupported = ブロック",
+        # Company Overview labels
+        "Company Overview": "会社概要",
+        "Business Description": "事業概要",
+        "Key Financials": "主要財務指標",
+        "Competitive Position": "競争ポジション",
+        "Recent Developments": "最近の動向",
+        "Competitors": "競合他社",
+        "Employees": "従業員数",
+        "Headquarters": "本社所在地",
+        "Sector": "セクター",
+        "Industry": "業界",
+        "Founded": "設立",
+        "Website": "ウェブサイト",
+        "Ticker": "ティッカー",
+        "Market Cap": "時価総額",
+        "Revenue": "売上高",
+        "P/E Ratio": "PER（株価収益率）",
+        "Forward P/E": "予想PER",
+        "Dividend Yield": "配当利回り",
+        "Beta": "ベータ",
+        "52-Week Range": "52週レンジ",
+        "Competitor": "競合",
+        "Comparison": "比較",
+        "Advantage": "優位性",
     },
 }
 

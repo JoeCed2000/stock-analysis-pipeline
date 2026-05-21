@@ -1433,6 +1433,7 @@ def _add_earnings_deep_dive_if_transcript(
             metrics=deep_dive_metrics,
             transcript_url=transcript_url,
             section_analysis=en_response.sections,
+            company_overview=result.company_overview,
         )
         if website:
             from backend.earnings_deep_dive.report_model import SourceRef
@@ -1449,6 +1450,7 @@ def _add_earnings_deep_dive_if_transcript(
             metrics=deep_dive_metrics,
             transcript_url=transcript_url,
             section_analysis=jp_response.sections,
+            company_overview=result.company_overview,
         )
         if website:
             jp_report_model.sources.append(SourceRef(label="Official Website", url=website))
