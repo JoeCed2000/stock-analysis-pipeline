@@ -1262,6 +1262,7 @@ def _add_earnings_deep_dive_if_transcript(
     """Generate the optional earnings deep-dive with transcript text when available."""
     try:
         report_language = _normalize_report_language(language)
+        transcript_quarter = ""  # default
         try:
             transcript_results = find_transcripts(ticker, output_dir=output_dir, company=company_name)
         except TypeError as exc:
@@ -1270,15 +1271,23 @@ def _add_earnings_deep_dive_if_transcript(
             transcript_results = find_transcripts(ticker, output_dir=output_dir)
         sources = transcript_results.get("sources", []) if isinstance(transcript_results, dict) else []
         transcript_text, transcript_source = _best_transcript_source(sources)
-        transcript_url = _transcript_url(transcript_source)
-        transcript_source_name = str(
-            transcript_source.get("source")
-            or transcript_source.get("title")
-            or "Transcript"
-        ).strip()
         if not transcript_text:
-            logger.info(f"[{ticker}] No usable transcript — skipping deep-dive (saves ~30-90s)")
-            return False
+            logger.info(f"[{ticker}] No usable transcript — generating deep-dive without transcript")
+            transcript_text = None
+            transcript_url = None
+            transcript_source_name = None
+            # Use latest quarter from yfinance data
+            transcript_quarter = str(yf_data.get("quarter") or "").strip()
+            if not transcript_quarter:
+                from datetime import datetime
+                transcript_quarter = f"{datetime.now().year}Q{(datetime.now().month-1)//3+1}"
+        else:
+            transcript_url = _transcript_url(transcript_source)
+            transcript_source_name = str(
+                (transcript_source or {}).get("source")
+                or (transcript_source or {}).get("title")
+                or "Transcript"
+            ).strip()
 
         try:
             from backend.press_release_fetcher import fetch_press_release_for_ticker
@@ -1287,11 +1296,13 @@ def _add_earnings_deep_dive_if_transcript(
             logger.warning(f"[{ticker}] Press release fetch failed: {exc}")
             press_release_data = {}
 
-        transcript_quarter = _resolve_deep_dive_quarter(
-            ticker=ticker,
-            transcript_source=transcript_source,
-            yf_data=yf_data,
-        )
+        # Resolve quarter (already set for no-transcript path above)
+        if transcript_source:
+            transcript_quarter = _resolve_deep_dive_quarter(
+                ticker=ticker,
+                transcript_source=transcript_source,
+                yf_data=yf_data,
+            )
 
         # If transcript is for a specific quarter, use quarter-specific yfinance data
         deep_dive_metrics = _deep_dive_metrics(result, yf_data)
