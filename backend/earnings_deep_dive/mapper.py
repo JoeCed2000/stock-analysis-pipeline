@@ -1267,12 +1267,20 @@ def _compute_final_verdict(ticker: str, metrics: FinancialMetrics) -> str:
     strength_str = ", ".join(strengths) if strengths else "no clear positives"
     concern_str = ", ".join(concerns) if concerns else "no major red flags"
 
+    scoring_note = (
+        "\n\n📝 Scoring methodology: This 0-5 score is a simplified quick check "
+        "based on 5 binary criteria (EPS beat, revenue growth, cash flow, valuation). "
+        "The full dossier includes a multi-dimensional 0-40 scoring covering financial "
+        "health, growth, valuation, management quality, competitive moat, and market sentiment."
+    )
+
     return (
         f"{evidence}\n\n"
         f"{ticker}'s Q shows {strength_str}. "
         f"Key watch items: {concern_str}. "
         f"Risk/reward is {'favorable' if verdict == 'BUY' else 'neutral' if verdict == 'HOLD' else 'unfavorable'} "
         f"at current levels → **{verdict}**."
+        f"{scoring_note}"
     )
 
 
@@ -1316,10 +1324,18 @@ def _compute_final_verdict_jp(ticker: str, metrics: FinancialMetrics) -> str:
     if rev_yoy_num <= 0: risks.append("減収リスク")
     risk_str = "、".join(risks) if risks else "特になし"
 
+    scoring_note = (
+        "\n\n📝 スコアリング方法: この0-5スコアは5つの二値基準"
+        "（EPSビート、売上成長、キャッシュフロー、バリュエーション）に基づく簡易チェックです。"
+        "完全な評価は6カテゴリ（財務健全性、成長性、バリュエーション、経営品質、競争優位性、"
+        "市場センチメント）による0-40の多次元スコアリングで行われます。"
+    )
+
     return (
         f"{ticker} 売上高{revenue}（{revenue_yoy}前年比）、EPS{eps_val}。"
         f"スコア{score}/5: {growth}、{cash}、バリュエーション{valuation}。"
         f"リスク: {risk_str}。→ **{verdict}**"
+        f"{scoring_note}"
     )
 
 
