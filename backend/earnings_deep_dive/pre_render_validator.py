@@ -307,18 +307,25 @@ def validate_pre_render(
                         severity="error",
                     ))
 
-            # Also check if sum of all segments significantly exceeds total
+            # Also check if sum of all segments significantly exceeds total.
+            # Important: SEC/XBRL can expose multiple overlapping dimensions in
+            # one extraction (e.g. product/service + business segments + region
+            # + cloud subset for MSFT). In that case, summing every row is
+            # mathematically invalid even though each individual row is valid.
+            # Keep individual segment > total as blocking above, but make the
+            # aggregate overflow a warning unless the data is explicitly annual.
             if seg_sum > total_revenue * 1.20:  # 20% tolerance — segments often don't sum exactly
                 warnings.append(ValidationWarning(
                     check="segment_sum_overflow",
                     section="Segments",
                     detail=(
-                        f"FATAL: Sum of all segments (${seg_sum:,.0f}) exceeds "
+                        f"Sum of all extracted segment rows (${seg_sum:,.0f}) exceeds "
                         f"total quarterly revenue (${total_revenue:,.0f}) by "
                         f"{((seg_sum/total_revenue)-1)*100:.0f}%. "
-                        f"Segment data is annual. Set _annual_context_only=True in metrics.segments."
+                        f"Rows likely contain overlapping SEC/XBRL dimensions; "
+                        f"do not treat the full row set as additive."
                     ),
-                    severity="error",
+                    severity="warning",
                 ))
 
     # ── RULE 2 (BLOCKING): FY label enforcement ────────────────────────

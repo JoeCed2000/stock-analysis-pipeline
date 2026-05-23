@@ -1280,7 +1280,6 @@ def _add_earnings_deep_dive_if_transcript(
             # Use latest quarter from yfinance data
             transcript_quarter = str(yf_data.get("quarter") or "").strip()
             if not transcript_quarter:
-                from datetime import datetime
                 transcript_quarter = f"{datetime.now().year}Q{(datetime.now().month-1)//3+1}"
         else:
             has_transcript = True

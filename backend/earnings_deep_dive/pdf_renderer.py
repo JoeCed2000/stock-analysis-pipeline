@@ -855,6 +855,47 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
     return [table] + [Paragraph(escape(_glyph_safe(t[:300], font_name=fonts.regular)), cell_style) for t in explanation_rows]
 
 
+# ── PyMuPDF Page Number Stamping ───────────────────────────────────────
+
+def _stamp_page_numbers(pdf_path: str) -> None:
+    """Post-process: stamp 'X / N' page numbers in dark header bar using PyMuPDF.
+    
+    Called AFTER doc.build() completes, so the total page count is known.
+    """
+    import fitz
+    
+    doc = fitz.open(pdf_path)
+    total = doc.page_count
+    if total <= 1:
+        doc.close()
+        return
+    
+    width, height = LETTER
+    # Match _draw_header_bar: white text, right-aligned at header bar position
+    # Text box: right edge at right margin, positioned in the dark bar area
+    text_x0 = 0
+    text_y0 = height - 0.38 * inch  # top of text baseline
+    text_x1 = width - 0.55 * inch
+    text_y1 = height - 0.18 * inch  # bottom of text box
+    
+    for i in range(total):
+        page = doc[i]
+        page_num = i + 1
+        text = f"{page_num} / {total}"
+        # insert_textbox with right-alignment (align=2)
+        page.insert_textbox(
+            fitz.Rect(text_x0, text_y0, text_x1, text_y1),
+            text,
+            fontname="helv",
+            fontsize=8,
+            color=(1, 1, 1),  # white
+            align=2,  # right-aligned
+        )
+    
+    doc.saveIncr()
+    doc.close()
+
+
 # ── Page header/footer (dark bar model parity) ──────────────────────────
 _HEADER_BG = colors.HexColor("#2A2A2A")
 _HEADER_HEIGHT = 0.45 * inch
@@ -871,7 +912,10 @@ def _on_later_pages(canvas, doc) -> None:
 
 
 def _draw_header_bar(canvas, doc, page_num: int) -> None:
-    """Draw a dark gray header bar at the top of the page."""
+    """Draw a dark gray header bar at the top of the page.
+    
+    Page numbers are added by _stamp_page_numbers after the PDF is built.
+    """
     width = LETTER[0]
     height = LETTER[1]
     
@@ -879,13 +923,6 @@ def _draw_header_bar(canvas, doc, page_num: int) -> None:
     canvas.saveState()
     canvas.setFillColor(_HEADER_BG)
     canvas.rect(0, height - _HEADER_HEIGHT, width, _HEADER_HEIGHT, fill=1, stroke=0)
-    
-    # Page number — right-aligned in white
-    canvas.setFillColor(colors.white)
-    canvas.setFont("Helvetica", 8)
-    total_pages = doc.page if hasattr(doc, 'page') else "—"
-    page_text = f"{page_num} / {total_pages}" if total_pages != "—" else str(page_num)
-    canvas.drawRightString(width - 0.55 * inch, height - 0.30 * inch, page_text)
     
     # Thin dark footer line
     canvas.setStrokeColor(_HEADER_BG)
@@ -1720,6 +1757,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
 
     try:
         doc.build(story)
+        _stamp_page_numbers(str(output))
     except LayoutError as layout_err:
         # ReportLab LayoutError — likely a table cell overflow.
         # Recover by dropping the last section and retrying.
@@ -1747,6 +1785,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         doc2.onFirstPage = _on_first_page
         doc2.onLaterPages = _on_later_pages
         doc2.build(story)
+        _stamp_page_numbers(str(output))
         print(f"[PDF RENDER] Recovered with {len(report.sections)} sections (1 dropped)", file=sys.stderr)
 
     # ── URL validation (BL-SA-003) — non-blocking, advisory only ──

@@ -1872,6 +1872,12 @@ def build_earnings_deep_dive_report(
                     # The LLM often claims "not provided" even when pe_forward is in metrics.
                     import re as _re2
                     pe_fact = f"The forward P/E is {pe_val}."
+                    # 🔴 Fix: Check if ANY item already contains pe_fact BEFORE the loop.
+                    # The old per-item check caused pe_fact injection into EVERY item,
+                    # producing 5+ repetitions like "The forward P/E is 21.65x. (1)..."
+                    # "The forward P/E is 21.65x. (2)..." etc.
+                    _any_has_pe = any(pe_fact in (item or "") for item in analysis_items)
+                    _first_nonempty_idx = next((i for i, item in enumerate(analysis_items) if item), 0)
                     for i, item in enumerate(analysis_items):
                         if not item:
                             continue
@@ -1893,8 +1899,10 @@ def build_earnings_deep_dive_report(
                             pe_fact,
                             item,
                         )
-                        # If after all replacements, no pe_fact yet, inject at start
-                        if pe_fact not in item:
+                        # Only inject pe_fact if NO item in the entire analysis has it,
+                        # and only into the first non-empty item, and only if the
+                        # item doesn't already have it (regex may have fixed it above).
+                        if not _any_has_pe and i == _first_nonempty_idx and pe_fact not in item:
                             item = pe_fact + " " + item
                         analysis_items[i] = item
                     # Also append the validated source note

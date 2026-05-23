@@ -44,8 +44,8 @@ def test_detects_not_available_in_sections():
         section_analysis=section_analysis,
     )
 
-    # Should NOT pass — "Not available" found
-    assert result.passed is False, "Validator should fail when 'Not available' is present"
+    # Warning-only checks should NOT block rendering; they annotate sections.
+    assert result.passed is True, "Warning-only issues should not block PDF rendering"
     assert len(result.warnings) >= 1, f"Expected ≥1 warning, got {len(result.warnings)}"
     not_avail_warnings = [w for w in result.warnings if "Not available" in w.detail]
     assert len(not_avail_warnings) >= 1, "Should have a warning about 'Not available'"
@@ -72,8 +72,8 @@ def test_detects_missing_quarter():
         section_analysis=section_analysis,
     )
 
-    # Must detect the missing quarter
-    assert result.passed is False
+    # Must detect the missing quarter as a warning, without blocking rendering
+    assert result.passed is True
     quarter_warnings = [w for w in result.warnings if w.check == "quarter_missing"]
     assert len(quarter_warnings) >= 1, (
         f"Should flag quarter=None, got warnings: {[w.check for w in result.warnings]}"
@@ -149,8 +149,9 @@ def test_never_blocks_on_bad_input():
         section_analysis={"EPS & Revenue": "Data not available"},
     )
     assert result is not None
-    # Should still flag the issues
-    assert result.passed is False
+    # Should still flag the issues as warnings without blocking rendering
+    assert result.passed is True
+    assert any(w.check == "quarter_missing" for w in result.warnings)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -302,3 +303,68 @@ def test_annotate_sections_does_not_double_prefix():
     assert annotated["EPS & Revenue"] == "⚠️ Revenue was $82.9B.", (
         f"Should not double-prefix, got: {annotated['EPS & Revenue']}"
     )
+
+
+def test_segment_sum_overflow_overlapping_dimensions_warns_not_blocks():
+    """MSFT-style overlapping segment dimensions must warn, not block PDF rendering.
+
+    A 10-Q can contain several non-additive segment dimensions in the same XBRL
+    extraction (product/service + business segments + geography + cloud subset).
+    Summing every row is mathematically invalid even when each individual row is
+    plausible and below total revenue.
+    """
+    from backend.earnings_deep_dive.pre_render_validator import validate_pre_render
+
+    metrics = FinancialMetrics(
+        revenue_actual=82_886_000_000,
+        segments={
+            "Product": {"revenue": 15_089_000_000},
+            "Service and Other": {"revenue": 67_797_000_000},
+            "Productivity and Business Processes": {"revenue": 35_013_000_000},
+            "Intelligent Cloud": {"revenue": 34_681_000_000},
+            "More Personal Computing": {"revenue": 13_192_000_000},
+            "Microsoft Cloud": {"revenue": 54_500_000_000},
+            "total_revenue_quarterly": 82_886_000_000,
+            "period": "quarterly",
+            "source_form": "10-Q",
+        },
+    )
+
+    result = validate_pre_render(
+        ticker="MSFT",
+        quarter="2026Q1",
+        metrics=metrics,
+        section_analysis={"Segments": "Segment table from SEC 10-Q."},
+    )
+
+    assert result.passed is True
+    overflow = [w for w in result.warnings if w.check == "segment_sum_overflow"]
+    assert overflow
+    assert overflow[0].severity == "warning"
+
+
+def test_segment_individual_revenue_above_total_still_blocks():
+    """A single segment above total revenue remains a blocking data-contract error."""
+    from backend.earnings_deep_dive.pre_render_validator import validate_pre_render
+
+    metrics = FinancialMetrics(
+        revenue_actual=82_886_000_000,
+        segments={
+            "Impossible Segment": {"revenue": 120_000_000_000},
+            "total_revenue_quarterly": 82_886_000_000,
+            "period": "quarterly",
+            "source_form": "10-Q",
+        },
+    )
+
+    result = validate_pre_render(
+        ticker="TEST",
+        quarter="2026Q1",
+        metrics=metrics,
+        section_analysis={"Segments": "Segment table from SEC 10-Q."},
+    )
+
+    errors = [w for w in result.errors if w.check == "segment_coherence"]
+    assert result.passed is False
+    assert errors
+
