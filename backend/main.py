@@ -1440,6 +1440,16 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                 if website:
                     metrics = metrics.model_copy(update={"company_website": website})
                 
+                # ── Company Overview (wired into async PDF path) ──
+                company_overview = None
+                try:
+                    import asyncio
+                    from backend.company_overview import get_company_overview
+                    company_overview = asyncio.run(get_company_overview(ticker, language=lang))
+                    logger.info(f"[{ticker}/{lang}] Company overview generated for deep-dive PDF")
+                except Exception as e:
+                    logger.warning(f"[{ticker}/{lang}] Company overview skipped: {e}")
+                
                 # Find analysis directory for output_dir (required by schema)
                 # dd_path is .../07_final_report/earnings_deep_dive.pdf, parent.parent = analysis_dir
                 output_dir = str(dd_path.parent.parent)
@@ -1485,6 +1495,7 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                     transcript_url=getattr(dd_response, 'transcript_url', None),
                     language=lang,
                     section_analysis=sections,
+                    company_overview=company_overview,
                 )
                 os.makedirs(dd_path.parent, exist_ok=True)
                 render_earnings_deep_dive_pdf(report_model, str(dd_path))
