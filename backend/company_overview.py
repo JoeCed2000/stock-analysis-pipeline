@@ -408,6 +408,13 @@ def _parse_llm_response(response: str, ticker: str, yf_info: Dict[str, Any]) -> 
         data.setdefault("key_financials", {})
         data.setdefault("recent_developments", [])
         data.setdefault("competitive_position", "")
+        # ── Normalize dividend_yield: LLM may output percentage (0.23) instead of decimal (0.0023) ──
+        kf = data.get("key_financials", {})
+        dy = kf.get("dividend_yield")
+        if isinstance(dy, (int, float)) and dy is not None and dy > 0.5:
+            # > 50% dividend is nearly impossible → LLM used percentage form, convert to decimal
+            logger.info(f"Normalizing dividend_yield: {dy} → {dy/100:.6f} for {ticker}")
+            kf["dividend_yield"] = round(dy / 100, 6)
         return data
     except (json.JSONDecodeError, ValueError) as e:
         logger.warning(f"LLM JSON parse failed for {ticker}: {e} | raw: {response[:200]}")

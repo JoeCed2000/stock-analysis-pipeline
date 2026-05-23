@@ -1309,7 +1309,11 @@ def render_company_overview(
         if kf.pe_forward is not None:
             kf_items.append(f"<b>{translate('Forward P/E', lang)}:</b> {kf.pe_forward:.1f}x")
         if kf.dividend_yield is not None and kf.dividend_yield > 0:
-            kf_items.append(f"<b>{translate('Dividend Yield', lang)}:</b> {kf.dividend_yield * 100:.2f}%")
+            # Normalize: if > 0.5 (50%+ dividend impossible), treat as already-percentage form
+            dy = kf.dividend_yield
+            if dy > 0.5:
+                dy = dy / 100  # LLM stored percentage (0.23) instead of decimal (0.0023)
+            kf_items.append(f"<b>{translate('Dividend Yield', lang)}:</b> {dy * 100:.2f}%")
         if kf.beta is not None:
             kf_items.append(f"<b>{translate('Beta', lang)}:</b> {kf.beta:.2f}")
         if kf.window_52w_high is not None and kf.window_52w_low is not None:
