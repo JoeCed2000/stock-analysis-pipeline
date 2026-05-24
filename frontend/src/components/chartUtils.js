@@ -5,18 +5,24 @@
  * Format a raw numeric value for display, adapting units per metric.
  * Revenue / Net Income / EBITDA / OCF / FCF / Capex / GP / OI → "$XB" (billions)
  * EPS → "$X.XX" (per share)
- * Margin / ratio → "%"
+ * Margin / growth → "%"
+ * Debt/EBITDA → "X.X×"
  * Shares → "XB"
  * Cash/Debt → "$XB"
  * null/undefined → "N/A"
  */
 export function formatValue(val, metric) {
   if (val == null) return 'N/A';
-  // Percentage-format metrics (margins, ratios)
-  if (METRIC_PCT_KEYS.has(metric) || metric.endsWith('_margin') || metric.endsWith('_ratio')) {
-    return `${val >= 0 ? '' : ''}${val.toFixed(1)}%`;
+  // Ratio-format metrics (Debt/EBITDA → '2.5×')
+  if (METRIC_RATIO_KEYS.has(metric)) return `${val.toFixed(1)}×`;
+  // Percentage-format metrics (margins, growth)
+  if (METRIC_PCT_KEYS.has(metric) || metric.endsWith('_margin') || metric.endsWith('_growth')) {
+    return `${val.toFixed(1)}%`;
   }
-  if (metric === 'eps') return `$${val.toFixed(2)}`;
+  if (metric === 'eps' || metric === 'eps_ttm') return `$${val.toFixed(2)}`;
+  // Per-share metrics
+  if (metric.endsWith('_per_share')) return `$${val.toFixed(2)}`;
+  // Shares in billions
   if (metric === 'diluted_shares') {
     if (Math.abs(val) >= 1e9) return `${(val / 1e9).toFixed(2)}B`;
     if (Math.abs(val) >= 1e6) return `${(val / 1e6).toFixed(1)}M`;
@@ -89,7 +95,7 @@ export function transformValues(sortedData, metricKey, viewMode) {
   }
   if (viewMode === 'yoy') {
     return sortedData.map((d, i) => {
-      if (i < 4) return null;  // no prior year data
+      if (i < 4) return null;
       return pctChange(d[metricKey], sortedData[i - 4]?.[metricKey]);
     });
   }
@@ -98,7 +104,6 @@ export function transformValues(sortedData, metricKey, viewMode) {
 
 /**
  * Calculate statistics from an array of values.
- * Returns { latest, qoq, yoy, totalChange, peak, low, avg, values, isPctView }
  */
 export function calculateStats(sortedData, metricKey, viewMode) {
   const transformed = transformValues(sortedData, metricKey, viewMode);
@@ -119,7 +124,6 @@ export function calculateStats(sortedData, metricKey, viewMode) {
   const qoq = isPctView ? null : pctChange(latest[metricKey], previous?.[metricKey]);
   const totalChange = !isPctView ? pctChange(latest[metricKey], firstVal) : null;
 
-  // YoY: last vs 4 quarters back
   let yoy = null;
   if (!isPctView && sortedData.length > 4) {
     const yearAgo = sortedData[sortedData.length - 5];
@@ -136,28 +140,7 @@ export function calculateStats(sortedData, metricKey, viewMode) {
   };
 }
 
-// ── Metric Categories & Definitions ──
-
-/**
- * Enrich raw quarterly data with computed metrics.
- * Adds: gross_margin, ebitda_margin, net_margin, operating_margin,
- *       fcf_margin, revenue_per_share, fcf_per_share
- */
-export function enrichData(sortedData) {
-  return sortedData.map(d => {
-    const rev = d.revenue;
-    const shares = d.diluted_shares;
-    const enriched = { ...d };
-    enriched.gross_margin = _ratio(d.gross_profit, rev);
-    enriched.ebitda_margin = _ratio(d.ebitda, rev);
-    enriched.net_margin = _ratio(d.net_income, rev);
-    enriched.operating_margin = _ratio(d.operating_income, rev);
-    enriched.fcf_margin = _ratio(d.free_cash_flow, rev);
-    enriched.revenue_per_share = _perShare(rev, shares);
-    enriched.fcf_per_share = _perShare(d.free_cash_flow, shares);
-    return enriched;
-  });
-}
+// ── Pure helpers ──
 
 function _ratio(num, den) {
   if (num == null || den == null || den === 0) return null;
@@ -169,11 +152,81 @@ function _perShare(val, shares) {
   return val / shares;
 }
 
+function _subtract(a, b) {
+  if (a == null || b == null) return null;
+  return a - b;
+}
+
+function _sum(arr, key) {
+  const vals = arr.map(d => d[key]).filter(v => v != null);
+  if (vals.length < 4) return null;
+  return vals.reduce((a, b) => a + b, 0);
+}
+
+function _debtRatio(debt, ebitda) {
+  if (debt == null || ebitda == null || ebitda <= 0) return null;
+  return debt / ebitda;
+}
+
+// ── Metric Categories & Definitions ──
+
+/**
+ * Enrich raw quarterly data with computed metrics.
+ * V2.0: margins, per-share
+ * V2.1: TTM rolling sums, balance sheet, share count growth
+ */
+export function enrichData(sortedData) {
+  // Pass 1: compute per-quarter derived fields
+  const pass1 = sortedData.map((d, i) => {
+    const rev = d.revenue;
+    const shares = d.diluted_shares;
+    const e = { ...d };
+
+    // V2.0: Margins & per-share
+    e.gross_margin = _ratio(d.gross_profit, rev);
+    e.ebitda_margin = _ratio(d.ebitda, rev);
+    e.net_margin = _ratio(d.net_income, rev);
+    e.operating_margin = _ratio(d.operating_income, rev);
+    e.fcf_margin = _ratio(d.free_cash_flow, rev);
+    e.revenue_per_share = _perShare(rev, shares);
+    e.fcf_per_share = _perShare(d.free_cash_flow, shares);
+
+    // V2.1: Balance Sheet
+    e.net_cash_debt = _subtract(d.cash_and_equivalents, d.total_debt);
+
+    // V2.1: TTM — rolling 4-quarter sum (available from index 3)
+    if (i >= 3) {
+      const w = sortedData.slice(i - 3, i + 1);
+      e.revenue_ttm = _sum(w, 'revenue');
+      e.ebitda_ttm = _sum(w, 'ebitda');
+      e.net_income_ttm = _sum(w, 'net_income');
+      e.operating_cash_flow_ttm = _sum(w, 'operating_cash_flow');
+      e.free_cash_flow_ttm = _sum(w, 'free_cash_flow');
+      e.eps_ttm = _sum(w, 'eps');
+      e.fcf_margin_ttm = _ratio(e.free_cash_flow_ttm, e.revenue_ttm);
+      e.ebitda_margin_ttm = _ratio(e.ebitda_ttm, e.revenue_ttm);
+      e.net_margin_ttm = _ratio(e.net_income_ttm, e.revenue_ttm);
+      e.debt_to_ebitda_ttm = _debtRatio(d.total_debt, e.ebitda_ttm);
+      const netDebt = d.total_debt != null && d.cash_and_equivalents != null ? d.total_debt - d.cash_and_equivalents : null;
+      e.net_debt_to_ebitda_ttm = _debtRatio(netDebt, e.ebitda_ttm);
+    }
+
+    return e;
+  });
+
+  // Pass 2: share count growth (relative to first quarter in displayed period)
+  const sharesVals = pass1.map(d => d.diluted_shares).filter(v => v != null);
+  if (sharesVals.length < 2) return pass1;
+
+  const firstShares = sharesVals[0];
+  return pass1.map(d => ({
+    ...d,
+    share_count_growth: d.diluted_shares != null ? pctChange(d.diluted_shares, firstShares) : null,
+  }));
+}
+
 /**
  * Metric category definitions.
- * Each category has: key, label, metrics[]
- * Each metric has: key, label, unit? (for $B/$M etc), format? ('pct'), source? (raw field)
- * Computed metrics have: compute:true, num+den (already in enriched data, so source also works)
  */
 export const METRIC_CATEGORIES = [
   {
@@ -208,11 +261,53 @@ export const METRIC_CATEGORIES = [
       { key: 'fcf_margin', label: 'FCF Margin', format: 'pct', source: 'fcf_margin' },
     ],
   },
+  {
+    key: 'balance_sheet',
+    label: 'Balance Sheet',
+    metrics: [
+      { key: 'cash_and_equivalents', label: 'Cash & Equivalents', unit: '$B', source: 'cash_and_equivalents' },
+      { key: 'total_debt', label: 'Total Debt', unit: '$B', source: 'total_debt' },
+      { key: 'net_cash_debt', label: 'Net Cash / Debt', unit: '$B', source: 'net_cash_debt' },
+      { key: 'debt_to_ebitda_ttm', label: 'Debt / EBITDA TTM', format: 'ratio', source: 'debt_to_ebitda_ttm' },
+      { key: 'net_debt_to_ebitda_ttm', label: 'Net Debt / EBITDA TTM', format: 'ratio', source: 'net_debt_to_ebitda_ttm' },
+    ],
+  },
+  {
+    key: 'per_share',
+    label: 'Per Share',
+    metrics: [
+      { key: 'eps', label: 'EPS', unit: '$/share', source: 'eps' },
+      { key: 'diluted_shares', label: 'Diluted Avg Shares', unit: 'B shares', source: 'diluted_shares' },
+      { key: 'share_count_growth', label: 'Share Count Growth', format: 'pct', source: 'share_count_growth' },
+      { key: 'revenue_per_share', label: 'Revenue / Share', unit: '$/share', source: 'revenue_per_share' },
+      { key: 'fcf_per_share', label: 'FCF / Share', unit: '$/share', source: 'fcf_per_share' },
+    ],
+  },
+  {
+    key: 'ttm_summary',
+    label: 'TTM Summary',
+    metrics: [
+      { key: 'revenue_ttm', label: 'Revenue TTM', unit: '$B', source: 'revenue_ttm' },
+      { key: 'ebitda_ttm', label: 'EBITDA TTM', unit: '$B', source: 'ebitda_ttm' },
+      { key: 'net_income_ttm', label: 'Net Income TTM', unit: '$B', source: 'net_income_ttm' },
+      { key: 'operating_cash_flow_ttm', label: 'Operating CF TTM', unit: '$B', source: 'operating_cash_flow_ttm' },
+      { key: 'free_cash_flow_ttm', label: 'FCF TTM', unit: '$B', source: 'free_cash_flow_ttm' },
+      { key: 'fcf_margin_ttm', label: 'FCF Margin TTM', format: 'pct', source: 'fcf_margin_ttm' },
+      { key: 'eps_ttm', label: 'EPS TTM', unit: '$/share', source: 'eps_ttm' },
+      { key: 'ebitda_margin_ttm', label: 'EBITDA Margin TTM', format: 'pct', source: 'ebitda_margin_ttm' },
+    ],
+  },
 ];
 
-// Set of metric keys that are displayed as percentages
+// Format type sets
 export const METRIC_PCT_KEYS = new Set([
   'gross_margin', 'ebitda_margin', 'operating_margin', 'net_margin', 'fcf_margin',
+  'fcf_margin_ttm', 'ebitda_margin_ttm', 'net_margin_ttm',
+  'share_count_growth',
+]);
+
+export const METRIC_RATIO_KEYS = new Set([
+  'debt_to_ebitda_ttm', 'net_debt_to_ebitda_ttm',
 ]);
 
 // Legacy compatibility: flat metrics array
@@ -221,22 +316,29 @@ export const METRICS = METRIC_CATEGORIES.flatMap(c => c.metrics);
 // All known metric keys (for availability checks)
 const ALL_METRIC_KEYS = new Set(METRICS.map(m => m.key));
 
-// V1 compatibility colors
+// Colors — extended for V2.1
 export const CHART_COLORS = {
-  revenue: '#238636',
-  gross_profit: '#2ea043',
-  operating_income: '#3fb950',
-  net_income: '#58a6ff',
-  ebitda: '#d29922',
-  eps: '#c44cb0',
-  gross_margin: '#7ee787',
-  ebitda_margin: '#e3b341',
-  operating_margin: '#56d364',
-  net_margin: '#79c0ff',
-  operating_cash_flow: '#a5d6ff',
-  capex: '#f85149',
-  free_cash_flow: '#a371f7',
-  fcf_margin: '#d2a8ff',
+  // Income Statement
+  revenue: '#238636', gross_profit: '#2ea043', operating_income: '#3fb950',
+  net_income: '#58a6ff', ebitda: '#d29922', eps: '#c44cb0',
+  // Margins
+  gross_margin: '#7ee787', ebitda_margin: '#e3b341',
+  operating_margin: '#56d364', net_margin: '#79c0ff',
+  // Cash Flow
+  operating_cash_flow: '#a5d6ff', capex: '#f85149',
+  free_cash_flow: '#a371f7', fcf_margin: '#d2a8ff',
+  // Balance Sheet
+  cash_and_equivalents: '#3fb950', total_debt: '#f85149',
+  net_cash_debt: '#d29922', debt_to_ebitda_ttm: '#f0883e',
+  net_debt_to_ebitda_ttm: '#e5534b',
+  // Per Share
+  diluted_shares: '#8b949e', share_count_growth: '#58a6ff',
+  revenue_per_share: '#7ee787', fcf_per_share: '#a371f7',
+  // TTM
+  revenue_ttm: '#238636', ebitda_ttm: '#d29922',
+  net_income_ttm: '#58a6ff', operating_cash_flow_ttm: '#a5d6ff',
+  free_cash_flow_ttm: '#a371f7', fcf_margin_ttm: '#d2a8ff',
+  eps_ttm: '#c44cb0', ebitda_margin_ttm: '#e3b341',
 };
 
 export const PERIOD_OPTIONS = [5, 8, 12];
@@ -253,7 +355,9 @@ export const VIEW_MODES = [
  */
 export function getMetricUnit(unit) {
   if (!unit) return '%';
-  return unit === '$/share' ? 'USD/share' : 'USD billions';
+  if (unit === '$/share') return 'USD/share';
+  if (unit === 'B shares') return 'B shares';
+  return 'USD billions';
 }
 
 /**
@@ -289,8 +393,6 @@ export function getMetricColor(key) {
 
 /**
  * Check if a metric has enough data to display.
- * For source metrics: at least 2 non-null values in the data.
- * For computed metrics: both source fields are available.
  */
 export function metricIsAvailable(sortedData, metricKey) {
   if (!ALL_METRIC_KEYS.has(metricKey)) return false;
@@ -361,4 +463,13 @@ export function getModeSubtitle(viewMode, firstQuarter, metricLabel) {
  */
 export function yoyIsAvailable(sortedData) {
   return sortedData.length >= 8;
+}
+
+// ── V2.1: Net Cash / Debt label ──
+/**
+ * Get the dynamic label for net_cash_debt based on its value.
+ */
+export function getNetCashDebtLabel(val) {
+  if (val == null) return 'Net Cash / Debt';
+  return val >= 0 ? 'Net Cash' : 'Net Debt';
 }
