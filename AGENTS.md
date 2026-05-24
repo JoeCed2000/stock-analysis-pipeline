@@ -18,8 +18,9 @@ Une fois orienté par le Wiki, privilégie les outils rapides et déterministes 
 3. **`tb cat <path>`** — lire un fichier rapidement (alternative légère à `read_file`).
 4. **`search_files`** — recherche Hermes avec regex et filtrage par glob.
 5. **`codegraph <project>`** — génère un graphe de dépendances (HTML/CSV) pour visualiser l'architecture du projet. Utile avant un refactor ou pour comprendre les dépendances entre modules.
+6. **`sg -p '<pattern>'`** — recherche structurelle AST (ast-grep). Trouve des patterns de code sans matcher les chaînes ou commentaires. Ex: `sg -p 'render_pdf($$$)'` trouve tous les appels.
 
-**Règle :** ne pas enchaîner les `read_file` sur des fichiers entiers. Utiliser `tb section` pour lire une portion ciblée, `tb rg` pour trouver un symbole, et `codegraph` pour la vue d'ensemble architecturale.
+**Règle :** ne pas enchaîner les `read_file` sur des fichiers entiers. Utiliser `tb section` pour une portion ciblée, `tb rg` pour un grep textuel, `sg -p` pour un search structurel (AST), et `codegraph` pour la vue d'ensemble architecturale.
 
 ---
 
