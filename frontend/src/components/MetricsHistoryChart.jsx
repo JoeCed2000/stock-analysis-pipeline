@@ -14,6 +14,13 @@ const CHART_COLORS = {
   eps: '#c44cb0',
 };
 
+const PERIOD_OPTIONS = [5, 8, 12];
+const VIEW_MODES = [
+  { key: 'absolute', label: 'Absolute' },
+  { key: 'qoq', label: 'QoQ %' },
+  { key: 'growth', label: '5Q Growth' },
+];
+
 function formatValue(val, metric) {
   if (val == null) return 'N/A';
   if (metric === 'eps') return `$${val.toFixed(2)}`;
@@ -47,6 +54,26 @@ function fmtPct(v) {
   return `${sign}${v.toFixed(1)}%`;
 }
 
+// Transform absolute values to view mode
+function transformValues(sortedData, metricKey, viewMode) {
+  if (viewMode === 'absolute') {
+    return sortedData.map(d => d[metricKey]);
+  }
+  if (viewMode === 'qoq') {
+    // QoQ %: each point is % change from previous quarter
+    return sortedData.map((d, i) => {
+      if (i === 0) return null;
+      return pctChange(d[metricKey], sortedData[i - 1]?.[metricKey]);
+    });
+  }
+  if (viewMode === 'growth') {
+    // 5Q Growth: each point is % change from first quarter in view
+    const base = sortedData[0]?.[metricKey];
+    return sortedData.map(d => pctChange(d[metricKey], base));
+  }
+  return sortedData.map(d => d[metricKey]);
+}
+
 // ── Component ──
 
 export default function MetricsHistoryChart({ ticker, height = 280 }) {
@@ -55,6 +82,9 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
   const [error, setError] = useState(null);
   const [metric, setMetric] = useState('revenue');
   const [tooltip, setTooltip] = useState(null);
+  const [viewMode, setViewMode] = useState('absolute');
+  const [period, setPeriod] = useState(5);
+  const [animating, setAnimating] = useState(false);
 
   useEffect(() => {
     if (!ticker) return;
@@ -70,6 +100,15 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
       .finally(() => setLoading(false));
   }, [ticker]);
 
+  // Trigger animation on metric/viewMode change
+  const changeMetric = (key) => {
+    if (key !== metric) {
+      setAnimating(true);
+      setMetric(key);
+      setTimeout(() => setAnimating(false), 350);
+    }
+  };
+
   if (loading) {
     return <div style={{ padding: 20, color: '#8b949e', fontSize: 14 }}>Loading metrics...</div>;
   }
@@ -81,33 +120,48 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
   }
 
   // Sort oldest → newest (API returns newest first)
-  const sorted = [...data].reverse();
-  const values = sorted.map(d => d[metric]).filter(v => v != null);
+  const allSorted = [...data].reverse();
+  const maxAvailable = allSorted.length;
+  const availablePeriods = PERIOD_OPTIONS.filter(p => p <= maxAvailable);
+  const effectivePeriod = availablePeriods.includes(period) ? period : Math.max(...availablePeriods);
+
+  // Slice to selected period
+  const sorted = allSorted.slice(Math.max(0, allSorted.length - effectivePeriod));
+
+  const metricInfo = METRICS.find(m => m.key === metric) || { label: metric, axisLabel: metric, unit: '' };
+
+  // Transform values based on view mode
+  const transformed = transformValues(sorted, metric, viewMode);
+  const isPctView = viewMode !== 'absolute';
+
+  // For percentage views, filter nulls
+  const values = isPctView ? transformed.filter(v => v != null) : transformed;
   if (values.length < 2) {
     return <div style={{ padding: 20, color: '#8b949e', fontSize: 14 }}>
-      Not enough data for {METRICS.find(m => m.key === metric)?.label}
+      Not enough data for {viewMode !== 'absolute' ? `${VIEW_MODES.find(v => v.key === viewMode)?.label} view` : metricInfo.label}
     </div>;
   }
 
   const latest = sorted[sorted.length - 1];
   const previous = sorted[sorted.length - 2];
   const first = sorted[0];
-  const latestVal = latest[metric];
-  const prevVal = previous?.[metric];
-  const firstVal = first[metric];
-  const qoq = pctChange(latestVal, prevVal);
-  const totalChange = pctChange(latestVal, firstVal);
+  const latestVal = isPctView ? transformed[transformed.length - 1] : latest[metric];
+  const prevVal = isPctView ? transformed[transformed.length - 2] : previous?.[metric];
+  const firstVal = isPctView ? null : first[metric];
+  const qoq = isPctView ? null : pctChange(latestVal, prevVal);
+  const totalChange = !isPctView ? pctChange(latestVal, firstVal) : null;
   const peak = Math.max(...values);
   const low = Math.min(...values);
   const avg = values.reduce((a, b) => a + b, 0) / values.length;
 
   const color = CHART_COLORS[metric] || '#238636';
   const trendColor = qoq != null && qoq >= 0 ? '#238636' : '#da3633';
-  const metricInfo = METRICS.find(m => m.key === metric) || { label: metric, axisLabel: metric, unit: '' };
+  const growthColor = totalChange != null && totalChange >= 0 ? '#238636' : '#da3633';
 
   // ── Chart geometry ──
-  const maxVal = Math.max(...values) * 1.10;
-  const minVal = Math.min(...values) * 0.88;
+  const maxVal = Math.max(...values) * (isPctView ? 1.15 : 1.10);
+  const minVal = isPctView ? Math.min(...values) * 1.2
+    : Math.min(...values) * 0.88;
   const range = maxVal - minVal || 1;
   const pad = { top: 16, right: 36, bottom: 44, left: 66 };
   const w = 620;
@@ -117,10 +171,12 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
 
   const n = sorted.length;
   const points = sorted.map((d, i) => {
+    const displayVal = transformed[i];
+    if (displayVal == null) return null;
     const x = pad.left + (i / (n - 1)) * chartW;
-    const y = pad.top + chartH - ((d[metric] - minVal) / range) * chartH;
-    return { ...d, x, y, i };
-  });
+    const y = pad.top + chartH - ((displayVal - minVal) / range) * chartH;
+    return { ...d, x, y, i, displayVal };
+  }).filter(Boolean);
 
   // Y ticks
   const yTicks = Array.from({ length: 5 }, (_, i) => {
@@ -131,25 +187,87 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
   const avgY = pad.top + chartH - ((avg - minVal) / range) * chartH;
   const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
 
+  // Format display value based on view mode
+  const formatDisplay = (val) => {
+    if (val == null) return 'N/A';
+    if (isPctView) return fmtPct(val);
+    return formatValue(val, metric);
+  };
+
+  const formatAxisDisplay = (val) => {
+    if (isPctView) return `${val >= 0 ? '+' : ''}${val.toFixed(0)}%`;
+    return formatAxis(val, metric);
+  };
+
   const subtitle = `${ticker} · ${metricInfo.label} · Fiscal quarters · ${metricInfo.unit === '$/share' ? 'USD/share' : 'USD billions'}`;
+  const growthLabel = `${effectivePeriod}Q Growth`;
+  const periodLabel = `Last ${effectivePeriod} fiscal quarters`;
 
   return (
     <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: 12 }}>
       {/* ── Header ── */}
-      <div style={{ fontSize: 10, color: '#9ba3ae', marginBottom: 8 }}>{subtitle}</div>
+      <div style={{ fontSize: 10, color: '#9ba3ae', marginBottom: 6 }}>{subtitle}</div>
 
       {/* ── KPI Summary Bar ── */}
-      <div style={{
-        display: 'flex', gap: 20, flexWrap: 'wrap',
-        padding: '10px 14px', marginBottom: 8,
-        background: '#0d1117', borderRadius: 6,
-        border: '1px solid #21262d',
-      }}>
-        <KpiBox label="Latest" value={formatValue(latestVal, metric)} color={color} bold />
-        <KpiBox label="QoQ" value={fmtPct(qoq)} color={trendColor} />
-        <KpiBox label="5Q Growth" value={fmtPct(totalChange)} color={totalChange >= 0 ? '#238636' : '#da3633'} />
-        <KpiBox label="Peak" value={formatValue(peak, metric)} color="#e1e4e8" />
-        <KpiBox label="Average" value={formatValue(avg, metric)} color="#e1e4e8" />
+      {!isPctView && (
+        <div style={{
+          display: 'flex', gap: 20, flexWrap: 'wrap',
+          padding: '10px 14px', marginBottom: 8,
+          background: '#0d1117', borderRadius: 6,
+          border: '1px solid #21262d',
+        }}>
+          <KpiBox label="Latest" value={formatValue(latestVal, metric)} color={color} bold />
+          <KpiBox label="QoQ" value={fmtPct(qoq)} color={trendColor} />
+          <KpiBox label={growthLabel} value={fmtPct(totalChange)} color={growthColor} />
+          <KpiBox label="Peak" value={formatValue(peak, metric)} color="#e1e4e8" />
+          <KpiBox label="Average" value={formatValue(avg, metric)} color="#e1e4e8" />
+        </div>
+      )}
+
+      {/* ── View Mode Toggle ── */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 1, background: '#1c2128', borderRadius: 4, padding: 2, border: '1px solid #30363d' }}>
+          {VIEW_MODES.map(v => (
+            <button
+              key={v.key}
+              onClick={() => setViewMode(v.key)}
+              style={{
+                padding: '4px 10px', fontSize: 10, fontWeight: viewMode === v.key ? 600 : 400,
+                border: 'none', borderRadius: 3,
+                background: viewMode === v.key ? `${color}22` : 'transparent',
+                color: viewMode === v.key ? color : '#8b949e',
+                cursor: 'pointer', transition: 'all 0.2s',
+              }}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Period Selector ── */}
+        <div style={{ display: 'flex', gap: 1, marginLeft: 'auto', background: '#1c2128', borderRadius: 4, padding: 2, border: '1px solid #30363d' }}>
+          {PERIOD_OPTIONS.map(p => {
+            const available = p <= maxAvailable;
+            return (
+              <button
+                key={p}
+                onClick={() => available && setPeriod(p)}
+                disabled={!available}
+                title={!available ? 'Not enough historical data' : `Show last ${p} quarters`}
+                style={{
+                  padding: '4px 8px', fontSize: 10, fontWeight: effectivePeriod === p ? 600 : 400,
+                  border: 'none', borderRadius: 3,
+                  background: effectivePeriod === p ? `${color}22` : 'transparent',
+                  color: effectivePeriod === p ? color : available ? '#8b949e' : '#484f58',
+                  cursor: available ? 'pointer' : 'not-allowed', transition: 'all 0.2s',
+                  opacity: available ? 1 : 0.4,
+                }}
+              >
+                {p}Q
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* ── Metric Tabs ── */}
@@ -157,7 +275,7 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
         {METRICS.map(m => (
           <button
             key={m.key}
-            onClick={() => setMetric(m.key)}
+            onClick={() => changeMetric(m.key)}
             style={{
               flex: 1, padding: '5px 0', fontSize: 11, fontWeight: metric === m.key ? 600 : 400,
               border: `1px solid ${metric === m.key ? CHART_COLORS[m.key] : '#3a4050'}`,
@@ -190,7 +308,7 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
           {/* Y axis title */}
           <text x={12} y={pad.top + chartH / 2} fill="#9ba3ae" fontSize={10} fontWeight={500}
                 textAnchor="middle" transform={`rotate(-90,12,${pad.top + chartH / 2})`}>
-            {metricInfo.axisLabel}
+            {isPctView ? '% Change' : metricInfo.axisLabel}
           </text>
 
           {/* Vertical axis */}
@@ -200,53 +318,67 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
           {yTicks.map((t, i) => (
             <g key={i}>
               <line x1={pad.left} y1={t.y} x2={w - pad.right} y2={t.y} stroke="#21262d" strokeWidth={1} strokeDasharray="3 4" />
-              <text x={pad.left - 8} y={t.y + 4} fill="#9ba3ae" textAnchor="end" fontSize={10}>{formatAxis(t.val, metric)}</text>
+              <text x={pad.left - 8} y={t.y + 4} fill="#9ba3ae" textAnchor="end" fontSize={10}>{formatAxisDisplay(t.val)}</text>
             </g>
           ))}
 
-          {/* Average reference line */}
-          <line x1={pad.left} y1={avgY} x2={w - pad.right} y2={avgY} stroke="#d29922" strokeWidth={1} strokeDasharray="6 3" opacity={0.6} />
-          <text x={w - pad.right - 4} y={avgY - 6} fill="#d29922" textAnchor="end" fontSize={9} opacity={0.85}>
-            Average {formatValue(avg, metric)}
-          </text>
+          {/* Average reference line (only in absolute mode) */}
+          {!isPctView && (
+            <>
+              <line x1={pad.left} y1={avgY} x2={w - pad.right} y2={avgY} stroke="#d29922" strokeWidth={1} strokeDasharray="6 3" opacity={0.6} />
+              <text x={w - pad.right - 4} y={avgY - 6} fill="#d29922" textAnchor="end" fontSize={9} opacity={0.85}>
+                Average {formatValue(avg, metric)}
+              </text>
+            </>
+          )}
 
           {/* Baseline */}
           <line x1={pad.left} y1={h - pad.bottom} x2={w - pad.right} y2={h - pad.bottom} stroke="#30363d" strokeWidth={1.5} />
 
-          {/* X axis labels — single line Q1 FY26 */}
+          {/* X axis labels */}
           {points.map((p, i) => (
             <text key={i} x={p.x} y={h - pad.bottom + 16} fill="#9ba3ae" textAnchor="middle" fontSize={10}>
               {formatQuarter(p.quarter)}
             </text>
           ))}
 
-          {/* Area fill */}
-          <path d={`${pathD} L ${points[n-1].x.toFixed(1)} ${h - pad.bottom} L ${points[0].x.toFixed(1)} ${h - pad.bottom} Z`}
-                fill={`${color}12`} />
+          {/* Area fill — with animation */}
+          <path d={`${pathD} L ${points[n-1]?.x.toFixed(1)} ${h - pad.bottom} L ${points[0]?.x.toFixed(1)} ${h - pad.bottom} Z`}
+                fill={`${color}12`}
+                style={{ transition: animating ? 'd 0.3s ease' : 'none' }} />
 
-          {/* Line */}
-          <path d={pathD} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" />
+          {/* Line — with animation */}
+          <path d={pathD} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round"
+                style={{ transition: animating ? 'd 0.3s ease' : 'none' }} />
 
-          {/* Data points + value labels for latest & peak/low */}
+          {/* Crosshair — vertical line at hover point */}
+          {tooltip && (
+            <line x1={tooltip.x} y1={pad.top} x2={tooltip.x} y2={h - pad.bottom}
+                  stroke="#6e7681" strokeWidth={1} strokeDasharray="2 3" opacity={0.5} />
+          )}
+
+          {/* Data points + value labels */}
           {points.map((p, i) => {
-            const isLatest = i === n - 1;
-            const isExtreme = p[metric] === peak || p[metric] === low;
-            const showLabel = isLatest || (isExtreme && n <= 8);
+            const isLatest = i === n - 1 || i === (tooltip?.i ?? -1);
+            const isExtreme = p.displayVal === peak || p.displayVal === low;
+            const showLabel = (isLatest && i === n - 1) || (tooltip?.i === i) || (isExtreme && n <= 8);
+            const isHovered = tooltip?.i === i;
             return (
               <g key={i}>
                 <circle cx={p.x} cy={p.y}
-                  r={tooltip?.i === i ? 6 : isLatest ? 5 : 3.5}
-                  fill={tooltip?.i === i ? color : isLatest ? color : '#0d1117'}
-                  stroke={color} strokeWidth={2}
-                  style={{ cursor: 'pointer', transition: 'r 0.15s' }}
+                  r={isHovered ? 6 : isLatest && i === n - 1 ? 5 : 3.5}
+                  fill={isHovered ? color : (isLatest && i === n - 1) ? color : '#0d1117'}
+                  stroke={color} strokeWidth={isHovered ? 2.5 : 2}
+                  style={{ cursor: 'pointer', transition: 'r 0.15s, stroke-width 0.15s' }}
                   onMouseEnter={() => setTooltip(p)}
                   onMouseLeave={() => setTooltip(null)}
                 />
                 <circle cx={p.x} cy={p.y} r={12} fill="transparent" style={{ cursor: 'pointer' }}
                   onMouseEnter={() => setTooltip(p)} onMouseLeave={() => setTooltip(null)} />
                 {showLabel && (
-                  <text x={p.x} y={p.y - 10} fill={color} textAnchor="middle" fontSize={10} fontWeight={700}>
-                    {formatValue(p[metric], metric)}
+                  <text x={isLatest && i === n - 1 ? p.x - (metric === 'eps' ? 22 : 28) : p.x}
+                        y={p.y - 10} fill={color} textAnchor="middle" fontSize={10} fontWeight={700}>
+                    {formatDisplay(p.displayVal)}
                   </text>
                 )}
               </g>
@@ -259,27 +391,43 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
           <div style={{
             position: 'absolute',
             left: Math.min(Math.max(tooltip.x, 120), w - 120),
-            top: Math.max(tooltip.y - 90, 4),
+            top: Math.max(tooltip.y - 110, 4),
             transform: 'translateX(-50%)',
-            background: '#161b22', border: '1px solid #30363d',
+            background: '#161b22', border: `1px solid ${color}44`,
             borderRadius: 8, padding: '8px 12px', color: '#c9d1d9',
             fontSize: 11, pointerEvents: 'none', zIndex: 10,
             whiteSpace: 'nowrap', boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
           }}>
             <div style={{ fontWeight: 600, marginBottom: 4, color }}>{formatQuarter(tooltip.quarter)}</div>
-            <div style={{ color }}>{formatValue(tooltip[metric], metric)}</div>
-            {tooltip.i > 0 && (
-              <div style={{ color: '#8b949e', marginTop: 2 }}>
+            <div style={{ color, fontWeight: 600, marginBottom: 3 }}>
+              {isPctView ? fmtPct(tooltip.displayVal) : formatValue(tooltip.displayVal, metric)}
+            </div>
+            {!isPctView && tooltip.i > 0 && (
+              <div style={{ color: '#9ba3ae', marginTop: 1 }}>
                 QoQ: <span style={{ color: pctChange(tooltip[metric], sorted[tooltip.i - 1]?.[metric]) >= 0 ? '#238636' : '#da3633' }}>
                   {fmtPct(pctChange(tooltip[metric], sorted[tooltip.i - 1]?.[metric]))}
                 </span>
               </div>
             )}
-            <div style={{ color: '#8b949e', marginTop: 1 }}>
-              vs avg: <span style={{ color: tooltip[metric] >= avg ? '#238636' : '#da3633' }}>
-                {fmtPct(pctChange(tooltip[metric], avg))}
-              </span>
-            </div>
+            {!isPctView && (
+              <div style={{ color: '#9ba3ae', marginTop: 1 }}>
+                {growthLabel}: <span style={{ color: pctChange(tooltip[metric], first[metric]) >= 0 ? '#238636' : '#da3633' }}>
+                  {fmtPct(pctChange(tooltip[metric], first[metric]))}
+                </span>
+              </div>
+            )}
+            {!isPctView && (
+              <div style={{ color: '#9ba3ae', marginTop: 1 }}>
+                vs avg: <span style={{ color: tooltip[metric] >= avg ? '#238636' : '#da3633' }}>
+                  {fmtPct(pctChange(tooltip[metric], avg))}
+                </span>
+              </div>
+            )}
+            {isPctView && tooltip.i > 0 && (
+              <div style={{ color: '#9ba3ae', marginTop: 1 }}>
+                Abs: <span style={{ color: '#e1e4e8' }}>{formatValue(tooltip[metric], metric)}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -291,9 +439,9 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
           <div style={{
             display: 'flex', gap: 16, fontSize: 10, color: '#9ba3ae', marginBottom: 3,
           }}>
-            <span>Low: <b style={{ color: '#e1e4e8' }}>{formatValue(low, metric)}</b></span>
-            <span>High: <b style={{ color: '#e1e4e8' }}>{formatValue(peak, metric)}</b></span>
-            <span style={{ marginLeft: 'auto' }}>Last 5 fiscal quarters</span>
+            <span>Low: <b style={{ color: '#e1e4e8' }}>{formatDisplay(low)}</b></span>
+            <span>High: <b style={{ color: '#e1e4e8' }}>{formatDisplay(peak)}</b></span>
+            <span style={{ marginLeft: 'auto' }}>{periodLabel}</span>
           </div>
           <div style={{ fontSize: 9, color: '#6e7681', textAlign: 'right' }}>
             Source: SEC filings · Yahoo Finance · Updated May 2026
