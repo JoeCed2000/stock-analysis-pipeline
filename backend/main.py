@@ -14,6 +14,7 @@ from typing import List
 
 import io
 import json
+import sys
 import zipfile
 import re
 import hashlib
@@ -43,11 +44,11 @@ def _sanitize_json(obj):
 def _normalize_dossier_language(lang: str) -> str:
     """Normalize public language codes used by ZIP/PDF generation."""
     clean = (lang or "en").strip().lower()
-    return "jp" if clean in ("jp", "ja") else "en"
+    return "jp" if clean == "jp" else "en"
 
 
 def _translation_language(lang: str) -> str:
-    return "ja" if lang == "jp" else lang
+    return lang
 
 
 def _should_convert_dossier_text_to_pdf(fpath: Path, *, refresh_pdf: bool) -> bool:
@@ -650,6 +651,33 @@ async def health():
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": version,
         "commit": commit,
+    }
+
+
+@app.get("/api/version")
+async def read_version():
+    """Return version and commit metadata from the local git repository."""
+    import subprocess
+    try:
+        commit = subprocess.check_output(
+            ["git", "log", "-1", "--format=%h"],
+            cwd=Path(__file__).parent.parent,
+            text=True
+        ).strip()
+        version = subprocess.check_output(
+            ["git", "describe", "--tags", "--always"],
+            cwd=Path(__file__).parent.parent,
+            text=True
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        commit = "unknown"
+        version = "unknown"
+    return {
+        "service": "stock-analysis-pipeline",
+        "version": version,
+        "commit": commit,
+        "build_time": datetime.now(timezone.utc).isoformat(),
+        "python_version": sys.version,
     }
 
 
@@ -1387,7 +1415,7 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
 
     # Language-specific path
     analysis_dir = matches[0]
-    if lang in ("jp", "ja"):
+    if lang == "jp":
         deep_dive = analysis_dir / "jp" / "07_final_report" / "earnings_deep_dive.pdf"
     else:
         deep_dive = analysis_dir / "07_final_report" / "earnings_deep_dive.pdf"
