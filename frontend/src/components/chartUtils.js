@@ -244,7 +244,7 @@ export const PERIOD_OPTIONS = [5, 8, 12];
 export const VIEW_MODES = [
   { key: 'absolute', label: 'Absolute' },
   { key: 'qoq', label: 'QoQ %' },
-  { key: 'growth', label: '5Q Growth' },
+  { key: 'growth', label: 'Growth' },
   { key: 'yoy', label: 'YoY %' },
 ];
 

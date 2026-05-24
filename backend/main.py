@@ -806,12 +806,13 @@ async def metrics_history(ticker: str):
                     if quarter_label in is_data:
                         is_data[quarter_label]["operating_cash_flow"] = _safe_float(row.get("Operating Cash Flow"))
                         is_data[quarter_label]["capex"] = _safe_float(row.get("Capital Expenditure"))
-                        # FCF: yfinance provides it pre-computed, or calculate OCF - |Capex|
+                        # FCF: yfinance provides it pre-computed; fallback: OCF + Capex
+                        # (yfinance capex is always negative, so OCF + Capex = OCF - |Capex|)
                         fcf = _safe_float(row.get("Free Cash Flow"))
                         if fcf is None:
                             ocf = is_data[quarter_label].get("operating_cash_flow")
                             capex = is_data[quarter_label].get("capex")
-                            fcf = (ocf - abs(capex)) if (ocf is not None and capex is not None) else None
+                            fcf = (ocf + capex) if (ocf is not None and capex is not None) else None
                         is_data[quarter_label]["free_cash_flow"] = fcf
         except Exception:
             logger.debug(f"metrics-history[{ticker}]: cash flow fetch skipped")

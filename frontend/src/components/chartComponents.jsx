@@ -278,7 +278,7 @@ function ChartFooter({ low, peak, periodLabel, footerLabels, isPctView, metric }
         <span style={{ marginLeft: 'auto' }}>{periodLabel}</span>
       </div>
       <div style={{ fontSize: 9, color: '#6e7681', textAlign: 'right' }}>
-        Source: SEC filings · Yahoo Finance · Updated May 2026
+        Source: SEC filings · Yahoo Finance · Build {typeof __BUILD_COMMIT__ !== 'undefined' ? __BUILD_COMMIT__ : 'dev'} · {typeof __BUILD_DATE__ !== 'undefined' ? __BUILD_DATE__ : new Date().toISOString().slice(0, 10)}
       </div>
     </div>
   );
