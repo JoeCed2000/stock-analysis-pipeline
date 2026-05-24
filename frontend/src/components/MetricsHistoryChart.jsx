@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 
 const METRICS = [
-  { key: 'revenue', label: 'Revenue' },
-  { key: 'net_income', label: 'Net Income' },
-  { key: 'ebitda', label: 'EBITDA' },
-  { key: 'eps', label: 'EPS' },
+  { key: 'revenue', label: 'Revenue', unit: '$B', axisLabel: 'Revenue ($B)' },
+  { key: 'net_income', label: 'Net Income', unit: '$B', axisLabel: 'Net income ($B)' },
+  { key: 'ebitda', label: 'EBITDA', unit: '$B', axisLabel: 'EBITDA ($B)' },
+  { key: 'eps', label: 'EPS', unit: '$/share', axisLabel: 'EPS ($/share)' },
 ];
 
 const CHART_COLORS = {
@@ -103,6 +103,7 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
 
   const color = CHART_COLORS[metric] || '#238636';
   const trendColor = qoq != null && qoq >= 0 ? '#238636' : '#da3633';
+  const metricInfo = METRICS.find(m => m.key === metric) || { label: metric, axisLabel: metric, unit: '' };
 
   // ── Chart geometry ──
   const maxVal = Math.max(...values) * 1.10;
@@ -141,9 +142,9 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
       }}>
         <KpiBox label="Latest" value={formatValue(latestVal, metric)} color={color} bold />
         <KpiBox label="QoQ" value={fmtPct(qoq)} color={trendColor} />
-        <KpiBox label="5Q Change" value={fmtPct(totalChange)} color={totalChange >= 0 ? '#238636' : '#da3633'} />
-        <KpiBox label="Peak" value={formatValue(peak, metric)} color="#8b949e" />
-        <KpiBox label="Avg" value={formatValue(avg, metric)} color="#8b949e" />
+        <KpiBox label="5Q Growth" value={fmtPct(totalChange)} color={totalChange >= 0 ? '#238636' : '#da3633'} />
+        <KpiBox label="Peak" value={formatValue(peak, metric)} color="#e1e4e8" />
+        <KpiBox label="Average" value={formatValue(avg, metric)} color="#e1e4e8" />
       </div>
 
       {/* ── Metric Tabs ── */}
@@ -154,10 +155,10 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
             onClick={() => setMetric(m.key)}
             style={{
               flex: 1, padding: '5px 0', fontSize: 11, fontWeight: metric === m.key ? 600 : 400,
-              border: `1px solid ${metric === m.key ? CHART_COLORS[m.key] : 'transparent'}`,
+              border: `1px solid ${metric === m.key ? CHART_COLORS[m.key] : '#30363d'}`,
               borderRadius: 4,
-              background: metric === m.key ? `${CHART_COLORS[m.key]}18` : '#161b22',
-              color: metric === m.key ? CHART_COLORS[m.key] : '#8b949e',
+              background: metric === m.key ? `${CHART_COLORS[m.key]}18` : '#1c2128',
+              color: metric === m.key ? CHART_COLORS[m.key] : '#b0b8c0',
               cursor: 'pointer', transition: 'all 0.2s',
             }}
           >
@@ -172,7 +173,7 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
           {/* Y axis title */}
           <text x={12} y={pad.top + chartH / 2} fill="#8b949e" fontSize={10} fontWeight={500}
                 textAnchor="middle" transform={`rotate(-90,12,${pad.top + chartH / 2})`}>
-            {METRICS.find(m => m.key === metric)?.label} {metric === 'eps' ? '(USD)' : '(USD B)'}
+            {metricInfo.axisLabel}
           </text>
 
           {/* Vertical axis */}
@@ -271,10 +272,9 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
           borderTop: '1px solid #21262d', padding: '6px 14px',
           display: 'flex', gap: 16, fontSize: 10, color: '#8b949e',
         }}>
-          <span>Peak: <b style={{ color: '#e1e4e8' }}>{formatValue(peak, metric)}</b></span>
           <span>Low: <b style={{ color: '#e1e4e8' }}>{formatValue(low, metric)}</b></span>
-          <span>Avg: <b style={{ color: '#d29922' }}>{formatValue(avg, metric)}</b></span>
-          <span style={{ marginLeft: 'auto' }}>5Q range</span>
+          <span>High: <b style={{ color: '#e1e4e8' }}>{formatValue(peak, metric)}</b></span>
+          <span style={{ marginLeft: 'auto' }}>Last 5 fiscal quarters</span>
         </div>
       </div>
     </div>
