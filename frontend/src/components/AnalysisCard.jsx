@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { getTickerDownloadUrl, getDossierStatus, countDossierSections, fetchQuarters } from '../api.js';
 import ScoringChart from './ScoringChart.jsx';
+import MetricsHistoryChart from './MetricsHistoryChart.jsx';
 import FeedbackPanel from './FeedbackPanel.jsx';
 
 const SCORE_COLORS = {
@@ -70,6 +71,7 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
   // ── Dossier polling ──
   const [dossierStatus, setDossierStatus] = useState({ sectionsReady: 0, pollFailures: 0 });
   const [downloadState, setDownloadState] = useState('idle'); // idle | downloading | success | error
+  const [showChart, setShowChart] = useState(false);
   const pollRef = useRef(null);
   const failedPollsRef = useRef(0);
   const downloadTimerRef = useRef(null);
@@ -274,9 +276,24 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
           background: '#161b22', border: '1px solid #30363d',
           borderRadius: 5, color: '#8b949e', textAlign: 'center',
         }}>
-          📄 {lang === 'ja' ? '生成中...' : 'Building PDF...'}
+          📄 {lang === 'jp' ? '生成中...' : 'Building PDF...'}
         </div>
         )}
+        {/* ── CHART TOGGLE ── */}
+        <button
+          onClick={() => setShowChart(s => !s)}
+          style={{
+            width: 32, padding: '5px 0', fontSize: 12,
+            background: showChart ? '#1f6feb' : '#21262d',
+            border: `1px solid ${showChart ? '#388bfd' : '#30363d'}`,
+            borderRadius: 5, color: showChart ? '#fff' : '#8b949e',
+            cursor: 'pointer', transition: 'background 0.15s',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          title={lang === 'jp' ? '指標履歴チャート' : 'Metrics history chart'}
+        >
+          📊
+        </button>
         {downloadReady ? (
           <button
             onClick={async () => {
@@ -345,7 +362,7 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
             background: '#3d1f1f', border: '1px solid #6b3030',
             borderRadius: 5, color: '#f85149', textAlign: 'center',
           }}>
-            ⚠️ {lang === 'ja' ? '検証失敗' : 'Verification failed'} · {dossierStatus?.sectionsReady ?? '?'}/7
+            ⚠️ {lang === 'jp' ? '検証失敗' : 'Verification failed'} · {dossierStatus?.sectionsReady ?? '?'}/7
           </div>
         ) : (
           <div style={{
@@ -356,22 +373,29 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
             {dossierStatus?.phase === 'scoring'
               ? `⚡ ${t('scoringAnalysis')} ${dossierStatus?.sectionsReady ?? '?'}/7`
               : dossierStatus?.phase === 'scored'
-              ? `📊 ${lang === 'ja' ? 'スコア完了・PDF生成待ち' : 'Score ready. PDF pending...'}`
+              ? `📊 ${lang === 'jp' ? 'スコア完了・PDF生成待ち' : 'Score ready. PDF pending...'}`
               : dossierStatus?.phase === 'pdf_generating'
-              ? `⏳ ${lang === 'ja' ? 'PDF生成中... (4〜7分)' : 'Generating PDF... (4-7 min)'}`
+              ? `⏳ ${lang === 'jp' ? 'PDF生成中... (4〜7分)' : 'Generating PDF... (4-7 min)'}`
               : dossierStatus?.phase === 'pdf_validating'
-              ? `📋 ${lang === 'ja' ? 'PDF検証中...' : 'Validating PDF...'}`
+              ? `📋 ${lang === 'jp' ? 'PDF検証中...' : 'Validating PDF...'}`
               : dossierStatus?.phase === 'failed'
-              ? `⚠️ ${lang === 'ja' ? '生成失敗' : 'Generation failed'}`
+              ? `⚠️ ${lang === 'jp' ? '生成失敗' : 'Generation failed'}`
               : `${t('buildingDossier')} ${dossierStatus?.sectionsReady ?? '?'}/7`}
             {dossierStatus?.pollFailures >= 3 && (
               <span style={{ display: 'block', fontSize: 9, color: '#d29922', marginTop: 2 }}>
-                {lang === 'ja' ? 'ステータス再試行中' : 'Retrying status'}
+                {lang === 'jp' ? 'ステータス再試行中' : 'Retrying status'}
               </span>
             )}
           </div>
         )}
       </div>
+
+      {/* ── METRICS HISTORY CHART ── */}
+      {showChart && (
+        <div style={{ padding: '4px 14px 10px', borderTop: '1px solid #21262d' }}>
+          <MetricsHistoryChart ticker={ticker} height={220} />
+        </div>
+      )}
 
       {/* ── CONVICTION ── */}
       <div style={{
