@@ -168,6 +168,16 @@ function _debtRatio(debt, ebitda) {
   return debt / ebitda;
 }
 
+function _safeDiv(num, den) {
+  if (num == null || den == null || den === 0) return null;
+  return num / den;
+}
+
+function _average(a, b) {
+  if (a == null || b == null) return null;
+  return (a + b) / 2;
+}
+
 // ── Metric Categories & Definitions ──
 
 /**
@@ -209,6 +219,46 @@ export function enrichData(sortedData) {
       e.debt_to_ebitda_ttm = _debtRatio(d.total_debt, e.ebitda_ttm);
       const netDebt = d.total_debt != null && d.cash_and_equivalents != null ? d.total_debt - d.cash_and_equivalents : null;
       e.net_debt_to_ebitda_ttm = _debtRatio(netDebt, e.ebitda_ttm);
+
+      // V2.2: TTM per-share
+      e.revenue_ttm_per_share = _perShare(e.revenue_ttm, shares);
+      e.ebitda_ttm_per_share = _perShare(e.ebitda_ttm, shares);
+      e.ni_ttm_per_share = _perShare(e.net_income_ttm, shares);
+      e.ocf_ttm_per_share = _perShare(e.operating_cash_flow_ttm, shares);
+      e.fcf_ttm_per_share = _perShare(e.free_cash_flow_ttm, shares);
+
+      // V2.2: Operating Income TTM + Tax data for NOPAT
+      e.operating_income_ttm = _sum(w, 'operating_income');
+      e.pretax_income_ttm = _sum(w, 'pretax_income');
+      e.tax_provision_ttm = _sum(w, 'tax_provision');
+
+      // Effective tax rate
+      e.effective_tax_rate = _safeDiv(e.tax_provision_ttm, e.pretax_income_ttm);
+
+      // NOPAT = Operating Income TTM × (1 - tax rate)
+      e.nopat_ttm = e.operating_income_ttm != null && e.effective_tax_rate != null
+        ? e.operating_income_ttm * (1 - e.effective_tax_rate)
+        : null;
+
+      // V2.2: Average balance sheet metrics (beginning + ending / 2)
+      const bsBegin = sortedData[i - 3]; // 4 quarters ago
+      e.avg_equity = _average(bsBegin.stockholders_equity, d.stockholders_equity);
+      e.avg_assets = _average(bsBegin.total_assets, d.total_assets);
+      e.avg_invested_capital = _average(bsBegin.invested_capital, d.invested_capital);
+
+      // ROE = NI TTM / Avg Equity
+      e.roe = _safeDiv(e.net_income_ttm, e.avg_equity) != null ? (e.net_income_ttm / e.avg_equity) * 100 : null;
+
+      // ROA = NI TTM / Avg Total Assets
+      e.roa = _safeDiv(e.net_income_ttm, e.avg_assets) != null ? (e.net_income_ttm / e.avg_assets) * 100 : null;
+
+      // ROIC = NOPAT / Avg Invested Capital
+      e.roic = _safeDiv(e.nopat_ttm, e.avg_invested_capital) != null ? (e.nopat_ttm / e.avg_invested_capital) * 100 : null;
+
+      // FCF Conversion TTM = FCF TTM / NI TTM
+      e.fcf_conversion_ttm = _safeDiv(e.free_cash_flow_ttm, e.net_income_ttm) != null
+        ? (e.free_cash_flow_ttm / e.net_income_ttm) * 100
+        : null;
     }
 
     return e;
@@ -297,13 +347,27 @@ export const METRIC_CATEGORIES = [
       { key: 'ebitda_margin_ttm', label: 'EBITDA Margin TTM', format: 'pct', source: 'ebitda_margin_ttm' },
     ],
   },
+  {
+    key: 'quality_returns',
+    label: 'Quality / Returns',
+    metrics: [
+      { key: 'roe', label: 'ROE', format: 'pct', source: 'roe' },
+      { key: 'roa', label: 'ROA', format: 'pct', source: 'roa' },
+      { key: 'roic', label: 'ROIC', format: 'pct', source: 'roic' },
+      { key: 'fcf_conversion_ttm', label: 'FCF Conversion TTM', format: 'pct', source: 'fcf_conversion_ttm' },
+      { key: 'fcf_ttm_per_share', label: 'FCF TTM / Share', unit: '$/share', source: 'fcf_ttm_per_share' },
+      { key: 'revenue_ttm_per_share', label: 'Revenue TTM / Share', unit: '$/share', source: 'revenue_ttm_per_share' },
+      { key: 'ni_ttm_per_share', label: 'Net Income TTM / Share', unit: '$/share', source: 'ni_ttm_per_share' },
+    ],
+  },
 ];
 
 // Format type sets
 export const METRIC_PCT_KEYS = new Set([
   'gross_margin', 'ebitda_margin', 'operating_margin', 'net_margin', 'fcf_margin',
   'fcf_margin_ttm', 'ebitda_margin_ttm', 'net_margin_ttm',
-  'share_count_growth',
+  'share_count_growth', 'effective_tax_rate',
+  'roe', 'roa', 'roic', 'fcf_conversion_ttm',
 ]);
 
 export const METRIC_RATIO_KEYS = new Set([
@@ -339,6 +403,11 @@ export const CHART_COLORS = {
   net_income_ttm: '#58a6ff', operating_cash_flow_ttm: '#a5d6ff',
   free_cash_flow_ttm: '#a371f7', fcf_margin_ttm: '#d2a8ff',
   eps_ttm: '#c44cb0', ebitda_margin_ttm: '#e3b341',
+  // Quality / Returns
+  roe: '#3fb950', roa: '#7ee787', roic: '#56d364',
+  fcf_conversion_ttm: '#d2a8ff',
+  fcf_ttm_per_share: '#a371f7', revenue_ttm_per_share: '#7ee787',
+  ni_ttm_per_share: '#79c0ff',
 };
 
 export const PERIOD_OPTIONS = [5, 8, 12];

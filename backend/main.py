@@ -795,6 +795,8 @@ async def metrics_history(ticker: str):
             is_data.setdefault(quarter_label, {})["eps"] = _safe_float(row.get("Basic EPS"))
             is_data.setdefault(quarter_label, {})["operating_income"] = _safe_float(row.get("Operating Income"))
             is_data.setdefault(quarter_label, {})["diluted_shares"] = _safe_float(row.get("Diluted Average Shares"))
+            is_data.setdefault(quarter_label, {})["pretax_income"] = _safe_float(row.get("Pretax Income"))
+            is_data.setdefault(quarter_label, {})["tax_provision"] = _safe_float(row.get("Tax Provision"))
 
         # Cash flow statement
         try:
@@ -827,6 +829,9 @@ async def metrics_history(ticker: str):
                     if quarter_label in is_data:
                         is_data[quarter_label]["cash_and_equivalents"] = _safe_float(row.get("Cash And Cash Equivalents"))
                         is_data[quarter_label]["total_debt"] = _safe_float(row.get("Total Debt"))
+                        is_data[quarter_label]["total_assets"] = _safe_float(row.get("Total Assets"))
+                        is_data[quarter_label]["stockholders_equity"] = _safe_float(row.get("Stockholders Equity"))
+                        is_data[quarter_label]["invested_capital"] = _safe_float(row.get("Invested Capital"))
         except Exception:
             logger.debug(f"metrics-history[{ticker}]: balance sheet fetch skipped")
 
@@ -835,6 +840,8 @@ async def metrics_history(ticker: str):
             "revenue", "net_income", "ebitda", "gross_profit", "eps",
             "operating_income", "operating_cash_flow", "capex", "free_cash_flow",
             "cash_and_equivalents", "total_debt", "diluted_shares",
+            "pretax_income", "tax_provision",
+            "total_assets", "stockholders_equity", "invested_capital",
         ]
         quarters = []
         for q in sorted(is_data.keys(), reverse=True):  # newest first (frontend expects this)
