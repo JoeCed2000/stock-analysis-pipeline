@@ -10,13 +10,16 @@ Consulter la mémoire consolidée du projet avant de chercher ou coder. Interdit
 2. Comprendre l'architecture en 30 secondes, les invariants métier, les contrats de confiance et les playbooks de non-régression ("Quand modifier X, lancer Y").
 3. **Tout agent (Hermes, Codex, OpenClaw, ChatGPT, worker Kanban) doit lire le wiki en premier.**
 
-### 🚪 Porte 2 (Bas Niveau) : CodeGraph d'abord
-Une fois orienté par le Wiki, interdit d'utiliser des boucles de commandes `grep`, `rg` ou `find` aveugles pour explorer les symboles et dépendances syntaxiques. Tu devez interroger le graphe de connaissance local via les outils MCP de **CodeGraph** :
-- **Trouver un symbole ou sa définition :** `codegraph_search` (retourne le type, l'emplacement et la signature en un seul appel, plus rapide et précis que grep).
-- **Tracer les dépendances de fonctions :** `codegraph_callers` (qui appelle cette fonction ?) et `codegraph_callees` (qu'est-ce que cette fonction appelle ?).
-- **Analyse d'impact avant modif :** `codegraph_impact` (qu'est-ce qui va casser si je modifie ce fichier ?).
-- **Obtenir le contexte d'une tâche :** `codegraph_context "<tâche>"` (analyse l'AST et te sort le code source exact des points d'entrée et symboles connectés en 500ms).
-- **Règle d'or de lecture :** Utilise `codegraph_explore` pour lire le code de plusieurs symboles liés d'un coup, plutôt que d'enchaîner des `read_file` répétés qui saturent la fenêtre de contexte.
+### 🚪 Porte 2 (Bas Niveau) : Exploration rapide du code
+Une fois orienté par le Wiki, privilégie les outils rapides et déterministes pour explorer le code :
+
+1. **`tb rg "<pattern>"`** — ripgrep instantané (remplace `grep -r`). Plus rapide que `search_files`.
+2. **`tb find "<glob>"`** — trouver des fichiers par motif.
+3. **`tb cat <path>`** — lire un fichier rapidement (alternative légère à `read_file`).
+4. **`search_files`** — recherche Hermes avec regex et filtrage par glob.
+5. **`codegraph <project>`** — génère un graphe de dépendances (HTML/CSV) pour visualiser l'architecture du projet. Utile avant un refactor ou pour comprendre les dépendances entre modules.
+
+**Règle :** ne pas enchaîner les `read_file` sur des fichiers entiers. Utiliser `tb section` pour lire une portion ciblée, `tb rg` pour trouver un symbole, et `codegraph` pour la vue d'ensemble architecturale.
 
 ---
 
