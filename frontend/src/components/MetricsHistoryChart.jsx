@@ -60,14 +60,12 @@ function transformValues(sortedData, metricKey, viewMode) {
     return sortedData.map(d => d[metricKey]);
   }
   if (viewMode === 'qoq') {
-    // QoQ %: each point is % change from previous quarter
     return sortedData.map((d, i) => {
       if (i === 0) return null;
       return pctChange(d[metricKey], sortedData[i - 1]?.[metricKey]);
     });
   }
   if (viewMode === 'growth') {
-    // 5Q Growth: each point is % change from first quarter in view
     const base = sortedData[0]?.[metricKey];
     return sortedData.map(d => pctChange(d[metricKey], base));
   }
@@ -100,7 +98,7 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
       .finally(() => setLoading(false));
   }, [ticker]);
 
-  // Trigger animation on metric/viewMode change
+  // Trigger animation on metric change
   const changeMetric = (key) => {
     if (key !== metric) {
       setAnimating(true);
@@ -145,23 +143,21 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
   const latest = sorted[sorted.length - 1];
   const previous = sorted[sorted.length - 2];
   const first = sorted[0];
-  const latestVal = isPctView ? transformed[transformed.length - 1] : latest[metric];
-  const prevVal = isPctView ? transformed[transformed.length - 2] : previous?.[metric];
+  const lastIdx = transformed.length - 1;
+  const latestVal = isPctView ? transformed[lastIdx] : latest[metric];
   const firstVal = isPctView ? null : first[metric];
-  const qoq = isPctView ? null : pctChange(latestVal, prevVal);
-  const totalChange = !isPctView ? pctChange(latestVal, firstVal) : null;
+  const qoq = isPctView ? null : pctChange(latest[metric], previous?.[metric]);
+  const totalChange = !isPctView ? pctChange(latest[metric], firstVal) : null;
   const peak = Math.max(...values);
   const low = Math.min(...values);
   const avg = values.reduce((a, b) => a + b, 0) / values.length;
 
   const color = CHART_COLORS[metric] || '#238636';
   const trendColor = qoq != null && qoq >= 0 ? '#238636' : '#da3633';
-  const growthColor = totalChange != null && totalChange >= 0 ? '#238636' : '#da3633';
 
   // ── Chart geometry ──
   const maxVal = Math.max(...values) * (isPctView ? 1.15 : 1.10);
-  const minVal = isPctView ? Math.min(...values) * 1.2
-    : Math.min(...values) * 0.88;
+  const minVal = isPctView ? Math.min(...values) * 1.2 : Math.min(...values) * 0.88;
   const range = maxVal - minVal || 1;
   const pad = { top: 16, right: 36, bottom: 44, left: 66 };
   const w = 620;
@@ -199,30 +195,85 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
     return formatAxis(val, metric);
   };
 
-  const subtitle = `${ticker} · ${metricInfo.label} · Fiscal quarters · ${metricInfo.unit === '$/share' ? 'USD/share' : 'USD billions'}`;
+  // ── Labels ──
+  const unitStr = metricInfo.unit === '$/share' ? 'USD/share' : 'USD billions';
   const growthLabel = `${effectivePeriod}Q Growth`;
   const periodLabel = `Last ${effectivePeriod} fiscal quarters`;
+
+  // Mode context subtitle
+  let modeSubtitle;
+  if (isPctView && viewMode === 'qoq') {
+    modeSubtitle = `Quarter-over-quarter · ${metricInfo.label}`;
+  } else if (isPctView && viewMode === 'growth') {
+    modeSubtitle = `Growth since ${formatQuarter(first.quarter)} · ${metricInfo.label}`;
+  }
+
+  // KPI labels based on view mode
+  const kpiLabels = isPctView
+    ? {
+        latest: viewMode === 'qoq' ? 'Latest QoQ' : 'Current growth',
+        peak: viewMode === 'qoq' ? 'Highest QoQ' : 'Peak growth',
+        low: viewMode === 'qoq' ? 'Lowest QoQ' : 'Lowest growth',
+        avg: 'Average',
+      }
+    : {
+        latest: 'Latest',
+        peak: 'Peak',
+        low: 'Low',
+        avg: 'Average',
+      };
+
+  // Footer labels
+  const footerLowLabel = isPctView
+    ? (viewMode === 'qoq' ? 'Lowest QoQ' : 'Lowest growth')
+    : 'Low';
+  const footerHighLabel = isPctView
+    ? (viewMode === 'qoq' ? 'Highest QoQ' : 'Peak growth')
+    : 'High';
+
+  // Tooltip placement: if point is in top half of chart, place tooltip below it
+  const tooltipPlacement = tooltip
+    ? (tooltip.y < pad.top + chartH * 0.55 ? 'below' : 'above')
+    : 'above';
 
   return (
     <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: 12 }}>
       {/* ── Header ── */}
-      <div style={{ fontSize: 10, color: '#9ba3ae', marginBottom: 6 }}>{subtitle}</div>
+      <div style={{ fontSize: 10, color: '#9ba3ae', marginBottom: 4 }}>
+        {ticker} · {metricInfo.label} · Fiscal quarters · {unitStr}
+      </div>
 
-      {/* ── KPI Summary Bar ── */}
-      {!isPctView && (
-        <div style={{
-          display: 'flex', gap: 20, flexWrap: 'wrap',
-          padding: '10px 14px', marginBottom: 8,
-          background: '#0d1117', borderRadius: 6,
-          border: '1px solid #21262d',
-        }}>
-          <KpiBox label="Latest" value={formatValue(latestVal, metric)} color={color} bold />
-          <KpiBox label="QoQ" value={fmtPct(qoq)} color={trendColor} />
-          <KpiBox label={growthLabel} value={fmtPct(totalChange)} color={growthColor} />
-          <KpiBox label="Peak" value={formatValue(peak, metric)} color="#e1e4e8" />
-          <KpiBox label="Average" value={formatValue(avg, metric)} color="#e1e4e8" />
+      {/* ── Mode context (QoQ / Growth) ── */}
+      {modeSubtitle && (
+        <div style={{ fontSize: 10, color: '#8b949e', marginBottom: 6, fontStyle: 'italic' }}>
+          {modeSubtitle}
         </div>
       )}
+
+      {/* ── KPI Summary Bar (always visible, adapted) ── */}
+      <div style={{
+        display: 'flex', gap: 20, flexWrap: 'wrap',
+        padding: '10px 14px', marginBottom: 8,
+        background: '#0d1117', borderRadius: 6,
+        border: '1px solid #21262d',
+      }}>
+        {isPctView ? (
+          <>
+            <KpiBox label={kpiLabels.latest} value={fmtPct(latestVal)} color={color} bold />
+            <KpiBox label={kpiLabels.peak} value={fmtPct(peak)} color={peak >= 0 ? '#238636' : '#da3633'} />
+            <KpiBox label={kpiLabels.low} value={fmtPct(low)} color={low >= 0 ? '#238636' : '#da3633'} />
+            <KpiBox label={kpiLabels.avg} value={fmtPct(avg)} color="#e1e4e8" />
+          </>
+        ) : (
+          <>
+            <KpiBox label={kpiLabels.latest} value={formatValue(latestVal, metric)} color={color} bold />
+            <KpiBox label="QoQ" value={fmtPct(qoq)} color={trendColor} />
+            <KpiBox label={growthLabel} value={fmtPct(totalChange)} color={totalChange >= 0 ? '#238636' : '#da3633'} />
+            <KpiBox label={kpiLabels.peak} value={formatValue(peak, metric)} color="#e1e4e8" />
+            <KpiBox label={kpiLabels.avg} value={formatValue(avg, metric)} color="#e1e4e8" />
+          </>
+        )}
+      </div>
 
       {/* ── View Mode Toggle ── */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
@@ -230,7 +281,7 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
           {VIEW_MODES.map(v => (
             <button
               key={v.key}
-              onClick={() => setViewMode(v.key)}
+              onClick={() => { setViewMode(v.key); setTooltip(null); }}
               style={{
                 padding: '4px 10px', fontSize: 10, fontWeight: viewMode === v.key ? 600 : 400,
                 border: 'none', borderRadius: 3,
@@ -251,7 +302,7 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
             return (
               <button
                 key={p}
-                onClick={() => available && setPeriod(p)}
+                onClick={() => { if (available) { setPeriod(p); setTooltip(null); } }}
                 disabled={!available}
                 title={!available ? 'Not enough historical data' : `Show last ${p} quarters`}
                 style={{
@@ -322,7 +373,7 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
             </g>
           ))}
 
-          {/* Average reference line (only in absolute mode) */}
+          {/* Average reference line (absolute mode only) */}
           {!isPctView && (
             <>
               <line x1={pad.left} y1={avgY} x2={w - pad.right} y2={avgY} stroke="#d29922" strokeWidth={1} strokeDasharray="6 3" opacity={0.6} />
@@ -351,32 +402,32 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
           <path d={pathD} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round"
                 style={{ transition: animating ? 'd 0.3s ease' : 'none' }} />
 
-          {/* Crosshair — vertical line at hover point */}
+          {/* Crosshair */}
           {tooltip && (
             <line x1={tooltip.x} y1={pad.top} x2={tooltip.x} y2={h - pad.bottom}
                   stroke="#6e7681" strokeWidth={1} strokeDasharray="2 3" opacity={0.5} />
           )}
 
-          {/* Data points + value labels */}
+          {/* Data points */}
           {points.map((p, i) => {
-            const isLatest = i === n - 1 || i === (tooltip?.i ?? -1);
+            const isLatest = i === (points.length - 1);
             const isExtreme = p.displayVal === peak || p.displayVal === low;
-            const showLabel = (isLatest && i === n - 1) || (tooltip?.i === i) || (isExtreme && n <= 8);
+            const showLabel = isLatest || (tooltip?.i === i) || (isExtreme && points.length <= 8);
             const isHovered = tooltip?.i === i;
             return (
               <g key={i}>
                 <circle cx={p.x} cy={p.y}
-                  r={isHovered ? 6 : isLatest && i === n - 1 ? 5 : 3.5}
-                  fill={isHovered ? color : (isLatest && i === n - 1) ? color : '#0d1117'}
+                  r={isHovered ? 6 : isLatest ? 5 : 3.5}
+                  fill={isHovered ? color : isLatest ? color : '#0d1117'}
                   stroke={color} strokeWidth={isHovered ? 2.5 : 2}
                   style={{ cursor: 'pointer', transition: 'r 0.15s, stroke-width 0.15s' }}
                   onMouseEnter={() => setTooltip(p)}
                   onMouseLeave={() => setTooltip(null)}
                 />
-                <circle cx={p.x} cy={p.y} r={12} fill="transparent" style={{ cursor: 'pointer' }}
+                <circle cx={p.x} cy={p.y} r={14} fill="transparent" style={{ cursor: 'pointer' }}
                   onMouseEnter={() => setTooltip(p)} onMouseLeave={() => setTooltip(null)} />
                 {showLabel && (
-                  <text x={isLatest && i === n - 1 ? p.x - (metric === 'eps' ? 22 : 28) : p.x}
+                  <text x={isLatest ? p.x - (metric === 'eps' ? 22 : 28) : p.x}
                         y={p.y - 10} fill={color} textAnchor="middle" fontSize={10} fontWeight={700}>
                     {formatDisplay(p.displayVal)}
                   </text>
@@ -386,12 +437,14 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
           })}
         </svg>
 
-        {/* ── Rich Tooltip ── */}
+        {/* ── Rich Tooltip (smart placement) ── */}
         {tooltip && (
           <div style={{
             position: 'absolute',
-            left: Math.min(Math.max(tooltip.x, 120), w - 120),
-            top: Math.max(tooltip.y - 110, 4),
+            left: Math.min(Math.max(tooltip.x, 130), w - 130),
+            ...(tooltipPlacement === 'above'
+              ? { bottom: h - tooltip.y + 12 }
+              : { top: tooltip.y + 16 }),
             transform: 'translateX(-50%)',
             background: '#161b22', border: `1px solid ${color}44`,
             borderRadius: 8, padding: '8px 12px', color: '#c9d1d9',
@@ -439,8 +492,8 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
           <div style={{
             display: 'flex', gap: 16, fontSize: 10, color: '#9ba3ae', marginBottom: 3,
           }}>
-            <span>Low: <b style={{ color: '#e1e4e8' }}>{formatDisplay(low)}</b></span>
-            <span>High: <b style={{ color: '#e1e4e8' }}>{formatDisplay(peak)}</b></span>
+            <span>{footerLowLabel}: <b style={{ color: '#e1e4e8' }}>{formatDisplay(low)}</b></span>
+            <span>{footerHighLabel}: <b style={{ color: '#e1e4e8' }}>{formatDisplay(peak)}</b></span>
             <span style={{ marginLeft: 'auto' }}>{periodLabel}</span>
           </div>
           <div style={{ fontSize: 9, color: '#6e7681', textAlign: 'right' }}>
@@ -456,7 +509,7 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
 function KpiBox({ label, value, color, bold }) {
   return (
     <div style={{ minWidth: 80 }}>
-      <div style={{ fontSize: 9, color: '#484f58', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>
+      <div style={{ fontSize: 9, color: '#6e7681', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>
         {label}
       </div>
       <div style={{
