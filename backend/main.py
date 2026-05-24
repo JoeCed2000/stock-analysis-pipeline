@@ -764,35 +764,91 @@ async def earnings_quarters(ticker: str):
 
 @app.get("/api/metrics-history/{ticker}")
 async def metrics_history(ticker: str):
-    """Return quarterly revenue & net income time series for interactive charts.
+    """Return quarterly financial time series for interactive charts.
     
-    Returns [{quarter, date, revenue, net_income, ebitda}] sorted newest first.
+    Returns [{quarter, date, revenue, net_income, ebitda, gross_profit, eps,
+              operating_income, operating_cash_flow, capex, free_cash_flow,
+              cash_and_equivalents, total_debt, diluted_shares}]
+    sorted chronologically (newest first, compatible with existing frontend).
     Uses yfinance directly (local PC only — not for Render deployment).
     """
     ticker = ticker.strip().upper()
     try:
         import yfinance as yf
+        import pandas as pd
         stock = yf.Ticker(ticker)
         fin = stock.quarterly_financials
         if fin is None or fin.empty:
             return {"ticker": ticker, "quarters": [], "error": "No financial data"}
         
-        metrics = []
+        # Build quarter-indexed dicts for income statement
+        is_data = {}
         for col_date in fin.columns:
             date_str = col_date.strftime("%Y-%m-%d")
             quarter_label = f"{col_date.year}Q{(col_date.month - 1)//3 + 1}"
             row = fin[col_date]
-            metrics.append({
-                "quarter": quarter_label,
-                "date": date_str,
-                "revenue": _safe_float(row.get("Total Revenue")),
-                "net_income": _safe_float(row.get("Net Income")),
-                "ebitda": _safe_float(row.get("EBITDA")),
-                "gross_profit": _safe_float(row.get("Gross Profit")),
-                "eps": _safe_float(row.get("Basic EPS")),
-            })
+            is_data.setdefault(quarter_label, {})["date"] = date_str
+            is_data.setdefault(quarter_label, {})["revenue"] = _safe_float(row.get("Total Revenue"))
+            is_data.setdefault(quarter_label, {})["net_income"] = _safe_float(row.get("Net Income"))
+            is_data.setdefault(quarter_label, {})["ebitda"] = _safe_float(row.get("EBITDA"))
+            is_data.setdefault(quarter_label, {})["gross_profit"] = _safe_float(row.get("Gross Profit"))
+            is_data.setdefault(quarter_label, {})["eps"] = _safe_float(row.get("Basic EPS"))
+            is_data.setdefault(quarter_label, {})["operating_income"] = _safe_float(row.get("Operating Income"))
+            is_data.setdefault(quarter_label, {})["diluted_shares"] = _safe_float(row.get("Diluted Average Shares"))
+
+        # Cash flow statement
+        try:
+            cf = stock.quarterly_cashflow
+            if cf is not None and not cf.empty:
+                for col_date in cf.columns:
+                    quarter_label = f"{col_date.year}Q{(col_date.month - 1)//3 + 1}"
+                    row = cf[col_date]
+                    if quarter_label in is_data:
+                        is_data[quarter_label]["operating_cash_flow"] = _safe_float(row.get("Operating Cash Flow"))
+                        is_data[quarter_label]["capex"] = _safe_float(row.get("Capital Expenditure"))
+                        # FCF: yfinance provides it pre-computed, or calculate OCF - |Capex|
+                        fcf = _safe_float(row.get("Free Cash Flow"))
+                        if fcf is None:
+                            ocf = is_data[quarter_label].get("operating_cash_flow")
+                            capex = is_data[quarter_label].get("capex")
+                            fcf = (ocf - abs(capex)) if (ocf is not None and capex is not None) else None
+                        is_data[quarter_label]["free_cash_flow"] = fcf
+        except Exception:
+            logger.debug(f"metrics-history[{ticker}]: cash flow fetch skipped")
+
+        # Balance sheet
+        try:
+            bs = stock.quarterly_balance_sheet
+            if bs is not None and not bs.empty:
+                for col_date in bs.columns:
+                    quarter_label = f"{col_date.year}Q{(col_date.month - 1)//3 + 1}"
+                    row = bs[col_date]
+                    if quarter_label in is_data:
+                        is_data[quarter_label]["cash_and_equivalents"] = _safe_float(row.get("Cash And Cash Equivalents"))
+                        is_data[quarter_label]["total_debt"] = _safe_float(row.get("Total Debt"))
+        except Exception:
+            logger.debug(f"metrics-history[{ticker}]: balance sheet fetch skipped")
+
+        # Build sorted list (oldest → newest) with explicit None for missing fields
+        field_names = [
+            "revenue", "net_income", "ebitda", "gross_profit", "eps",
+            "operating_income", "operating_cash_flow", "capex", "free_cash_flow",
+            "cash_and_equivalents", "total_debt", "diluted_shares",
+        ]
+        quarters = []
+        for q in sorted(is_data.keys(), reverse=True):  # newest first (frontend expects this)
+            entry = {"quarter": q, "date": is_data[q].get("date")}
+            for f in field_names:
+                entry[f] = is_data[q].get(f)
+            quarters.append(entry)
         
-        return {"ticker": ticker, "quarters": metrics, "count": len(metrics)}
+        return {
+            "ticker": ticker,
+            "currency": "USD",
+            "source": "SEC filings / Yahoo Finance",
+            "quarters": quarters,
+            "count": len(quarters),
+        }
     except Exception as e:
         logger.warning(f"metrics-history[{ticker}]: {e}")
         return {"ticker": ticker, "quarters": [], "error": str(e)}

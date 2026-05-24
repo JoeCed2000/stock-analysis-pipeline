@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
-  METRICS, CHART_COLORS, PERIOD_OPTIONS,
+  METRIC_CATEGORIES, CHART_COLORS, PERIOD_OPTIONS,
   formatValue, formatAxis, formatQuarter, fmtPct,
-  calculateStats, getMetricUnit, getKpiLabels, getFooterLabels, getModeSubtitle,
+  calculateStats, enrichData, getMetricUnit, getKpiLabels, getFooterLabels, getModeSubtitle,
+  getMetricDefinition, getMetricLabel, getMetricColor, metricIsAvailable,
+  getAvailableCategories, getDefaultMetricForCategory, yoyIsAvailable,
 } from './chartUtils';
 import {
   MetricKpiHeader, MetricModeToggle, PeriodSelector,
-  MetricTabs, ChartTooltip, ChartFooter,
+  CategorySelector, MetricTabs, ChartTooltip, ChartFooter,
 } from './chartComponents';
 
 // ── Main Component ──
@@ -15,10 +17,11 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [categoryKey, setCategoryKey] = useState('income_statement');
   const [metric, setMetric] = useState('revenue');
   const [tooltip, setTooltip] = useState(null);
   const [viewMode, setViewMode] = useState('absolute');
-  const [period, setPeriod] = useState(5);
+  const [period, setPeriod] = useState(12);  // V2: 12Q default
   const [animating, setAnimating] = useState(false);
 
   useEffect(() => {
@@ -35,13 +38,55 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
       .finally(() => setLoading(false));
   }, [ticker]);
 
-  const changeMetric = (key) => {
-    if (key !== metric) {
-      setAnimating(true);
-      setMetric(key);
-      setTimeout(() => setAnimating(false), 350);
+  // ── Enrich and prepare data ──
+  const enriched = useMemo(() => {
+    if (!data || data.length < 2) return null;
+    return enrichData(data);
+  }, [data]);
+
+  const allSorted = useMemo(() => {
+    if (!enriched) return [];
+    return [...enriched].reverse(); // API is newest-first → reverse to oldest-first
+  }, [enriched]);
+
+  const maxAvailable = allSorted.length;
+
+  // Available categories based on data
+  const categories = useMemo(() => {
+    if (!allSorted.length) return [];
+    return getAvailableCategories(allSorted);
+  }, [allSorted]);
+
+  // Effective period: prefer requested, fallback to max available
+  const effectivePeriod = useMemo(() => {
+    const available = PERIOD_OPTIONS.filter(p => p <= maxAvailable);
+    return available.includes(period) ? period : Math.max(...available);
+  }, [period, maxAvailable]);
+
+  // Validate category is available
+  useEffect(() => {
+    if (categories.length && !categories.some(c => c.key === categoryKey)) {
+      setCategoryKey(categories[0].key);
     }
-  };
+  }, [categories, categoryKey]);
+
+  // Validate metric is in current category and available
+  useEffect(() => {
+    const cat = METRIC_CATEGORIES.find(c => c.key === categoryKey);
+    if (cat) {
+      const inCategory = cat.metrics.some(m => m.key === metric);
+      const available = metricIsAvailable(allSorted, metric);
+      if (!inCategory || !available) {
+        const def = getDefaultMetricForCategory(allSorted, categoryKey);
+        setMetric(def);
+      }
+    }
+  }, [categoryKey, allSorted, metric]);
+
+  const sorted = allSorted.slice(Math.max(0, allSorted.length - effectivePeriod));
+
+  const metricInfo = getMetricDefinition(metric) || { label: metric, unit: '' };
+  const stats = calculateStats(sorted, metric, viewMode);
 
   // ── Early returns ──
   if (loading) {
@@ -53,17 +98,9 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
   if (!data || data.length < 2) {
     return <div style={{ padding: 20, color: '#8b949e', fontSize: 14 }}>Not enough data</div>;
   }
-
-  // ── Data preparation ──
-  const allSorted = [...data].reverse();
-  const maxAvailable = allSorted.length;
-  const availablePeriods = PERIOD_OPTIONS.filter(p => p <= maxAvailable);
-  const effectivePeriod = availablePeriods.includes(period) ? period : Math.max(...availablePeriods);
-  const sorted = allSorted.slice(Math.max(0, allSorted.length - effectivePeriod));
-
-  const metricInfo = METRICS.find(m => m.key === metric) || { label: metric, axisLabel: metric, unit: '' };
-  const stats = calculateStats(sorted, metric, viewMode);
-
+  if (!categories.length) {
+    return <div style={{ padding: 20, color: '#8b949e', fontSize: 14 }}>No metrics available for {ticker}</div>;
+  }
   if (stats.values.length < 2) {
     return <div style={{ padding: 20, color: '#8b949e', fontSize: 14 }}>
       Not enough data for {viewMode !== 'absolute' ? `${viewMode} view` : metricInfo.label}
@@ -75,10 +112,11 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
   const isPctView = viewMode !== 'absolute';
   const kpiLabels = getKpiLabels(viewMode);
   const footerLabels = getFooterLabels(viewMode);
-  const unitStr = getMetricUnit(metricInfo.unit);
+  const unitStr = metric === 'eps' ? 'USD/share' : (metricInfo.unit || '%');
   const growthLabel = `${effectivePeriod}Q Growth`;
   const periodLabel = `Last ${effectivePeriod} fiscal quarters`;
   const modeSubtitle = getModeSubtitle(viewMode, stats.firstQuarter?.quarter, metricInfo.label);
+  const yoyAvail = yoyIsAvailable(sorted);
 
   // ── Chart geometry ──
   const maxVal = Math.max(...stats.values) * (isPctView ? 1.15 : 1.10);
@@ -94,6 +132,8 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
   const transformed = (() => {
     if (viewMode === 'absolute') return sorted.map(d => d[metric]);
     if (viewMode === 'qoq') return sorted.map((d, i) => i === 0 ? null : ((d[metric] - sorted[i - 1][metric]) / Math.abs(sorted[i - 1][metric])) * 100);
+    if (viewMode === 'yoy') return sorted.map((d, i) => i < 4 ? null : ((d[metric] - sorted[i - 4][metric]) / Math.abs(sorted[i - 4][metric])) * 100);
+    // growth
     const base = sorted[0][metric];
     return sorted.map(d => base ? ((d[metric] - base) / Math.abs(base)) * 100 : null);
   })();
@@ -127,11 +167,13 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
     return `${val}`;
   };
 
+  const activeCategory = METRIC_CATEGORIES.find(c => c.key === categoryKey);
+
   return (
     <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: 12 }}>
       {/* Header */}
       <div style={{ fontSize: 10, color: '#9ba3ae', marginBottom: 4 }}>
-        {ticker} · {metricInfo.label} · Fiscal quarters · {unitStr}
+        {ticker} · {metricInfo.label} · {activeCategory?.label} · {typeof unitStr === 'string' ? unitStr : unitStr}
       </div>
 
       {/* Mode context */}
@@ -144,14 +186,41 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
       {/* KPIs */}
       <MetricKpiHeader stats={stats} metric={metric} viewMode={viewMode} color={color} effectivePeriod={effectivePeriod} />
 
+      {/* Category selector — first level navigation */}
+      {categories.length > 1 && (
+        <CategorySelector
+          categories={categories}
+          activeCategory={categoryKey}
+          onChange={(k) => { setCategoryKey(k); setTooltip(null); }}
+          color={color}
+        />
+      )}
+
       {/* Controls row */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-        <MetricModeToggle viewMode={viewMode} onChange={(v) => { setViewMode(v); setTooltip(null); }} color={color} effectivePeriod={effectivePeriod} />
-        <PeriodSelector period={period} effectivePeriod={effectivePeriod} maxAvailable={maxAvailable} onChange={(p) => { setPeriod(p); setTooltip(null); }} color={color} />
+        <MetricModeToggle
+          viewMode={viewMode}
+          onChange={(v) => { setViewMode(v); setTooltip(null); }}
+          color={color}
+          effectivePeriod={effectivePeriod}
+          yoyAvailable={yoyAvail}
+        />
+        <PeriodSelector
+          period={period}
+          effectivePeriod={effectivePeriod}
+          maxAvailable={maxAvailable}
+          onChange={(p) => { setPeriod(p); setTooltip(null); }}
+          color={color}
+        />
       </div>
 
-      {/* Metric tabs */}
-      <MetricTabs metric={metric} onChange={changeMetric} />
+      {/* Metric tabs within current category */}
+      <MetricTabs
+        category={activeCategory}
+        metric={metric}
+        onChange={(m) => { setMetric(m); setTooltip(null); }}
+        sortedData={allSorted}
+      />
 
       {/* Chart */}
       <div style={{ position: 'relative' }}>
@@ -159,7 +228,7 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
           {/* Y axis title */}
           <text x={12} y={pad.top + chartH / 2} fill="#9ba3ae" fontSize={10} fontWeight={500}
                 textAnchor="middle" transform={`rotate(-90,12,${pad.top + chartH / 2})`}>
-            {isPctView ? '% Change' : metricInfo.axisLabel}
+            {isPctView ? '% Change' : (metricInfo.axisLabel || metricInfo.label)}
           </text>
 
           <line x1={pad.left} y1={pad.top} x2={pad.left} y2={h - pad.bottom} stroke="#30363d" strokeWidth={1} />
@@ -173,7 +242,7 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
           ))}
 
           {/* Average line */}
-          {!isPctView && (
+          {!isPctView && stats.avg != null && (
             <>
               <line x1={pad.left} y1={avgY} x2={w - pad.right} y2={avgY} stroke="#d29922" strokeWidth={1} strokeDasharray="6 3" opacity={0.6} />
               <text x={w - pad.right - 4} y={avgY - 6} fill="#d29922" textAnchor="end" fontSize={9} opacity={0.85}>
@@ -236,20 +305,31 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
 
         {/* Tooltip */}
         <ChartTooltip
-          tooltip={tooltip} metric={metric} metricKey={metric}
-          sorted={sorted} firstQuarter={stats.firstQuarter || sorted[0]}
-          avg={stats.avg} avgDisplay={formatValue(stats.avg, metric)}
-          growthLabel={growthLabel} color={color}
-          isPctView={isPctView} viewMode={viewMode}
+          tooltip={tooltip}
+          metricKey={metric}
+          sorted={sorted}
+          firstQuarter={stats.firstQuarter || sorted[0]}
+          avg={stats.avg}
+          avgDisplay={formatValue(stats.avg, metric)}
+          growthLabel={growthLabel}
+          color={color}
+          isPctView={isPctView}
+          viewMode={viewMode}
           w={w} h={h} pad={pad}
         />
 
         {/* Footer */}
         <ChartFooter
           low={stats.low} peak={stats.peak}
-          periodLabel={periodLabel} footerLabels={footerLabels}
-          isPctView={isPctView} metric={metric}
+          periodLabel={periodLabel}
+          footerLabels={footerLabels}
+          isPctView={isPctView}
+          metric={metric}
         />
+      </div>
+      {/* Available quarters summary */}
+      <div style={{ fontSize: 9, color: '#484f58', marginTop: 4, textAlign: 'right' }}>
+        {maxAvailable} quarters available · Default: 12Q · Fallback: 8Q → 5Q
       </div>
     </div>
   );
