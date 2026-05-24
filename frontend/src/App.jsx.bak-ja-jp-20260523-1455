@@ -59,7 +59,7 @@ export default function App() {
     // Open the deep-dive PDF in a new tab with current language and quarter
     const params = new URLSearchParams();
     if (quarter) params.set('quarter', quarter);
-    if (lang === 'jp') params.set('lang', 'jp');
+    if (lang === 'ja' || lang === 'jp') params.set('lang', 'ja');
     const qs = params.toString();
     const pdfUrl = `${API_BASE}/report/${result.ticker}/pdf${qs ? '?' + qs : ''}`;
     

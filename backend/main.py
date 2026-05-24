@@ -762,6 +762,59 @@ async def earnings_quarters(ticker: str):
     }
 
 
+@app.get("/api/metrics-history/{ticker}")
+async def metrics_history(ticker: str):
+    """Return quarterly revenue & net income time series for interactive charts.
+    
+    Returns [{quarter, date, revenue, net_income, ebitda}] sorted newest first.
+    Uses yfinance directly (local PC only — not for Render deployment).
+    """
+    ticker = ticker.strip().upper()
+    try:
+        import yfinance as yf
+        stock = yf.Ticker(ticker)
+        fin = stock.quarterly_financials
+        if fin is None or fin.empty:
+            return {"ticker": ticker, "quarters": [], "error": "No financial data"}
+        
+        metrics = []
+        for col_date in fin.columns:
+            date_str = col_date.strftime("%Y-%m-%d")
+            quarter_label = f"{col_date.year}Q{(col_date.month - 1)//3 + 1}"
+            row = fin[col_date]
+            metrics.append({
+                "quarter": quarter_label,
+                "date": date_str,
+                "revenue": _safe_float(row.get("Total Revenue")),
+                "net_income": _safe_float(row.get("Net Income")),
+                "ebitda": _safe_float(row.get("EBITDA")),
+                "gross_profit": _safe_float(row.get("Gross Profit")),
+                "eps": _safe_float(row.get("Basic EPS")),
+            })
+        
+        return {"ticker": ticker, "quarters": metrics, "count": len(metrics)}
+    except Exception as e:
+        logger.warning(f"metrics-history[{ticker}]: {e}")
+        return {"ticker": ticker, "quarters": [], "error": str(e)}
+
+
+def _safe_float(val):
+    """Convert pandas/numpy value to safe float or None."""
+    if val is None:
+        return None
+    try:
+        import pandas as pd
+        if pd.isna(val):
+            return None
+    except Exception:
+        pass
+    try:
+        f = float(val)
+        return None if (f != f) else f  # NaN check
+    except (ValueError, TypeError):
+        return None
+
+
 @app.post("/api/earnings/deep-dive", response_model=DeepDiveResponse, dependencies=[Depends(_require_auth)])
 async def earnings_deep_dive(request: DeepDiveRequest):
     """Generate a standalone earnings call deep-dive.
@@ -1825,6 +1878,27 @@ async def admin_list_feedback():
 
 
 # ── Serve React SPA (after all API routes — mono-origin architecture) ──
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+class _PrefixStripperMiddleware(BaseHTTPMiddleware):
+    """Strip /stock-analysis prefix before routing so both API and static files work.
+    
+    Cloudflare tunnel forwards sa.cedlabusa.net/stock-analysis/... → localhost:8780 as-is.
+    This middleware strips the prefix so FastAPI routes match /api/... and /assets/...
+    """
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if path.startswith("/stock-analysis"):
+            new_path = path[len("/stock-analysis"):] or "/"
+            request.scope["path"] = new_path
+            request.scope["raw_path"] = new_path.encode()
+            request.scope["root_path"] = request.scope.get("root_path", "") + "/stock-analysis"
+        response = await call_next(request)
+        return response
+
+app.add_middleware(_PrefixStripperMiddleware)
+
 _frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
 
 if _frontend_dist.exists():

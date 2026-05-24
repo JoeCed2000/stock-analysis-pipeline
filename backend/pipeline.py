@@ -717,7 +717,7 @@ def _move_final_report_to_language_dir(output_dir: str, language: str) -> str:
 
 
 def _normalize_report_language(language: str) -> str:
-    if language in ("jp", "ja"):
+    if language == "jp":
         return "jp"
     if language == "bilingual":
         return "bilingual"

@@ -2,12 +2,12 @@ import translations from '../i18n.js';
 
 const FLAGS = {
   en: '🇺🇸',
-  ja: '🇯🇵',
+  jp: '🇯🇵',
 };
 
 const LABELS = {
   en: 'English',
-  ja: '日本語',
+  jp: '日本語',
 };
 
 export default function LanguageSelector({ lang, onLanguageChange }) {

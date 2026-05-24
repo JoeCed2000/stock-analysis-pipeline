@@ -767,14 +767,14 @@ def _format_question(section: str, language: str, ticker: str, company: str, qua
     jp = question["jp"].format(**values)
     normalized = language.lower()
 
-    if normalized in {"jp", "ja", "bilingual"}:
+    if normalized in {"jp", "bilingual"}:
         return f"Question (EN): {en}\nQuestion (JP): {jp}"
     return f"Question (EN): {en}"
 
 
 def _language_rules(language: str) -> str:
     normalized = language.lower()
-    if normalized in {"ja", "jp"}:
+    if normalized == "jp":
         return (
             "Use Japanese for the answer body. Keep important English financial terms in parentheses "
             "when helpful, for example 売上高 (Revenue), 営業キャッシュフロー (OCF), "
@@ -833,7 +833,7 @@ def _base_prompt(
         # EPS & Revenue table: "Estimate" column → "{quarter} Est"
         table_header = table_header.replace("| Estimate |", f"| {current_label} Est |")
         table_header = table_header.replace("vs Estimate", f"vs {current_label} Est")
-    is_jp = language.lower() in {"jp", "ja"}
+    is_jp = language.lower() == "jp"
     format_source = SECTION_FORMATS if is_jp else EN_SECTION_FORMATS
     section_format = format_source[canonical].format(table_header=table_header)
     question = _format_question(canonical, language, ticker, company, quarter)

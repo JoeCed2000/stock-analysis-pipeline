@@ -19,7 +19,7 @@ class TranslationUnavailableError(RuntimeError):
 
 def _target_language_name(target_lang: str) -> str:
     names = {
-        "ja": "Japanese", "jp": "Japanese",
+        "jp": "Japanese",
         "fr": "French", "zh": "Chinese",
         "ko": "Korean", "de": "German",
         "en": "English",
@@ -28,7 +28,7 @@ def _target_language_name(target_lang: str) -> str:
 
 
 def _estimate_max_tokens(text: str, target_lang: str) -> int:
-    if target_lang in {"ja", "jp", "zh", "ko"}:
+    if target_lang in {"jp", "zh", "ko"}:
         return min(int(len(text) * 1.5) + 200, 4000)
     return min(len(text) * 2 + 200, 4000)
 
@@ -57,7 +57,7 @@ def _translate_chunk(text: str, target_lang: str, *, strict: bool = False) -> st
     return text
 
 
-def translate_text(text: str, target_lang: str = "ja", *, strict: bool = False) -> str:
+def translate_text(text: str, target_lang: str = "jp", *, strict: bool = False) -> str:
     """Translate text using local Codex. Falls back to original text if Codex is unavailable.
     
     Paragraphs are translated in parallel (up to 6 concurrent) for speed.
@@ -102,7 +102,7 @@ def translate_text(text: str, target_lang: str = "ja", *, strict: bool = False) 
     return "\n\n".join(results[i] for i in range(len(chunks)))
 
 
-def translate_file(filepath: str, target_lang: str = "ja", *, strict: bool = False) -> bool:
+def translate_file(filepath: str, target_lang: str = "jp", *, strict: bool = False) -> bool:
     """Translate a text file in place through local Codex. Returns True when content changed."""
     try:
         with open(filepath, "r", encoding="utf-8") as f:

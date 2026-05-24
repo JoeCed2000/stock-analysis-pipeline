@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getReport } from '../api.js';
 import ScoringChart from './ScoringChart.jsx';
+import MetricsHistoryChart from './MetricsHistoryChart.jsx';
 
 const DECISION_COLORS = {
   BUY: '#238636',
@@ -105,6 +106,11 @@ export default function ReportView({ ticker, result, onClose }) {
             <ScoringChart scoring={scoring} height={100} />
           </div>
         )}
+
+        {/* ── METRICS HISTORY CHART ── */}
+        <div style={{ padding: '10px 18px 8px', borderBottom: '1px solid #30363d', flexShrink: 0 }}>
+          <MetricsHistoryChart ticker={ticker} height={220} />
+        </div>
 
         {/* ── STATUS BANNER ── */}
         {status !== 'success' && (

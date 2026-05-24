@@ -165,7 +165,7 @@ export async function generateDeepDive(ticker, quarter, lang = 'en') {
     body: JSON.stringify({
       ticker,
       quarter,
-      language: lang,
+      language: lang === 'ja' ? 'jp' : lang,
       output_dir: `analyses/deepdive_${ticker}`,
     }),
   });

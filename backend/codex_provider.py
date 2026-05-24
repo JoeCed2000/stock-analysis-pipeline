@@ -12,7 +12,7 @@ from typing import Optional, Dict, Any, List
 logger = logging.getLogger(__name__)
 
 CODEX_BIN = os.path.expanduser("~/.hermes/node/bin/codex")
-CODEX_TIMEOUT = 90  # seconds per attempt (was 600 — Cloudflare blocks cause systematic hangs)
+CODEX_TIMEOUT = 600  # seconds per attempt (agents need time to finish — 10 min)
 CODEX_MAX_RETRIES = 2  # total attempts = 1 + MAX_RETRIES = 3
 CODEX_RETRY_BACKOFF = [2.0, 4.0]  # seconds between retries (jittered ±50%)
 

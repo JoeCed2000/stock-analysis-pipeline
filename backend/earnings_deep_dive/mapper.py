@@ -53,7 +53,7 @@ def _is_placeholder(cell: str) -> bool:
 
 
 def _language(value: str) -> TemplateLanguage:
-    return "jp" if value in ("jp", "ja") else "en"
+    return "jp" if value == "jp" else "en"
 
 
 def _metric_url(metrics: FinancialMetrics, *keys: str) -> str | None:

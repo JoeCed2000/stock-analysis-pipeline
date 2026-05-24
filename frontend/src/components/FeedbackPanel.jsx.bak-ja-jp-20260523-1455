@@ -64,17 +64,17 @@ export default function FeedbackPanel({ ticker, t, lang }) {
       marginTop: 16,
     }}>
       <h4 style={{ margin: '0 0 12px 0', color: '#e1e4e8', fontSize: 14 }}>
-        💬 {lang === 'jp' ? 'フィードバック' : 'Feedback for Nami'}
+        💬 {lang === 'ja' ? 'フィードバック' : 'Feedback for Nami'}
       </h4>
       <p style={{ margin: '0 0 12px 0', color: '#484f58', fontSize: 11 }}>
-        📎 {lang === 'jp' ? '最新のPDFレポートが自動添付されます' : 'Latest deep-dive PDF auto-attached'}
+        📎 {lang === 'ja' ? '最新のPDFレポートが自動添付されます' : 'Latest deep-dive PDF auto-attached'}
       </p>
 
       <form onSubmit={handleSubmit}>
         <textarea
           value={text}
           onChange={e => setText(e.target.value)}
-          placeholder={lang === 'jp'
+          placeholder={lang === 'ja'
             ? '気づいた点、修正依頼、提案があればここに記入してください…'
             : 'Notes, corrections, or suggestions…'}
           rows={4}
@@ -115,7 +115,7 @@ export default function FeedbackPanel({ ticker, t, lang }) {
               cursor: 'pointer',
             }}
           >
-            📎 {lang === 'jp' ? 'ファイルを添付' : 'Attach files'}
+            📎 {lang === 'ja' ? 'ファイルを添付' : 'Attach files'}
           </button>
 
           {/* File list */}

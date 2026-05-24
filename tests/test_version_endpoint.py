@@ -1,7 +1,8 @@
 """
 TDD tests for /api/version endpoint.
 
-The endpoint must return git version/commit metadata.
+Spec: Endpoint must return a 200 OK response containing
+`version`, `commit`, `build_time`, and `python_version`.
 """
 
 import pytest
@@ -15,35 +16,48 @@ client = TestClient(app)
 class TestVersionEndpoint:
     """Tests for GET /api/version."""
 
-    def test_version_returns_200_with_required_fields(self):
-        """Happy path: endpoint returns 200 with version, commit, service, timestamp."""
+    def test_version_endpoint_returns_200_with_required_fields(self):
+        """
+        RED phase — endpoint does not exist yet, so this MUST fail with 404.
+
+        Spec: GET /api/version → 200 OK with JSON:
+          - version (str): git tag or describe output
+          - commit (str): short git commit hash
+          - build_time (str): ISO 8601 UTC timestamp of build
+          - python_version (str): Python interpreter version
+        """
         response = client.get("/api/version")
-        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+        assert response.status_code == 200, (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        )
         data = response.json()
 
-        assert "service" in data
-        assert data["service"] == "stock-analysis-pipeline"
-        assert "version" in data
-        assert "commit" in data
-        assert "timestamp" in data
+        # All four required fields must be present
+        required_fields = ["version", "commit", "build_time", "python_version"]
+        for field in required_fields:
+            assert field in data, f"Missing required field: {field}"
 
     def test_version_fields_are_non_empty_strings(self):
-        """Happy path: version and commit should be non-empty strings."""
+        """Happy path: all required fields must be non-empty strings."""
         response = client.get("/api/version")
         assert response.status_code == 200
         data = response.json()
 
-        assert isinstance(data["version"], str), f"version is {type(data['version'])}"
-        assert len(data["version"]) > 0, "version is empty"
-        assert isinstance(data["commit"], str), f"commit is {type(data['commit'])}"
-        assert len(data["commit"]) > 0, "commit is empty"
+        for field in ["version", "commit", "build_time", "python_version"]:
+            value = data[field]
+            assert isinstance(value, str), (
+                f"{field} expected str, got {type(value).__name__}"
+            )
+            assert len(value) > 0, f"{field} is empty"
 
-    def test_version_timestamp_is_iso8601(self):
-        """Happy edge: timestamp should be ISO 8601 UTC."""
+    def test_version_build_time_is_iso8601(self):
+        """Edge case: build_time must be ISO 8601 UTC."""
         response = client.get("/api/version")
         assert response.status_code == 200
         data = response.json()
 
-        ts = data["timestamp"]
-        # ISO 8601: ends with Z or +00:00
-        assert ts.endswith("Z") or "+" in ts, f"Not ISO 8601: {ts}"
+        ts = data["build_time"]
+        # ISO 8601: ends with Z or contains +/-
+        assert ts.endswith("Z") or "+" in ts, (
+            f"build_time is not ISO 8601: {ts}"
+        )

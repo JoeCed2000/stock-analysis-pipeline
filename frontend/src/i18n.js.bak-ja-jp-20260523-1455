@@ -1,5 +1,5 @@
 // i18n.js — Translations for Stock Analysis Pipeline
-// EN (default) + JP (Japanese)
+// EN (default) + JA (Japanese)
 // UI strings only. Document content translated via NVIDIA free tier.
 
 const translations = {
@@ -153,7 +153,7 @@ const translations = {
     insight_mixed: "🔍 Mixed signals — review full report",
   },
   
-  jp: {  // canonical
+  ja: {
     // Header
     siteTitle: "📈 株式分析",
     siteSubtitle: "6つの加重カテゴリーに基づく自動ファンダメンタル分析 — BUY / HOLD / SELL",

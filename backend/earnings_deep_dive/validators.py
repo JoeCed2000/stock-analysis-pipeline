@@ -77,7 +77,7 @@ def is_bilingual(markdown: str, language: str) -> bool:
     if normalized == "en":
         return has_cjk
 
-    if normalized in {"jp", "ja"}:
+    if normalized in {"jp"}:
         if not has_cjk and len(latin_words) >= 12:
             return True
         latin_chars = sum(len(word) for word in latin_words)

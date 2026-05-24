@@ -136,7 +136,7 @@ def test_p1_language_switch(page: Page):
     
     # Passer en japonais
     lang_select = page.locator("select").first
-    lang_select.select_option("ja")
+    lang_select.select_option("jp")
     page.wait_for_timeout(500)
     
     # Le titre devrait changer (ou au moins le placeholder)
@@ -145,7 +145,7 @@ def test_p1_language_switch(page: Page):
     has_japanese = any(c in body_text for c in "日本語株分析")
     # Si pas de japonais, vérifier que la langue a bien changé dans le select
     if not has_japanese:
-        expect(lang_select).to_have_value("ja")
+        expect(lang_select).to_have_value("jp")
     
     # Revenir en anglais
     lang_select.select_option("en")
@@ -367,8 +367,8 @@ def test_f4_margins_show_points_change():
 
 # F5 — Japanese PDF
 def test_f5_japanese_pdf_generates():
-    """F5: lang=ja must generate a Japanese PDF (contains Japanese characters)."""
-    pdf_bytes = _fetch_pdf("GOOGL", lang="ja")
+    """F5: lang=jp must generate a Japanese PDF (contains Japanese characters)."""
+    pdf_bytes = _fetch_pdf("GOOGL", lang="jp")
     text = _pdf_text(pdf_bytes)
     import re
     # Check for Japanese characters (Hiragana, Katakana, Kanji)
