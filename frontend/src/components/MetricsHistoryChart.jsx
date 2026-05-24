@@ -109,7 +109,7 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
   const maxVal = Math.max(...values) * 1.10;
   const minVal = Math.min(...values) * 0.88;
   const range = maxVal - minVal || 1;
-  const pad = { top: 16, right: 24, bottom: 44, left: 66 };
+  const pad = { top: 16, right: 36, bottom: 44, left: 66 };
   const w = 620;
   const h = height;
   const chartW = w - pad.left - pad.right;
@@ -131,8 +131,13 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
   const avgY = pad.top + chartH - ((avg - minVal) / range) * chartH;
   const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
 
+  const subtitle = `${ticker} · ${metricInfo.label} · Fiscal quarters · ${metricInfo.unit === '$/share' ? 'USD/share' : 'USD billions'}`;
+
   return (
     <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', fontSize: 12 }}>
+      {/* ── Header ── */}
+      <div style={{ fontSize: 10, color: '#9ba3ae', marginBottom: 8 }}>{subtitle}</div>
+
       {/* ── KPI Summary Bar ── */}
       <div style={{
         display: 'flex', gap: 20, flexWrap: 'wrap',
@@ -155,11 +160,23 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
             onClick={() => setMetric(m.key)}
             style={{
               flex: 1, padding: '5px 0', fontSize: 11, fontWeight: metric === m.key ? 600 : 400,
-              border: `1px solid ${metric === m.key ? CHART_COLORS[m.key] : '#30363d'}`,
+              border: `1px solid ${metric === m.key ? CHART_COLORS[m.key] : '#3a4050'}`,
               borderRadius: 4,
-              background: metric === m.key ? `${CHART_COLORS[m.key]}18` : '#1c2128',
-              color: metric === m.key ? CHART_COLORS[m.key] : '#b0b8c0',
-              cursor: 'pointer', transition: 'all 0.2s',
+              background: metric === m.key ? `${CHART_COLORS[m.key]}18` : '#161b22',
+              color: metric === m.key ? CHART_COLORS[m.key] : '#c0c8d0',
+              cursor: 'pointer', transition: 'all 0.25s',
+            }}
+            onMouseEnter={e => {
+              if (metric !== m.key) {
+                e.target.style.background = '#1c2128';
+                e.target.style.color = '#d2d9e0';
+              }
+            }}
+            onMouseLeave={e => {
+              if (metric !== m.key) {
+                e.target.style.background = '#161b22';
+                e.target.style.color = '#c0c8d0';
+              }
             }}
           >
             {m.label}
@@ -171,7 +188,7 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
       <div style={{ position: 'relative' }}>
         <svg width={w} height={h} style={{ display: 'block', background: '#0d1117', borderRadius: '6px 6px 0 0' }}>
           {/* Y axis title */}
-          <text x={12} y={pad.top + chartH / 2} fill="#8b949e" fontSize={10} fontWeight={500}
+          <text x={12} y={pad.top + chartH / 2} fill="#9ba3ae" fontSize={10} fontWeight={500}
                 textAnchor="middle" transform={`rotate(-90,12,${pad.top + chartH / 2})`}>
             {metricInfo.axisLabel}
           </text>
@@ -183,14 +200,14 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
           {yTicks.map((t, i) => (
             <g key={i}>
               <line x1={pad.left} y1={t.y} x2={w - pad.right} y2={t.y} stroke="#21262d" strokeWidth={1} strokeDasharray="3 4" />
-              <text x={pad.left - 8} y={t.y + 4} fill="#8b949e" textAnchor="end" fontSize={10}>{formatAxis(t.val, metric)}</text>
+              <text x={pad.left - 8} y={t.y + 4} fill="#9ba3ae" textAnchor="end" fontSize={10}>{formatAxis(t.val, metric)}</text>
             </g>
           ))}
 
           {/* Average reference line */}
           <line x1={pad.left} y1={avgY} x2={w - pad.right} y2={avgY} stroke="#d29922" strokeWidth={1} strokeDasharray="6 3" opacity={0.6} />
-          <text x={w - pad.right - 4} y={avgY - 6} fill="#d29922" textAnchor="end" fontSize={9} opacity={0.8}>
-            avg {formatValue(avg, metric)}
+          <text x={w - pad.right - 4} y={avgY - 6} fill="#d29922" textAnchor="end" fontSize={9} opacity={0.85}>
+            Average {formatValue(avg, metric)}
           </text>
 
           {/* Baseline */}
@@ -198,7 +215,7 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
 
           {/* X axis labels — single line Q1 FY26 */}
           {points.map((p, i) => (
-            <text key={i} x={p.x} y={h - pad.bottom + 16} fill="#8b949e" textAnchor="middle" fontSize={10}>
+            <text key={i} x={p.x} y={h - pad.bottom + 16} fill="#9ba3ae" textAnchor="middle" fontSize={10}>
               {formatQuarter(p.quarter)}
             </text>
           ))}
@@ -266,15 +283,21 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
           </div>
         )}
 
-        {/* ── Chart footer ── */}
+        {/* ── Chart footer (2 levels) ── */}
         <div style={{
           background: '#0d1117', borderRadius: '0 0 6px 6px',
-          borderTop: '1px solid #21262d', padding: '6px 14px',
-          display: 'flex', gap: 16, fontSize: 10, color: '#8b949e',
+          borderTop: '1px solid #21262d', padding: '8px 14px 6px',
         }}>
-          <span>Low: <b style={{ color: '#e1e4e8' }}>{formatValue(low, metric)}</b></span>
-          <span>High: <b style={{ color: '#e1e4e8' }}>{formatValue(peak, metric)}</b></span>
-          <span style={{ marginLeft: 'auto' }}>Last 5 fiscal quarters</span>
+          <div style={{
+            display: 'flex', gap: 16, fontSize: 10, color: '#9ba3ae', marginBottom: 3,
+          }}>
+            <span>Low: <b style={{ color: '#e1e4e8' }}>{formatValue(low, metric)}</b></span>
+            <span>High: <b style={{ color: '#e1e4e8' }}>{formatValue(peak, metric)}</b></span>
+            <span style={{ marginLeft: 'auto' }}>Last 5 fiscal quarters</span>
+          </div>
+          <div style={{ fontSize: 9, color: '#6e7681', textAlign: 'right' }}>
+            Source: SEC filings · Yahoo Finance · Updated May 2026
+          </div>
         </div>
       </div>
     </div>
