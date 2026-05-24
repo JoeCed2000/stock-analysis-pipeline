@@ -232,12 +232,13 @@ export function enrichData(sortedData) {
       e.pretax_income_ttm = _sum(w, 'pretax_income');
       e.tax_provision_ttm = _sum(w, 'tax_provision');
 
-      // Effective tax rate
-      e.effective_tax_rate = _safeDiv(e.tax_provision_ttm, e.pretax_income_ttm);
+      // Effective tax rate — stored as % for display; NOPAT uses raw ratio
+      const taxRate = _safeDiv(e.tax_provision_ttm, e.pretax_income_ttm);
+      e.effective_tax_rate = taxRate != null ? taxRate * 100 : null;
 
       // NOPAT = Operating Income TTM × (1 - tax rate)
-      e.nopat_ttm = e.operating_income_ttm != null && e.effective_tax_rate != null
-        ? e.operating_income_ttm * (1 - e.effective_tax_rate)
+      e.nopat_ttm = e.operating_income_ttm != null && taxRate != null
+        ? e.operating_income_ttm * (1 - taxRate)
         : null;
 
       // V2.2: Average balance sheet metrics (beginning + ending / 2)
