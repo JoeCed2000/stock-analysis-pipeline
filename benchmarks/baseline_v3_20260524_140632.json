@@ -1,0 +1,183 @@
+{
+  "timestamp": "2026-05-24T12:07:40.551661+00:00",
+  "project_root": "/home/ced/codex-projects/stock-analysis-pipeline",
+  "python_version": "3.12.3 (main, Mar 23 2026, 19:04:32) [GCC 13.3.0]",
+  "n_runs": 3,
+  "environment": {
+    "hostname": "LAPCED",
+    "os": "Linux 6.6.87.2-microsoft-standard-WSL2",
+    "cpu_count": 8
+  },
+  "results": [
+    {
+      "scenario": "S1_full_analysis",
+      "ticker": "NVDA",
+      "run": 1,
+      "wall_s": 20.57,
+      "cpu_pct": 7.8,
+      "peak_rss_mb": 225.1,
+      "output_size_kb": 2464.6,
+      "api_calls": {},
+      "file_count": 23,
+      "notes": "Score=33/40 | BUY",
+      "success": true
+    },
+    {
+      "scenario": "S1_full_analysis",
+      "ticker": "NVDA",
+      "run": 2,
+      "wall_s": 7.81,
+      "cpu_pct": 0.5,
+      "peak_rss_mb": 233.4,
+      "output_size_kb": 2464.6,
+      "api_calls": {},
+      "file_count": 23,
+      "notes": "Score=34/40 | BUY",
+      "success": true
+    },
+    {
+      "scenario": "S1_full_analysis",
+      "ticker": "NVDA",
+      "run": 3,
+      "wall_s": 7.64,
+      "cpu_pct": 0.5,
+      "peak_rss_mb": 234.6,
+      "output_size_kb": 2464.6,
+      "api_calls": {},
+      "file_count": 23,
+      "notes": "Score=34/40 | BUY",
+      "success": true
+    },
+    {
+      "scenario": "S1_full_analysis",
+      "ticker": "AAPL",
+      "run": 1,
+      "wall_s": 9.12,
+      "cpu_pct": 0.5,
+      "peak_rss_mb": 234.9,
+      "output_size_kb": 1589.5,
+      "api_calls": {},
+      "file_count": 22,
+      "notes": "Score=28/40 | BUY",
+      "success": true
+    },
+    {
+      "scenario": "S1_full_analysis",
+      "ticker": "AAPL",
+      "run": 2,
+      "wall_s": 7.06,
+      "cpu_pct": 0.4,
+      "peak_rss_mb": 234.9,
+      "output_size_kb": 1589.6,
+      "api_calls": {},
+      "file_count": 22,
+      "notes": "Score=28/40 | BUY",
+      "success": true
+    },
+    {
+      "scenario": "S1_full_analysis",
+      "ticker": "AAPL",
+      "run": 3,
+      "wall_s": 8.21,
+      "cpu_pct": 0.4,
+      "peak_rss_mb": 234.9,
+      "output_size_kb": 1589.6,
+      "api_calls": {},
+      "file_count": 22,
+      "notes": "Score=28/40 | BUY",
+      "success": true
+    },
+    {
+      "scenario": "S2_deep_dive",
+      "ticker": "NVDA",
+      "run": 1,
+      "wall_s": 2.12,
+      "cpu_pct": 0.0,
+      "peak_rss_mb": 0.0,
+      "output_size_kb": 0.0,
+      "api_calls": {},
+      "file_count": 0,
+      "notes": "FAILED: 1 validation error for DeepDiveRequest\noutput_dir\n  Value error, output_dir must be under /home/ced/codex-projects/stock-analysis-pipeline/analyses, got /tmp/bench_s2_NVDA_run1_dwsnedz0 [type=value_error, input_value='/tmp/bench_s2_NVDA_run1_dwsnedz0', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error",
+      "success": false
+    },
+    {
+      "scenario": "S2_deep_dive",
+      "ticker": "NVDA",
+      "run": 2,
+      "wall_s": 1.18,
+      "cpu_pct": 0.0,
+      "peak_rss_mb": 0.0,
+      "output_size_kb": 0.0,
+      "api_calls": {},
+      "file_count": 0,
+      "notes": "FAILED: 1 validation error for DeepDiveRequest\noutput_dir\n  Value error, output_dir must be under /home/ced/codex-projects/stock-analysis-pipeline/analyses, got /tmp/bench_s2_NVDA_run2_i3m146pq [type=value_error, input_value='/tmp/bench_s2_NVDA_run2_i3m146pq', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error",
+      "success": false
+    },
+    {
+      "scenario": "S2_deep_dive",
+      "ticker": "NVDA",
+      "run": 3,
+      "wall_s": 2.36,
+      "cpu_pct": 0.0,
+      "peak_rss_mb": 0.0,
+      "output_size_kb": 0.0,
+      "api_calls": {},
+      "file_count": 0,
+      "notes": "FAILED: 1 validation error for DeepDiveRequest\noutput_dir\n  Value error, output_dir must be under /home/ced/codex-projects/stock-analysis-pipeline/analyses, got /tmp/bench_s2_NVDA_run3_rf9lg_mo [type=value_error, input_value='/tmp/bench_s2_NVDA_run3_rf9lg_mo', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/value_error",
+      "success": false
+    },
+    {
+      "scenario": "S3_pdf_render",
+      "ticker": "NVDA",
+      "run": 1,
+      "wall_s": 0.0,
+      "cpu_pct": 0.0,
+      "peak_rss_mb": 234.9,
+      "output_size_kb": 2.3,
+      "api_calls": {},
+      "file_count": 2,
+      "notes": "PDF=2KB | 986 chars markdown",
+      "success": true
+    },
+    {
+      "scenario": "S3_pdf_render",
+      "ticker": "NVDA",
+      "run": 2,
+      "wall_s": 0.0,
+      "cpu_pct": 0.0,
+      "peak_rss_mb": 234.9,
+      "output_size_kb": 2.3,
+      "api_calls": {},
+      "file_count": 2,
+      "notes": "PDF=2KB | 986 chars markdown",
+      "success": true
+    },
+    {
+      "scenario": "S3_pdf_render",
+      "ticker": "NVDA",
+      "run": 3,
+      "wall_s": 0.0,
+      "cpu_pct": 0.0,
+      "peak_rss_mb": 234.9,
+      "output_size_kb": 2.3,
+      "api_calls": {},
+      "file_count": 2,
+      "notes": "PDF=2KB | 986 chars markdown",
+      "success": true
+    }
+  ],
+  "summary": {
+    "S1_full_analysis_NVDA": {
+      "avg_s": 12.01
+    },
+    "S1_full_analysis_AAPL": {
+      "avg_s": 8.13
+    },
+    "S2_deep_dive_NVDA": {
+      "avg_s": 0.0
+    },
+    "S3_pdf_render_NVDA": {
+      "avg_s": 0.0
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "timestamp": "20260524_141152",
+  "ticker": "NVDA",
+  "results": [
+    {
+      "run": 1,
+      "wall_s": 68.23,
+      "status": "ok",
+      "sections": 10,
+      "pdf_kb": 345.2
+    },
+    {
+      "run": 2,
+      "wall_s": 55.13,
+      "status": "ok",
+      "sections": 10,
+      "pdf_kb": 335.4
+    },
+    {
+      "run": 3,
+      "wall_s": 60.51,
+      "status": "ok",
+      "sections": 10,
+      "pdf_kb": 346.8
+    }
+  ]
+}
