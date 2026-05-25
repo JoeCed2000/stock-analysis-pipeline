@@ -231,5 +231,6 @@ class ValuationV2Response(BaseModel):
     fx_rate_eur: Optional[float] = None
     fx_timestamp: Optional[str] = None      # ISO 8601
     fx_status: str = "unavailable"  # "available" | "unavailable"
-    source: str = "unknown"  # finnhub / yfinance / cache
+    source: str = "unknown"  # finnhub / yfinance / twelvedata / eodhd
+    served_from: str = "unknown"  # "live" | "cache" | "fallback"
     status: str = "unavailable"  # fresh | cached | stale | unavailable

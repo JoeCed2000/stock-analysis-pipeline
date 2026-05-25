@@ -53,7 +53,19 @@ def get_valuation(ticker: str) -> ValuationV2Response:
     price = stock_data.get("price")
     market_cap = stock_data.get("market_cap")
     currency = stock_data.get("currency", "USD")
-    source = stock_data.get("_source", "cache")
+    raw_source = stock_data.get("_source", "unknown")
+
+    # Separate provider (source) from delivery method (served_from)
+    KNOWN_PROVIDERS = {"finnhub", "yfinance", "twelvedata", "eodhd"}
+    if raw_source in KNOWN_PROVIDERS:
+        source = raw_source          # actual financial data provider
+        served_from = "live"         # live fetch, not cached
+    elif raw_source == "cache":
+        source = "unknown"           # original provider lost in cache
+        served_from = "cache"        # served from file cache
+    else:
+        source = "unknown"
+        served_from = raw_source if raw_source else "unknown"
 
     # -- 2. yfinance enrichment (best-effort, non-blocking) -----------
     exchange = None
@@ -98,7 +110,7 @@ def get_valuation(ticker: str) -> ValuationV2Response:
         status = cache_state
     elif source in ("finnhub", "yfinance", "twelvedata", "eodhd"):
         status = "fresh"  # live fetch succeeded
-    elif source == "cache":
+    elif served_from == "cache":
         status = "cached"
     else:
         status = "unavailable"
@@ -125,6 +137,7 @@ def get_valuation(ticker: str) -> ValuationV2Response:
         fx_timestamp=None,
         fx_status="unavailable",  # V2.3: no live FX source yet
         source=source,
+        served_from=served_from,
         status=status,
     )
 

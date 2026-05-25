@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from backend.models import ValuationV2Response
 
-# -- V2.3 contract: 21 required fields --------------------------------
+# -- V2.3 contract: 22 required fields --------------------------------
 REQUIRED_FIELDS = [
     "ticker", "exchange", "quote_currency", "display_currency",
     "price", "price_eur", "market_cap", "market_cap_eur",
@@ -25,7 +25,7 @@ REQUIRED_FIELDS = [
     "cash_and_equivalents", "total_debt",
     "quote_timestamp", "fundamentals_timestamp",
     "fx_rate_eur", "fx_timestamp", "fx_status",
-    "source", "status",
+    "source", "served_from", "status",
 ]
 
 
@@ -77,7 +77,7 @@ class TestSchemaValidation:
     def test_model_has_all_21_fields(self):
         """ValuationV2Response must have exactly 21 fields matching V2.3 contract."""
         fields = list(ValuationV2Response.model_fields.keys())
-        assert len(fields) == 21, f"Expected 21 fields, got {len(fields)}: {fields}"
+        assert len(fields) == 22, f"Expected 22 fields, got {len(fields)}: {fields}"
         for field in REQUIRED_FIELDS:
             assert field in fields, f"Missing required field: {field}"
 
@@ -125,6 +125,7 @@ class TestValuationLayer:
         assert resp.cash_and_equivalents == 65000000000
         assert resp.total_debt == 110000000000
         assert resp.source == "finnhub"
+        assert resp.served_from == "live"   # live fetch from provider
         assert resp.status in ("fresh", "cached")
 
         # EUR disabled in V2.3
