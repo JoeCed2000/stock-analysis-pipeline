@@ -1,4 +1,5 @@
 """Pydantic models for Stock Analysis Pipeline."""
+from datetime import datetime
 from pydantic import BaseModel, Field, PrivateAttr
 from typing import Optional, List, Dict, Any
 
@@ -165,3 +166,66 @@ class HealthResponse(BaseModel):
     timestamp: str  # ISO 8601
     version: str
     commit: str = "unknown"
+
+
+class MarketSnapshot(BaseModel):
+    """Standardized real-time market data snapshot (V2.3).
+
+    Single source of truth for market data consumed by the scorer,
+    valuation module, and PDF renderer.  All fields are Optional
+    because market data providers can return partial data.
+    """
+    ticker: str
+    retrieved_at: str  # ISO 8601
+
+    # ── Price ──
+    current_price: Optional[float] = None
+    previous_close: Optional[float] = None
+    day_change: Optional[float] = None
+    day_change_pct: Optional[float] = None
+
+    # ── Volume ──
+    volume: Optional[int] = None
+    avg_volume: Optional[int] = None
+
+    # ── Market ──
+    market_cap: Optional[float] = None
+    beta: Optional[float] = None
+    high_52w: Optional[float] = None
+    low_52w: Optional[float] = None
+    shares_outstanding: Optional[float] = None
+
+    # ── Quick ratios (pulled from provider, not calculated) ──
+    pe_ttm: Optional[float] = None
+    ps_ttm: Optional[float] = None
+    pb_ratio: Optional[float] = None
+    dividend_yield: Optional[float] = None
+
+    # ── Cache metadata ──
+    cache_state: str = "unavailable"  # fresh / cached / stale / unavailable
+
+
+class ValuationV2Response(BaseModel):
+    """V2.3 Valuation endpoint response — market data + EUR conversion.
+
+    Single endpoint returning all market valuation data with EUR
+    equivalents computed from live or cached FX rates.
+    """
+    ticker: str
+    exchange: Optional[str] = None
+    quote_currency: str = "USD"
+    display_currency: str = "EUR"
+    price: Optional[float] = None
+    price_eur: Optional[float] = None
+    market_cap: Optional[float] = None
+    market_cap_eur: Optional[float] = None
+    enterprise_value: Optional[float] = None
+    shares_outstanding: Optional[float] = None
+    cash_and_equivalents: Optional[float] = None
+    total_debt: Optional[float] = None
+    quote_timestamp: Optional[str] = None   # ISO 8601
+    fundamentals_timestamp: Optional[str] = None  # ISO 8601
+    fx_rate_eur: Optional[float] = None
+    fx_timestamp: Optional[str] = None      # ISO 8601
+    source: str = "unknown"  # finnhub / yfinance / cache
+    status: str = "ok"       # ok / partial / error

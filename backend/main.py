@@ -62,7 +62,7 @@ def _should_convert_dossier_text_to_pdf(fpath: Path, *, refresh_pdf: bool) -> bo
         return False
     return refresh_pdf or not pdf_path.exists()
 
-from backend.models import TickerRequest, AnalysisResult, HealthResponse
+from backend.models import TickerRequest, AnalysisResult, HealthResponse, ValuationV2Response
 from backend.orchestrator import run_analysis_parallel
 from backend.earnings_deep_dive.schemas import DeepDiveRequest, DeepDiveResponse
 from backend.sources_collector import list_available_quarters, get_yahoo_data, get_yahoo_data_for_quarter
@@ -1743,6 +1743,27 @@ async def get_traceability(ticker: str):
         raise HTTPException(status_code=404, detail=f"Traceability matrix not found for {ticker}")
 
     return FileResponse(csv_path, media_type="text/csv")
+
+
+@app.get("/api/valuation/{ticker}", response_model=ValuationV2Response)
+async def get_valuation(ticker: str):
+    """V2.3 — Market valuation data with EUR conversion.
+
+    Returns price, market cap, enterprise value, shares outstanding,
+    cash, debt, and EUR equivalents computed from live/cached FX rates.
+    """
+    from backend.valuation import get_valuation as _get_valuation
+    from backend.models import ValuationV2Response
+    try:
+        return _get_valuation(ticker)
+    except Exception:
+        import logging
+        logger = logging.getLogger("valuation_endpoint")
+        logger.exception("Valuation endpoint failed for %s", ticker)
+        return ValuationV2Response(
+            ticker=ticker.upper().strip(),
+            status="error",
+        )
 
 
 @app.post("/api/cache/financials/{ticker}", dependencies=[Depends(_require_auth)])
