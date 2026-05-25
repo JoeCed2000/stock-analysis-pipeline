@@ -74,7 +74,7 @@ def mock_yf_info():
 
 class TestSchemaValidation:
 
-    def test_model_has_all_21_fields(self):
+    def test_model_has_all_22_fields(self):
         """ValuationV2Response must have exactly 21 fields matching V2.3 contract."""
         fields = list(ValuationV2Response.model_fields.keys())
         assert len(fields) == 22, f"Expected 22 fields, got {len(fields)}: {fields}"
@@ -177,6 +177,21 @@ class TestValuationLayer:
         assert resp.enterprise_value_eur is None  # EUR disabled in V2.3
         assert resp.fx_rate_eur is None         # EUR disabled in V2.3
         assert resp.fx_status == "unavailable"  # V2.3: no live FX
+
+    def test_cached_na_strings_normalized(self):
+        """Cache entries with string 'NA' values are converted to None."""
+        from backend.valuation import get_valuation
+
+        stock_data = {
+            "ticker": "TEST", "price": "NA", "market_cap": "NA",
+            "currency": "USD", "_source": "cache"
+        }
+        with patch("backend.valuation.get_stock_data", return_value=stock_data):
+            with patch("backend.valuation._yf_ticker_safe", side_effect=RuntimeError):
+                resp = get_valuation("TEST")
+        assert resp.price is None
+        assert resp.market_cap is None
+        assert resp.status != "error"  # must not crash Pydantic
 
 
 # =====================================================================

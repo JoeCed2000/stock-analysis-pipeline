@@ -50,8 +50,8 @@ def get_valuation(ticker: str) -> ValuationV2Response:
             quote_timestamp=now,
         )
 
-    price = stock_data.get("price")
-    market_cap = stock_data.get("market_cap")
+    price = _safe_float(stock_data.get("price"))
+    market_cap = _safe_float(stock_data.get("market_cap"))
     currency = stock_data.get("currency", "USD")
     raw_source = stock_data.get("_source", "unknown")
 

@@ -1762,7 +1762,7 @@ async def get_valuation(ticker: str):
         logger.exception("Valuation endpoint failed for %s", ticker)
         return ValuationV2Response(
             ticker=ticker.upper().strip(),
-            status="error",
+            status="unavailable",
         )
 
 
