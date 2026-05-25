@@ -10,6 +10,23 @@ logger = logging.getLogger(__name__)
 PER_TICKER_TIMEOUT = 1200  # generous for deep-dive LLM phase
 
 
+def _format_scoring_breakdown(scoring) -> str:
+    """Format 6-category scoring breakdown for log output.
+    Returns: "FH=8/10 G=7/10 V=6/8 M=4/5 Mo=3/4 S=2/3 = 30/40"
+    """
+    s = scoring
+    cats = [
+        ("FH", s.financial_health, 10),
+        ("G", s.growth, 10),
+        ("V", s.valuation, 8),
+        ("M", s.management, 5),
+        ("Mo", s.moat, 4),
+        ("S", s.sentiment, 3),
+    ]
+    parts = [f"{label}={val}/{maxv}" for label, val, maxv in cats]
+    return " ".join(parts) + f" = {s.total}/40"
+
+
 def run_analysis_sequential(tickers: List[str], output_base: str = "analyses") -> Dict[str, Any]:
     """Run analysis for multiple tickers sequentially with per-ticker timeout."""
     results: Dict[str, AnalysisResult] = {}
@@ -22,7 +39,7 @@ def run_analysis_sequential(tickers: List[str], output_base: str = "analyses") -
                 future = executor.submit(analyze_ticker_fast, ticker, output_base)
                 result = future.result(timeout=PER_TICKER_TIMEOUT)
             results[ticker] = result
-            logger.info(f"{ticker}: {result.decision} ({result.scoring.total}/40)")
+            logger.info(f"{ticker}: {result.decision} | {_format_scoring_breakdown(result.scoring)}")
         except concurrent.futures.TimeoutError:
             logger.error(f"{ticker}: TIMEOUT after {PER_TICKER_TIMEOUT}s")
             errors[ticker] = f"Analysis timed out after {PER_TICKER_TIMEOUT}s"
@@ -76,7 +93,7 @@ def run_analysis_parallel(
                 try:
                     result = future.result()
                     results[ticker] = result
-                    logger.info(f"{ticker}: {result.decision} ({result.scoring.total}/40)")
+                    logger.info(f"{ticker}: {result.decision} | {_format_scoring_breakdown(result.scoring)}")
                 except Exception as e:
                     logger.error(f"{ticker}: {e}")
                     errors[ticker] = str(e)
