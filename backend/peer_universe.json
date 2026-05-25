@@ -1,0 +1,26 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "description": "Curated peer universe for competitive analysis — manually maintained.",
+    "last_updated": "2026-05-25",
+    "maintainer": "python-builder"
+  },
+  "nvda": {
+    "ticker": "NVDA",
+    "group_id": "ai_semiconductor",
+    "group_label": "AI Semiconductor",
+    "peers": ["AMD", "AVGO", "TSM", "ASML", "ARM"]
+  },
+  "aapl": {
+    "ticker": "AAPL",
+    "group_id": "mega_cap_consumer_tech",
+    "group_label": "Mega-Cap Consumer Tech",
+    "peers": ["MSFT", "GOOGL", "AMZN", "META"]
+  },
+  "tsla": {
+    "ticker": "TSLA",
+    "group_id": "global_automotive",
+    "group_label": "Global Automotive",
+    "peers": ["RIVN", "GM", "F", "TM", "BYDDF"]
+  }
+}
