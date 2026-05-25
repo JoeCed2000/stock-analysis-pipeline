@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { getTickerDownloadUrl, getDossierStatus, countDossierSections, fetchQuarters } from '../api.js';
 import ScoringChart from './ScoringChart.jsx';
 import MetricsHistoryChart from './MetricsHistoryChart.jsx';
+import ValuationGroup from './ValuationGroup.jsx';
 import FeedbackPanel from './FeedbackPanel.jsx';
 
 const SCORE_COLORS = {
@@ -235,6 +236,11 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
         <MetricBox label="Mkt Cap" value={market_cap ? `${(market_cap / 1e12).toFixed(1)}T` : '—'} border />
         <MetricBox label="Sector" value={sector || '—'} />
         <MetricBox label="Retrieved" value={retrieved_at ? new Date(retrieved_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—'} border />
+      </div>
+
+      {/* ── VALUATION GROUP ── */}
+      <div style={{ padding: '0 14px 4px', borderBottom: '1px solid #21262d' }}>
+        <ValuationGroup ticker={ticker} result={result} />
       </div>
 
       {/* ── AI INSIGHT ── */}

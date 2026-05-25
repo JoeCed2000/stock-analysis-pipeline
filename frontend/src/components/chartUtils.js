@@ -543,3 +543,186 @@ export function getNetCashDebtLabel(val) {
   if (val == null) return 'Net Cash / Debt';
   return val >= 0 ? 'Net Cash' : 'Net Debt';
 }
+
+// ═══════════════════════════════════════════
+// V3: Valuation Group — Calculation functions
+// ═══════════════════════════════════════════
+
+/**
+ * Enterprise Value = Market Cap + Total Debt - Cash & Equivalents
+ */
+export function calculateEnterpriseValue(marketCap, totalDebt, cashAndEquivalents) {
+  if (marketCap == null) return null;
+  const debt = totalDebt ?? 0;
+  const cash = cashAndEquivalents ?? 0;
+  return marketCap + debt - cash;
+}
+
+/**
+ * P/E TTM = Price / EPS TTM
+ */
+export function calculatePeTtm(price, epsTtm) {
+  if (price == null || epsTtm == null || epsTtm <= 0) return null;
+  return price / epsTtm;
+}
+
+/**
+ * P/S TTM = Market Cap / Revenue TTM
+ */
+export function calculatePsTtm(marketCap, revenueTtm) {
+  if (marketCap == null || revenueTtm == null || revenueTtm <= 0) return null;
+  return marketCap / revenueTtm;
+}
+
+/**
+ * EV/Sales = Enterprise Value / Revenue TTM
+ */
+export function calculateEvSalesTtm(enterpriseValue, revenueTtm) {
+  if (enterpriseValue == null || revenueTtm == null || revenueTtm <= 0) return null;
+  return enterpriseValue / revenueTtm;
+}
+
+/**
+ * EV/EBITDA = Enterprise Value / EBITDA TTM
+ */
+export function calculateEvEbitdaTtm(enterpriseValue, ebitdaTtm) {
+  if (enterpriseValue == null || ebitdaTtm == null || ebitdaTtm <= 0) return null;
+  return enterpriseValue / ebitdaTtm;
+}
+
+/**
+ * P/FCF = Market Cap / Free Cash Flow TTM
+ */
+export function calculatePriceToFcfTtm(marketCap, fcfTtm) {
+  if (marketCap == null || fcfTtm == null || fcfTtm <= 0) return null;
+  return marketCap / fcfTtm;
+}
+
+/**
+ * FCF Yield = FCF TTM / Market Cap × 100
+ */
+export function calculateFcfYield(fcfTtm, marketCap) {
+  if (fcfTtm == null || marketCap == null || marketCap <= 0) return null;
+  return (fcfTtm / marketCap) * 100;
+}
+
+// ═══════════════════════════════════════════
+// V3: Valuation Group — Format functions
+// ═══════════════════════════════════════════
+
+/**
+ * Format market cap to human-readable: $3.2T, €850B, $450M
+ */
+export function formatMarketCap(val, currency = 'USD') {
+  if (val == null) return 'N/A';
+  const sym = currency === 'EUR' ? '€' : '$';
+  const abs = Math.abs(val);
+  if (abs >= 1e12) return `${sym}${(val / 1e12).toFixed(1)}T`;
+  if (abs >= 1e9) return `${sym}${(val / 1e9).toFixed(1)}B`;
+  if (abs >= 1e6) return `${sym}${(val / 1e6).toFixed(0)}M`;
+  return `${sym}${val.toFixed(0)}`;
+}
+
+/**
+ * Format enterprise value (same pattern as market cap)
+ */
+export function formatEnterpriseValue(val, currency = 'USD') {
+  return formatMarketCap(val, currency);
+}
+
+/**
+ * Format valuation multiple: 35.2x
+ */
+export function formatValuationMultiple(val) {
+  if (val == null) return 'N/A';
+  return `${val.toFixed(1)}×`;
+}
+
+/**
+ * Format yield: 2.8%
+ */
+export function formatYield(val) {
+  if (val == null) return 'N/A';
+  return `${val.toFixed(1)}%`;
+}
+
+// ═══════════════════════════════════════════
+// V3: Valuation Group — Status / Availability
+// ═══════════════════════════════════════════
+
+/**
+ * Get valuation metric availability with freshness status.
+ * Fresh: computed from data present in the latest quarter
+ * Cached: computed from older data (>15 min since retrieval)
+ * Stale: null/missing inputs
+ */
+export function getValuationAvailability(val, retrievedAt) {
+  if (val == null) return { available: false, status: 'stale', label: 'N/A' };
+  if (!retrievedAt) return { available: true, status: 'cached', label: '—' };
+  const ageMin = (Date.now() - new Date(retrievedAt).getTime()) / 60000;
+  if (isNaN(ageMin)) return { available: true, status: 'cached', label: '—' };
+  if (ageMin < 15) return { available: true, status: 'fresh', label: '' };
+  if (ageMin < 120) return { available: true, status: 'cached', label: '' };
+  return { available: true, status: 'stale', label: '' };
+}
+
+/**
+ * Get market data status label from retrieval timestamp.
+ */
+export function getMarketDataStatusLabel(retrievedAt) {
+  if (!retrievedAt) return 'stale';
+  const ageMin = (Date.now() - new Date(retrievedAt).getTime()) / 60000;
+  if (isNaN(ageMin)) return 'stale';
+  if (ageMin < 15) return 'fresh';
+  if (ageMin < 120) return 'cached';
+  return 'stale';
+}
+
+// ═══════════════════════════════════════════
+// V3: Valuation Group — Metric definitions
+// ═══════════════════════════════════════════
+
+export const VALUATION_METRICS = [
+  { key: 'market_cap',      label: 'Market Cap',    format: 'cap',         id: 'market_cap' },
+  { key: 'enterprise_value', label: 'Enterprise Val', format: 'cap',       id: 'enterprise_value' },
+  { key: 'pe_ttm',          label: 'P/E TTM',       format: 'multiple',   id: 'pe_ttm' },
+  { key: 'ps_ttm',          label: 'P/S TTM',       format: 'multiple',   id: 'ps_ttm' },
+  { key: 'ev_sales',        label: 'EV/Sales',      format: 'multiple',   id: 'ev_sales' },
+  { key: 'ev_ebitda',       label: 'EV/EBITDA',     format: 'multiple',   id: 'ev_ebitda' },
+  { key: 'p_fcf',           label: 'P/FCF',         format: 'multiple',   id: 'p_fcf' },
+  { key: 'fcf_yield',       label: 'FCF Yield',     format: 'yield',      id: 'fcf_yield' },
+];
+
+/**
+ * Compute all valuation metrics from the latest enriched quarterly data + market data.
+ */
+export function computeValuationMetrics(enrichedData, marketData) {
+  if (!enrichedData || enrichedData.length === 0) return {};
+  const latest = enrichedData[enrichedData.length - 1]; // oldest-first, latest at end
+
+  const marketCap = marketData?.market_cap;
+  const price = marketData?.price_native;
+  const currency = marketData?.currency || 'USD';
+
+  const revenueTtm = latest.revenue_ttm;
+  const ebitdaTtm = latest.ebitda_ttm;
+  const fcfTtm = latest.free_cash_flow_ttm;
+  const epsTtm = latest.eps_ttm;
+  const totalDebt = latest.total_debt;
+  const cashAndEquivalents = latest.cash_and_equivalents;
+
+  const ev = calculateEnterpriseValue(marketCap, totalDebt, cashAndEquivalents);
+
+  return {
+    market_cap: marketCap,
+    enterprise_value: ev,
+    pe_ttm: calculatePeTtm(price, epsTtm),
+    ps_ttm: calculatePsTtm(marketCap, revenueTtm),
+    ev_sales: calculateEvSalesTtm(ev, revenueTtm),
+    ev_ebitda: calculateEvEbitdaTtm(ev, ebitdaTtm),
+    p_fcf: calculatePriceToFcfTtm(marketCap, fcfTtm),
+    fcf_yield: calculateFcfYield(fcfTtm, marketCap),
+    currency,
+    _latest: latest,
+  };
+}
