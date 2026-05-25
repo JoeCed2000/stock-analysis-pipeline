@@ -1,14 +1,15 @@
-"""Valuation layer — V2.3 market data + EUR conversion.
+"""Valuation layer — V2.3 market data + valuation multiples.
 
 Fetches data from the existing stock data cache (get_stock_data),
-enriches with yfinance for exchange/enterprise_value/shares/debt/cash,
-and computes EUR equivalents using live EUR/USD FX rate.
+enriches with yfinance for exchange/enterprise_value/shares/debt/cash.
+EUR conversion is disabled in V2.3 (fx_status='unavailable').
 """
+
 import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from backend.sources_collector import get_stock_data, _yf_ticker_safe, _load_yfinance
+from backend.sources_collector import get_stock_data, _yf_ticker_safe
 from backend.models import ValuationV2Response
 
 logger = logging.getLogger(__name__)
@@ -18,32 +19,34 @@ def get_valuation(ticker: str) -> ValuationV2Response:
     """Fetch valuation data for a ticker following V2.3 contract.
 
     Data sources (in order):
-      1. Stock data cache (Finnhub → Twelve Data → yfinance chain)
+      1. Stock data cache (Finnhub -> Twelve Data -> yfinance chain)
       2. yfinance .info enrichment (exchange, enterprise_value,
          shares_outstanding, total_cash, total_debt)
-      3. EUR/USD FX rate from yfinance EURUSD=X
+
+    EUR conversion is disabled in V2.3 — fx_status='unavailable',
+    all EUR fields are null. This avoids the stale static-rate problem.
 
     Returns a ValuationV2Response — fields will be None where
-    data is unavailable (status reflects completeness).
+    data is unavailable (status reflects data freshness).
     """
     now = datetime.now(timezone.utc).isoformat()
     ticker = ticker.upper().strip()
 
-    # ── 1. Base data from existing pipeline ──────────────────────────
+    # -- 1. Base data from existing pipeline --------------------------
     try:
         stock_data = get_stock_data(ticker)
     except Exception:
         logger.exception("get_stock_data failed for %s", ticker)
         return ValuationV2Response(
             ticker=ticker,
-            status="error",
+            status="unavailable",
             quote_timestamp=now,
         )
 
     if not stock_data:
         return ValuationV2Response(
             ticker=ticker,
-            status="error",
+            status="unavailable",
             quote_timestamp=now,
         )
 
@@ -52,68 +55,75 @@ def get_valuation(ticker: str) -> ValuationV2Response:
     currency = stock_data.get("currency", "USD")
     source = stock_data.get("_source", "cache")
 
-    # ── 2. yfinance enrichment (best-effort, non-blocking) ──────────
+    # -- 2. yfinance enrichment (best-effort, non-blocking) -----------
     exchange = None
-    enterprise_value = None
+    reported_ev = None
     shares = None
     cash = None
     total_debt = None
 
     try:
-        yf = _load_yfinance()
         yt = _yf_ticker_safe(ticker, timeout=20)
         info = yt.info or {}
         exchange = info.get("exchange") or info.get("exchangeName")
-        enterprise_value = _safe_float(info.get("enterpriseValue"))
+        reported_ev = _safe_float(info.get("enterpriseValue"))
         shares = _safe_float(info.get("sharesOutstanding"))
-        cash = _safe_float(info.get("totalCash") or info.get("cash"))
+        cash = _safe_float(
+            info.get("totalCash")
+            or info.get("cash")
+        )
         total_debt = _safe_float(info.get("totalDebt"))
     except Exception:
         logger.debug("yfinance enrichment skipped for %s", ticker)
 
-    # ── 3. EUR/USD FX rate ──────────────────────────────────────────
-    fx_rate = None
-    fx_ts = None
-    try:
-        yf = _load_yfinance()
-        eur = yf.Ticker("EURUSD=X")
-        eur_info = eur.info or {}
-        fx_rate = eur_info.get("regularMarketPrice") or eur_info.get("currentPrice")
-        if fx_rate is not None:
-            fx_rate = _safe_float(fx_rate)
-        fx_ts = now
-    except Exception:
-        logger.debug("EUR/USD FX rate unavailable for %s", ticker)
+    # -- 3. Enterprise value (reported or computed) -------------------
+    computed_ev = _compute_ev(market_cap, total_debt, cash)
 
-    # ── 4. EUR equivalents ──────────────────────────────────────────
-    price_eur = round(price * fx_rate, 2) if (price is not None and fx_rate) else None
-    market_cap_eur = round(market_cap * fx_rate, 2) if (market_cap is not None and fx_rate) else None
-
-    # ── 5. Status determination ─────────────────────────────────────
-    if price is None and market_cap is None:
-        status = "error"
-    elif price is None or market_cap is None:
-        status = "partial"
+    if reported_ev is not None:
+        enterprise_value = reported_ev
+        ev_source = "reported"
+    elif computed_ev is not None:
+        enterprise_value = computed_ev
+        ev_source = "computed"
     else:
-        status = "ok"
+        enterprise_value = None
+        ev_source = "unavailable"
 
+    # -- 4. Status determination --------------------------------------
+    # Use the cache state from market_data layer when possible
+    cache_state = stock_data.get("cache_state")
+    if price is None and market_cap is None:
+        status = "unavailable"
+    elif cache_state in ("fresh", "cached", "stale"):
+        status = cache_state
+    elif source in ("finnhub", "yfinance", "twelvedata", "eodhd"):
+        status = "fresh"  # live fetch succeeded
+    elif source == "cache":
+        status = "cached"
+    else:
+        status = "unavailable"
+
+    # -- 5. Build response (EUR disabled) -----------------------------
     return ValuationV2Response(
         ticker=ticker,
         exchange=exchange,
         quote_currency=currency,
         display_currency="EUR",
         price=price,
-        price_eur=price_eur,
+        price_eur=None,           # EUR disabled in V2.3
         market_cap=market_cap,
-        market_cap_eur=market_cap_eur,
+        market_cap_eur=None,      # EUR disabled in V2.3
         enterprise_value=enterprise_value,
+        enterprise_value_eur=None,  # EUR disabled in V2.3
+        ev_source=ev_source,
         shares_outstanding=shares,
         cash_and_equivalents=cash,
         total_debt=total_debt,
         quote_timestamp=now,
         fundamentals_timestamp=now,
-        fx_rate_eur=fx_rate,
-        fx_timestamp=fx_ts,
+        fx_rate_eur=None,         # EUR disabled in V2.3
+        fx_timestamp=None,
+        fx_status="unavailable",  # V2.3: no live FX source yet
         source=source,
         status=status,
     )
@@ -133,6 +143,19 @@ def _safe_float(val) -> Optional[float]:
         return None
 
 
+def _compute_ev(
+    market_cap: Optional[float],
+    total_debt: Optional[float],
+    cash: Optional[float],
+) -> Optional[float]:
+    """Compute Enterprise Value = market_cap + total_debt - cash."""
+    if market_cap is None:
+        return None
+    debt = total_debt if total_debt is not None else 0.0
+    cash_val = cash if cash is not None else 0.0
+    return market_cap + debt - cash_val
+
+
 # ═════════════════════════════════════════════════════════════
 #  V2.3 Pure Calculation Functions
 #  (zero side effects, no network, never invents data)
@@ -148,7 +171,7 @@ def _safe_div(numerator: Optional[float], denominator: Optional[float]) -> Optio
     return numerator / denominator
 
 
-# ── Price-Based Ratios ──
+# -- Price-Based Ratios --
 
 
 def calculate_pe_ttm(price: Optional[float], eps_ttm: Optional[float]) -> Optional[float]:
@@ -171,7 +194,7 @@ def calculate_fcf_yield(fcf_per_share: Optional[float], price: Optional[float]) 
     return _safe_div(fcf_per_share, price)
 
 
-# ── Enterprise-Value-Based Ratios ──
+# -- Enterprise-Value-Based Ratios --
 
 
 def calculate_enterprise_value(
@@ -201,7 +224,7 @@ def calculate_ev_ebitda(enterprise_value: Optional[float], ebitda: Optional[floa
     return _safe_div(enterprise_value, ebitda)
 
 
-# ── Batch Convenience ──
+# -- Batch Convenience --
 
 
 def calculate_all_ratios(

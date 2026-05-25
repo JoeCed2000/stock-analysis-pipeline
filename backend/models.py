@@ -206,10 +206,11 @@ class MarketSnapshot(BaseModel):
 
 
 class ValuationV2Response(BaseModel):
-    """V2.3 Valuation endpoint response — market data + EUR conversion.
+    """V2.3 Valuation endpoint response — market data (EUR disabled).
 
-    Single endpoint returning all market valuation data with EUR
-    equivalents computed from live or cached FX rates.
+    Returns ticker, price, market cap, enterprise value, and
+    valuation multiples computed from TTM fundamentals.
+    EUR conversion is disabled in V2.3 (fx_status='unavailable').
     """
     ticker: str
     exchange: Optional[str] = None
@@ -220,6 +221,8 @@ class ValuationV2Response(BaseModel):
     market_cap: Optional[float] = None
     market_cap_eur: Optional[float] = None
     enterprise_value: Optional[float] = None
+    enterprise_value_eur: Optional[float] = None
+    ev_source: Optional[str] = None  # "reported" | "computed" | "unavailable"
     shares_outstanding: Optional[float] = None
     cash_and_equivalents: Optional[float] = None
     total_debt: Optional[float] = None
@@ -227,5 +230,6 @@ class ValuationV2Response(BaseModel):
     fundamentals_timestamp: Optional[str] = None  # ISO 8601
     fx_rate_eur: Optional[float] = None
     fx_timestamp: Optional[str] = None      # ISO 8601
+    fx_status: str = "unavailable"  # "available" | "unavailable"
     source: str = "unknown"  # finnhub / yfinance / cache
-    status: str = "ok"       # ok / partial / error
+    status: str = "unavailable"  # fresh | cached | stale | unavailable
