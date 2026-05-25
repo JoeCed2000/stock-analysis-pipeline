@@ -146,8 +146,7 @@ class TestScoringEdgeCases:
 
     def test_scoring_total_property(self):
         from backend.models import Scoring
-        s = Scoring(growth=4, profitability=3, financial_strength=5,
-                     moat=2, management=4, valuation_risk=3,
-                     geopolitical_risk=4, business_momentum=5)
-        assert s.total == 30
-        assert "BUY" in s.decision() or "HOLD" in s.decision()
+        s = Scoring(financial_health=8, growth=7, valuation=5,
+                     management=4, moat=3, sentiment=3)
+        assert s.total == 30  # 8+7+5+4+3+3 = 30
+        assert s.decision() == "BUY"  # 30 >= 28
