@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { getTickerDownloadUrl, getDossierStatus, countDossierSections, fetchQuarters } from '../api.js';
 import ScoringChart from './ScoringChart.jsx';
 import MetricsHistoryChart from './MetricsHistoryChart.jsx';
 import ValuationGroup from './ValuationGroup.jsx';
 import PeerBenchmarkGroup from './PeerBenchmark/PeerBenchmarkGroup.jsx';
 import FeedbackPanel from './FeedbackPanel.jsx';
+import ExportMenu from './ExportMenu.jsx';
+import { getExportBridgeData } from '../export/exportDataBridge.js';
 
 const SCORE_COLORS = {
   BUY: '#238636',
@@ -142,6 +144,21 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
     && dossierStatus?.verified === false
     && (dossierStatus?.phase === 'failed' || dossierStatus?.deep_dive_validated === false);
 
+  // ── Export (V2.6 T5) ──
+  const getSnapshotData = useCallback(() => {
+    if (!result?.ticker) return null;
+    const bridge = getExportBridgeData();
+    return {
+      result,
+      ...(bridge.valuation ? { valuation: bridge.valuation } : {}),
+      ...(bridge.valuation_context ? { valuation_context: bridge.valuation_context } : {}),
+      ...(bridge.peer_benchmark ? { peer_benchmark: bridge.peer_benchmark } : {}),
+      selected_group: 'valuation',
+    };
+  }, [result]);
+
+  const exportDisabled = !result?.ticker;
+
   return (
     <div style={{
       background: '#0d1117', border: '1px solid #21262d',
@@ -167,6 +184,12 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <ExportMenu
+            getSnapshotData={getSnapshotData}
+            t={t}
+            lang={lang}
+            disabled={exportDisabled}
+          />
           {/* Quarter selector */}
           {quarters.length > 1 && (
             <select
@@ -240,7 +263,7 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
       </div>
 
       {/* ── VALUATION GROUP ── */}
-      <div style={{ padding: '0 14px 4px', borderBottom: '1px solid #21262d' }}>
+      <div data-export-group="valuation" style={{ padding: '0 14px 4px', borderBottom: '1px solid #21262d' }}>
         <ValuationGroup ticker={ticker} result={result} />
       </div>
 

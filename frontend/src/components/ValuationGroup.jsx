@@ -4,6 +4,8 @@ import {
   formatMarketCap, formatEnterpriseValue, formatValuationMultiple, formatYield,
   getValuationAvailability, computeValuationMetrics,
 } from './chartUtils';
+import { fetchValuationContext } from '../api.js';
+import { setExportBridgeData } from '../export/exportDataBridge.js';
 
 const STATUS_COLORS = {
   fresh: '#3fb950',
@@ -25,6 +27,7 @@ const STATUS_COLORS = {
 export default function ValuationGroup({ ticker, result }) {
   const [valuationMeta, setValuationMeta] = useState(null);
   const [quarters, setQuarters] = useState(null);
+  const [valuationContext, setValuationContext] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -55,6 +58,14 @@ export default function ValuationGroup({ ticker, result }) {
       .finally(() => setLoading(false));
   }, [ticker]);
 
+  // ── Fetch valuation context (V2.4) ──
+  useEffect(() => {
+    if (!ticker) return;
+    fetchValuationContext(ticker)
+      .then(d => setValuationContext(d || null))
+      .catch(() => setValuationContext(null));
+  }, [ticker]);
+
   const enriched = useMemo(() => {
     if (!quarters || quarters.length < 2) return null;
     const sorted = [...quarters].reverse();
@@ -70,6 +81,16 @@ export default function ValuationGroup({ ticker, result }) {
     });
   }, [enriched, result]);
 
+  // ── Export bridge (V2.6 T5) ──
+  useEffect(() => {
+    if (valuationMeta) {
+      setExportBridgeData('valuation', { ...valuationMeta, metrics: metrics || {} });
+    }
+    if (valuationContext) {
+      setExportBridgeData('valuation_context', valuationContext);
+    }
+  }, [valuationMeta, metrics, valuationContext]);
+
   // ── Market metadata from valuation API (NOT local heuristics) ──
   const apiStatus = valuationMeta?.status || 'unavailable';
   const apiSource = valuationMeta?.source || 'unknown';
@@ -83,6 +104,78 @@ export default function ValuationGroup({ ticker, result }) {
         day: '2-digit', month: 'short', year: '2-digit',
       })
     : '—';
+
+  // ── V2.4: Enriched tooltip builder ──
+  const buildTooltip = (metricKey) => {
+    const latest = enriched ? enriched[enriched.length - 1] : null;
+    const price = result?.price_native;
+    const mktCap = result?.market_cap;
+    const ctxTs = valuationContext?.quote_timestamp;
+    const ctxSource = valuationContext?.source || 'unknown';
+    const ctxStatus = valuationContext?.status || 'unavailable';
+    const ctxCurrency = valuationContext?.currency || 'USD';
+    const fmtTs = ctxTs
+      ? new Date(ctxTs).toLocaleString('en-GB', {
+          day: '2-digit', month: 'short', year: '2-digit',
+          hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
+        })
+      : 'N/A';
+
+    const formulaMap = {
+      pe_ttm:    { formula: 'P/E TTM = Price / EPS TTM',
+                   a: { label: 'Price', val: price },
+                   b: { label: 'EPS TTM', val: latest?.eps_ttm } },
+      ps_ttm:    { formula: 'P/S TTM = Market Cap / Revenue TTM',
+                   a: { label: 'Market Cap', val: mktCap },
+                   b: { label: 'Revenue TTM', val: latest?.revenue_ttm } },
+      ev_ebitda: { formula: 'EV/EBITDA = Enterprise Value / EBITDA TTM',
+                   a: { label: 'Enterprise Value', val: metrics?.enterprise_value },
+                   b: { label: 'EBITDA TTM', val: latest?.ebitda_ttm } },
+      p_fcf:     { formula: 'P/FCF = Market Cap / Free Cash Flow TTM',
+                   a: { label: 'Market Cap', val: mktCap },
+                   b: { label: 'FCF TTM', val: latest?.free_cash_flow_ttm } },
+      fcf_yield: { formula: 'FCF Yield = Free Cash Flow TTM / Market Cap',
+                   a: { label: 'FCF TTM', val: latest?.free_cash_flow_ttm },
+                   b: { label: 'Market Cap', val: mktCap } },
+    };
+
+    const info = formulaMap[metricKey];
+    if (!info) return null;
+
+    const fmt = (v) => {
+      if (v == null) return 'N/A';
+      const abs = Math.abs(v);
+      if (abs >= 1e12) return `$${(v / 1e12).toFixed(2)}T`;
+      if (abs >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
+      if (abs >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
+      return `$${v.toFixed(2)}`;
+    };
+
+    return [
+      info.formula,
+      `${info.a.label}: ${fmt(info.a.val)} | ${info.b.label}: ${fmt(info.b.val)}`,
+      `Quote: ${fmtTs}`,
+      `Currency: ${ctxCurrency} | Source: ${ctxSource} | Status: ${ctxStatus}`,
+    ].join('\n');
+  };
+
+  // ── V2.4: Format support label for display ──
+  const formatSupportBadge = (level) => {
+    if (!level || level === 'n/a') return null;
+    const colors = {
+      strong:   { bg: 'rgba(63,185,80,0.15)', fg: '#3fb950' },
+      moderate: { bg: 'rgba(210,153,34,0.15)', fg: '#d29922' },
+      weak:     { bg: 'rgba(248,81,73,0.15)', fg: '#f85149' },
+      negative: { bg: 'rgba(248,81,73,0.18)', fg: '#f85149' },
+      high:     { bg: 'rgba(63,185,80,0.15)', fg: '#3fb950' },
+      medium:   { bg: 'rgba(210,153,34,0.15)', fg: '#d29922' },
+      low:      { bg: 'rgba(248,81,73,0.15)', fg: '#f85149' },
+    };
+    const c = colors[level] || { bg: 'rgba(72,79,88,0.15)', fg: '#484f58' };
+    return { bg: c.bg, fg: c.fg, label: level };
+  };
+
+  const contextSummary = valuationContext?.context?.context_summary || null;
 
   if (loading) {
     return (
@@ -138,6 +231,64 @@ export default function ValuationGroup({ ticker, result }) {
         }} />
       </div>
 
+      {/* ── V2.4: Valuation Context Summary Card ── */}
+      {contextSummary && contextSummary.signals_available > 0 && (
+        <div style={{
+          padding: '6px 10px', borderBottom: '1px solid #21262d',
+          background: 'rgba(56,139,253,0.06)',
+        }}>
+          {/* Top row: Level label + Confidence */}
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            marginBottom: 4,
+          }}>
+            <span style={{ fontSize: 9, fontWeight: 600, color: '#c9d1d9' }}>
+              {contextSummary.valuation_level_label || 'N/A — insufficient data'}
+            </span>
+            {(() => {
+              const badge = formatSupportBadge(contextSummary.confidence);
+              return badge ? (
+                <span style={{
+                  fontSize: 7, fontWeight: 600, textTransform: 'uppercase',
+                  letterSpacing: 0.5, padding: '1px 5px', borderRadius: 4,
+                  background: badge.bg, color: badge.fg,
+                }}>
+                  {badge.label} confidence
+                </span>
+              ) : null;
+            })()}
+          </div>
+          {/* Bottom row: Growth / Profitability / Cashflow badges */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {[
+              { key: 'Growth', level: contextSummary.growth_support },
+              { key: 'Profitability', level: contextSummary.profitability_support },
+              { key: 'Cashflow', level: contextSummary.cashflow_support },
+            ].map(({ key, level }) => {
+              const badge = formatSupportBadge(level);
+              return (
+                <span key={key} style={{
+                  fontSize: 7, fontWeight: 500, textTransform: 'uppercase',
+                  letterSpacing: 0.4, padding: '1px 4px', borderRadius: 3,
+                  background: badge ? badge.bg : 'rgba(72,79,88,0.1)',
+                  color: badge ? badge.fg : '#484f58',
+                }}>
+                  {key}: {level || 'n/a'}
+                </span>
+              );
+            })}
+          </div>
+          {/* Warnings */}
+          {contextSummary.warnings && contextSummary.warnings.length > 0 && (
+            <div style={{ marginTop: 4, fontSize: 7, color: '#f85149', lineHeight: 1.4 }}>
+              {contextSummary.warnings.map((w, i) => (
+                <div key={i}>⚠ {w}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 4×2 metric grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 0 }}>
         {VALUATION_METRICS.map((m, idx) => {
@@ -151,13 +302,19 @@ export default function ValuationGroup({ ticker, result }) {
             ? `EV source: ${evSource}`
             : undefined;
 
+          // V2.4: Enriched tooltip for 5 key valuation multiples
+          const enrichedKeys = ['pe_ttm', 'ps_ttm', 'ev_ebitda', 'p_fcf', 'fcf_yield'];
+          const enrichedTooltip = enrichedKeys.includes(m.key) ? buildTooltip(m.key) : null;
+
+          const cellTitle = enrichedTooltip || evTitle;
+
           return (
             <div key={m.id} style={{
               textAlign: 'center', padding: '6px 3px',
               borderRight: (idx % 4 < 3) ? '1px solid #21262d' : 'none',
               borderBottom: (idx < 4) ? '1px solid #21262d' : 'none',
-              cursor: evTitle ? 'help' : 'default',
-            }} title={evTitle}>
+              cursor: cellTitle ? 'help' : 'default',
+            }} title={cellTitle}>
               <div style={{
                 fontSize: 8, color: '#484f58', textTransform: 'uppercase',
                 letterSpacing: 0.5, marginBottom: 2,

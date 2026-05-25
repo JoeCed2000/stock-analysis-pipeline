@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { setExportBridgeData } from '../../export/exportDataBridge.js';
 
 /**
  * PeerBenchmarkGroup — V2.5 Group 9: Peer-relative benchmarks.
@@ -94,6 +95,11 @@ export default function PeerBenchmarkGroup({ ticker, result, t }) {
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [ticker]);
+
+  // ── Export bridge (V2.6 T5) ──
+  useEffect(() => {
+    if (data) setExportBridgeData('peer_benchmark', data);
+  }, [data]);
 
   const peerCtx = data?.peer_context || {};
   const benchmarks = data?.benchmarks || {};

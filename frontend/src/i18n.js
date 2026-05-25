@@ -167,6 +167,19 @@ const translations = {
     peer_col_median: "Median",
     peer_col_context: "Context",
     peer_no_data: "No data available",
+
+    // V2.6 — Export menu
+    exportButton: "Export",
+    csvCurrentGroup: "CSV — Current Group",
+    csvFullAnalysis: "CSV — Full Analysis",
+    pngCurrentGroup: "PNG — Current Group",
+    copySummary: "Copy Summary",
+    exportUnavailable: "Export unavailable: not enough data",
+    exportCsvOk: "CSV exported",
+    exportPngOk: "PNG exported",
+    exportCopyOk: "Summary copied",
+    exportFailed: "Export failed",
+    exportPngLoading: "Generating PNG\u2026",
   },
   
   jp: {  // canonical
@@ -333,6 +346,19 @@ const translations = {
     peer_col_median: "中央値",
     peer_col_context: "コンテキスト",
     peer_no_data: "データなし",
+
+    // V2.6 — Export menu
+    exportButton: "エクスポート",
+    csvCurrentGroup: "CSV — 現在のグループ",
+    csvFullAnalysis: "CSV — 全分析",
+    pngCurrentGroup: "PNG — 現在のグループ",
+    copySummary: "サマリーをコピー",
+    exportUnavailable: "エクスポート不可: データ不足",
+    exportCsvOk: "CSV出力完了",
+    exportPngOk: "PNG出力完了",
+    exportCopyOk: "コピー完了",
+    exportFailed: "エクスポート失敗",
+    exportPngLoading: "PNG生成中…",
   }
 };
 
