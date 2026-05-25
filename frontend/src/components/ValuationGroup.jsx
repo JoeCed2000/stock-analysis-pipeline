@@ -2,26 +2,45 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   VALUATION_METRICS, enrichData,
   formatMarketCap, formatEnterpriseValue, formatValuationMultiple, formatYield,
-  getValuationAvailability, getMarketDataStatusLabel, computeValuationMetrics,
+  getValuationAvailability, computeValuationMetrics,
 } from './chartUtils';
 
 const STATUS_COLORS = {
   fresh: '#3fb950',
   cached: '#d29922',
   stale: '#f85149',
+  unavailable: '#484f58',
 };
 
 /**
  * ValuationGroup — displays 8 valuation metrics in a 4×2 grid.
  * Props:
  *   ticker — stock ticker symbol
- *   result — analysis result object (has market_cap, price_native, currency, retrieved_at)
+ *   result — analysis result object (has market_cap, price_native, currency)
+ *
+ * Fetches /api/valuation/{ticker} for market metadata (status, source, served_from,
+ * ev_source, quote_timestamp, quote_currency) — then fetches /api/metrics-history/{ticker}
+ * for quarterly fundamentals to compute valuation multiples.
  */
 export default function ValuationGroup({ ticker, result }) {
+  const [valuationMeta, setValuationMeta] = useState(null);
   const [quarters, setQuarters] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // ── Fetch market metadata from valuation API ──
+  useEffect(() => {
+    if (!ticker) return;
+    fetch(`/api/valuation/${ticker}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.detail) setError(d.detail);
+        else setValuationMeta(d);
+      })
+      .catch(e => setError(e.message));
+  }, [ticker]);
+
+  // ── Fetch quarterly fundamentals ──
   useEffect(() => {
     if (!ticker) return;
     setLoading(true);
@@ -38,7 +57,6 @@ export default function ValuationGroup({ ticker, result }) {
 
   const enriched = useMemo(() => {
     if (!quarters || quarters.length < 2) return null;
-    // enrichData expects oldest-first; reverse if API is newest-first
     const sorted = [...quarters].reverse();
     return enrichData(sorted);
   }, [quarters]);
@@ -52,8 +70,19 @@ export default function ValuationGroup({ ticker, result }) {
     });
   }, [enriched, result]);
 
-  const retrievedAt = result?.retrieved_at;
-  const marketStatus = useMemo(() => getMarketDataStatusLabel(retrievedAt), [retrievedAt]);
+  // ── Market metadata from valuation API (NOT local heuristics) ──
+  const apiStatus = valuationMeta?.status || 'unavailable';
+  const apiSource = valuationMeta?.source || 'unknown';
+  const servedFrom = valuationMeta?.served_from || 'unknown';
+  const quoteCurrency = valuationMeta?.quote_currency || 'USD';
+  const evSource = valuationMeta?.ev_source || null;
+  const quoteTimestamp = valuationMeta?.quote_timestamp;
+
+  const quoteLabel = quoteTimestamp
+    ? new Date(quoteTimestamp).toLocaleDateString('en-GB', {
+        day: '2-digit', month: 'short', year: '2-digit',
+      })
+    : '—';
 
   if (loading) {
     return (
@@ -89,12 +118,6 @@ export default function ValuationGroup({ ticker, result }) {
     return val?.toFixed?.(1) ?? 'N/A';
   };
 
-  // Quote date from latest quarter
-  const quoteDate = metrics._latest?.as_of_date || metrics._latest?.fiscal_date || retrievedAt;
-  const quoteLabel = quoteDate
-    ? new Date(quoteDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })
-    : '—';
-
   return (
     <div style={{
       background: '#161b22', border: '1px solid #21262d',
@@ -110,7 +133,8 @@ export default function ValuationGroup({ ticker, result }) {
         </span>
         <span style={{
           display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
-          background: STATUS_COLORS[marketStatus] || '#484f58',
+          background: STATUS_COLORS[apiStatus] || '#484f58',
+          title: `Data status: ${apiStatus}`,
         }} />
       </div>
 
@@ -118,15 +142,22 @@ export default function ValuationGroup({ ticker, result }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 0 }}>
         {VALUATION_METRICS.map((m, idx) => {
           const val = metrics[m.key];
-          const avail = getValuationAvailability(val, retrievedAt);
+          const avail = getValuationAvailability(val, quoteTimestamp);
           const displayed = formatVal(val, m.format);
+
+          // Enterprise Value cell gets ev_source tooltip
+          const isEv = m.key === 'enterprise_value';
+          const evTitle = isEv && evSource
+            ? `EV source: ${evSource}`
+            : undefined;
 
           return (
             <div key={m.id} style={{
               textAlign: 'center', padding: '6px 3px',
               borderRight: (idx % 4 < 3) ? '1px solid #21262d' : 'none',
               borderBottom: (idx < 4) ? '1px solid #21262d' : 'none',
-            }}>
+              cursor: evTitle ? 'help' : 'default',
+            }} title={evTitle}>
               <div style={{
                 fontSize: 8, color: '#484f58', textTransform: 'uppercase',
                 letterSpacing: 0.5, marginBottom: 2,
@@ -152,17 +183,24 @@ export default function ValuationGroup({ ticker, result }) {
         })}
       </div>
 
-      {/* Footer */}
+      {/* Footer — uses real API fields */}
       <div style={{
         padding: '5px 10px', borderTop: '1px solid #21262d',
         fontSize: 8, color: '#484f58', textAlign: 'center',
-        display: 'flex', justifyContent: 'center', gap: 8,
+        display: 'flex', justifyContent: 'center', gap: 8, flexWrap: 'wrap',
       }}>
         <span>
-          Market data: <span style={{ color: STATUS_COLORS[marketStatus] || '#484f58', fontWeight: 500 }}>{marketStatus}</span>
+          Market data:{' '}
+          <span style={{ color: STATUS_COLORS[apiStatus] || '#484f58', fontWeight: 500 }}>
+            {apiStatus}
+          </span>
         </span>
         <span>·</span>
-        <span>Source: yfinance</span>
+        <span>Source: {apiSource}</span>
+        <span>·</span>
+        <span>Served from {servedFrom}</span>
+        <span>·</span>
+        <span>Currency: {quoteCurrency}</span>
         <span>·</span>
         <span>Quote: {quoteLabel}</span>
       </div>
