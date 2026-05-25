@@ -3,6 +3,7 @@ import { getTickerDownloadUrl, getDossierStatus, countDossierSections, fetchQuar
 import ScoringChart from './ScoringChart.jsx';
 import MetricsHistoryChart from './MetricsHistoryChart.jsx';
 import ValuationGroup from './ValuationGroup.jsx';
+import PeerBenchmarkGroup from './PeerBenchmark/PeerBenchmarkGroup.jsx';
 import FeedbackPanel from './FeedbackPanel.jsx';
 
 const SCORE_COLORS = {
@@ -241,6 +242,11 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
       {/* ── VALUATION GROUP ── */}
       <div style={{ padding: '0 14px 4px', borderBottom: '1px solid #21262d' }}>
         <ValuationGroup ticker={ticker} result={result} />
+      </div>
+
+      {/* ── PEER BENCHMARK GROUP (V2.5) ── */}
+      <div style={{ padding: '0 14px 4px', borderBottom: '1px solid #21262d' }}>
+        <PeerBenchmarkGroup ticker={ticker} result={result} t={t} />
       </div>
 
       {/* ── AI INSIGHT ── */}

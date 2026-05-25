@@ -151,6 +151,22 @@ const translations = {
     insight_valuation_concern: "⚠️ Valuation concerns",
     insight_geopolitical: "🌍 Geopolitical exposure flagged",
     insight_mixed: "🔍 Mixed signals — review full report",
+
+    // V2.5 — Peer Benchmark (neutral labels only)
+    peer_benchmark: "Peer Benchmark",
+    peer_loading: "Loading peer benchmark…",
+    peer_unavailable: "Peer benchmark unavailable",
+    peer_not_available: "This ticker has no peer benchmark data available",
+    peer_valuation: "Valuation",
+    peer_growth: "Growth",
+    peer_quality: "Quality",
+    peer_relative_valuation: "Relative Valuation vs Peers",
+    peer_quality_peers: "Quality vs Peers",
+    peer_col_metric: "Metric",
+    peer_col_company: "Company",
+    peer_col_median: "Median",
+    peer_col_context: "Context",
+    peer_no_data: "No data available",
   },
   
   jp: {  // canonical
@@ -301,6 +317,22 @@ const translations = {
     insight_valuation_concern: "⚠️ バリュエーション懸念",
     insight_geopolitical: "🌍 地政学的リスクあり",
     insight_mixed: "🔍 混在シグナル — 詳細レポートを確認",
+
+    // V2.5 — Peer Benchmark (neutral labels only)
+    peer_benchmark: "ピアベンチマーク",
+    peer_loading: "ピアベンチマーク読み込み中…",
+    peer_unavailable: "ピアベンチマーク利用不可",
+    peer_not_available: "このティッカーにはピアベンチマークデータがありません",
+    peer_valuation: "バリュエーション",
+    peer_growth: "成長性",
+    peer_quality: "品質",
+    peer_relative_valuation: "ピア比較バリュエーション",
+    peer_quality_peers: "ピア比較品質",
+    peer_col_metric: "指標",
+    peer_col_company: "企業",
+    peer_col_median: "中央値",
+    peer_col_context: "コンテキスト",
+    peer_no_data: "データなし",
   }
 };
 

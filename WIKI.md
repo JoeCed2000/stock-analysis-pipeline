@@ -20,13 +20,16 @@
 | Component | File | Purpose |
 |---|---|---|
 | ValuationGroup | `frontend/src/components/ValuationGroup.jsx` | 8-metric grid + V2.4 context summary card + enriched tooltips |
-| AnalysisCard | `frontend/src/components/AnalysisCard.jsx` | Full analysis card with ValuationGroup |
+| AnalysisCard | `frontend/src/components/AnalysisCard.jsx` | Full analysis card with ValuationGroup + PeerBenchmarkGroup |
+| PeerBenchmarkGroup | `frontend/src/components/PeerBenchmark/PeerBenchmarkGroup.jsx` | V2.5 Group 9: Summary card + Relative Valuation table + Quality vs Peers table |
 | chartUtils | `frontend/src/components/chartUtils.js` | Valuation computation, formatting |
-| api.js | `frontend/src/api.js` | All API calls including fetchValuationContext |
+| api.js | `frontend/src/api.js` | All API calls including fetchValuationContext, fetchPeerBenchmark |
+| i18n.js | `frontend/src/i18n.js` | EN+JP translations including peer benchmark section |
 
 ## Recent Changes
 | Date | Task | Description |
 |---|---|---|
+| 2026-05-25 | V2.5-T5 | Peer Benchmark Frontend: Group 9 in AnalysisCard, Summary Card + Relative Valuation Table + Quality Table, i18n EN/JP, 8 E2E tests | ✅ DONE — REVIEW GATE |
 | 2026-05-25 | V2.5-T1 | Peer Universe: 3 curated groups (NVDA/AAPL/TSLA), loader/validator, 9 tests |
 | 2026-05-25 | V2.5-T4 | Peer Benchmark API: GET /api/peer-benchmark/{ticker}, peer_context + benchmarks + summary, 16 tests | ✅ DONE — REVIEW GATE |
 | 2026-05-25 | V2.5-T3 | Peer Benchmark Engine: 6 pure functions (median, percentile rank, spread, direction, labels, summary), 47 tests | ✅ REVIEWED |
@@ -39,11 +42,12 @@
 
 ## Non-Regression Playbooks
 - **When modifying ValuationGroup**: run `node chartUtils.test.cjs` (68 tests), rebuild frontend, test NVDA and MSFT
+- **When modifying PeerBenchmarkGroup**: run `npm run build`, verify browser console 0 errors, test NVDA/AAPL/TSLA
 - **When modifying backend routes**: run `pytest backend/tests/` (153 tests)
 - **Before any deploy**: rebuild frontend (`npm run build`), verify bundle has expected code
 
 ## Quality Gates
-- Frontend build: `npm run build` must succeed (48 modules)
+- Frontend build: `npm run build` must succeed (49 modules)
 - Tests: 153 backend + 68 frontend = 0 failures
 - Browser console: 0 errors, 0 warnings
 - Review by different agent required before merge

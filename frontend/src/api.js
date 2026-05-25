@@ -173,6 +173,20 @@ export async function generateDeepDive(ticker, quarter, lang = 'en') {
   return res.json();
 }
 
+/** Fetch valuation context signals from V2.4 backend endpoint. */
+export async function fetchValuationContext(ticker) {
+  const res = await fetch(`${API_BASE}/valuation-context/${ticker}`, { headers: NGROK_HEADER });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+/** Fetch peer benchmark data from V2.5 backend endpoint. */
+export async function fetchPeerBenchmark(ticker) {
+  const res = await fetch(`${API_BASE}/peer-benchmark/${ticker}`, { headers: NGROK_HEADER });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export async function fetchRecentSearches(limit = 50) {
   const res = await fetch(`${API_BASE}/admin/recent-searches?limit=${limit}`, { headers: NGROK_HEADER });
   if (!res.ok) return { searches: [] };
