@@ -234,3 +234,113 @@ class ValuationV2Response(BaseModel):
     source: str = "unknown"  # finnhub / yfinance / twelvedata / eodhd
     served_from: str = "unknown"  # "live" | "cache" | "fallback"
     status: str = "unavailable"  # fresh | cached | stale | unavailable
+
+
+# ═══════════════════════════════════════════════════════════════
+#  V2.4 Valuation Context Models
+# ═══════════════════════════════════════════════════════════════
+
+
+class ValuationInputData(BaseModel):
+    """Raw valuation multiples and growth rates fed into context engine.
+
+    All fields Optional — unavailable data is None, not invented.
+    Growth rates as decimals (0.15 = 15%).
+    """
+    pe_ttm: Optional[float] = None
+    ps_ttm: Optional[float] = None
+    ev_ebitda: Optional[float] = None
+    p_fcf: Optional[float] = None
+    fcf_yield: Optional[float] = None
+    eps_growth: Optional[float] = None
+    revenue_growth: Optional[float] = None
+    ebitda_growth: Optional[float] = None
+    fcf_growth: Optional[float] = None
+
+
+class HistoricalContextInfo(BaseModel):
+    """Whether historical valuation context is available.
+
+    V2.4 Phase 1: always False (historical snapshots are Phase 2).
+    """
+    available: bool = False
+    reason: str = "Historical valuation context not yet implemented (V2.4 Phase 2)"
+
+
+class ValuationContextResponse(BaseModel):
+    """V2.4 Valuation Context endpoint response.
+
+    Combines raw valuation inputs with computed context signals
+    from the pure-function valuation_context engine (SA-V24-T2).
+    USD-only. No scoring/recommendations.
+    """
+    ticker: str
+    currency: str = "USD"
+    valuation: ValuationInputData = Field(default_factory=ValuationInputData)
+    context: dict = Field(default_factory=dict)
+    historical_context: HistoricalContextInfo = Field(
+        default_factory=HistoricalContextInfo
+    )
+    source: str = "unknown"
+    status: str = "unavailable"
+    quote_timestamp: Optional[str] = None
+
+
+# ═══════════════════════════════════════════════════════════════
+#  V2.5 Peer Benchmark Models
+# ═══════════════════════════════════════════════════════════════
+
+
+class PeerContextInfo(BaseModel):
+    """Whether a peer benchmark can be computed for a ticker."""
+    available: bool = False
+    group_id: Optional[str] = None
+    group_label: Optional[str] = None
+    sample_size: int = 0
+    total_peers: int = 0
+    status: str = "unavailable"
+
+
+class SpreadVsMedian(BaseModel):
+    """Spread of a metric relative to peer median."""
+    ratio: Optional[float] = None
+    percentage: Optional[float] = None
+    absolute: Optional[float] = None
+
+
+class BenchmarkPerMetric(BaseModel):
+    """Single metric benchmark vs peers."""
+    value: Optional[float] = None
+    peer_median: Optional[float] = None
+    peer_values: int = 0
+    percentile_rank: Optional[float] = None
+    spread_vs_median: Optional[SpreadVsMedian] = None
+    direction: str = "context_only"
+    label: str = ""
+    status: str = "unavailable"
+
+
+class PeerBenchmarkSummary(BaseModel):
+    """Aggregate peer benchmark summary — neutral labels only."""
+    relative_valuation: str = ""
+    growth_support: str = ""
+    quality_support: str = ""
+    confidence: str = ""
+
+
+class PeerBenchmarkResponse(BaseModel):
+    """V2.5 Peer Benchmark endpoint response.
+
+    Combines peer universe data with peer benchmark computations
+    from the pure-function peer_benchmark engine (SA-V25-T3).
+    No scoring/recommendations. Labels are neutral (no forbidden words).
+    """
+    ticker: str
+    peer_context: PeerContextInfo = Field(default_factory=PeerContextInfo)
+    subject_metrics: dict = Field(default_factory=dict)
+    benchmarks: dict = Field(default_factory=dict)
+    summary: PeerBenchmarkSummary = Field(default_factory=PeerBenchmarkSummary)
+    warnings: list = Field(default_factory=list)
+    source: str = "curated"
+    status: str = "unavailable"
+    timestamp: Optional[str] = None

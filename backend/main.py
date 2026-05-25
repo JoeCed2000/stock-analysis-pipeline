@@ -67,6 +67,8 @@ from backend.orchestrator import run_analysis_parallel
 from backend.earnings_deep_dive.schemas import DeepDiveRequest, DeepDiveResponse
 from backend.sources_collector import list_available_quarters, get_yahoo_data, get_yahoo_data_for_quarter
 from backend.search_logger import log_search
+from backend.routes.valuation_context import router as valuation_context_router
+from backend.routes.peer_benchmark import router as peer_benchmark_router
 
 # Setup logging with our custom configuration
 from backend.logging_config import setup_logging, get_logger
@@ -171,6 +173,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(valuation_context_router)
+app.include_router(peer_benchmark_router)
 
 ANALYSES_DIR = Path(__file__).parent.parent / "analyses"
 
