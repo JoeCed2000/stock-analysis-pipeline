@@ -144,6 +144,85 @@ class TestScoreTicker:
             assert key in raw, f"Missing raw sub-score: {key}"
             assert 1 <= raw[key] <= 5, f"{key} = {raw[key]}, expected 1-5"
 
+    def test_score_ticker_returns_6_canonical_fields(self):
+        """score_ticker() must return exactly 6 canonical fields with correct ranges."""
+        data = {
+            "financials": {
+                "revenue_yoy_growth": 0.16,
+                "revenue_annual_growth": 0.15,
+                "gross_margin": 0.69,
+                "operating_margin": 0.44,
+                "net_income": 7e10,
+                "free_cash_flow": 5e10,
+                "net_debt": 1e10,
+                "guidance_official": 0.12,
+            },
+            "valuation": {
+                "pe_current": 33,
+                "pe_forward": 28,
+                "peg_ratio": 2.1,
+            },
+            "sector": "Technology",
+            "industry": "Software—Infrastructure",
+            "market_cap": 3.0e12,
+            "price": 420,
+            "52w_high": 440,
+        }
+        s = score_ticker(data)
+        # Exactly 6 canonical fields
+        fields = {
+            "financial_health": s.financial_health,
+            "growth": s.growth,
+            "valuation": s.valuation,
+            "management": s.management,
+            "moat": s.moat,
+            "sentiment": s.sentiment,
+        }
+        assert len(fields) == 6, f"Expected 6 canonical fields, got {len(fields)}"
+        for name, value in fields.items():
+            assert isinstance(value, int), f"{name} is {type(value).__name__}, expected int"
+        assert 0 <= s.financial_health <= 10, f"financial_health={s.financial_health}"
+        assert 0 <= s.growth <= 10, f"growth={s.growth}"
+        assert 0 <= s.valuation <= 8, f"valuation={s.valuation}"
+        assert 0 <= s.management <= 5, f"management={s.management}"
+        assert 0 <= s.moat <= 4, f"moat={s.moat}"
+        assert 0 <= s.sentiment <= 3, f"sentiment={s.sentiment}"
+
+    def test_total_is_40_for_msft(self):
+        """MSFT-like data: verify total equals sum of 6 canonical fields and is within 40 cap."""
+        data = {
+            "financials": {
+                "revenue_yoy_growth": 0.16,
+                "revenue_annual_growth": 0.15,
+                "gross_margin": 0.69,
+                "operating_margin": 0.44,
+                "net_income": 9e10,
+                "free_cash_flow": 6e10,
+                "net_debt": -5e9,  # net cash
+                "guidance_official": 0.15,
+            },
+            "valuation": {
+                "pe_current": 33,
+                "pe_forward": 28,
+                "peg_ratio": 2.1,
+            },
+            "sector": "Technology",
+            "industry": "Software—Infrastructure",
+            "market_cap": 3.2e12,
+            "price": 430,
+            "52w_high": 445,
+        }
+        s = score_ticker(data)
+        expected_total = (
+            s.financial_health + s.growth + s.valuation +
+            s.management + s.moat + s.sentiment
+        )
+        assert s.total == expected_total, (
+            f"total={s.total} != sum of 6 fields={expected_total}"
+        )
+        assert 0 <= s.total <= 40, f"total={s.total} exceeds 40 cap"
+        assert s.total >= 20, "MSFT should score well"
+
     def test_canonical_mapping_consistency(self):
         """Verify the 8→6 mapping matches the spec."""
         data = {
