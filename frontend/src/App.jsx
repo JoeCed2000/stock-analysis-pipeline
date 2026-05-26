@@ -7,6 +7,7 @@ import SmartLoader from './components/SmartLoader.jsx';
 import SkeletonCard from './components/SkeletonCard.jsx';
 import LanguageSelector from './components/LanguageSelector.jsx';
 import AdminPage from './components/AdminPage.jsx';
+import NotFound from './components/NotFound.jsx';
 import { analyzeTickersAsync, getJobStatus, getDossierStatus, countDossierSections } from './api.js';
 import translations from './i18n.js';
 
@@ -23,9 +24,17 @@ export default function App() {
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState({ current: 0, total: 0, ticker: '', companyName: '' });
   const [showAdmin, setShowAdmin] = useState(() => window.location.hash === '#admin');
+  const [show404, setShow404] = useState(() => {
+    const h = window.location.hash;
+    return h && h !== '#admin';
+  });
 
   useEffect(() => {
-    const onHashChange = () => setShowAdmin(window.location.hash === '#admin');
+    const onHashChange = () => {
+      const h = window.location.hash;
+      setShowAdmin(h === '#admin');
+      setShow404(Boolean(h) && h !== '#admin');
+    };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
@@ -213,7 +222,9 @@ export default function App() {
 
   return (
     <div className="app" style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
-      {showAdmin ? (
+      {show404 ? (
+        <NotFound t={t} onBack={() => { window.location.hash = ''; }} />
+      ) : showAdmin ? (
         <AdminPage t={t} onClose={() => { window.location.hash = ''; }} />
       ) : (
       <>{/* Header — centered */}

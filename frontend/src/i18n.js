@@ -7,6 +7,9 @@ const translations = {
     // Header
     siteTitle: "📈 Stock Analysis",
     siteSubtitle: "Automated fundamental analysis — BUY / HOLD / SELL based on 6 weighted categories",
+    pageNotFound: "Page Not Found",
+    pageNotFoundDesc: "The page you're looking for doesn't exist or has been moved.",
+    backToHome: "Back to Home",
     
     // Mode tabs
     quickAnalysis: "🔍 Quick Analysis",
@@ -186,6 +189,9 @@ const translations = {
     // Header
     siteTitle: "📈 株式分析",
     siteSubtitle: "6つの加重カテゴリーに基づく自動ファンダメンタル分析 — BUY / HOLD / SELL",
+    pageNotFound: "ページが見つかりません",
+    pageNotFoundDesc: "お探しのページは存在しないか、移動されました。",
+    backToHome: "ホームに戻る",
     
     // Mode tabs
     quickAnalysis: "🔍 クイック分析",
