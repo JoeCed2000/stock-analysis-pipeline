@@ -273,7 +273,7 @@ export default function App() {
       </div>
 
       {/* Single mode */}
-      {!loading && mode === 'single' && (
+      {mode === 'single' && (
         <TickerInput onAnalyze={handleAnalyze} loading={loading} t={t} />
       )}
 
