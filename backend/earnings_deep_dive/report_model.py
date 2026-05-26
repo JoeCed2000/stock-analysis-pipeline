@@ -95,6 +95,15 @@ class ChartData(BaseModel):
     roic: float | None = None
     sector: str | None = None
     industry: str | None = None
+    # ── 6-category weighted scoring (total /40) ──
+    scoring_financial_health: float | None = None   # /10
+    scoring_growth: float | None = None              # /10
+    scoring_valuation: float | None = None           # /8
+    scoring_management: float | None = None          # /5
+    scoring_moat: float | None = None                # /4
+    scoring_sentiment: float | None = None           # /3
+    scoring_total: int | None = None                 # total /40
+    scoring_decision: str | None = None              # BUY/HOLD/SELL
 
 
 # ── Company Overview models ───────────────────────────────────────────────
@@ -203,6 +212,201 @@ class ScoringSummary(BaseModel):
     quarter: str = ""
 
 
+# ── V2.7 Structured PDF Section Models ───────────────────────────────────
+# Each section is a standalone Pydantic model for PDF rendering.
+# All fields are nullable (Optional/None) — partial data is valid.
+# All monetary values are USD-only, with source/timestamp tracking.
+
+
+class ExecutiveSnapshot(BaseModel):
+    """Top-level summary card for the report's first page.
+
+    High-level company identity + key stats + verdict.
+    Designed to be rendered as a callout box at the top of the PDF.
+    """
+    ticker: str | None = None
+    company_name: str | None = None
+    quarter: str | None = None
+    # ── Price & Market Cap (USD) ──
+    price: float | None = None
+    price_currency: str = "USD"
+    market_cap: float | None = None
+    market_cap_display: str | None = None
+    market_cap_currency: str = "USD"
+    # ── Verdict ──
+    verdict: str | None = None          # BUY / HOLD / SELL
+    decision_score: int | None = None    # /40
+    decision_max: int = 40
+    # ── Metadata ──
+    sector: str | None = None
+    industry: str | None = None
+    next_earnings_date: str | None = None    # ISO date
+    generated_at: str | None = None           # ISO timestamp
+    source_refs: list[SourceRef] = Field(default_factory=list)
+
+
+class FinancialMetrics(BaseModel):
+    """Structured financial data tables for the PDF.
+
+    EPS, Revenue, margins, growth rates, FCF — all in USD.
+    Each metric carries its own display string, source, and grounding level.
+    """
+    # ── EPS ──
+    eps_actual: float | None = None
+    eps_actual_display: str | None = None
+    eps_estimate: float | None = None
+    eps_estimate_display: str | None = None
+    eps_beat_pct: float | None = None
+    eps_beat_pct_display: str | None = None
+    eps_currency: str = "USD"
+    eps_source: str | None = None
+    eps_as_of_date: str | None = None
+    eps_grounding: GroundingLevel | None = None
+
+    # ── Revenue ──
+    revenue_actual: float | None = None
+    revenue_actual_display: str | None = None
+    revenue_estimate: float | None = None
+    revenue_estimate_display: str | None = None
+    revenue_beat_pct: float | None = None
+    revenue_beat_pct_display: str | None = None
+    revenue_currency: str = "USD"
+    revenue_source: str | None = None
+    revenue_as_of_date: str | None = None
+    revenue_grounding: GroundingLevel | None = None
+
+    # ── Margins (%) ──
+    gross_margin: float | None = None
+    gross_margin_display: str | None = None
+    operating_margin: float | None = None
+    operating_margin_display: str | None = None
+    net_margin: float | None = None
+    net_margin_display: str | None = None
+
+    # ── Growth (YoY %) ──
+    revenue_growth_yoy: float | None = None
+    revenue_growth_yoy_display: str | None = None
+    eps_growth_yoy: float | None = None
+    eps_growth_yoy_display: str | None = None
+
+    # ── Free Cash Flow (USD) ──
+    fcf: float | None = None
+    fcf_display: str | None = None
+    fcf_currency: str = "USD"
+
+    # ── Sources ──
+    sources: list[SourceRef] = Field(default_factory=list)
+
+
+class ValuationSection(BaseModel):
+    """Multiples and valuation ratios for the PDF.
+
+    Standard valuation multiples: PE, PEG, PS, PB, EV/EBITDA, FCF yield, dividend yield.
+    All in USD context.
+    """
+    pe_trailing: float | None = None
+    pe_trailing_display: str | None = None
+    pe_forward: float | None = None
+    pe_forward_display: str | None = None
+    peg_ratio: float | None = None
+    peg_ratio_display: str | None = None
+    price_to_sales: float | None = None
+    price_to_sales_display: str | None = None
+    price_to_book: float | None = None
+    price_to_book_display: str | None = None
+    ev_to_ebitda: float | None = None
+    ev_to_ebitda_display: str | None = None
+    fcf_yield: float | None = None        # as decimal (0.008 = 0.8%)
+    fcf_yield_display: str | None = None
+    dividend_yield: float | None = None    # as decimal (0.0002 = 0.02%)
+    dividend_yield_display: str | None = None
+
+    currency: str = "USD"
+    generated_at: str | None = None
+    sources: list[SourceRef] = Field(default_factory=list)
+
+
+class ValuationContextSection(BaseModel):
+    """7 context signals from V2.4 /api/valuation-context endpoint.
+
+    Each signal has a numeric value + human-readable label + detail.
+    """
+    peg_signal: float | None = None
+    peg_signal_label: str | None = None
+    peg_signal_detail: str | None = None
+
+    ps_vs_growth_signal: float | None = None
+    ps_vs_growth_label: str | None = None
+
+    ev_ebitda_vs_growth_signal: float | None = None
+    ev_ebitda_vs_growth_label: str | None = None
+
+    pfcf_vs_growth_signal: float | None = None
+    pfcf_vs_growth_label: str | None = None
+
+    fcf_yield_signal: float | None = None
+    fcf_yield_label: str | None = None
+
+    valuation_support: str | None = None      # narrative summary
+    context_summary: str | None = None         # final verdict sentence
+
+    generated_at: str | None = None
+    currency: str = "USD"
+
+
+class PeerBenchmarkSection(BaseModel):
+    """Peer-relative benchmarks from V2.5 /api/peer-benchmark endpoint.
+
+    Relative valuation, growth, quality vs curated peer group.
+    """
+    peer_group: str | None = None
+    peer_tickers: list[str] = Field(default_factory=list)
+
+    # ── Relative Labels (neutral wording: "Above Average" / "Below Average" / "In Line") ──
+    relative_valuation_label: str | None = None
+    relative_valuation_detail: str | None = None
+    relative_growth_label: str | None = None
+    relative_growth_detail: str | None = None
+    relative_quality_label: str | None = None
+    relative_quality_detail: str | None = None
+
+    # ── Summary ──
+    benchmark_summary: str | None = None
+
+    # ── Detailed metrics (dict for flexibility) ──
+    valuation_metrics: dict[str, float] = Field(default_factory=dict)
+    quality_metrics: dict[str, float] = Field(default_factory=dict)
+
+    currency: str = "USD"
+    generated_at: str | None = None
+
+
+class DataQualitySection(BaseModel):
+    """Source freshness and data completeness for audit trail.
+
+    Tracks when each data source was last refreshed and flags missing fields.
+    """
+    # ── Source Timestamps ──
+    yfinance_freshness: str | None = None        # ISO date
+    yfinance_source_label: str | None = None
+    finnhub_freshness: str | None = None
+    finnhub_source_label: str | None = None
+    sec_edgar_freshness: str | None = None
+    sec_edgar_source_label: str | None = None
+    transcript_freshness: str | None = None
+    transcript_source_label: str | None = None
+
+    # ── Confidence ──
+    overall_confidence: str | None = None          # "high" / "medium" / "low"
+    completeness_score: int | None = None           # 0-100
+    completeness_max: int = 100
+    missing_fields: list[str] = Field(default_factory=list)
+
+    # ── Metadata ──
+    data_currency: str = "USD"
+    generated_at: str | None = None
+
+
 class EarningsDeepDiveReport(BaseModel):
     ticker: str
     company: str
@@ -218,3 +422,10 @@ class EarningsDeepDiveReport(BaseModel):
     charts: ChartData | None = None
     company_overview: CompanyOverview | None = None
     scoring: Optional[ScoringSummary] = None
+    # ── V2.7 structured section models (all optional, no breaking change) ──
+    executive_snapshot: ExecutiveSnapshot | None = None
+    financial_metrics: FinancialMetrics | None = None
+    valuation: ValuationSection | None = None
+    valuation_context: ValuationContextSection | None = None
+    peer_benchmark: PeerBenchmarkSection | None = None
+    data_quality: DataQualitySection | None = None
