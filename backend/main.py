@@ -786,57 +786,87 @@ async def metrics_history(ticker: str):
         if fin is None or fin.empty:
             return {"ticker": ticker, "quarters": [], "error": "No financial data"}
         
-        # Build quarter-indexed dicts for income statement
+        # Build quarter-indexed dict — start with ALL quarters from all sources
+        # (yfinance income statement returns ~5Q; balance sheet and cash flow return ~7Q.
+        #  Merge all to show the full available history to the user.)
         is_data = {}
+
+        def _quarter_key(ts) -> str:
+            """Convert pandas Timestamp/date to quarter label like 2025Q4."""
+            if hasattr(ts, "year") and hasattr(ts, "month"):
+                return f"{ts.year}Q{(ts.month - 1)//3 + 1}"
+            d = pd.Timestamp(ts)
+            return f"{d.year}Q{(d.month - 1)//3 + 1}"
+
+        # Discover ALL quarter keys first (from all 3 sources)
+        all_quarters = set()
         for col_date in fin.columns:
+            all_quarters.add(_quarter_key(col_date))
+        try:
+            cf = getattr(stock, "quarterly_cashflow", None)
+            if cf is not None and not cf.empty:
+                for col_date in cf.columns:
+                    all_quarters.add(_quarter_key(col_date))
+        except Exception:
+            cf = None
+        try:
+            bs = getattr(stock, "quarterly_balance_sheet", None)
+            if bs is not None and not bs.empty:
+                for col_date in bs.columns:
+                    all_quarters.add(_quarter_key(col_date))
+        except Exception:
+            bs = None
+
+        # Pre-populate all quarters (so BS/CF-only quarters appear with IS fields = None)
+        for q in all_quarters:
+            is_data[q] = {}
+
+        # Income statement
+        for col_date in fin.columns:
+            quarter_label = _quarter_key(col_date)
             date_str = col_date.strftime("%Y-%m-%d")
-            quarter_label = f"{col_date.year}Q{(col_date.month - 1)//3 + 1}"
             row = fin[col_date]
-            is_data.setdefault(quarter_label, {})["date"] = date_str
-            is_data.setdefault(quarter_label, {})["revenue"] = _safe_float(row.get("Total Revenue"))
-            is_data.setdefault(quarter_label, {})["net_income"] = _safe_float(row.get("Net Income"))
-            is_data.setdefault(quarter_label, {})["ebitda"] = _safe_float(row.get("EBITDA"))
-            is_data.setdefault(quarter_label, {})["gross_profit"] = _safe_float(row.get("Gross Profit"))
-            is_data.setdefault(quarter_label, {})["eps"] = _safe_float(row.get("Basic EPS"))
-            is_data.setdefault(quarter_label, {})["operating_income"] = _safe_float(row.get("Operating Income"))
-            is_data.setdefault(quarter_label, {})["diluted_shares"] = _safe_float(row.get("Diluted Average Shares"))
-            is_data.setdefault(quarter_label, {})["pretax_income"] = _safe_float(row.get("Pretax Income"))
-            is_data.setdefault(quarter_label, {})["tax_provision"] = _safe_float(row.get("Tax Provision"))
+            is_data[quarter_label]["date"] = date_str
+            is_data[quarter_label]["revenue"] = _safe_float(row.get("Total Revenue"))
+            is_data[quarter_label]["net_income"] = _safe_float(row.get("Net Income"))
+            is_data[quarter_label]["ebitda"] = _safe_float(row.get("EBITDA"))
+            is_data[quarter_label]["gross_profit"] = _safe_float(row.get("Gross Profit"))
+            is_data[quarter_label]["eps"] = _safe_float(row.get("Basic EPS"))
+            is_data[quarter_label]["operating_income"] = _safe_float(row.get("Operating Income"))
+            is_data[quarter_label]["diluted_shares"] = _safe_float(row.get("Diluted Average Shares"))
+            is_data[quarter_label]["pretax_income"] = _safe_float(row.get("Pretax Income"))
+            is_data[quarter_label]["tax_provision"] = _safe_float(row.get("Tax Provision"))
 
         # Cash flow statement
         try:
-            cf = stock.quarterly_cashflow
             if cf is not None and not cf.empty:
                 for col_date in cf.columns:
-                    quarter_label = f"{col_date.year}Q{(col_date.month - 1)//3 + 1}"
+                    quarter_label = _quarter_key(col_date)
                     row = cf[col_date]
-                    if quarter_label in is_data:
-                        is_data[quarter_label]["operating_cash_flow"] = _safe_float(row.get("Operating Cash Flow"))
-                        is_data[quarter_label]["capex"] = _safe_float(row.get("Capital Expenditure"))
-                        # FCF: yfinance provides it pre-computed; fallback: OCF + Capex
-                        # (yfinance capex is always negative, so OCF + Capex = OCF - |Capex|)
-                        fcf = _safe_float(row.get("Free Cash Flow"))
-                        if fcf is None:
-                            ocf = is_data[quarter_label].get("operating_cash_flow")
-                            capex = is_data[quarter_label].get("capex")
-                            fcf = (ocf + capex) if (ocf is not None and capex is not None) else None
-                        is_data[quarter_label]["free_cash_flow"] = fcf
+                    is_data[quarter_label]["operating_cash_flow"] = _safe_float(row.get("Operating Cash Flow"))
+                    is_data[quarter_label]["capex"] = _safe_float(row.get("Capital Expenditure"))
+                    # FCF: yfinance provides it pre-computed; fallback: OCF + Capex
+                    # (yfinance capex is always negative, so OCF + Capex = OCF - |Capex|)
+                    fcf = _safe_float(row.get("Free Cash Flow"))
+                    if fcf is None:
+                        ocf = is_data[quarter_label].get("operating_cash_flow")
+                        cpx = is_data[quarter_label].get("capex")
+                        fcf = (ocf + cpx) if (ocf is not None and cpx is not None) else None
+                    is_data[quarter_label]["free_cash_flow"] = fcf
         except Exception:
             logger.debug(f"metrics-history[{ticker}]: cash flow fetch skipped")
 
         # Balance sheet
         try:
-            bs = stock.quarterly_balance_sheet
             if bs is not None and not bs.empty:
                 for col_date in bs.columns:
-                    quarter_label = f"{col_date.year}Q{(col_date.month - 1)//3 + 1}"
+                    quarter_label = _quarter_key(col_date)
                     row = bs[col_date]
-                    if quarter_label in is_data:
-                        is_data[quarter_label]["cash_and_equivalents"] = _safe_float(row.get("Cash And Cash Equivalents"))
-                        is_data[quarter_label]["total_debt"] = _safe_float(row.get("Total Debt"))
-                        is_data[quarter_label]["total_assets"] = _safe_float(row.get("Total Assets"))
-                        is_data[quarter_label]["stockholders_equity"] = _safe_float(row.get("Stockholders Equity"))
-                        is_data[quarter_label]["invested_capital"] = _safe_float(row.get("Invested Capital"))
+                    is_data[quarter_label]["cash_and_equivalents"] = _safe_float(row.get("Cash And Cash Equivalents"))
+                    is_data[quarter_label]["total_debt"] = _safe_float(row.get("Total Debt"))
+                    is_data[quarter_label]["total_assets"] = _safe_float(row.get("Total Assets"))
+                    is_data[quarter_label]["stockholders_equity"] = _safe_float(row.get("Stockholders Equity"))
+                    is_data[quarter_label]["invested_capital"] = _safe_float(row.get("Invested Capital"))
         except Exception:
             logger.debug(f"metrics-history[{ticker}]: balance sheet fetch skipped")
 
@@ -1965,6 +1995,32 @@ async def admin_list_feedback():
     """List all feedback across all tickers for the admin dashboard."""
     from backend.feedback_store import get_all_admin_feedback
     return JSONResponse(get_all_admin_feedback())
+
+
+# ── Cache transparency ──────────────────────────────────────────────────
+# Exposes overview cache metadata + flush capability for the frontend.
+
+@app.get("/api/cache/overview/{ticker}")
+async def cache_info(ticker: str, lang: str = "en"):
+    """Return cache metadata for a ticker's company overview.
+
+    Shows: cached (bool), cached_at (ISO), age_days, ttl_days, expired.
+    """
+    from backend.company_overview import overview_cache_info
+    ticker = ticker.strip().upper()
+    return JSONResponse(overview_cache_info(ticker, lang))
+
+
+@app.post("/api/cache/overview/{ticker}/flush")
+async def cache_flush(ticker: str, lang: str = "en"):
+    """Flush (delete) cached company overview for a ticker.
+
+    Set lang=all to flush all languages. Returns what was deleted.
+    """
+    from backend.company_overview import overview_cache_flush
+    ticker = ticker.strip().upper()
+    language = None if lang == "all" else lang
+    return JSONResponse(overview_cache_flush(ticker, language))
 
 
 # ── Serve React SPA (after all API routes — mono-origin architecture) ──

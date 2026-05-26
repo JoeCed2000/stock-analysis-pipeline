@@ -61,6 +61,80 @@ def _overview_cache_get(ticker: str, language: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def overview_cache_info(ticker: str, language: str) -> Dict[str, Any]:
+    """Return cache metadata: whether cached, age, timestamp, TTL.
+
+    Used by the frontend to show cache freshness and allow flushing.
+    """
+    path = _overview_cache_path(ticker, language)
+    if not path.exists():
+        return {"cached": False, "ticker": ticker.upper(), "language": language,
+                "ttl_days": OVERVIEW_CACHE_TTL / 86400}
+
+    try:
+        with open(path) as f:
+            entry = json.load(f)
+        ts = entry.get("timestamp", 0)
+        age = datetime.now(timezone.utc).timestamp() - ts
+        return {
+            "cached": True,
+            "ticker": ticker.upper(),
+            "language": language,
+            "cache_version": entry.get("version"),
+            "cached_at": datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(),
+            "age_seconds": round(age),
+            "age_days": round(age / 86400, 1),
+            "ttl_seconds": OVERVIEW_CACHE_TTL,
+            "ttl_days": OVERVIEW_CACHE_TTL / 86400,
+            "expired": age > OVERVIEW_CACHE_TTL,
+        }
+    except Exception as e:
+        logger.warning(f"Overview cache info error for {ticker}/{language}: {e}")
+        return {"cached": False, "ticker": ticker.upper(), "language": language,
+                "error": str(e), "ttl_days": OVERVIEW_CACHE_TTL / 86400}
+
+
+def overview_cache_flush(ticker: str, language: Optional[str] = None) -> Dict[str, Any]:
+    """Delete cached overview(s). If language is None, flush all languages for this ticker.
+
+    Returns summary of what was deleted.
+    """
+    deleted = []
+    not_found = []
+
+    if language:
+        languages = [language]
+    else:
+        # Discover all language variants for this ticker
+        languages = []
+        raw_pattern = f"company_overview_{ticker.upper()}_"
+        for p in CACHE_DIR.glob(f"{raw_pattern}*_v{OVERVIEW_CACHE_VERSION}.json"):
+            # Extract language from filename: company_overview_AAPL_en_v1.json → en
+            stem = p.stem  # company_overview_AAPL_en_v1
+            parts = stem.split("_")
+            if len(parts) >= 4:
+                languages.append(parts[-2])  # "en" or "jp"
+
+    for lang in languages:
+        path = _overview_cache_path(ticker, lang)
+        if path.exists():
+            try:
+                path.unlink()
+                deleted.append(lang)
+                logger.info(f"Overview cache FLUSHED for {ticker}/{lang}")
+            except Exception as e:
+                logger.warning(f"Overview cache flush error for {ticker}/{lang}: {e}")
+        else:
+            not_found.append(lang)
+
+    return {
+        "ticker": ticker.upper(),
+        "deleted": deleted,
+        "not_found": not_found,
+        "cache_version": OVERVIEW_CACHE_VERSION,
+    }
+
+
 def _overview_cache_set(ticker: str, language: str, data: Dict[str, Any]) -> None:
     """Write overview to cache with version stamp."""
     try:

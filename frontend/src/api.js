@@ -1,5 +1,6 @@
 // Use deployed backend URL in production, local proxy in dev
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
+export { API_BASE };
 
 // ngrok free tier requires this header to skip the browser warning interstitial
 const NGROK_HEADER = { 'ngrok-skip-browser-warning': 'true' };

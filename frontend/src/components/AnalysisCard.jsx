@@ -6,6 +6,7 @@ import ValuationGroup from './ValuationGroup.jsx';
 import PeerBenchmarkGroup from './PeerBenchmark/PeerBenchmarkGroup.jsx';
 import FeedbackPanel from './FeedbackPanel.jsx';
 import ExportMenu from './ExportMenu.jsx';
+import CacheIndicator from './CacheIndicator.jsx';
 import { getExportBridgeData } from '../export/exportDataBridge.js';
 
 const SCORE_COLORS = {
@@ -88,7 +89,7 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
     let cancelled = false;
     fetchQuarters(ticker).then(data => {
       if (!cancelled) {
-        const qs = (data.quarters || []).slice(0, 4);
+        const qs = data.quarters || [];
         setQuarters(qs);
         if (qs.length > 0) setSelectedQuarter(qs[0]);
       }
@@ -260,6 +261,11 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
         <MetricBox label="Mkt Cap" value={market_cap ? `${(market_cap / 1e12).toFixed(1)}T` : '—'} border />
         <MetricBox label="Sector" value={sector || '—'} />
         <MetricBox label="Retrieved" value={retrieved_at ? new Date(retrieved_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—'} border />
+      </div>
+
+      {/* ── CACHE FRESHNESS ── */}
+      <div style={{ padding: '4px 14px', borderBottom: '1px solid #21262d' }}>
+        <CacheIndicator ticker={ticker} />
       </div>
 
       {/* ── VALUATION GROUP ── */}
