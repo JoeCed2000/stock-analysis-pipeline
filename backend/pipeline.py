@@ -1460,6 +1460,12 @@ def _add_earnings_deep_dive_if_transcript(
                     jp_response = None
 
         # Render EN PDF (default location)
+        # ── Fetch raw yfinance info for V2.7 ValuationContextSection ──
+        yf_info = None
+        try:
+            yf_info = _yf_ticker_safe(ticker).info
+        except Exception as yf_exc:
+            logger.debug(f"[{ticker}] yfinance info fetch failed ({yf_exc}) — ValuationContext will be empty")
         en_pdf_path = os.path.join(en_output_dir, "07_final_report", "earnings_deep_dive.pdf")
         en_report_model = build_earnings_deep_dive_report(
             ticker=ticker,
@@ -1470,6 +1476,7 @@ def _add_earnings_deep_dive_if_transcript(
             transcript_url=transcript_url,
             section_analysis=en_response.sections,
             company_overview=result.company_overview,
+            yf_info=yf_info,
         )
         if website:
             from backend.earnings_deep_dive.report_model import SourceRef
@@ -1488,6 +1495,7 @@ def _add_earnings_deep_dive_if_transcript(
                 transcript_url=transcript_url,
                 section_analysis=jp_response.sections,
                 company_overview=result.company_overview,
+                yf_info=yf_info,
             )
             if website:
                 jp_report_model.sources.append(SourceRef(label="Official Website", url=website))

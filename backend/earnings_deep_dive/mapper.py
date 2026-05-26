@@ -1661,6 +1661,7 @@ def build_earnings_deep_dive_report(
     generated_at: str | None = None,
     company_overview: dict | None = None,
     scoring: Optional['Scoring'] = None,
+    yf_info: dict | None = None,
 ) -> EarningsDeepDiveReport:
     """Build the deterministic report model used by the PDF renderer."""
     report_language = _language(language)
@@ -2114,6 +2115,7 @@ def build_earnings_deep_dive_report(
         scoring=scoring,
         sources=sources,
         next_earnings_date=next_earnings_date,
+        yf_info=yf_info,
     )
 
     # ── Convert company_overview dict to CompanyOverview model ──
@@ -2164,6 +2166,7 @@ def _build_v27_models(
     scoring: Optional['Scoring'] = None,
     sources: list[SourceRef] | None = None,
     next_earnings_date: str | None = None,
+    yf_info: dict | None = None,
 ) -> dict:
     """Build the 6 V2.7 structured section models from available data.
 
@@ -2304,7 +2307,9 @@ def _build_v27_models(
     )
 
     # ── 4–6. Remaining sections (pending endpoint integration) ─────────────
-    vc = ValuationContextSection()  # all None
+    vc = _build_valuation_context(
+        yf_info=yf_info, metrics=metrics, generated_at=generated_at,
+    )
     pb = PeerBenchmarkSection()     # all None
     dq = DataQualitySection(generated_at=generated_at)  # timestamp only
 
@@ -2316,6 +2321,147 @@ def _build_v27_models(
         "peer_benchmark": pb,
         "data_quality": dq,
     }
+
+
+def _build_valuation_context(
+    *,
+    yf_info: dict | None,
+    metrics: FinancialMetrics | None,
+    generated_at: str,
+) -> ValuationContextSection:
+    """Build ValuationContextSection from yfinance info dict + FinancialMetrics.
+
+    Extracts 5 context signals (PEG, P/S, EV/EBITDA, P/FCF, FCF Yield) plus
+    a narrative valuation_support summary.  All signals are nullable — the PDF
+    renderer gracefully skips None rows.
+    """
+    vc = ValuationContextSection(
+        generated_at=generated_at,
+        currency="USD",
+    )
+
+    if not yf_info:
+        return vc
+
+    def _f(key: str) -> float | None:
+        v = yf_info.get(key)
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    def _label_peg(peg: float) -> str:
+        if peg < 0:
+            return "Negative Earnings"
+        if peg < 1.0:
+            return "Attractive (<1x)"
+        if peg <= 2.0:
+            return "Fair (1-2x)"
+        return "Expensive (>2x)"
+
+    def _label_vs_growth(ratio: float, growth_key: str = "revenueGrowth") -> str:
+        """Heuristic: compare valuation ratio to growth rate."""
+        growth = _f(growth_key)
+        if growth is None:
+            # Try earningsGrowth as fallback
+            growth = _f("earningsGrowth")
+        if growth is None or growth <= 0:
+            return "N/A (no growth data)"
+        # Ratio relative to growth: ratio/growth < 0.5 → attractive, > 1.5 → expensive
+        ratio_to_growth = ratio / (growth * 100) if growth > 0 else float('inf')
+        if ratio_to_growth < 0.5:
+            return "Attractive vs Growth"
+        if ratio_to_growth <= 1.0:
+            return "Moderate vs Growth"
+        if ratio_to_growth <= 1.5:
+            return "Fair vs Growth"
+        return "Expensive vs Growth"
+
+    def _label_fcf_yield(pct: float) -> str:
+        if pct >= 8.0:
+            return "Strong (≥8%)"
+        if pct >= 4.0:
+            return "Moderate (4-8%)"
+        if pct >= 2.0:
+            return "Low (2-4%)"
+        if pct > 0:
+            return "Very Low (<2%)"
+        return "Negative FCF"
+
+    # ── 1. PEG Signal ────────────────────────────────────────────────
+    peg = _f("pegRatio")
+    if peg is not None:
+        vc.peg_signal = peg
+        vc.peg_signal_label = _label_peg(peg)
+        # Build detail: "PEG X.XX = P/E XX.X / growth XX%"
+        pe_ttm = _f("trailingPE")
+        growth = _f("earningsGrowth") or _f("revenueGrowth")
+        if pe_ttm and growth:
+            vc.peg_signal_detail = f"P/E {pe_ttm:.1f}x / growth {growth*100:.0f}%"
+        elif pe_ttm:
+            vc.peg_signal_detail = f"P/E {pe_ttm:.1f}x"
+
+    # ── 2. P/S vs Growth ─────────────────────────────────────────────
+    ps = _f("priceToSalesTrailing12Months")
+    if ps is not None:
+        vc.ps_vs_growth_signal = ps
+        vc.ps_vs_growth_label = _label_vs_growth(ps)
+
+    # ── 3. EV/EBITDA vs Growth ───────────────────────────────────────
+    ev_ebitda = _f("enterpriseToEbitda")
+    if ev_ebitda is not None:
+        vc.ev_ebitda_vs_growth_signal = ev_ebitda
+        vc.ev_ebitda_vs_growth_label = _label_vs_growth(ev_ebitda)
+
+    # ── 4. P/FCF vs Growth ───────────────────────────────────────────
+    mcap = _f("marketCap")
+    fcf = _f("freeCashflow")
+    if mcap and fcf and mcap > 0 and fcf > 0:
+        pfcf = mcap / fcf
+        vc.pfcf_vs_growth_signal = pfcf
+        vc.pfcf_vs_growth_label = _label_vs_growth(pfcf)
+
+    # ── 5. FCF Yield ─────────────────────────────────────────────────
+    if mcap and fcf and mcap > 0:
+        fcf_yield_pct = (fcf / mcap) * 100
+        vc.fcf_yield_signal = round(fcf_yield_pct, 2)
+        vc.fcf_yield_label = _label_fcf_yield(fcf_yield_pct)
+
+    # ── 6. Valuation Support Narrative ───────────────────────────────
+    signals_present = sum(1 for s in [
+        vc.peg_signal, vc.ps_vs_growth_signal,
+        vc.ev_ebitda_vs_growth_signal, vc.pfcf_vs_growth_signal,
+    ] if s is not None)
+
+    if signals_present >= 3:
+        # Build a concise narrative from the signals
+        parts = []
+        if vc.peg_signal is not None:
+            parts.append(f"PEG {vc.peg_signal:.1f} ({vc.peg_signal_label})")
+        if vc.fcf_yield_signal is not None:
+            parts.append(f"FCF Yield {vc.fcf_yield_signal:.1f}%")
+        vc.valuation_support = "; ".join(parts) if parts else None
+
+        # Context summary: one-line synthesis
+        attractive_count = sum(1 for label in [
+            vc.peg_signal_label, vc.ps_vs_growth_label,
+            vc.ev_ebitda_vs_growth_label, vc.pfcf_vs_growth_label,
+        ] if label and "Attractive" in str(label))
+        expensive_count = sum(1 for label in [
+            vc.peg_signal_label, vc.ps_vs_growth_label,
+            vc.ev_ebitda_vs_growth_label, vc.pfcf_vs_growth_label,
+        ] if label and "Expensive" in str(label))
+
+        if attractive_count > expensive_count:
+            vc.context_summary = f"{attractive_count}/{signals_present} signals attractive — valuation has support at current levels"
+        elif expensive_count > attractive_count:
+            vc.context_summary = f"{expensive_count}/{signals_present} signals expensive — valuation demands high growth delivery"
+        else:
+            vc.context_summary = "Mixed valuation signals — no clear tilt"
+
+    return vc
 
 
 def _safe_float_ov(val: Any) -> float | None:
