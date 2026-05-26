@@ -2313,7 +2313,10 @@ def _build_v27_models(
     pb = _build_peer_benchmark(
         ticker=ticker, yf_info=yf_info, metrics=metrics, generated_at=generated_at,
     )
-    dq = DataQualitySection(generated_at=generated_at)  # timestamp only
+    dq = _build_data_quality(
+        ticker=ticker, yf_info=yf_info, company_overview=company_overview,
+        metrics=metrics, sources=sources, generated_at=generated_at,
+    )
 
     return {
         "executive_snapshot": es,
@@ -2323,6 +2326,138 @@ def _build_v27_models(
         "peer_benchmark": pb,
         "data_quality": dq,
     }
+
+
+def _build_data_quality(
+    *,
+    ticker: str,
+    yf_info: dict | None,
+    company_overview: dict | None,
+    metrics: FinancialMetrics | None,
+    sources: list[SourceRef] | None,
+    generated_at: str,
+) -> DataQualitySection:
+    """Build DataQualitySection — source freshness, completeness, and audit trail.
+
+    Extracts per-source retrieval timestamps from the bibliography (sources list),
+    computes a completeness score from available data, flags missing fields, and
+    assigns an overall confidence tier.
+    """
+    dq = DataQualitySection(currency="USD", generated_at=generated_at)
+
+    # ── 1. Source freshness from bibliography ──────────────────────────
+    _by_type: dict[str, list[SourceRef]] = {}
+    if sources:
+        for s_ref in sources:
+            st = (s_ref.source_type or "unknown").lower()
+            if st not in _by_type:
+                _by_type[st] = []
+            _by_type[st].append(s_ref)
+
+    def _latest_retrieved(source_type_key: str) -> str | None:
+        """Return the most recent retrieved_at for a given source_type."""
+        refs = _by_type.get(source_type_key, [])
+        timestamps = [
+            r.retrieved_at for r in refs
+            if r.retrieved_at and r.retrieved_at.strip()
+        ]
+        return sorted(timestamps, reverse=True)[0] if timestamps else None
+
+    def _pick_latest(*timestamps: str | None) -> str | None:
+        """Return the most recent timestamp from several candidates."""
+        valid = [t for t in timestamps if t]
+        return sorted(valid, reverse=True)[0] if valid else None
+
+    # yfinance — fresh each pipeline run
+    yf_ts = _latest_retrieved("yfinance")
+    if yf_ts:
+        dq.yfinance_freshness = yf_ts
+        dq.yfinance_source_label = "yfinance — live fetch"
+    elif yf_info is not None:
+        dq.yfinance_freshness = generated_at
+        dq.yfinance_source_label = "yfinance — live (this run)"
+    else:
+        dq.yfinance_source_label = "yfinance — unavailable"
+
+    # finnhub
+    fh_ts = _latest_retrieved("financial_data_api")
+    if fh_ts:
+        dq.finnhub_freshness = fh_ts
+        dq.finnhub_source_label = "Finnhub API"
+    elif _latest_retrieved("finnhub"):
+        dq.finnhub_freshness = _latest_retrieved("finnhub")
+        dq.finnhub_source_label = "Finnhub API"
+    else:
+        dq.finnhub_source_label = "Finnhub — not used this run"
+
+    # SEC EDGAR
+    sec_ts = _latest_retrieved("sec_edgar")
+    if sec_ts:
+        dq.sec_edgar_freshness = sec_ts
+        dq.sec_edgar_source_label = "SEC EDGAR"
+    else:
+        dq.sec_edgar_source_label = "SEC EDGAR — not used this run"
+
+    # transcript (seeking_alpha or press_release — pick latest from either)
+    tr_seeking = _latest_retrieved("seeking_alpha")
+    tr_press = _latest_retrieved("press_release")
+    tr_ts = _pick_latest(tr_seeking, tr_press)
+    if tr_ts:
+        dq.transcript_freshness = tr_ts
+        dq.transcript_source_label = "Earnings Call Transcript"
+    else:
+        dq.transcript_source_label = "Transcript — not used this run"
+
+    # ── 2. Completeness score (0-100) ──────────────────────────────────
+    score = 100
+    missing: list[str] = []
+
+    if yf_info is None and yf_ts is None:
+        score -= 25
+        missing.append("Yahoo Finance data (price, fundamentals)")
+
+    if company_overview is None:
+        score -= 15
+        missing.append("Company overview (sector, market cap)")
+
+    if metrics is not None:
+        raw = metrics.model_dump() if hasattr(metrics, "model_dump") else {}
+        if raw.get("eps_actual") in (None, 0, "", "Not disclosed"):
+            score -= 15
+            missing.append("EPS data")
+        if raw.get("revenue_actual") in (None, 0, "", "Not disclosed"):
+            score -= 15
+            missing.append("Revenue data")
+        if raw.get("free_cash_flow") in (None, 0, "", "Not disclosed"):
+            score -= 10
+            missing.append("Free cash flow data")
+        if raw.get("gross_margin") in (None, 0, "", "Not disclosed"):
+            score -= 5
+            missing.append("Gross margin data")
+    else:
+        score -= 40
+        missing.append("Financial metrics (all)")
+
+    # Adjust floor
+    score = max(0, min(100, score))
+
+    dq.completeness_score = score
+    dq.missing_fields = missing
+
+    # ── 3. Overall confidence tier ─────────────────────────────────────
+    source_count = len([t for t in [
+        dq.yfinance_freshness, dq.finnhub_freshness,
+        dq.sec_edgar_freshness, dq.transcript_freshness,
+    ] if t is not None])
+
+    if score >= 80 and source_count >= 2:
+        dq.overall_confidence = "high"
+    elif score >= 50 and source_count >= 1:
+        dq.overall_confidence = "medium"
+    else:
+        dq.overall_confidence = "low"
+
+    return dq
 
 
 def _build_valuation_context(
