@@ -30,6 +30,7 @@
 | Date | Task | Description |
 |---|---|---|
 | 2026-05-26 | SA-P0-403 | **REVIEW APPROVED**: Root-cause 403 on /api/analyze — process_nami_feedback.py was reading ADMIN_SECRET placeholder instead of CED_CONTROL_KEY. Fix verified: 153/153 tests, 0 JS errors, no more 403. |
+| 2026-05-26 | V2.7-T2 | **PDF Sections Rendering**: 6 V2.7 section renderer functions in pdf_renderer.py. ExecutiveSnapshot, FinancialMetrics, Valuation, ValuationContext, PeerBenchmark, DataQuality — all integrated into PDF story flow. 36 spec tests. Commit: 6919b8d. | ✅ DONE |
 | 2026-05-26 | V2.7-T1 | **Report Model Extension**: 6 structured PDF section Pydantic models (ExecutiveSnapshot, FinancialMetrics, ValuationSection, ValuationContextSection, PeerBenchmarkSection, DataQualitySection). All nullable, USD-only, source/timestamp tracking. 25 spec tests. Commit: a375420. | ✅ DONE |
 | 2026-05-25 | V2.6-T1 | Export Snapshot Contract: immutable USD-only snapshot builder, centralized N/A/sanitizer/enums, 4 focused no-fetch tests | ✅ DONE — REVIEW GATE |
 | 2026-05-25 | V2.5-T6 | **FINAL QA — APPROVED**: 221/221 tests, 4 API endpoints verified, frontend browser QA, 0 forbidden labels, 0 JS errors, build fresh | ✅ APPROVED — READY FOR ARCHIVE |
