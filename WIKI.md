@@ -29,6 +29,10 @@
 ## Recent Changes
 | Date | Task | Description |
 |---|---|---|
+| 2026-05-26 | SA-P0-403 | **REVIEW APPROVED**: Root-cause 403 on /api/analyze — process_nami_feedback.py was reading ADMIN_SECRET placeholder instead of CED_CONTROL_KEY. Fix verified: 153/153 tests, 0 JS errors, no more 403. |
+| 2026-05-26 | V2.7-T1 | **Report Model Extension**: 6 structured PDF section Pydantic models (ExecutiveSnapshot, FinancialMetrics, ValuationSection, ValuationContextSection, PeerBenchmarkSection, DataQualitySection). All nullable, USD-only, source/timestamp tracking. 25 spec tests. Commit: a375420. | ✅ DONE |
+| 2026-05-25 | V2.6-T1 | Export Snapshot Contract: immutable USD-only snapshot builder, centralized N/A/sanitizer/enums, 4 focused no-fetch tests | ✅ DONE — REVIEW GATE |
+| 2026-05-25 | V2.5-T6 | **FINAL QA — APPROVED**: 221/221 tests, 4 API endpoints verified, frontend browser QA, 0 forbidden labels, 0 JS errors, build fresh | ✅ APPROVED — READY FOR ARCHIVE |
 | 2026-05-25 | V2.5-T5 | Peer Benchmark Frontend: Group 9 in AnalysisCard, Summary Card + Relative Valuation Table + Quality Table, i18n EN/JP, 8 E2E tests | ✅ DONE — REVIEW GATE |
 | 2026-05-25 | V2.5-T1 | Peer Universe: 3 curated groups (NVDA/AAPL/TSLA), loader/validator, 9 tests |
 | 2026-05-25 | V2.5-T4 | Peer Benchmark API: GET /api/peer-benchmark/{ticker}, peer_context + benchmarks + summary, 16 tests | ✅ DONE — REVIEW GATE |
