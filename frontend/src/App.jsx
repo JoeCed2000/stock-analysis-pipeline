@@ -212,7 +212,7 @@ export default function App() {
   };
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
+    <div className="app" style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
       {showAdmin ? (
         <AdminPage t={t} onClose={() => { window.location.hash = ''; }} />
       ) : (
@@ -239,7 +239,7 @@ export default function App() {
         <div style={{
           display: 'flex', justifyContent: 'center', marginTop: 16,
         }}>
-          <div style={{
+          <div className="mode-tabs" style={{
             display: 'flex', gap: 2, background: '#1a1d27',
             border: '1px solid #30363d', borderRadius: 6, padding: 3,
           }}>
@@ -314,13 +314,13 @@ export default function App() {
 
       {/* Show skeletons during loading and dossier building */}
       {(loading || dossierPhase) && progress.total > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 400px))', gap: 20, marginTop: 16, justifyContent: 'center' }}>
+        <div className="results-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 400px))', gap: 20, marginTop: 16, justifyContent: 'center' }}>
           {Array.from({ length: progress.total }, (_, i) => <SkeletonCard key={i} />)}
         </div>
       )}
 
       {results.length > 0 && !dossierPhase && (
-        <div style={{
+        <div className="results-grid" style={{
           display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 400px))', gap: 20,
           marginTop: 16, justifyContent: 'center',
           animation: 'fadeInUp 0.4s ease',
@@ -341,6 +341,21 @@ export default function App() {
         @keyframes fadeInUp {
           0%   { opacity: 0; transform: translateY(12px); }
           100% { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 768px) {
+          .app { padding: 12px 8px !important; }
+          .app h1 { font-size: 18px !important; }
+          .app .mode-tabs { flex-wrap: wrap; gap: 1px; }
+          .app .mode-tabs button { padding: 6px 12px !important; font-size: 12px !important; }
+          .results-grid { grid-template-columns: 1fr !important; }
+        }
+
+        @media (max-width: 480px) {
+          .app { padding: 8px 4px !important; }
+          .app h1 { font-size: 16px !important; }
+          .app p { font-size: 11px !important; }
         }
       `}</style>
       </>)}
