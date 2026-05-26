@@ -2528,16 +2528,22 @@ def _build_valuation_context(
         return "Negative FCF"
 
     # ── 1. PEG Signal ────────────────────────────────────────────────
-    peg = _f("pegRatio")
-    if peg is not None:
+    # Compute PEG from actual P/E and growth for consistency —
+    # yfinance pegRatio uses a different (forward-looking) growth rate
+    # that would not match the growth displayed in the detail string.
+    pe_ttm = _f("trailingPE")
+    growth = _f("earningsGrowth") or _f("revenueGrowth")
+    if pe_ttm and growth and growth > 0:
+        peg = pe_ttm / (growth * 100)
         vc.peg_signal = peg
         vc.peg_signal_label = _label_peg(peg)
-        # Build detail: "PEG X.XX = P/E XX.X / growth XX%"
-        pe_ttm = _f("trailingPE")
-        growth = _f("earningsGrowth") or _f("revenueGrowth")
-        if pe_ttm and growth:
-            vc.peg_signal_detail = f"P/E {pe_ttm:.1f}x / growth {growth*100:.0f}%"
-        elif pe_ttm:
+        vc.peg_signal_detail = f"P/E {pe_ttm:.1f}x / growth {growth*100:.0f}%"
+    elif pe_ttm:
+        # Fallback: use yfinance pegRatio if growth data unavailable
+        peg_yf = _f("pegRatio")
+        if peg_yf is not None:
+            vc.peg_signal = peg_yf
+            vc.peg_signal_label = _label_peg(peg_yf)
             vc.peg_signal_detail = f"P/E {pe_ttm:.1f}x"
 
     # ── 2. P/S vs Growth ─────────────────────────────────────────────
@@ -2576,7 +2582,7 @@ def _build_valuation_context(
         # Build a concise narrative from the signals
         parts = []
         if vc.peg_signal is not None:
-            parts.append(f"PEG {vc.peg_signal:.1f} ({vc.peg_signal_label})")
+            parts.append(f"PEG {vc.peg_signal:.2f} ({vc.peg_signal_label})")
         if vc.fcf_yield_signal is not None:
             parts.append(f"FCF Yield {vc.fcf_yield_signal:.1f}%")
         vc.valuation_support = "; ".join(parts) if parts else None

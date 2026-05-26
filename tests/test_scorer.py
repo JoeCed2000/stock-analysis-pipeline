@@ -833,3 +833,241 @@ class TestScoreTickerEdgeCases:
         assert _scale_to_3(3) == 2   # 3*3/5 = 1.8 → 2
         assert _scale_to_3(4) == 2   # 4*3/5 = 2.4 → 2
         assert _scale_to_3(5) == 3   # 5*3/5 = 3.0 → 3
+
+
+class TestAcceptanceCriteria:
+    """Tests explicitly listed in acceptance criteria for T3."""
+
+    def test_total_40_msft(self):
+        """MSFT-like data — verify total is computed as sum of 6 canonical fields."""
+        # MSFT ~2025 fundamentals
+        data = {
+            "financials": {
+                "revenue_yoy_growth": 0.16,       # _score_growth: >0.10 → 3
+                "revenue_annual_growth": 0.15,
+                "gross_margin": 0.69,              # _score_profitability: op=0.44 > 0.30 → 5
+                "operating_margin": 0.44,
+                "net_income": 8.8e10,              # profitable → +1 to fin_strength
+                "free_cash_flow": 6.3e10,          # positive FCF → +1 to fin_strength
+                "net_debt": 1.0e10,                # net_debt>0, FCF>0, debt/FCF=0.16 <3 → pass
+                "guidance_official": 0.12,          # >0.05 → 3
+            },
+            "valuation": {
+                "pe_current": 33,                  # 30≤PE<45 → 2
+                "pe_forward": 28,                  # fpe=28, 20≤fpe<30 → 3
+                "peg_ratio": 2.1,
+            },
+            "sector": "Technology",
+            "industry": "Software—Infrastructure",
+            "market_cap": 3.0e12,                  # >1e12 → moat+1
+            "price": 420,
+            "52w_high": 440,                       # (440-420)/440=4.5% → near highs → momentum+1
+        }
+        s = score_ticker(data)
+        raw = s._raw_subscores
+
+        # Verify the 8→6 mapping
+        assert s.financial_health == raw["profitability"] + raw["financial_strength"]
+        assert s.growth == raw["growth"] + raw["business_momentum"]
+        assert s.valuation == _scale_to_8(raw["valuation_risk"])
+        assert s.management == raw["management"]
+        assert s.moat == min(raw["moat"], 4)
+        assert s.sentiment == _scale_to_3(raw["geopolitical_risk"])
+
+        # Verify total equals sum of canonical fields
+        expected_total = (s.financial_health + s.growth + s.valuation +
+                          s.management + s.moat + s.sentiment)
+        assert s.total == expected_total
+        assert 20 <= s.total <= 40
+        # MSFT is a quality company → BUY
+        assert s.decision() == "BUY"
+
+    def test_total_40_aapl(self):
+        """AAPL-like data — verify total is computed as sum of 6 canonical fields."""
+        # AAPL ~2025 fundamentals
+        data = {
+            "financials": {
+                "revenue_yoy_growth": 0.05,        # _score_growth: >0 → 2
+                "revenue_annual_growth": 0.04,
+                "gross_margin": 0.46,              # _score_profitability: op=0.31 > 0.30 → 5
+                "operating_margin": 0.31,
+                "net_income": 1.0e11,              # profitable → +1
+                "free_cash_flow": 1.0e11,          # positive FCF → +1
+                "net_debt": 5.0e10,                # net_debt>0, FCF>0, debt/FCF=0.50 <3 → pass
+                "guidance_official": 0.06,          # >0.05 → 3
+            },
+            "valuation": {
+                "pe_current": 31,                  # 30≤PE<45 → 2
+                "pe_forward": 27,                  # fpe=27, 20≤fpe<30 → 3
+                "peg_ratio": 2.8,
+            },
+            "sector": "Technology",
+            "industry": "Consumer Electronics",
+            "market_cap": 3.2e12,                  # >1e12 → moat+1
+            "price": 185,
+            "52w_high": 198,                       # (198-185)/198=6.6% → near highs → momentum+1
+        }
+        s = score_ticker(data)
+        raw = s._raw_subscores
+
+        # Verify the 8→6 mapping
+        assert s.financial_health == raw["profitability"] + raw["financial_strength"]
+        assert s.growth == raw["growth"] + raw["business_momentum"]
+        assert s.valuation == _scale_to_8(raw["valuation_risk"])
+        assert s.management == raw["management"]
+        assert s.moat == min(raw["moat"], 4)
+        assert s.sentiment == _scale_to_3(raw["geopolitical_risk"])
+
+        # Verify total equals sum of canonical fields
+        expected_total = (s.financial_health + s.growth + s.valuation +
+                          s.management + s.moat + s.sentiment)
+        assert s.total == expected_total
+        assert 20 <= s.total <= 40
+        # AAPL is quality despite slow growth → HOLD or BUY
+        assert s.decision() in ("HOLD", "BUY")
+
+    def test_all_zeros(self):
+        """Near-zero fundamentals — scorer must not crash and return valid structure."""
+        data = {
+            "financials": {
+                "revenue_yoy_growth": 0.0,
+                "revenue_annual_growth": 0.0,
+                "gross_margin": 0.0,
+                "operating_margin": 0.0,
+                "net_income": 0,
+                "free_cash_flow": 0,
+                "net_debt": 0,
+                "guidance_official": None,
+            },
+            "valuation": {
+                "pe_current": None,
+                "pe_forward": None,
+                "peg_ratio": None,
+            },
+            "sector": None,
+            "industry": None,
+            "market_cap": None,
+            "price": 0,
+            "52w_high": 0,
+        }
+        s = score_ticker(data)
+
+        # Must return a valid Scoring object
+        assert isinstance(s, Scoring)
+
+        # All canonical fields must be integers
+        for field in ["financial_health", "growth", "valuation", "management", "moat", "sentiment"]:
+            val = getattr(s, field)
+            assert isinstance(val, int), f"{field}={val} not int"
+            assert 0 <= val <= 40, f"{field}={val} out of range"
+
+        # Total must be at least 0 (never negative)
+        assert s.total >= 0
+
+        # All raw sub-scores preserved
+        raw = s._raw_subscores
+        assert len(raw) == 8
+        for key in raw:
+            assert 1 <= raw[key] <= 5, f"raw {key}={raw[key]} out of 1-5"
+
+        # With all zeros, scorer defaults to neutral (>18) → HOLD
+        assert s.decision() == "HOLD", f"Expected HOLD, got {s.decision()} (total={s.total})"
+
+        # Verify total invariant — sum of 6 canonical
+        assert s.total == (s.financial_health + s.growth + s.valuation +
+                           s.management + s.moat + s.sentiment)
+
+    def test_all_fives(self):
+        """Max fundamentals — verify near-perfect score produces BUY at ~37-40."""
+        # Data designed to maximize all 8 sub-scores to 5
+        data = {
+            "financials": {
+                "revenue_yoy_growth": 0.80,        # >0.50 → growth=5
+                "revenue_annual_growth": 0.75,
+                "gross_margin": 0.70,
+                "operating_margin": 0.70,          # >0.30 → profitability=5
+                "net_income": 1e12,                # profitable → +1
+                "free_cash_flow": 1e12,            # positive FCF → +1
+                "net_debt": -5e11,                 # net cash → +1 (base 3+1+1+1=6→5)
+                "guidance_official": 0.30,          # >0.20 → management=4
+            },
+            "valuation": {
+                "pe_current": 5,                   # <15 → valuation_risk=5
+                "pe_forward": 5,
+                "peg_ratio": 0.5,
+            },
+            "sector": "Software",                  # low geopolitical risk → 4
+            "industry": "Software—Services",
+            "market_cap": 2e12,                    # mega-cap → moat bonus
+            "price": 100,
+            "52w_high": 100,                       # at 52w high → momentum bonus
+        }
+        s = score_ticker(data)
+        raw = s._raw_subscores
+
+        # Raw sub-scores should be near max
+        assert raw["growth"] == 5
+        assert raw["profitability"] == 5
+        assert raw["financial_strength"] == 5
+        assert raw["valuation_risk"] == 5
+
+        # Canonical total should be near 40
+        assert 35 <= s.total <= 40, f"Expected near-max total, got {s.total}"
+        assert s.decision() == "BUY"
+
+        # Verify total invariant
+        assert s.total == (s.financial_health + s.growth + s.valuation +
+                           s.management + s.moat + s.sentiment)
+
+        # Individual category bounds
+        assert 8 <= s.financial_health <= 10
+        assert 7 <= s.growth <= 10
+        assert s.valuation == 8
+        assert 3 <= s.management <= 5
+        assert 3 <= s.moat <= 4
+        assert 1 <= s.sentiment <= 3
+
+    def test_mapping_financial_health(self):
+        """Financial Health mapping = profitability + financial_strength, range 0–10."""
+        from backend.scorer import _score_profitability, _score_financial_strength
+
+        # Test with explicit values to verify mapping
+        test_cases = [
+            # (gross_margin, op_margin, net_debt, fcf, net_income, expected_range)
+            # Best case: profitability=5, strength=5 → fh=10
+            (0.70, 0.50, -1e10, 1e10, 1e10, (9, 10)),
+            # Medium case
+            (0.40, 0.15, 1e9, 5e8, 1e9, (4, 8)),
+            # Worst case: profitability=1, strength=1 → fh=2
+            (0.0, -0.05, 1e12, -1e9, -1e9, (2, 4)),
+        ]
+
+        for gm, om, nd, fcf, ni, (lo, hi) in test_cases:
+            data = {
+                "financials": {
+                    "revenue_yoy_growth": 0.10,
+                    "revenue_annual_growth": 0.10,
+                    "gross_margin": gm,
+                    "operating_margin": om,
+                    "net_income": ni,
+                    "free_cash_flow": fcf,
+                    "net_debt": nd,
+                    "guidance_official": None,
+                },
+                "valuation": {"pe_current": None, "pe_forward": None, "peg_ratio": None},
+                "sector": None, "industry": None,
+                "market_cap": None, "price": None, "52w_high": None,
+            }
+            s = score_ticker(data)
+            raw = s._raw_subscores
+
+            # Core invariant
+            assert s.financial_health == raw["profitability"] + raw["financial_strength"], (
+                f"fh={s.financial_health} != p({raw['profitability']}) + fs({raw['financial_strength']})"
+            )
+            # Range check
+            assert lo <= s.financial_health <= hi, (
+                f"fh={s.financial_health} not in [{lo},{hi}] "
+                f"(gm={gm}, om={om}, nd={nd})"
+            )
+            assert 0 <= s.financial_health <= 10

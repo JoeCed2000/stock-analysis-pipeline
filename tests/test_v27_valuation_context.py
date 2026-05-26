@@ -57,10 +57,11 @@ class TestBuildValuationContextFull:
 
     def test_peg_signal_extracted(self):
         vc = _build_valuation_context(yf_info=_yf_info(trailingPE=33.0, earningsGrowth=2.145), metrics=None, generated_at="2026-05-26T12:00:00")
-        assert vc.peg_signal == pytest.approx(0.66, abs=0.01)
+        # PEG = trailingPE / (earningsGrowth * 100) = 33.0 / 214.5 ≈ 0.154
+        assert vc.peg_signal == pytest.approx(0.154, abs=0.01)
         assert vc.peg_signal_label is not None
         if vc.peg_signal_detail is not None:
-            assert "PEG" in vc.peg_signal_detail or "P/E" in vc.peg_signal_detail
+            assert "P/E" in vc.peg_signal_detail
 
     def test_ps_vs_growth_extracted(self):
         vc = _build_valuation_context(yf_info=_yf_info(), metrics=None, generated_at="t")
@@ -175,20 +176,26 @@ class TestValuationLabels:
     """Semantic label generation from raw values."""
 
     def test_peg_attractive_below_1(self):
-        vc = _build_valuation_context(yf_info=_yf_info(pegRatio=0.5), metrics=None, generated_at="t")
+        # PEG = 15.0 / (0.30 * 100) = 15.0 / 30 = 0.5 (< 1 → Attractive)
+        vc = _build_valuation_context(yf_info=_yf_info(trailingPE=15.0, earningsGrowth=0.30), metrics=None, generated_at="t")
         assert "Attractive" in vc.peg_signal_label or "attractive" in str(vc.peg_signal_label).lower()
 
     def test_peg_fair_between_1_and_2(self):
-        vc = _build_valuation_context(yf_info=_yf_info(pegRatio=1.5), metrics=None, generated_at="t")
+        # PEG = 15.0 / (0.10 * 100) = 15.0 / 10 = 1.5 (1-2 → Fair)
+        vc = _build_valuation_context(yf_info=_yf_info(trailingPE=15.0, earningsGrowth=0.10), metrics=None, generated_at="t")
         assert "Fair" in vc.peg_signal_label or "fair" in str(vc.peg_signal_label).lower()
 
     def test_peg_expensive_above_2(self):
-        vc = _build_valuation_context(yf_info=_yf_info(pegRatio=2.5), metrics=None, generated_at="t")
+        # PEG = 25.0 / (0.10 * 100) = 25.0 / 10 = 2.5 (>2 → Expensive)
+        vc = _build_valuation_context(yf_info=_yf_info(trailingPE=25.0, earningsGrowth=0.10), metrics=None, generated_at="t")
         assert "Expensive" in vc.peg_signal_label or "High" in vc.peg_signal_label
 
-    def test_peg_negative_handled(self):
-        vc = _build_valuation_context(yf_info=_yf_info(pegRatio=-1.0), metrics=None, generated_at="t")
-        assert vc.peg_signal_label is not None  # shouldn't crash
+    def test_peg_negative_growth_handled(self):
+        # Negative growth → no PEG computed (growth > 0 guard), fallback pegRatio removed
+        info = _yf_info(trailingPE=15.0, earningsGrowth=-0.1)
+        del info["pegRatio"]
+        vc = _build_valuation_context(yf_info=info, metrics=None, generated_at="t")
+        assert vc.peg_signal is None  # negative growth → skip, no fallback
 
     def test_fcf_yield_strong_above_8pct(self):
         # freeCashflow / marketCap = 0.10 (10%)
