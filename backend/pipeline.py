@@ -418,12 +418,29 @@ def _extract_next_earnings_from_ir(ir_url: str, ticker: str) -> Optional[str]:
             return None
         html = resp.text[:50000]
         
+        # Extract JSON-LD structured data BEFORE stripping scripts
+        # (JSON-LD lives inside <script type="application/ld+json">)
+        jsonld_pattern = r'<script[^>]*type\s*=\s*["\']application/ld\+json["\'][^>]*>(.*?)</script>'
+        jsonld_matches = list(re.finditer(jsonld_pattern, html, re.DOTALL | re.IGNORECASE))
+        for jm in jsonld_matches:
+            try:
+                import json as _json
+                data = _json.loads(jm.group(1))
+                start_date = data.get("startDate")
+                if start_date and re.match(r'^\d{4}-\d{2}-\d{2}$', start_date):
+                    parsed = _parse_ir_date(start_date)
+                    if parsed and _is_future_date(parsed):
+                        logger.info(f"IR scrape: next earnings for {ticker} = {parsed} (JSON-LD)")
+                        return parsed
+            except Exception:
+                pass
+        
         # Remove scripts/styles to avoid false matches
-        html_clean = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        html_clean = re.sub(r'<(script|style)[^>]*>.*?</\\1>', '', html, flags=re.DOTALL | re.IGNORECASE)
         
         date_patterns = [
-            r'(?:Next\s+)?Earnings?\s*(?:Call|Release|Date|Report|Announcement)?[:\s-]+(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})',
-            r'(?:Next\s+)?Earnings?\s*(?:Call|Release|Date|Report|Announcement)?[:\s-]+(\d{4}-\d{2}-\d{2})',
+            r'(?:Next\s+)?Earnings?\s*(?:Call|Release|Date|Report|Announcement)?[\s:–—-]+(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})',
+            r'(?:Next\s+)?Earnings?\s*(?:Call|Release|Date|Report|Announcement)?[\s:–—-]+(\d{4}-\d{2}-\d{2})',
             r'Q[1-4]\s+\d{4}\s+Earnings.*?[—–-]\s*(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})',
             r'Upcoming\s+Events?.*?(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})',
             r'"startDate"\s*:\s*"(\d{4}-\d{2}-\d{2})"',
@@ -657,14 +674,14 @@ def _parse_ir_date(raw: str) -> Optional[str]:
     
     months = {"jan":1,"feb":2,"mar":3,"apr":4,"may":5,"jun":6,"jul":7,"aug":8,"sep":9,"oct":10,"nov":11,"dec":12}
     
-    # "28 May 2026" or "28 May, 2026"
-    match = re.match(r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*(?:\s+|,\s*)(\d{4})', raw, re.IGNORECASE)
+    # "28 May 2026" or "28 May, 2026" or "28th May 2026"
+    match = re.match(r'(\d{1,2})(?:st|nd|rd|th)?\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*(?:\s+|,\s*)(\d{4})', raw, re.IGNORECASE)
     if match:
         day, mon, year = int(match.group(1)), months[match.group(2).lower()[:3]], int(match.group(3))
         return f"{year}-{mon:02d}-{day:02d}"
     
-    # "May 28, 2026" or "May 28 2026"
-    match = re.match(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})(?:,?\s+)(\d{4})', raw, re.IGNORECASE)
+    # "May 28, 2026" or "May 28 2026" or "May 28th 2026"
+    match = re.match(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+)(\d{4})', raw, re.IGNORECASE)
     if match:
         mon, day, year = months[match.group(1).lower()[:3]], int(match.group(2)), int(match.group(3))
         return f"{year}-{mon:02d}-{day:02d}"
