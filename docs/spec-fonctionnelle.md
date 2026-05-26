@@ -437,8 +437,8 @@ Les PDF earnings deep-dive actuels utilisent des sections textuelles générées
 | 1 | `ExecutiveSnapshot` | ticker, prix, market cap, verdict, score | ✅ Intégré |
 | 2 | `FinancialMetrics` (V2.7) | EPS, Revenue, marges, croissance, FCF + display | ✅ Intégré |
 | 3 | `ValuationSection` | PE trailing/forward, PEG, PS, PB, EV/EBITDA | ✅ Intégré |
-| 4 | `ValuationContextSection` | 7 signaux contextuels V2.4 | ⏳ API pending |
-| 5 | `PeerBenchmarkSection` | Benchmarks relatifs aux pairs V2.5 | ⏳ API pending |
+| 4 | `ValuationContextSection` | 7 signaux contextuels V2.4 | ✅ Intégré (T4) |
+| 5 | `PeerBenchmarkSection` | Benchmarks relatifs aux pairs V2.5 | ✅ Intégré (T5) |
 | 6 | `DataQualitySection` | Fraîcheur des sources, complétude | ⏳ API pending |
 
 ### 14.3 Rendu PDF (T2)
@@ -457,16 +457,21 @@ Le mapper (`backend/earnings_deep_dive/mapper.py`) peuple les modèles V2.7 :
 - **ExecutiveSnapshot** : depuis `company_overview` (market cap, secteur) + `scoring` (verdict)
 - **FinancialMetrics** : mapping direct depuis l'ancien `schemas.FinancialMetrics`
 - **ValuationSection** : PE trailing/forward depuis yfinance
-- Les 3 autres modèles sont créés vides (intégration API à venir)
+- **ValuationContextSection (T4)** : 7 signaux via `get_valuation_context_snapshot()` — PEG, P/S vs growth, EV/EBITDA vs growth, P/FCF vs growth, FCF Yield + résumé
+- **PeerBenchmarkSection (T5)** : via `get_peer_benchmark_snapshot()` (cache 5 min) + `buildPeerBenchmarkSummary()` — top 5 pairs par similarité
+- **DataQualitySection** : créé vide (intégration à venir)
 
 ### 14.5 Tests
 - `tests/spec_v27_report_model.py` — 25 tests (modèles Pydantic)
 - `tests/spec_v27_pdf_renderer.py` — 36 tests (rendu PDF)
 - `tests/spec_v27_integration.py` — 13 tests (mapper → pipeline → PDF)
+- `tests/test_v27_valuation_context.py` — 17 tests (T4, ValuationContext)
+- `tests/test_v27_peer_benchmark.py` — 33 tests (T5, PeerBenchmark)
 
 ### 14.6 État actuel
 - ✅ T1 : Modèles Pydantic (6 modèles, tous nullable, USD-only)
 - ✅ T2 : Fonctions de rendu PDF (6 renderers, aucun breaking change)
 - ✅ T3 : Intégration mapper → pipeline (3/6 modèles peuplés)
-- ⏳ T4 : Intégration endpoints V2.4/V2.5 pour ValuationContext + PeerBenchmark
-- ⏳ T5 : DataQuality avec métadonnées de sources réelles
+- ✅ T4 : ValuationContext — 7 signaux depuis endpoint V2.4
+- ✅ T5 : PeerBenchmark — top 5 pairs depuis infrastructure V2.5
+- ⏳ T6 : DataQuality avec métadonnées de sources réelles
