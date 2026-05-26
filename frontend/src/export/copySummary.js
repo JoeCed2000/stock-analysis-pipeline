@@ -74,6 +74,9 @@ export function generateCopySummary(snapshot) {
     }
   }
 
+  lines.push('');
+  lines.push('Not investment advice.');
+
   return lines.join('\n');
 }
 
