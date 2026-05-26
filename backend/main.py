@@ -1938,18 +1938,25 @@ async def list_analyses():
 
 
 @app.get("/api/admin/recent-searches", dependencies=[Depends(_require_auth)])
-async def recent_searches(limit: int = 50, status: str = "all"):
+async def recent_searches(limit: int = 50, offset: int = 0, status: str = "all"):
     """Get recent search events for near-real-time monitoring.
     
     Query params:
-    - limit: max number of events (default 50)
+    - limit: max number of events (default 50, max 200)
+    - offset: pagination offset (default 0)
     - status: "all", "completed", or "failed" (default "all")
     
-    Returns {searches: [{timestamp, ticker, status, duration_ms, cache_hit, user_agent}]}
+    Returns {total: int, searches: [{timestamp, ticker, status, duration_ms, cache_hit, user_agent}]}
     """
-    from backend.search_db import read_recent_sqlite
-    results = read_recent_sqlite(limit=max(1, min(limit, 200)), status_filter=status)
-    return JSONResponse({"searches": results})
+    from backend.search_db import read_recent_sqlite, _ensure_db, DB_PATH
+    import sqlite3
+    results = read_recent_sqlite(limit=max(1, min(limit, 200)), offset=max(0, offset), status_filter=status)
+    # Get total count for pagination
+    _ensure_db()
+    conn = sqlite3.connect(str(DB_PATH))
+    total = conn.execute("SELECT COUNT(*) as n FROM searches").fetchone()[0]
+    conn.close()
+    return JSONResponse({"total": total, "searches": results})
 
 
 @app.get("/api/admin/search-stats", dependencies=[Depends(_require_auth)])

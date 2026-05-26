@@ -70,7 +70,7 @@ def log_search_sqlite(
     conn.close()
 
 
-def read_recent_sqlite(limit: int = 50, status_filter: str = "all") -> list:
+def read_recent_sqlite(limit: int = 50, offset: int = 0, status_filter: str = "all") -> list:
     """Read recent searches from SQLite, newest first."""
     _ensure_db()
     conn = sqlite3.connect(str(DB_PATH))
@@ -78,13 +78,13 @@ def read_recent_sqlite(limit: int = 50, status_filter: str = "all") -> list:
     
     if status_filter == "all":
         rows = conn.execute(
-            "SELECT timestamp, ticker, status, duration_ms, cache_hit, user_agent, client_ip, error FROM searches ORDER BY id DESC LIMIT ?",
-            (limit,),
+            "SELECT timestamp, ticker, status, duration_ms, cache_hit, user_agent, client_ip, error FROM searches ORDER BY id DESC LIMIT ? OFFSET ?",
+            (limit, offset),
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT timestamp, ticker, status, duration_ms, cache_hit, user_agent, client_ip, error FROM searches WHERE status = ? ORDER BY id DESC LIMIT ?",
-            (status_filter, limit),
+            "SELECT timestamp, ticker, status, duration_ms, cache_hit, user_agent, client_ip, error FROM searches WHERE status = ? ORDER BY id DESC LIMIT ? OFFSET ?",
+            (status_filter, limit, offset),
         ).fetchall()
     
     conn.close()

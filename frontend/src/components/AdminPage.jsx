@@ -3,37 +3,41 @@ import SearchMonitor from './SearchMonitor.jsx';
 
 const POLL_MS = 5000;
 const API = '/api';
+const PAGE_SIZE = 50;
 
 export default function AdminPage({ t, onClose }) {
   const [stats, setStats] = useState(null);
   const [searches, setSearches] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(0);
   const [feedbacks, setFeedbacks] = useState([]);
 
   const fetchData = useCallback(async () => {
     try {
+      const offset = page * PAGE_SIZE;
       const [statsRes, searchRes, fbRes] = await Promise.all([
         fetch(`${API}/admin/search-stats`).then(r => r.ok ? r.json() : null),
-        fetch(`${API}/admin/recent-searches?limit=2000`).then(r => r.ok ? r.json() : null),
+        fetch(`${API}/admin/recent-searches?limit=${PAGE_SIZE}&offset=${offset}`).then(r => r.ok ? r.json() : null),
         fetch(`${API}/admin/feedback`).then(r => r.ok ? r.json() : null),
       ]);
-      console.log('[AdminPage] statsRes:', statsRes);
-      console.log('[AdminPage] searchRes:', searchRes);
       if (statsRes) setStats(statsRes);
       if (searchRes) {
-        console.log('[AdminPage] searches count:', searchRes.searches?.length);
         setSearches(searchRes.searches || []);
+        setTotalCount(searchRes.total || 0);
       }
       if (fbRes) setFeedbacks(fbRes || []);
     } catch (e) {
       console.error('[AdminPage] fetch failed:', e);
     }
-  }, []);
+  }, [page]);
 
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, POLL_MS);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   const formatTime = (iso) => {
     try { return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
@@ -74,11 +78,16 @@ export default function AdminPage({ t, onClose }) {
         </div>
       )}
 
-      {/* Recent Searches Table — FIRST, the main content */}
+      {/* Recent Searches Table */}
       <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 8, overflow: 'hidden', marginBottom: 24 }}>
-        <div style={{ padding: '10px 16px', borderBottom: '1px solid #30363d' }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#e1e4e8' }}>📋 All Searches</span>
-          <span style={{ fontSize: 11, color: '#484f58', marginLeft: 8 }}>(auto-refresh 5s)</span>
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid #30363d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#e1e4e8' }}>📋 All Searches</span>
+            <span style={{ fontSize: 11, color: '#484f58', marginLeft: 8 }}>(auto-refresh 5s)</span>
+          </span>
+          <span style={{ fontSize: 11, color: '#8b949e' }}>
+            Page {page + 1} of {totalPages} — {totalCount} total
+          </span>
         </div>
         <div style={{ maxHeight: 500, overflowY: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -95,7 +104,7 @@ export default function AdminPage({ t, onClose }) {
             </thead>
             <tbody>
               {searches.map((s, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid #21262d' }}>
+                <tr key={`${s.timestamp}-${i}`} style={{ borderBottom: '1px solid #21262d' }}>
                   <td style={tdStyle}>{formatTime(s.timestamp)}</td>
                   <td style={{ ...tdStyle, fontWeight: 600, color: '#e1e4e8', fontFamily: 'monospace', fontSize: 11, maxWidth: 70, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.ticker}</td>
                   <td style={tdStyle}>
@@ -121,6 +130,20 @@ export default function AdminPage({ t, onClose }) {
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination controls */}
+        <div style={{
+          padding: '8px 16px', borderTop: '1px solid #30363d',
+          display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8,
+        }}>
+          <PageBtn onClick={() => setPage(0)} disabled={page === 0} label="⏮" />
+          <PageBtn onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} label="◀" />
+          <span style={{ fontSize: 12, color: '#8b949e', minWidth: 80, textAlign: 'center' }}>
+            {page + 1} / {totalPages}
+          </span>
+          <PageBtn onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} label="▶" />
+          <PageBtn onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1} label="⏭" />
         </div>
       </div>
 
@@ -214,7 +237,7 @@ export default function AdminPage({ t, onClose }) {
         )}
       </div>
 
-      {/* Top Tickers + Recent Errors — compact, BELOW table */}
+      {/* Top Tickers + Recent Errors */}
       {stats && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 8, padding: 12 }}>
@@ -243,6 +266,25 @@ export default function AdminPage({ t, onClose }) {
       {/* Live search monitor — fixed bottom-right */}
       <SearchMonitor t={t} />
     </div>
+  );
+}
+
+function PageBtn({ onClick, disabled, label }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        padding: '4px 10px', fontSize: 12,
+        background: disabled ? '#0d1117' : '#21262d',
+        color: disabled ? '#484f58' : '#c9d1d9',
+        border: '1px solid #30363d', borderRadius: 4,
+        cursor: disabled ? 'default' : 'pointer',
+        opacity: disabled ? 0.4 : 1,
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
