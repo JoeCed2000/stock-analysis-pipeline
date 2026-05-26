@@ -230,6 +230,7 @@ def get_dossier_status(ticker: str) -> dict:
             if not dd_val.get("passed"):
                 status["deep_dive_issues"] = dd_val.get("issues", [])
         except Exception:
+            logger.warning(f"Dossier status: failed to read deep_dive_validation.json for {dossier_dir.name}")
             status["deep_dive_validated"] = False
     else:
         status["deep_dive_validated"] = None  # Not yet generated

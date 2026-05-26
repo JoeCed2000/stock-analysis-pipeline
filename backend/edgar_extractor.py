@@ -295,6 +295,7 @@ def extract_segment_revenue(ticker: str) -> Dict[str, Any]:
         if q_filings is not None:
             filing = q_filings.latest(1)
     except Exception:
+        logger.debug(f"[{ticker}] 10-Q filing lookup failed, falling back to 10-K")
         pass
     
     # ── Fallback to 10-K (annual — mark explicitly) ──
