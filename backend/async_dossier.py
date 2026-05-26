@@ -215,6 +215,9 @@ def get_dossier_status(ticker: str) -> dict:
         "directory": str(dossier_dir),
         "stage": "complete" if ready else "in_progress",
         "estimated_seconds": 0,
+        "score_ready": ready,
+        "deep_dive_ready": False,
+        "jp_degraded": None,
     }
     
     # Check deep-dive validation
@@ -230,6 +233,9 @@ def get_dossier_status(ticker: str) -> dict:
             status["deep_dive_validated"] = False
     else:
         status["deep_dive_validated"] = None  # Not yet generated
+
+    # Set deep_dive_ready from validation result
+    status["deep_dive_ready"] = status.get("deep_dive_validated") is True
 
     # ── Phase computation: disk truth > registry transient > inferred ──
     # Priority: registry transient phases (pdf_generating, pdf_validating) for active
@@ -262,6 +268,8 @@ def get_dossier_status(ticker: str) -> dict:
         status["error"] = reg_entry["error"]
     if "progress_pct" in reg_entry:
         status["progress_pct"] = reg_entry["progress_pct"]
+    if "jp_degraded" in reg_entry:
+        status["jp_degraded"] = reg_entry["jp_degraded"]
     
     # Phase is set, now apply verification status
 

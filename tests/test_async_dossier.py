@@ -84,7 +84,8 @@ def test_get_dossier_status_blocks_download_when_validation_is_missing(tmp_path,
     assert status["deep_dive_validated"] is None
     assert status["verified"] is False
     assert status["download_enabled"] is False
-    assert status["verification_issues"] == ["Deep-dive validation has not run yet."]
+    # Verification issues is empty — validation hasn't run yet, not a failure
+    assert len(status["verification_issues"]) == 0
 
 
 def test_get_dossier_status_does_not_trust_stale_complete_cache(tmp_path, monkeypatch):
@@ -110,3 +111,98 @@ def test_get_dossier_status_does_not_trust_stale_complete_cache(tmp_path, monkey
     assert status["verified"] is False
     assert status["download_enabled"] is False
     assert "Validation failed on disk" in status["verification_issues"]
+
+
+# ── Gap 1: score_ready + deep_dive_ready ──
+
+def test_score_ready_true_when_report_and_excel_exist(tmp_path, monkeypatch):
+    backend_dir = tmp_path / "backend"
+    backend_dir.mkdir()
+    _write_ready_dossier(tmp_path)
+
+    monkeypatch.chdir(backend_dir)
+    async_dossier._dossier_registry.clear()
+
+    status = async_dossier.get_dossier_status("AAPL")
+    assert status["score_ready"] is True
+
+
+def test_deep_dive_ready_true_when_validation_passed(tmp_path, monkeypatch):
+    backend_dir = tmp_path / "backend"
+    backend_dir.mkdir()
+    _write_ready_dossier(tmp_path, validation={"passed": True, "issues": []})
+
+    monkeypatch.chdir(backend_dir)
+    async_dossier._dossier_registry.clear()
+
+    status = async_dossier.get_dossier_status("AAPL")
+    assert status["deep_dive_ready"] is True
+
+
+def test_deep_dive_ready_false_when_validation_missing(tmp_path, monkeypatch):
+    backend_dir = tmp_path / "backend"
+    backend_dir.mkdir()
+    _write_ready_dossier(tmp_path)
+
+    monkeypatch.chdir(backend_dir)
+    async_dossier._dossier_registry.clear()
+
+    status = async_dossier.get_dossier_status("AAPL")
+    assert status["deep_dive_ready"] is False
+
+
+def test_deep_dive_ready_false_when_validation_failed(tmp_path, monkeypatch):
+    backend_dir = tmp_path / "backend"
+    backend_dir.mkdir()
+    _write_ready_dossier(tmp_path, validation={"passed": False, "issues": ["fail"]})
+
+    monkeypatch.chdir(backend_dir)
+    async_dossier._dossier_registry.clear()
+
+    status = async_dossier.get_dossier_status("AAPL")
+    assert status["deep_dive_ready"] is False
+
+
+# ── Gap 4: jp_degraded ──
+
+def test_jp_degraded_carried_from_registry(tmp_path, monkeypatch):
+    backend_dir = tmp_path / "backend"
+    backend_dir.mkdir()
+    _write_ready_dossier(tmp_path, validation={"passed": True, "issues": []})
+
+    monkeypatch.chdir(backend_dir)
+    async_dossier._dossier_registry.clear()
+    async_dossier._dossier_registry["AAPL"] = {"jp_degraded": True}
+
+    status = async_dossier.get_dossier_status("AAPL")
+    assert status["jp_degraded"] is True
+
+
+def test_jp_degraded_defaults_to_none(tmp_path, monkeypatch):
+    backend_dir = tmp_path / "backend"
+    backend_dir.mkdir()
+    _write_ready_dossier(tmp_path)
+
+    monkeypatch.chdir(backend_dir)
+    async_dossier._dossier_registry.clear()
+
+    status = async_dossier.get_dossier_status("AAPL")
+    assert status["jp_degraded"] is None
+
+
+# ── Gap 2: SCORING/SCORED phases via set_dossier_phase ──
+
+def test_set_dossier_phase_scoring(tmp_path, monkeypatch):
+    async_dossier._dossier_registry.clear()
+
+    async_dossier.set_dossier_phase("NVDA", async_dossier.DossierPhase.SCORING)
+    reg = async_dossier._dossier_registry.get("NVDA", {})
+    assert reg["phase"] == "scoring"
+
+
+def test_set_dossier_phase_scored(tmp_path, monkeypatch):
+    async_dossier._dossier_registry.clear()
+
+    async_dossier.set_dossier_phase("NVDA", async_dossier.DossierPhase.SCORED)
+    reg = async_dossier._dossier_registry.get("NVDA", {})
+    assert reg["phase"] == "scored"

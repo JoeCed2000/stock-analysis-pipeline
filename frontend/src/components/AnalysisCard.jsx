@@ -405,6 +405,20 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
           }}>
             ⚠️ {lang === 'jp' ? '検証失敗' : 'Verification failed'} · {dossierStatus?.sectionsReady ?? '?'}/7
           </div>
+        ) : dossierStatus?.phase === 'failed' ? (
+          <button
+            onClick={() => onViewReport(result, selectedQuarter)}
+            style={{
+              flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500,
+              background: '#3d1f1f', border: '1px solid #f85149',
+              borderRadius: 5, color: '#f85149', cursor: 'pointer',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => e.target.style.background = '#6b3030'}
+            onMouseLeave={e => e.target.style.background = '#3d1f1f'}
+          >
+            🔄 {lang === 'jp' ? 'PDFを再試行' : 'Retry PDF'}
+          </button>
         ) : (
           <div style={{
             flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500,
@@ -425,6 +439,11 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
             {dossierStatus?.pollFailures >= 3 && (
               <span style={{ display: 'block', fontSize: 9, color: '#d29922', marginTop: 2 }}>
                 {lang === 'jp' ? 'ステータス再試行中' : 'Retrying status'}
+              </span>
+            )}
+            {dossierStatus?.jp_degraded && (
+              <span style={{ display: 'block', fontSize: 9, color: '#d29922', marginTop: 2 }}>
+                🇯🇵 {lang === 'jp' ? '日本語訳の生成に失敗しました（英語のみ）' : 'JP translation unavailable (EN only)'}
               </span>
             )}
           </div>

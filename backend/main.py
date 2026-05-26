@@ -1359,6 +1359,9 @@ async def analyze(request: TickerRequest, lang: str = "en", force_refresh: bool 
 
     try:
         import asyncio as _asyncio
+        from backend.async_dossier import set_dossier_phase, DossierPhase
+        for t in normalized_tickers:
+            set_dossier_phase(t, DossierPhase.SCORING)
         batch = await _asyncio.to_thread(run_analysis_parallel, normalized_tickers, output_base=str(ANALYSES_DIR), language=lang, force_refresh=force_refresh)
     except Exception as e:
         logger.exception("Batch analysis failed")
@@ -1370,6 +1373,7 @@ async def analyze(request: TickerRequest, lang: str = "en", force_refresh: bool 
     errors_list = list(batch["errors"].values())
 
     for ticker, result in batch["results"].items():
+        set_dossier_phase(ticker, DossierPhase.SCORED)
         r = result.model_dump()
         # Include financials summary for frontend display
         fin = r.get("financials", {})
