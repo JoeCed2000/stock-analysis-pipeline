@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional, TYPE_CHECKING
 import os
 import re
 
@@ -15,9 +15,20 @@ from backend.earnings_deep_dive.report_model import (
     RenderedTable,
     RenderedTableRow,
     SourceRef,
+    # V2.7 structured section models
+    ExecutiveSnapshot,
+    FinancialMetrics as V27FinancialMetrics,
+    ValuationSection,
+    ValuationContextSection,
+    PeerBenchmarkSection,
+    DataQualitySection,
+    GroundingLevel,
 )
 from backend.earnings_deep_dive.schemas import FinancialMetrics
 from backend.earnings_deep_dive.template import TemplateLanguage, get_earnings_template
+
+if TYPE_CHECKING:
+    from backend.models import Scoring
 
 
 MISSING = "Not available"
@@ -496,7 +507,7 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
     return rows
 
 
-def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: FinancialMetrics) -> list[list[str]]:
+def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: FinancialMetrics, scoring: Optional['Scoring'] = None) -> list[list[str]]:
     if section_key == "EPS & Revenue":
         return [
             [
@@ -813,7 +824,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         return rows
 
     if section_key == "Verdict":
-        return _verdict_rows(metrics, row_labels)
+        return _verdict_rows(metrics, row_labels, scoring)
 
     return [[label, *([MISSING] * 4)] for label in row_labels]
 
@@ -823,6 +834,7 @@ def _enrich_codex_table(
     section_key: str,
     section_rows: tuple[str, ...],
     metrics: FinancialMetrics,
+    scoring: Optional['Scoring'] = None,
 ) -> RenderedTable:
     """Enrich an LLM-generated table by replacing placeholder cells with yfinance data.
 
@@ -835,7 +847,7 @@ def _enrich_codex_table(
     yfinance data (always keyed by Japanese labels from the JP template) can match
     English labels typically produced by the LLM.
     """
-    yf_rows = _rows_for_section(section_key, section_rows, metrics)
+    yf_rows = _rows_for_section(section_key, section_rows, metrics, scoring)
     if not yf_rows:
         return codex_table
 
@@ -1095,8 +1107,12 @@ def _highlights_rows(metrics: FinancialMetrics, row_labels: tuple[str, ...]) -> 
     ]
 
 
-def _verdict_rows(metrics: FinancialMetrics, row_labels: tuple[str, ...]) -> list[list[str]]:
-    """Generate data-driven Verdict table from all available metrics."""
+def _verdict_rows(metrics: FinancialMetrics, row_labels: tuple[str, ...], scoring: Optional['Scoring'] = None) -> list[list[str]]:
+    """Generate data-driven Verdict table from all available metrics.
+    
+    When a canonical Scoring object is provided, uses 6-category weighted scoring
+    (total /40) for the overall verdict row. Otherwise falls back to simplified 0-5 scoring.
+    """
     revenue = _money(metrics.revenue_actual)
     revenue_yoy = _pct(metrics.revenue_yoy)
     eps_val = _eps(metrics.eps_actual)
@@ -1171,25 +1187,36 @@ def _verdict_rows(metrics: FinancialMetrics, row_labels: tuple[str, ...]) -> lis
     )
 
     # ---- Overall verdict ----
-    # Simple scoring: 0-5 scale
-    score = 0
-    if eps_beat:
-        score += 1
-    if rev_yoy_num > 5:
-        score += 1
-    if rev_yoy_num > 15:
-        score += 1
-    if ocf_num > 0 and metrics.free_cash_flow and metrics.free_cash_flow > 0:
-        score += 1
-    if pe_num is not None and pe_num < 20:
-        score += 1
-    verdict = "BUY" if score >= 4 else "HOLD" if score >= 2 else "SELL"
+    if scoring is not None:
+        # Use canonical 6-category weighted scoring (total /40)
+        score = scoring.total
+        verdict = scoring.decision()
+        score_display = (
+            f"Score: {score}/40 "
+            f"(FH:{scoring.financial_health}/10 Gr:{scoring.growth}/10 Va:{scoring.valuation}/8 "
+            f"Mg:{scoring.management}/5 Mo:{scoring.moat}/4 Se:{scoring.sentiment}/3)"
+        )
+    else:
+        # Fallback: simplified 0-5 scoring
+        score = 0
+        if eps_beat:
+            score += 1
+        if rev_yoy_num > 5:
+            score += 1
+        if rev_yoy_num > 15:
+            score += 1
+        if ocf_num > 0 and metrics.free_cash_flow and metrics.free_cash_flow > 0:
+            score += 1
+        if pe_num is not None and pe_num < 20:
+            score += 1
+        verdict = "BUY" if score >= 4 else "HOLD" if score >= 2 else "SELL"
+        score_display = f"Score: {score}/5"
 
     return [
         [row_labels[0], eq_positive, eq_negative, eq_assessment, SOURCE_COMPANY],
         [row_labels[1], gd_positive, gd_negative, gd_assessment, SOURCE_COMPANY],
         [row_labels[2], val_positive, val_negative, val_assessment, SOURCE_COMPANY],
-        [row_labels[3], f"Score: {score}/5", "See component assessments above", f"→ {verdict}", "Model + metrics"],
+        [row_labels[3], score_display, "See component assessments above", f"\u2192 {verdict}", "Model + metrics"],
     ]
 
 
@@ -1633,6 +1660,7 @@ def build_earnings_deep_dive_report(
     section_analysis: dict[str, str] | None = None,
     generated_at: str | None = None,
     company_overview: dict | None = None,
+    scoring: Optional['Scoring'] = None,
 ) -> EarningsDeepDiveReport:
     """Build the deterministic report model used by the PDF renderer."""
     report_language = _language(language)
@@ -1742,7 +1770,7 @@ def build_earnings_deep_dive_report(
         # For data-driven sections, ignore the LLM table and use yfinance rows directly.
         # The LLM prose is kept as analysis_items.
         if section.key in _DATA_DRIVEN_SECTIONS:
-            rows = _rows_for_section(section.key, section.table_rows, metrics)
+            rows = _rows_for_section(section.key, section.table_rows, metrics, scoring)
             table = RenderedTable(
                 columns=list(section.table_columns),
                 rows=[RenderedTableRow(
@@ -1771,7 +1799,7 @@ def build_earnings_deep_dive_report(
                     for row in table.rows
                 )
                 if deterministic_is_sparse:
-                    table = _enrich_codex_table(codex_table, section.key, section.table_rows, metrics)
+                    table = _enrich_codex_table(codex_table, section.key, section.table_rows, metrics, scoring)
                     table = _number_highlights_rows(table)
                     table = _sanitize_table(table)
             analysis_items = _analysis_blocks_without_table(analysis_text) if analysis_text else []
@@ -1845,12 +1873,12 @@ def build_earnings_deep_dive_report(
                             )
                             table = _sanitize_table(table)
         elif codex_table:
-            table = _enrich_codex_table(codex_table, section.key, section.table_rows, metrics)
+            table = _enrich_codex_table(codex_table, section.key, section.table_rows, metrics, scoring)
             table = _number_highlights_rows(table)
             table = _sanitize_table(table)
             analysis_items = _analysis_blocks_without_table(analysis_text)
         else:
-            rows = _rows_for_section(section.key, section.table_rows, metrics)
+            rows = _rows_for_section(section.key, section.table_rows, metrics, scoring)
             table = RenderedTable(
                 columns=list(section.table_columns),
                 rows=[RenderedTableRow(
@@ -2070,10 +2098,23 @@ def build_earnings_deep_dive_report(
     earnings_audio = _metric_url(metrics, "earnings_audio_url")
 
     # ── Chart data for PDF rendering ──
-    chart_data = _build_chart_data(metrics)
+    chart_data = _build_chart_data(metrics, scoring)
 
     # ── Build claim→source traceability ──
     claim_sources = _build_claim_sources(sections, sources, metrics, ticker_clean)
+
+    # ── V2.7 structured section models ──
+    v27 = _build_v27_models(
+        ticker=ticker_clean,
+        company=company_name,
+        quarter=quarter,
+        metrics=metrics,
+        generated_at=generated_at or datetime.now(timezone.utc).isoformat(),
+        company_overview=company_overview,
+        scoring=scoring,
+        sources=sources,
+        next_earnings_date=next_earnings_date,
+    )
 
     # ── Convert company_overview dict to CompanyOverview model ──
     co_model: CompanyOverview | None = None
@@ -2099,11 +2140,196 @@ def build_earnings_deep_dive_report(
         earnings_audio_url=earnings_audio,
         charts=chart_data,
         company_overview=co_model,
+        # V2.7 structured section models
+        executive_snapshot=v27["executive_snapshot"],
+        financial_metrics=v27["financial_metrics"],
+        valuation=v27["valuation"],
+        valuation_context=v27["valuation_context"],
+        peer_benchmark=v27["peer_benchmark"],
+        data_quality=v27["data_quality"],
     )
 
 
-def _build_chart_data(metrics: Any) -> ChartData | None:
-    """Extract pre-computed chart data from FinancialMetrics."""
+# ── V2.7 Structured Section Model Builder ──────────────────────────────────
+
+
+def _build_v27_models(
+    *,
+    ticker: str,
+    company: str,
+    quarter: str,
+    metrics: FinancialMetrics,
+    generated_at: str,
+    company_overview: dict | None,
+    scoring: Optional['Scoring'] = None,
+    sources: list[SourceRef] | None = None,
+    next_earnings_date: str | None = None,
+) -> dict:
+    """Build the 6 V2.7 structured section models from available data.
+
+    Each model is optional — the PDF renderer gracefully handles None.
+    Data sources:
+    - ExecutiveSnapshot: company_overview + scoring + metrics
+    - FinancialMetrics: old schemas.FinancialMetrics → V2.7 format
+    - ValuationSection: PE, PEG, PS, PB, EV/EBITDA, FCF yield, dividend yield
+    - ValuationContextSection: pending V2.4 endpoint integration
+    - PeerBenchmarkSection: pending V2.5 endpoint integration
+    - DataQualitySection: pending source freshness tracking
+    """
+    # ── Helpers ──
+    def _fmt_usd(val: float | None) -> str | None:
+        if val is None:
+            return None
+        try:
+            v = float(val)
+            abs_v = abs(v)
+            if abs_v >= 1e12:
+                return f"${v/1e12:,.2f}T"
+            if abs_v >= 1e9:
+                return f"${v/1e9:,.2f}B"
+            if abs_v >= 1e6:
+                return f"${v/1e6:,.2f}M"
+            if abs_v >= 1e3:
+                return f"${v/1e3:,.2f}K"
+            return f"${v:,.2f}"
+        except (TypeError, ValueError):
+            return None
+
+    def _fmt_pct(val: float | None) -> str | None:
+        if val is None:
+            return None
+        try:
+            # If val looks like an already-scaled percentage (e.g. 15.5 for 15.5%)
+            if abs(float(val)) > 1:
+                return f"{float(val):.1f}%"
+            # Decimal form (0.155 for 15.5%)
+            return f"{float(val)*100:.1f}%"
+        except (TypeError, ValueError):
+            return None
+
+    def _mf(key: str) -> float | None:
+        """Extract a float from the old metrics object (dict-like access)."""
+        try:
+            v = metrics.model_dump().get(key)
+            if v is None or v == "Not disclosed" or v == "":
+                return None
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    def _ms(key: str) -> str | None:
+        """Extract a string from the old metrics object."""
+        try:
+            v = metrics.model_dump().get(key)
+            if v is None or v == "":
+                return None
+            return str(v)
+        except Exception:
+            return None
+
+    # ── 1. ExecutiveSnapshot ───────────────────────────────────────────────
+    es = ExecutiveSnapshot(
+        ticker=ticker,
+        company_name=company,
+        quarter=_resolved_quarter_label(quarter, metrics),
+        generated_at=generated_at,
+        next_earnings_date=next_earnings_date,
+    )
+
+    if company_overview:
+        kf = company_overview.get("key_financials", {})
+        cp = company_overview.get("company_profile", {})
+        es.market_cap = _safe_float_ov(kf.get("market_cap"))
+        es.market_cap_display = kf.get("market_cap_display")
+        es.sector = cp.get("sector")
+        es.industry = cp.get("industry")
+
+    if scoring:
+        try:
+            es.verdict = scoring.decision() if callable(getattr(scoring, 'decision', None)) else str(getattr(scoring, 'verdict', '')) or None
+        except Exception:
+            pass
+        es.decision_score = getattr(scoring, 'total', None)
+
+    # ── 2. FinancialMetrics (V2.7) ─────────────────────────────────────────
+    rev_actual = _mf("revenue_actual")
+    rev_estimate = _mf("revenue_estimate")
+    rev_beat = None
+    rev_beat_display = None
+    if rev_actual is not None and rev_estimate is not None and rev_estimate != 0:
+        rev_beat = ((rev_actual - rev_estimate) / abs(rev_estimate)) * 100
+        rev_beat_display = f"{rev_beat:+.1f}%"
+
+    eps_actual = _mf("eps_actual")
+    eps_beat = _mf("eps_vs_estimate")
+
+    fm = V27FinancialMetrics(
+        eps_actual=eps_actual,
+        eps_actual_display=f"${eps_actual:,.2f}" if eps_actual is not None else None,
+        eps_estimate=_mf("eps_estimate"),
+        eps_estimate_display=_fmt_usd(_mf("eps_estimate")),
+        eps_beat_pct=eps_beat,
+        eps_beat_pct_display=_fmt_pct(eps_beat),
+        revenue_actual=rev_actual,
+        revenue_actual_display=_fmt_usd(rev_actual),
+        revenue_estimate=rev_estimate,
+        revenue_estimate_display=_fmt_usd(rev_estimate),
+        revenue_beat_pct=rev_beat,
+        revenue_beat_pct_display=rev_beat_display,
+        gross_margin=_mf("gross_margin"),
+        gross_margin_display=_fmt_pct(_mf("gross_margin")),
+        operating_margin=_mf("operating_margin"),
+        operating_margin_display=_fmt_pct(_mf("operating_margin")),
+        net_margin=_mf("net_margin"),
+        net_margin_display=_fmt_pct(_mf("net_margin")),
+        revenue_growth_yoy=_mf("revenue_yoy"),
+        revenue_growth_yoy_display=_fmt_pct(_mf("revenue_yoy")),
+        eps_growth_yoy=_mf("eps_yoy"),
+        eps_growth_yoy_display=_fmt_pct(_mf("eps_yoy")),
+        fcf=_mf("free_cash_flow"),
+        fcf_display=_fmt_usd(_mf("free_cash_flow")),
+        sources=list(sources) if sources else [],
+    )
+
+    # ── 3. ValuationSection ────────────────────────────────────────────────
+    pe_fwd = _mf("pe_forward")
+    pe_ttm = _mf("pe_trailing")
+
+    vs = ValuationSection(
+        pe_trailing=pe_ttm,
+        pe_trailing_display=f"{pe_ttm:.1f}x" if pe_ttm is not None else None,
+        pe_forward=pe_fwd,
+        pe_forward_display=f"{pe_fwd:.1f}x" if pe_fwd is not None else None,
+        generated_at=generated_at,
+    )
+
+    # ── 4–6. Remaining sections (pending endpoint integration) ─────────────
+    vc = ValuationContextSection()  # all None
+    pb = PeerBenchmarkSection()     # all None
+    dq = DataQualitySection(generated_at=generated_at)  # timestamp only
+
+    return {
+        "executive_snapshot": es,
+        "financial_metrics": fm,
+        "valuation": vs,
+        "valuation_context": vc,
+        "peer_benchmark": pb,
+        "data_quality": dq,
+    }
+
+
+def _safe_float_ov(val: Any) -> float | None:
+    """Safely convert a value from company_overview dict to float."""
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_chart_data(metrics: Any, scoring: Optional['Scoring'] = None) -> ChartData | None:
+    """Extract pre-computed chart data from FinancialMetrics and optional Scoring."""
     try:
         raw = metrics.model_dump() if hasattr(metrics, 'model_dump') else {}
     except Exception:
@@ -2138,6 +2364,26 @@ def _build_chart_data(metrics: Any) -> ChartData | None:
     sector = raw.get("sector")
     industry = raw.get("industry")
 
+    # ── Scoring fields from canonical Scoring model ──
+    scoring_financial_health: float | None = None
+    scoring_growth: float | None = None
+    scoring_valuation: float | None = None
+    scoring_management: float | None = None
+    scoring_moat: float | None = None
+    scoring_sentiment: float | None = None
+    scoring_total: int | None = None
+    scoring_decision: str | None = None
+
+    if scoring is not None:
+        scoring_financial_health = float(scoring.financial_health)
+        scoring_growth = float(scoring.growth)
+        scoring_valuation = float(scoring.valuation)
+        scoring_management = float(scoring.management)
+        scoring_moat = float(scoring.moat)
+        scoring_sentiment = float(scoring.sentiment)
+        scoring_total = scoring.total
+        scoring_decision = scoring.decision()
+
     return ChartData(
         eps_actual=eps_actual,
         eps_estimate=eps_estimate,
@@ -2152,6 +2398,14 @@ def _build_chart_data(metrics: Any) -> ChartData | None:
         roic=roic,
         sector=sector,
         industry=industry,
+        scoring_financial_health=scoring_financial_health,
+        scoring_growth=scoring_growth,
+        scoring_valuation=scoring_valuation,
+        scoring_management=scoring_management,
+        scoring_moat=scoring_moat,
+        scoring_sentiment=scoring_sentiment,
+        scoring_total=scoring_total,
+        scoring_decision=scoring_decision,
     )
 
 

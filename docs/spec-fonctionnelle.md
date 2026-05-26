@@ -424,4 +424,49 @@ saisir "AAPL" → lancer analyse → vérifier PDF + ZIP
 | Callout box | Encadré coloré dans le PDF mettant en valeur une information clé |
 | Quick tunnel | Tunnel Cloudflare éphémère sans nom de domaine stable (debug) |
 | Named tunnel | Tunnel Cloudflare permanent avec nom de domaine configuré (production) |
-| CacheBustingStaticFiles | Classe FastAPI qui ajoute Cache-Control: no-cache aux fichiers statiques |
+|| CacheBustingStaticFiles | Classe FastAPI qui ajoute Cache-Control: no-cache aux fichiers statiques |
+
+## 14. V2.7 — Sections PDF Structurées
+
+### 14.1 Contexte
+Les PDF earnings deep-dive actuels utilisent des sections textuelles générées par LLM, sans structuration fine des données financières. La V2.7 introduit 6 modèles Pydantic structurés, chacun responsable d'une section du PDF avec des données typées, sourcées et traçables.
+
+### 14.2 Modèles de données (T1)
+| # | Modèle | Contenu | Statut |
+|---|---|---|---|
+| 1 | `ExecutiveSnapshot` | ticker, prix, market cap, verdict, score | ✅ Intégré |
+| 2 | `FinancialMetrics` (V2.7) | EPS, Revenue, marges, croissance, FCF + display | ✅ Intégré |
+| 3 | `ValuationSection` | PE trailing/forward, PEG, PS, PB, EV/EBITDA | ✅ Intégré |
+| 4 | `ValuationContextSection` | 7 signaux contextuels V2.4 | ⏳ API pending |
+| 5 | `PeerBenchmarkSection` | Benchmarks relatifs aux pairs V2.5 | ⏳ API pending |
+| 6 | `DataQualitySection` | Fraîcheur des sources, complétude | ⏳ API pending |
+
+### 14.3 Rendu PDF (T2)
+Fonctions de rendu dans `pdf_renderer.py` :
+- `render_executive_snapshot()` — carte d'en-tête avec prix, market cap, verdict
+- `render_financial_metrics()` — tableaux EPS, Revenue, marges, croissance, FCF
+- `render_valuation()` — multiples de valorisation
+- `render_valuation_context()` — signaux contextuels (pending data)
+- `render_peer_benchmark()` — comparaison pairs (pending data)
+- `render_data_quality()` — audit trail des sources (pending data)
+
+Chaque renderer retourne `[]` si le modèle est `None` — aucun breaking change.
+
+### 14.4 Intégration Pipeline (T3)
+Le mapper (`backend/earnings_deep_dive/mapper.py`) peuple les modèles V2.7 :
+- **ExecutiveSnapshot** : depuis `company_overview` (market cap, secteur) + `scoring` (verdict)
+- **FinancialMetrics** : mapping direct depuis l'ancien `schemas.FinancialMetrics`
+- **ValuationSection** : PE trailing/forward depuis yfinance
+- Les 3 autres modèles sont créés vides (intégration API à venir)
+
+### 14.5 Tests
+- `tests/spec_v27_report_model.py` — 25 tests (modèles Pydantic)
+- `tests/spec_v27_pdf_renderer.py` — 36 tests (rendu PDF)
+- `tests/spec_v27_integration.py` — 13 tests (mapper → pipeline → PDF)
+
+### 14.6 État actuel
+- ✅ T1 : Modèles Pydantic (6 modèles, tous nullable, USD-only)
+- ✅ T2 : Fonctions de rendu PDF (6 renderers, aucun breaking change)
+- ✅ T3 : Intégration mapper → pipeline (3/6 modèles peuplés)
+- ⏳ T4 : Intégration endpoints V2.4/V2.5 pour ValuationContext + PeerBenchmark
+- ⏳ T5 : DataQuality avec métadonnées de sources réelles
