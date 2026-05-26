@@ -1676,6 +1676,7 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                     language=lang,
                     section_analysis=sections,
                     company_overview=company_overview,
+                    yf_info=q_data.get("_raw_info"),
                 )
                 os.makedirs(dd_path.parent, exist_ok=True)
                 render_earnings_deep_dive_pdf(report_model, str(dd_path))

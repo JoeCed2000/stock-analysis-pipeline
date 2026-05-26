@@ -203,3 +203,70 @@ class TestValuationLabels:
         vc = _build_valuation_context(yf_info=info, metrics=None, generated_at="t")
         if vc.fcf_yield_signal is not None:
             assert "Strong" in vc.fcf_yield_label or "strong" in str(vc.fcf_yield_label).lower()
+
+
+# ── Integration: yf_info wire-through ──────────────────────────────
+
+class TestYfInfoWireThrough:
+    """Verify the API glue code passes raw yf_info to the mapper so
+    valuation_context signals are populated (not all-None as before)."""
+
+    def test_build_report_with_yf_info_populates_peg(self):
+        """When yf_info is passed, valuation_context.peg_signal is populated."""
+        import sys
+        sys.path.insert(0, '/home/ced/codex-projects/stock-analysis-pipeline')
+        from backend.earnings_deep_dive.mapper import build_earnings_deep_dive_report
+        from backend.earnings_deep_dive.schemas import FinancialMetrics
+
+        metrics = FinancialMetrics()
+        yf = _yf_info(trailingPE=33.0, earningsGrowth=2.145)
+
+        report = build_earnings_deep_dive_report(
+            ticker="NVDA",
+            company="NVIDIA Corporation",
+            quarter="latest quarter",
+            metrics=metrics,
+            language="en",
+            yf_info=yf,
+        )
+
+        vc = report.valuation_context
+        assert vc is not None, "valuation_context should be populated when yf_info is passed"
+        assert vc.peg_signal is not None, "PEG signal should be computed from yf_info"
+        assert vc.peg_signal == pytest.approx(0.154, abs=0.01)
+        assert vc.peg_signal_label is not None
+
+    def test_build_report_without_yf_info_has_null_signals(self):
+        """Without yf_info, valuation_context exists but all signals are None."""
+        import sys
+        sys.path.insert(0, '/home/ced/codex-projects/stock-analysis-pipeline')
+        from backend.earnings_deep_dive.mapper import build_earnings_deep_dive_report
+        from backend.earnings_deep_dive.schemas import FinancialMetrics
+
+        metrics = FinancialMetrics()
+
+        report = build_earnings_deep_dive_report(
+            ticker="NVDA",
+            company="NVIDIA Corporation",
+            quarter="latest quarter",
+            metrics=metrics,
+            language="en",
+        )
+
+        vc = report.valuation_context
+        assert vc is not None, "valuation_context should always be created"
+        assert vc.peg_signal is None, "Without yf_info, all signals should be None"
+
+    def test_get_yahoo_data_includes_raw_info(self):
+        """sources_collector.get_yahoo_data should include _raw_info key."""
+        import sys
+        sys.path.insert(0, '/home/ced/codex-projects/stock-analysis-pipeline')
+        from backend.sources_collector import get_yahoo_data
+
+        q_data = get_yahoo_data("NVDA")
+        raw = q_data.get("_raw_info")
+        assert raw is not None, "get_yahoo_data must return _raw_info"
+        assert isinstance(raw, dict), "_raw_info must be a dict"
+        # Verify key camelCase keys exist (these are what _build_valuation_context reads)
+        for key in ("trailingPE", "pegRatio", "marketCap"):
+            assert key in raw, f"_raw_info must contain '{key}' (standard yfinance info key)"

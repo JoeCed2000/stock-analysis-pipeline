@@ -936,6 +936,7 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
         "analyst_consensus": info.get("recommendationKey"),
         "analyst_target": info.get("targetMeanPrice"),
         "analyst_count": info.get("numberOfAnalystOpinions"),
+        "_raw_info": info,  # raw yfinance info dict (camelCase keys) for V2.7 valuation context
     }
 
     # Save to cache
