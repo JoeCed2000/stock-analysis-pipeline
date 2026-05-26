@@ -33,7 +33,12 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from backend.earnings_deep_dive.report_model import ClaimSource, CompanyOverview, EarningsDeepDiveReport
+from backend.earnings_deep_dive.report_model import (
+    ClaimSource, CompanyOverview, EarningsDeepDiveReport,
+    # V2.7 structured section models
+    ExecutiveSnapshot, FinancialMetrics, ValuationSection,
+    ValuationContextSection, PeerBenchmarkSection, DataQualitySection,
+)
 from backend.i18n import translate
 
 
@@ -1196,6 +1201,419 @@ def _generate_metrics_chart(chart_data, ticker: str) -> RLImage | None:
 
 # ── Company Overview rendering ────────────────────────────────────────────
 
+# ── V2.7 Structured PDF Section Renderers ────────────────────────────────────
+
+
+def render_executive_snapshot(
+    report: EarningsDeepDiveReport,
+    styles: dict[str, ParagraphStyle],
+    fonts,
+) -> list:
+    """Render the ExecutiveSnapshot as a prominent header card."""
+    es = report.executive_snapshot
+    if es is None:
+        return []
+
+    lang = report.language
+    story: list = []
+
+    story.append(Paragraph(
+        f'<font size="16" color="#8B1E1E"><b>{escape(es.company_name or report.company)} ({escape(es.ticker or report.ticker)})</b></font>',
+        styles["body"],
+    ))
+    story.append(Spacer(1, 0.05 * inch))
+
+    meta_parts = []
+    if es.quarter:
+        meta_parts.append(f'{translate("Quarter", lang)}: {es.quarter}')
+    if es.generated_at:
+        from datetime import datetime as Dt
+        try:
+            dt = Dt.fromisoformat(es.generated_at.replace("Z", "+00:00"))
+            meta_parts.append(f'{translate("Generated", lang)}: {dt.strftime("%B %d, %Y")}')
+        except Exception:
+            meta_parts.append(f'{translate("Generated", lang)}: {es.generated_at}')
+    if meta_parts:
+        story.append(Paragraph(
+            f'<font size="9" color="#5D5D5D">{"  ·  ".join(meta_parts)}</font>',
+            styles["body"],
+        ))
+        story.append(Spacer(1, 0.10 * inch))
+
+    # Price & Market Cap row
+    stats = []
+    if es.price is not None:
+        stats.append(f'{translate("Price", lang)}: ${es.price:,.2f}')
+    if es.market_cap_display:
+        stats.append(f'{translate("Market Cap", lang)}: {es.market_cap_display}')
+    elif es.market_cap is not None:
+        stats.append(f'{translate("Market Cap", lang)}: ${es.market_cap:,.0f}')
+    if es.sector:
+        stats.append(f'{translate("Sector", lang)}: {es.sector}')
+    if stats:
+        story.append(Paragraph(
+            f'<font size="10">{"  ·  ".join(stats)}</font>',
+            styles["body"],
+        ))
+        story.append(Spacer(1, 0.08 * inch))
+
+    # Verdict badge
+    if es.verdict:
+        verdict_color = "#1A6B3C" if es.verdict.upper() == "BUY" else (
+            "#D97706" if es.verdict.upper() == "HOLD" else "#A33A2A"
+        )
+        score_text = ""
+        if es.decision_score is not None:
+            score_text = f"  ({es.decision_score}/{es.decision_max})"
+        story.append(Paragraph(
+            f'<font size="12" color="{verdict_color}"><b>{es.verdict.upper()}{score_text}</b></font>',
+            styles["body"],
+        ))
+        story.append(Spacer(1, 0.10 * inch))
+
+    # Next earnings
+    if es.next_earnings_date:
+        story.append(Paragraph(
+            f'<font size="9" color="#5D5D5D">{translate("Next Earnings", lang)}: {es.next_earnings_date}</font>',
+            styles["body"],
+        ))
+        story.append(Spacer(1, 0.08 * inch))
+
+    return story
+
+
+def render_financial_metrics(
+    report: EarningsDeepDiveReport,
+    styles: dict[str, ParagraphStyle],
+    fonts,
+) -> list:
+    """Render FinancialMetrics as a structured table."""
+    fm = report.financial_metrics
+    if fm is None:
+        return []
+
+    lang = report.language
+    story: list = []
+
+    story.append(Paragraph(translate("Financial Metrics", lang), styles["section"]))
+    story.append(Spacer(1, 0.10 * inch))
+
+    rows: list[list] = []
+    label_style = styles["small_bold"]
+    value_style = styles["small"]
+
+    def _fm_row(label_en: str, value, display_val=None):
+        if value is None and display_val is None:
+            return
+        label = translate(label_en, lang)
+        display = display_val or f"{value:,.2f}" if isinstance(value, (int, float)) else str(value)
+        rows.append([
+            Paragraph(f"<b>{label}</b>", label_style),
+            Paragraph(escape(_glyph_safe(display, font_name=fonts.regular)), value_style),
+        ])
+
+    # EPS block
+    _fm_row("EPS (Actual)", fm.eps_actual, fm.eps_actual_display)
+    _fm_row("EPS (Estimate)", fm.eps_estimate, fm.eps_estimate_display)
+    _fm_row("EPS Beat %", fm.eps_beat_pct, fm.eps_beat_pct_display)
+
+    # Revenue block
+    _fm_row("Revenue (Actual)", fm.revenue_actual, fm.revenue_actual_display)
+    _fm_row("Revenue (Estimate)", fm.revenue_estimate, fm.revenue_estimate_display)
+    _fm_row("Revenue Beat %", fm.revenue_beat_pct, fm.revenue_beat_pct_display)
+
+    # Margins
+    _fm_row("Gross Margin", fm.gross_margin, fm.gross_margin_display)
+    _fm_row("Operating Margin", fm.operating_margin, fm.operating_margin_display)
+    _fm_row("Net Margin", fm.net_margin, fm.net_margin_display)
+
+    # Growth
+    _fm_row("Revenue Growth (YoY)", fm.revenue_growth_yoy, fm.revenue_growth_yoy_display)
+    _fm_row("EPS Growth (YoY)", fm.eps_growth_yoy, fm.eps_growth_yoy_display)
+
+    # FCF
+    _fm_row("Free Cash Flow", fm.fcf, fm.fcf_display)
+
+    if rows:
+        available_w = LETTER[0] - 1.24 * inch
+        table = Table(rows, colWidths=[1.65 * inch, available_w - 1.75 * inch], hAlign="LEFT")
+        table.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("INNERGRID", (0, 0), (-1, -1), 0.25, _GRID),
+            ("BOX", (0, 0), (-1, -1), 0, colors.white),
+        ]))
+        story.append(table)
+        story.append(Spacer(1, 0.10 * inch))
+
+    return story
+
+
+def render_valuation(
+    report: EarningsDeepDiveReport,
+    styles: dict[str, ParagraphStyle],
+    fonts,
+) -> list:
+    """Render ValuationSection multiples table."""
+    v = report.valuation
+    if v is None:
+        return []
+
+    lang = report.language
+    story: list = []
+
+    story.append(Paragraph(translate("Valuation", lang), styles["section"]))
+    story.append(Spacer(1, 0.10 * inch))
+
+    rows: list[list] = []
+    label_style = styles["small_bold"]
+    value_style = styles["small"]
+
+    def _v_row(label_en: str, value, display_val=None):
+        if value is None and display_val is None:
+            return
+        label = translate(label_en, lang)
+        display = display_val or f"{value:,.2f}" if isinstance(value, (int, float)) else str(value)
+        rows.append([
+            Paragraph(f"<b>{label}</b>", label_style),
+            Paragraph(escape(_glyph_safe(display, font_name=fonts.regular)), value_style),
+        ])
+
+    _v_row("P/E (Trailing)", v.pe_trailing, v.pe_trailing_display)
+    _v_row("P/E (Forward)", v.pe_forward, v.pe_forward_display)
+    _v_row("PEG Ratio", v.peg_ratio, v.peg_ratio_display)
+    _v_row("Price / Sales", v.price_to_sales, v.price_to_sales_display)
+    _v_row("Price / Book", v.price_to_book, v.price_to_book_display)
+    _v_row("EV / EBITDA", v.ev_to_ebitda, v.ev_to_ebitda_display)
+    _v_row("FCF Yield", v.fcf_yield, v.fcf_yield_display)
+    _v_row("Dividend Yield", v.dividend_yield, v.dividend_yield_display)
+
+    if rows:
+        available_w = LETTER[0] - 1.24 * inch
+        table = Table(rows, colWidths=[1.65 * inch, available_w - 1.75 * inch], hAlign="LEFT")
+        table.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("INNERGRID", (0, 0), (-1, -1), 0.25, _GRID),
+            ("BOX", (0, 0), (-1, -1), 0, colors.white),
+        ]))
+        story.append(table)
+        story.append(Spacer(1, 0.10 * inch))
+
+    return story
+
+
+def render_valuation_context(
+    report: EarningsDeepDiveReport,
+    styles: dict[str, ParagraphStyle],
+    fonts,
+) -> list:
+    """Render ValuationContextSection — 7 context signals."""
+    vc = report.valuation_context
+    if vc is None:
+        return []
+
+    lang = report.language
+    story: list = []
+
+    story.append(Paragraph(translate("Valuation Context", lang), styles["section"]))
+    story.append(Spacer(1, 0.10 * inch))
+
+    signals = [
+        (translate("PEG Signal", lang), vc.peg_signal, vc.peg_signal_label, vc.peg_signal_detail),
+        (translate("P/S vs Growth", lang), vc.ps_vs_growth_signal, vc.ps_vs_growth_label, None),
+        (translate("EV/EBITDA vs Growth", lang), vc.ev_ebitda_vs_growth_signal, vc.ev_ebitda_vs_growth_label, None),
+        (translate("P/FCF vs Growth", lang), vc.pfcf_vs_growth_signal, vc.pfcf_vs_growth_label, None),
+        (translate("FCF Yield", lang), vc.fcf_yield_signal, vc.fcf_yield_label, None),
+    ]
+
+    for name, signal_val, label, detail in signals:
+        if signal_val is None and label is None:
+            continue
+        parts = [f'<b>{escape(name)}:</b>']
+        if signal_val is not None:
+            parts.append(f'{signal_val:,.2f}')
+        if label:
+            parts.append(f'<font color="#5D5D5D">({escape(label)})</font>')
+        if detail:
+            parts.append(f'<font size="8" color="#5D5D5D">— {escape(detail)}</font>')
+        story.append(Paragraph("  ".join(parts), styles["small"]))
+        story.append(Spacer(1, 0.05 * inch))
+
+    # Valuation support summary
+    if vc.valuation_support:
+        story.append(Spacer(1, 0.08 * inch))
+        story.append(Paragraph(
+            f'<b>{translate("Valuation Support", lang)}:</b> {escape(vc.valuation_support)}',
+            styles["small"],
+        ))
+    if vc.context_summary:
+        story.append(Paragraph(
+            f'<font color="#5D5D5D">{escape(vc.context_summary)}</font>',
+            styles["small"],
+        ))
+        story.append(Spacer(1, 0.08 * inch))
+
+    return story
+
+
+def render_peer_benchmark(
+    report: EarningsDeepDiveReport,
+    styles: dict[str, ParagraphStyle],
+    fonts,
+) -> list:
+    """Render PeerBenchmarkSection — peer-relative comparison."""
+    pb = report.peer_benchmark
+    if pb is None:
+        return []
+
+    lang = report.language
+    story: list = []
+
+    story.append(Paragraph(translate("Peer Benchmark", lang), styles["section"]))
+    story.append(Spacer(1, 0.10 * inch))
+
+    # Peer group line
+    if pb.peer_group:
+        ticker_list = ", ".join(pb.peer_tickers) if pb.peer_tickers else ""
+        story.append(Paragraph(
+            f'<b>{translate("Peer Group", lang)}:</b> {escape(pb.peer_group)}'
+            + (f" ({escape(ticker_list)})" if ticker_list else ""),
+            styles["small"],
+        ))
+        story.append(Spacer(1, 0.10 * inch))
+
+    # Relative labels table
+    pb_rows = []
+    label_style = styles["small_bold"]
+    value_style = styles["small"]
+
+    for dim_label, rel_label, rel_detail in [
+        (translate("Valuation", lang), pb.relative_valuation_label, pb.relative_valuation_detail),
+        (translate("Growth", lang), pb.relative_growth_label, pb.relative_growth_detail),
+        (translate("Quality", lang), pb.relative_quality_label, pb.relative_quality_detail),
+    ]:
+        if rel_label is None:
+            continue
+        detail_text = f'<font size="8" color="#5D5D5D"> {escape(rel_detail)}</font>' if rel_detail else ""
+        pb_rows.append([
+            Paragraph(f"<b>{escape(dim_label)}</b>", label_style),
+            Paragraph(f"{escape(rel_label)}{detail_text}", value_style),
+        ])
+
+    if pb_rows:
+        available_w = LETTER[0] - 1.24 * inch
+        table = Table(pb_rows, colWidths=[1.65 * inch, available_w - 1.75 * inch], hAlign="LEFT")
+        table.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("INNERGRID", (0, 0), (-1, -1), 0.25, _GRID),
+            ("BOX", (0, 0), (-1, -1), 0, colors.white),
+        ]))
+        story.append(table)
+        story.append(Spacer(1, 0.10 * inch))
+
+    # Benchmark summary
+    if pb.benchmark_summary:
+        story.append(Paragraph(
+            f'<font size="9" color="#5D5D5D"><i>{escape(pb.benchmark_summary)}</i></font>',
+            styles["small"],
+        ))
+        story.append(Spacer(1, 0.08 * inch))
+
+    return story
+
+
+def render_data_quality(
+    report: EarningsDeepDiveReport,
+    styles: dict[str, ParagraphStyle],
+    fonts,
+) -> list:
+    """Render DataQualitySection — source freshness + completeness."""
+    dq = report.data_quality
+    if dq is None:
+        return []
+
+    lang = report.language
+    story: list = []
+
+    story.append(Paragraph(translate("Data Quality", lang), styles["section"]))
+    story.append(Spacer(1, 0.10 * inch))
+
+    # Source freshness table
+    dq_rows = []
+    label_style = styles["small_bold"]
+    value_style = styles["small"]
+
+    for src_name, freshness, label in [
+        ("YFinance", dq.yfinance_freshness, dq.yfinance_source_label),
+        ("Finnhub", dq.finnhub_freshness, dq.finnhub_source_label),
+        ("SEC EDGAR", dq.sec_edgar_freshness, dq.sec_edgar_source_label),
+        ("Transcript", dq.transcript_freshness, dq.transcript_source_label),
+    ]:
+        if freshness is None and label is None:
+            continue
+        display = f"{escape(label)}" if label else ""
+        if freshness:
+            display += f"  <font size=\"7\" color=\"#999\">({escape(freshness)})</font>"
+        if display:
+            dq_rows.append([
+                Paragraph(f"<b>{escape(src_name)}</b>", label_style),
+                Paragraph(display, value_style),
+            ])
+
+    if dq_rows:
+        available_w = LETTER[0] - 1.24 * inch
+        table = Table(dq_rows, colWidths=[1.65 * inch, available_w - 1.75 * inch], hAlign="LEFT")
+        table.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("INNERGRID", (0, 0), (-1, -1), 0.25, _GRID),
+            ("BOX", (0, 0), (-1, -1), 0, colors.white),
+        ]))
+        story.append(table)
+        story.append(Spacer(1, 0.10 * inch))
+
+    # Confidence + completeness
+    if dq.overall_confidence:
+        conf_map = {"high": "#1A6B3C", "medium": "#D97706", "low": "#A33A2A"}
+        color = conf_map.get(dq.overall_confidence.lower(), "#5D5D5D")
+        story.append(Paragraph(
+            f'<b>{translate("Confidence", lang)}:</b> '
+            f'<font color="{color}">{dq.overall_confidence.upper()}</font>',
+            styles["small"],
+        ))
+    if dq.completeness_score is not None:
+        pct = dq.completeness_score
+        score_color = "#1A6B3C" if pct >= 80 else "#D97706" if pct >= 50 else "#A33A2A"
+        story.append(Paragraph(
+            f'<b>{translate("Completeness", lang)}:</b> '
+            f'<font color="{score_color}">{pct}/{dq.completeness_max} ({pct}%)</font>',
+            styles["small"],
+        ))
+    if dq.missing_fields:
+        story.append(Paragraph(
+            f'<font size="8" color="#A33A2A"><b>{translate("Missing", lang)}:</b> '
+            f'{", ".join(dq.missing_fields)}</font>',
+            styles["small"],
+        ))
+        story.append(Spacer(1, 0.06 * inch))
+
+    return story
+
+
 def render_company_overview(
     report: EarningsDeepDiveReport,
     styles: dict[str, ParagraphStyle],
@@ -1489,6 +1907,15 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             story.append(chart_image)
         story.append(Spacer(1, 0.15 * inch))
 
+    # ── V2.7 Executive Snapshot (header card, after charts) ──
+    es_story = render_executive_snapshot(report, styles, fonts)
+    if es_story:
+        story.append(CondPageBreak(2.25 * inch))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=_GRID))
+        story.append(Spacer(1, 0.08 * inch))
+        story.extend(es_story)
+        story.append(Spacer(1, 0.10 * inch))
+
     # ── Company Overview (after charts, before deep-dive sections) ──
     co_story = render_company_overview(report, styles, fonts)
     if co_story:
@@ -1541,7 +1968,36 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         if section.summary and section.summary.strip() and section.summary.strip().lower() not in {"not available.", "not available", "n/a"}:
             story.extend(_callout_box(section.summary_label, section.summary, styles, fonts.regular, icon='👉'))
 
-    if report.sources or report.next_earnings_date or report.earnings_audio_url or report.scoring:
+    # ── V2.7 Structured Sections: Financial Metrics, Valuation, Context, Peers ──
+    fm_story = render_financial_metrics(report, styles, fonts)
+    if fm_story:
+        story.append(CondPageBreak(2.25 * inch))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=_GRID))
+        story.append(Spacer(1, 0.12 * inch))
+        story.extend(fm_story)
+
+    v_story = render_valuation(report, styles, fonts)
+    if v_story:
+        story.append(CondPageBreak(2.25 * inch))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=_GRID))
+        story.append(Spacer(1, 0.12 * inch))
+        story.extend(v_story)
+
+    vc_story = render_valuation_context(report, styles, fonts)
+    if vc_story:
+        story.append(CondPageBreak(2.25 * inch))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=_GRID))
+        story.append(Spacer(1, 0.12 * inch))
+        story.extend(vc_story)
+
+    pb_story = render_peer_benchmark(report, styles, fonts)
+    if pb_story:
+        story.append(CondPageBreak(2.25 * inch))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=_GRID))
+        story.append(Spacer(1, 0.12 * inch))
+        story.extend(pb_story)
+
+    if report.sources or report.next_earnings_date or report.earnings_audio_url or report.scoring or report.data_quality:
         story.append(PageBreak())
 
         # ── 6-Category Scoring Summary (when available) ──
@@ -1580,6 +2036,14 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
                 story.append(Spacer(1, 0.08 * inch))
 
             story.append(Spacer(1, 0.12 * inch))
+
+        # ── V2.7 Data Quality (source freshness + completeness) ──
+        dq_story = render_data_quality(report, styles, fonts)
+        if dq_story:
+            story.append(HRFlowable(width="100%", thickness=0.5, color=_GRID))
+            story.append(Spacer(1, 0.12 * inch))
+            story.extend(dq_story)
+            story.append(Spacer(1, 0.08 * inch))
 
         # ── Sources ──
         story.append(Paragraph(translate("Sources", report.language), styles["section"]))
