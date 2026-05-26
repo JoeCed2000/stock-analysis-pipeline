@@ -2176,7 +2176,7 @@ def _build_v27_models(
     - FinancialMetrics: old schemas.FinancialMetrics → V2.7 format
     - ValuationSection: PE, PEG, PS, PB, EV/EBITDA, FCF yield, dividend yield
     - ValuationContextSection: pending V2.4 endpoint integration
-    - PeerBenchmarkSection: pending V2.5 endpoint integration
+    - PeerBenchmarkSection: live V2.5 peer benchmark engine + curated universe
     - DataQualitySection: pending source freshness tracking
     """
     # ── Helpers ──
@@ -2310,7 +2310,9 @@ def _build_v27_models(
     vc = _build_valuation_context(
         yf_info=yf_info, metrics=metrics, generated_at=generated_at,
     )
-    pb = PeerBenchmarkSection()     # all None
+    pb = _build_peer_benchmark(
+        ticker=ticker, yf_info=yf_info, metrics=metrics, generated_at=generated_at,
+    )
     dq = DataQualitySection(generated_at=generated_at)  # timestamp only
 
     return {
@@ -2462,6 +2464,233 @@ def _build_valuation_context(
             vc.context_summary = "Mixed valuation signals — no clear tilt"
 
     return vc
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  V2.7 T5 — Peer Benchmark builder
+# ═══════════════════════════════════════════════════════════════════
+
+
+def _safe_f(val: Any) -> float | None:
+    """Safe float conversion — NaN/inf tolerant."""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        return f if f == f and f not in (float("inf"), float("-inf")) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_peer_subject_metrics(
+    yf_info: dict,
+    _metrics: FinancialMetrics | None,  # unused for now; reserved for quality
+) -> dict[str, float]:
+    """Extract valuation multiples from yf_info for the subject ticker.
+
+    Returns only non-None values so buildPeerBenchmarkSummary has clean input.
+    """
+    result: dict[str, float] = {}
+    for metric_name, yf_key in [
+        ("pe_ttm", "trailingPE"),
+        ("pe_forward", "forwardPE"),
+        ("peg_ratio", "pegRatio"),
+        ("ps_ttm", "priceToSalesTrailing12Months"),
+        ("pb_ratio", "priceToBook"),
+        ("ev_ebitda", "enterpriseToEbitda"),
+        ("total_debt", "totalDebt"),
+    ]:
+        v = _safe_f(yf_info.get(yf_key))
+        if v is not None:
+            result[metric_name] = v
+    return result
+
+
+def _extract_peer_valuation_metrics_from_batch(
+    batch: dict,
+) -> dict[str, dict[str, float]]:
+    """Extract valuation multiples from the peer batch snapshot.
+
+    Returns: {TICKER: {metric_name: value}} — non-None values only.
+    Mirrors the extraction logic in routes/peer_benchmark.py.
+    """
+    result: dict[str, dict[str, float]] = {}
+
+    for peer_ticker, peer_data in batch.get("peers", {}).items():
+        m: dict[str, float] = {}
+
+        # ── Market snapshot fields ──
+        if "market" in peer_data:
+            market = peer_data["market"]
+            for key in ("pe_ttm", "ps_ttm", "pb_ratio"):
+                v = _safe_f(market.get(key))
+                if v is not None:
+                    m[key] = v
+
+        # ── Valuation fields ──
+        if "valuation" in peer_data:
+            valn = peer_data["valuation"]
+            # pe_current overrides market pe_ttm when available
+            pe_cur = _safe_f(valn.get("pe_current"))
+            if pe_cur is not None:
+                m["pe_ttm"] = pe_cur
+            pe_fwd = _safe_f(valn.get("pe_forward"))
+            if pe_fwd is not None:
+                m["pe_forward"] = pe_fwd
+            peg = _safe_f(valn.get("peg_ratio"))
+            if peg is not None:
+                m["peg_ratio"] = peg
+            td = _safe_f(valn.get("total_debt"))
+            if td is not None:
+                m["total_debt"] = td
+
+        if m:
+            result[peer_ticker] = m
+
+    return result
+
+
+def _compute_peer_labels(
+    benchmarks: dict,
+) -> dict[str, str | None]:
+    """Aggregate benchmark results into 3 category labels + summary.
+
+    Returns:
+        {val_label, val_detail, growth_label, growth_detail,
+         qual_label, qual_detail, summary}
+    """
+    valuation_set = {"pe_ttm", "ps_ttm", "pb_ratio", "ev_ebitda",
+                     "pe_forward", "peg_ratio"}
+    growth_set = {"eps_growth", "revenue_growth", "ebitda_growth", "fcf_growth"}
+    quality_set = {"gross_margin", "operating_margin", "net_margin",
+                   "roic", "roe", "roa", "fcf_yield",
+                   "debt_to_equity", "total_debt"}
+
+    def _categorize(metric_set: set, label: str) -> tuple[str | None, str | None]:
+        relevant = {k: v for k, v in benchmarks.items()
+                    if k in metric_set and v.get("status") == "available"}
+        if not relevant:
+            return (f"No {label} peer data", None)
+
+        above = sum(1 for b in relevant.values()
+                    if "Above" in str(b.get("label", "")))
+        below = sum(1 for b in relevant.values()
+                    if "Below" in str(b.get("label", "")))
+        total = len(relevant)
+
+        # Build per-metric detail string (labels are self-describing)
+        detail_parts = []
+        for k, b in sorted(relevant.items()):
+            lbl = b.get("label", "N/A")
+            detail_parts.append(lbl)
+        detail = "; ".join(detail_parts) if detail_parts else None
+
+        if above > below:
+            return (f"Above Peer Median ({above}/{total})", detail)
+        elif below > above:
+            return (f"Below Peer Median ({below}/{total})", detail)
+        else:
+            return (f"In Line with Peers", detail)
+
+    val_label, val_detail = _categorize(valuation_set, "Valuation")
+    growth_label, growth_detail = _categorize(growth_set, "Growth")
+    qual_label, qual_detail = _categorize(quality_set, "Quality")
+
+    # ── One-line summary ──
+    available = sum(1 for b in benchmarks.values()
+                    if b.get("status") == "available")
+    parts = []
+    if val_label:
+        parts.append(f"Valuation: {val_label}")
+    if growth_label and "No " not in str(growth_label):
+        parts.append(f"Growth: {growth_label}")
+    summary = (f"Benchmark across {available} metrics vs peer group. "
+               + ". ".join(parts)) if (parts and available > 0) else None
+
+    return {
+        "val_label": val_label,
+        "val_detail": val_detail,
+        "growth_label": growth_label,
+        "growth_detail": growth_detail,
+        "qual_label": qual_label,
+        "qual_detail": qual_detail,
+        "summary": summary,
+    }
+
+
+def _build_peer_benchmark(
+    *,
+    ticker: str,
+    yf_info: dict | None,
+    metrics: FinancialMetrics | None,
+    generated_at: str,
+) -> PeerBenchmarkSection:
+    """Build PeerBenchmarkSection from V2.5 peer benchmark infrastructure.
+
+    Calls the curated peer universe + pure-function benchmark engine to
+    compute relative valuation, growth, and quality labels vs the peer group.
+    Gracefully handles missing data — returns an empty-but-valid section on
+    any failure (peer universe unavailable, network error, insufficient peers).
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    pb = PeerBenchmarkSection(currency="USD", generated_at=generated_at)
+
+    if not yf_info:
+        return pb
+
+    try:
+        from backend.peer_batch import get_peer_benchmark_snapshot
+        from backend.peer_universe import get_peers
+        from backend.peer_benchmark import buildPeerBenchmarkSummary
+
+        # 1. Peer universe
+        peer_info = get_peers(ticker)
+        if peer_info.get("status") == "unavailable":
+            return pb
+
+        pb.peer_group = peer_info.get("group_label")
+        pb.peer_tickers = list(peer_info.get("peers", []))
+
+        # 2. Batch snapshot (5-min in-memory cache)
+        batch = get_peer_benchmark_snapshot(ticker)
+        if batch.get("status") in ("unavailable", "error"):
+            return pb
+        if batch.get("sample_size", 0) < 2:
+            return pb
+
+        # 3. Subject + peer metrics
+        subject = _extract_peer_subject_metrics(yf_info, metrics)
+        peers = _extract_peer_valuation_metrics_from_batch(batch)
+
+        if not subject or len(peers) < 2:
+            return pb
+
+        # Keep only metrics present in both subject AND at least 1 peer
+        common = {k for k in subject if any(k in p for p in peers.values())}
+        if len(common) < 2:
+            return pb
+        subject_filtered = {k: subject[k] for k in common}
+
+        # 4. Pure-function benchmark engine
+        result = buildPeerBenchmarkSummary(ticker, subject_filtered, peers)
+        benchmarks = result.get("benchmarks", {})
+
+        # 5. Category labels + summary
+        labels = _compute_peer_labels(benchmarks)
+        pb.relative_valuation_label = labels["val_label"]
+        pb.relative_valuation_detail = labels["val_detail"]
+        pb.relative_growth_label = labels["growth_label"]
+        pb.relative_growth_detail = labels["growth_detail"]
+        pb.relative_quality_label = labels["qual_label"]
+        pb.relative_quality_detail = labels["qual_detail"]
+        pb.benchmark_summary = labels["summary"]
+
+    except Exception:
+        logger.exception("_build_peer_benchmark failed for %s", ticker)
+
+    return pb
 
 
 def _safe_float_ov(val: Any) -> float | None:
