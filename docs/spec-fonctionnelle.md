@@ -483,3 +483,11 @@ Le mapper (`backend/earnings_deep_dive/mapper.py`) peuple les modèles V2.7 :
 - Les tests FastAPI en processus reconnaissent l'hôte synthétique `testclient` pour éviter les faux 403/rate-limit en environnement de test uniquement.
 - `/api/health` et `/api/version` bornent les appels Git à 5 secondes pour éviter qu'un probe bloqué rende l'API indisponible.
 - Vérification associée : `backend/tests` + tests API ciblés = 192 tests passés; build frontend Vite production passé.
+
+## 16. Correctif saisie ticker — rate limit parser — 2026-05-27
+
+- Symptôme utilisateur : après saisie d'un ticker, aucun bouton d'analyse n'apparaît et l'interface semble ne rien faire.
+- Cause racine : le parser de saisie appelle `/api/batch/upload` après debounce. Le rate limiter comptait toutes les requêtes d'une même IP dans un seul compteur ; des chargements page/assets pouvaient donc épuiser le quota plus strict d'un endpoint d'écriture et retourner `429` au parser.
+- Correction backend : les compteurs de rate limit sont séparés par `(IP, tier)` et `/api/batch/upload` est classé dans le tier léger `default` car utilisé pendant la saisie.
+- Correction frontend : en cas d'échec temporaire du parser live, `TickerInput` affiche un avertissement visible et utilise un fallback local pour tickers/ISINs simples au lieu d'échouer silencieusement.
+- Vérification associée : test de non-régression `test_page_loads_do_not_rate_limit_ticker_parser`, suite backend/API ciblée `193 passed`, build frontend Vite production passé.

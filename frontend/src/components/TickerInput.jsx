@@ -4,12 +4,35 @@ import { useState, useEffect, useRef } from 'react';
 import { uploadTickerFile } from '../api.js';
 
 const DEBOUNCE_MS = 500;
+const TICKER_PATTERN = /^[A-Z]{1,5}(?:\.[A-Z]{1,2})?$/;
+const ISIN_PATTERN = /^[A-Z]{2}[A-Z0-9]{10}$/;
+
+function parseFallbackTickers(text) {
+  const seen = new Set();
+  return text
+    .split(/[\n,;\s]+/)
+    .map(token => token.trim().toUpperCase())
+    .filter(Boolean)
+    .filter(token => {
+      if (seen.has(token)) return false;
+      seen.add(token);
+      return TICKER_PATTERN.test(token) || ISIN_PATTERN.test(token);
+    })
+    .map(token => ({
+      value: token,
+      type: ISIN_PATTERN.test(token) ? 'ISIN' : 'TICKER',
+      normalized: token,
+      status: 'valid',
+      fallback: true,
+    }));
+}
 
 export default function TickerInput({ onAnalyze, loading, t }) {
   const [value, setValue] = useState('');
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(new Set());
   const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState(null);
   const timerRef = useRef(null);
 
   const validItems = items;
@@ -20,6 +43,7 @@ export default function TickerInput({ onAnalyze, loading, t }) {
     // user corrects ticker → submits before new debounce fires → old data persists
     setItems([]);
     setSelected(new Set());
+    setParseError(null);
 
     if (!value.trim()) {
       return;
@@ -39,6 +63,14 @@ export default function TickerInput({ onAnalyze, loading, t }) {
         ));
       } catch (e) {
         console.error('Parse error:', e);
+        const fallbackItems = parseFallbackTickers(value);
+        if (fallbackItems.length > 0) {
+          setItems(fallbackItems);
+          setSelected(new Set(fallbackItems.map(it => it.normalized)));
+          setParseError('Live parser temporarily unavailable — using local ticker parsing.');
+        } else {
+          setParseError(`Could not parse tickers (${e.message}). Please retry shortly.`);
+        }
       } finally {
         setParsing(false);
       }
@@ -149,6 +181,15 @@ export default function TickerInput({ onAnalyze, loading, t }) {
                   </button>
                 </span>
               )}
+            </div>
+          )}
+          {parseError && (
+            <div style={{
+              marginTop: 8, fontSize: 12, color: '#f0b72f',
+              borderTop: items.length > 0 ? '1px solid #21262d' : 'none',
+              paddingTop: items.length > 0 ? 8 : 0,
+            }}>
+              ⚠️ {parseError}
             </div>
           )}
         </div>

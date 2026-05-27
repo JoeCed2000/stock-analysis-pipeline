@@ -34,6 +34,25 @@ def test_testclient_bypasses_auth_when_api_key_is_configured(monkeypatch, tmp_pa
     assert response.json() == {"analyses": []}
 
 
+def test_page_loads_do_not_rate_limit_ticker_parser(monkeypatch):
+    """Static/page requests from one IP must not make ticker typing look broken."""
+    monkeypatch.setattr(main, "_API_KEY", "test-key")
+    monkeypatch.setattr(main, "_rate_limits", {})
+    client = TestClient(main.app, client=("203.0.113.10", 50000))
+
+    for _ in range(main._RATE_LIMIT_MODERATE + 5):
+        assert client.get("/").status_code == 200
+
+    response = client.post(
+        "/api/batch/upload",
+        headers={"X-API-Key": "test-key"},
+        files={"file": ("input.txt", b"NVDA", "text/plain")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["normalized"] == "NVDA"
+
+
 def test_async_analyze_endpoint_accepts_legacy_single_ticker(monkeypatch):
     """HTTP smoke payload {"ticker": "NVDA"} must not 422 before queuing."""
     started = []

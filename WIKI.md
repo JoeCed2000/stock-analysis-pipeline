@@ -29,6 +29,7 @@
 ## Recent Changes
 | Date | Task | Description |
 |---|---|---|
+| 2026-05-27 | Ticker input rate-limit fix | Root cause of “typing ticker does nothing”: `/api/batch/upload` debounce parser could be 429-limited by prior page/static requests from the same IP. Rate-limit buckets are now per IP+tier, parser stays in the lightweight default tier, and the frontend has a local ticker fallback + visible warning instead of silent failure. Verification: 193 backend/API tests passed + frontend production build. | ✅ DONE |
 | 2026-05-27 | API compatibility + test gate | Legacy `{ticker: "NVDA"}` payload accepted for `/api/analyze/async`; FastAPI TestClient auth/rate-limit bypass handles synthetic `testclient` host; `/api/health` and `/api/version` git probes have 5s timeouts. Verification: 192 backend/API tests passed + frontend production build. | ✅ DONE |
 | 2026-05-26 | SA-P0-403 | **REVIEW APPROVED**: Root-cause 403 on /api/analyze — process_nami_feedback.py was reading ADMIN_SECRET placeholder instead of CED_CONTROL_KEY. Fix verified: 153/153 tests, 0 JS errors, no more 403. |
 | 2026-05-26 | V2.7-T3 | **Integration — Mapper + Pipeline Wiring**: _build_v27_models() populates 3/6 V2.7 models from old metrics + company_overview + scoring. ExecutiveSnapshot (market cap, sector, verdict), FinancialMetrics (EPS/revenue/margins/growth/FCF with display strings), ValuationSection (PE multiples). 13 integration tests (unit + pipeline→PDF). Commit: 0e6bba2. | ✅ DONE |

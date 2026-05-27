@@ -88,18 +88,21 @@ if env_path.exists():
 app = FastAPI(title="Stock Analysis Pipeline", version="1.0.0", root_path="/stock-analysis")
 
 # ── Rate limiting middleware (P0 audit 2026-05-05) ──
-# In-memory token bucket with auto-cleanup: 30 req/min analyze, 120 req/min others
-_rate_limits = {}  # IP → (window_start, count)
+# In-memory token buckets with auto-cleanup.
+# Keys are (IP, tier), not IP alone: page loads/static assets must not consume
+# the stricter write/analysis quota used by API actions.
+_rate_limits = {}  # (IP, tier) → (window_start, count)
 _RATE_WINDOW = 60  # seconds
 _RATE_LIMIT_HEAVY = 10   # LLM/expensive endpoints — 10/min
 _RATE_LIMIT_MODERATE = 30  # DB/write endpoints — 30/min
-_RATE_LIMIT_DEFAULT = 120  # read-only endpoints — 120/min
+_RATE_LIMIT_DEFAULT = 120  # read-only + lightweight parse endpoints — 120/min
 _RATE_MAX_ENTRIES = 5000  # Prune oldest entries when exceeded
 
 # Expensive endpoints (LLM calls, batch processing, PDF generation)
 _HEAVY_PATHS = {"/api/analyze", "/api/analyze/async", "/api/earnings/deep-dive", "/api/batch/analyze"}
-# Write/modify endpoints (moderate cost)
-_MODERATE_PATHS = {"/api/feedback", "/api/cache/financials", "/api/dossier", "/api/batch/upload"}
+# Write/modify endpoints (moderate cost). /api/batch/upload is used by the UI
+# debounce parser while typing, so it intentionally stays in the default tier.
+_MODERATE_PATHS = {"/api/feedback", "/api/cache/financials", "/api/dossier"}
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
@@ -114,19 +117,23 @@ async def rate_limit_middleware(request: Request, call_next):
     # Determine rate limit tier based on path cost
     if path in _HEAVY_PATHS:
         limit = _RATE_LIMIT_HEAVY
+        tier = "heavy"
     elif any(path.startswith(p) for p in _MODERATE_PATHS):
         limit = _RATE_LIMIT_MODERATE
+        tier = "moderate"
     else:
         limit = _RATE_LIMIT_DEFAULT
+        tier = "default"
     now = _time()
+    rate_key = (client_ip, tier)
     
     # Periodic cleanup: if dict grows too large, evict expired entries
     if len(_rate_limits) > _RATE_MAX_ENTRIES:
-        expired = [ip for ip, (ts, _) in _rate_limits.items() if now - ts >= _RATE_WINDOW]
-        for ip in expired:
-            del _rate_limits[ip]
+        expired = [key for key, (ts, _) in _rate_limits.items() if now - ts >= _RATE_WINDOW]
+        for key in expired:
+            del _rate_limits[key]
     
-    entry = _rate_limits.get(client_ip)
+    entry = _rate_limits.get(rate_key)
     if entry and now - entry[0] < _RATE_WINDOW:
         if entry[1] >= limit:
             return JSONResponse(
@@ -135,7 +142,7 @@ async def rate_limit_middleware(request: Request, call_next):
             )
         entry[1] += 1
     else:
-        _rate_limits[client_ip] = [now, 1]
+        _rate_limits[rate_key] = [now, 1]
     return await call_next(request)
 
 # ── API Auth gate —─────────────────────────────────────────────────
