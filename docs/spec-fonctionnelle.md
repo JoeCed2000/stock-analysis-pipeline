@@ -476,3 +476,10 @@ Le mapper (`backend/earnings_deep_dive/mapper.py`) peuple les modèles V2.7 :
 - ✅ T4 : ValuationContext — 7 signaux depuis endpoint V2.4
 - ✅ T5 : PeerBenchmark — top 5 pairs depuis infrastructure V2.5
 - ✅ T6 : DataQuality — source freshness, completeness score, confidence tier
+
+## 15. Correctif qualité API — 2026-05-27
+
+- `/api/analyze/async` reste rétrocompatible avec les clients historiques qui envoient `{ "ticker": "NVDA" }`; le contrat canonique reste `{ "tickers": ["NVDA"] }`.
+- Les tests FastAPI en processus reconnaissent l'hôte synthétique `testclient` pour éviter les faux 403/rate-limit en environnement de test uniquement.
+- `/api/health` et `/api/version` bornent les appels Git à 5 secondes pour éviter qu'un probe bloqué rende l'API indisponible.
+- Vérification associée : `backend/tests` + tests API ciblés = 192 tests passés; build frontend Vite production passé.

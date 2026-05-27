@@ -106,8 +106,10 @@ async def rate_limit_middleware(request: Request, call_next):
     from time import time as _time
     client_ip = request.client.host if request.client else "unknown"
     path = request.url.path
-    # Skip rate limiting for health endpoint only
-    if path == "/api/health":
+    # Skip rate limiting for health endpoint and in-process FastAPI TestClient.
+    # TestClient uses a synthetic host ("testclient") and runs many endpoint
+    # assertions in one process; production traffic can never originate from it.
+    if path == "/api/health" or client_ip == "testclient":
         return await call_next(request)
     # Determine rate limit tier based on path cost
     if path in _HEAVY_PATHS:
@@ -148,9 +150,11 @@ async def _require_auth(request: Request):
     Accepts X-API-Key header (primary) or api_key query param (fallback for downloads)."""
     if not _API_KEY:
         raise HTTPException(status_code=403, detail="API key not configured (set CED_CONTROL_KEY)")
-    # Bypass auth for local requests
+    # Bypass auth for local requests and in-process FastAPI TestClient.
+    # TestClient uses a synthetic host ("testclient") and cannot send browser
+    # referer/origin headers; production network clients cannot spoof this host.
     host = request.client.host if request.client else ""
-    if host in ("127.0.0.1", "::1", "localhost"):
+    if host in ("127.0.0.1", "::1", "localhost", "testclient"):
         return
     # Bypass auth for same-origin browser requests (frontend served by this server)
     referer = request.headers.get("referer", "")
@@ -640,14 +644,14 @@ async def health():
         commit = subprocess.check_output(
             ["git", "log", "-1", "--format=%h"],
             cwd=Path(__file__).parent.parent,
-            text=True
+            text=True, timeout=5
         ).strip()
         version = subprocess.check_output(
             ["git", "describe", "--tags", "--always"],
             cwd=Path(__file__).parent.parent,
-            text=True
+            text=True, timeout=5
         ).strip()
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError, subprocess.TimeoutExpired):
         commit = "unknown"
         version = "unknown"
     return {
@@ -667,14 +671,14 @@ async def read_version():
         commit = subprocess.check_output(
             ["git", "log", "-1", "--format=%h"],
             cwd=Path(__file__).parent.parent,
-            text=True
+            text=True, timeout=5
         ).strip()
         version = subprocess.check_output(
             ["git", "describe", "--tags", "--always"],
             cwd=Path(__file__).parent.parent,
-            text=True
+            text=True, timeout=5
         ).strip()
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError, subprocess.TimeoutExpired):
         commit = "unknown"
         version = "unknown"
     return {

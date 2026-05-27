@@ -1,13 +1,30 @@
 """Pydantic models for Stock Analysis Pipeline."""
 from datetime import datetime
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 from typing import Optional, List, Dict, Any
 
 
 class TickerRequest(BaseModel):
-    """Request to analyze one or more tickers."""
-    tickers: List[str] = Field(..., min_length=1, max_length=10)
+    """Request to analyze one or more tickers.
+
+    Backward-compatible with legacy clients that send {"ticker": "NVDA"}
+    instead of the current {"tickers": ["NVDA"]} payload.
+    """
+    tickers: List[str] = Field(default_factory=list, max_length=10)
     deep_dive: bool = Field(default=False, description="Also generate earnings deep-dive PDF")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_legacy_single_ticker(cls, data):
+        if isinstance(data, dict) and "tickers" not in data and data.get("ticker"):
+            data = {**data, "tickers": [data["ticker"]]}
+        return data
+
+    @model_validator(mode="after")
+    def _require_at_least_one_ticker(self):
+        if not self.tickers:
+            raise ValueError("At least one ticker is required")
+        return self
 
 
 class FinancialData(BaseModel):
