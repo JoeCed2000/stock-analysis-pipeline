@@ -98,17 +98,19 @@ async def get_peer_benchmark(ticker: str):
     total_peers = len(peer_info.get("peers", []))
 
     # ── 2. Fetch subject ticker data ──────────────────────────────
+    # Merge rule: never overwrite an existing non-None metric with None.
+    # (e.g. market pe_ttm should survive when valuation pe_current is missing)
     subject_metrics: Dict[str, Optional[float]] = {}
     try:
         market_snap = get_market_snapshot(ticker)
-        subject_metrics.update(_extract_from_market(market_snap))
+        _merge_metrics(subject_metrics, _extract_from_market(market_snap))
     except Exception as exc:
         logger.warning("peer_benchmark: market data failed for %s — %s", ticker, exc)
         warnings.append(f"market_data: {_short_error(exc)}")
 
     try:
         valuation_resp = get_valuation(ticker)
-        subject_metrics.update(_extract_from_valuation(valuation_resp))
+        _merge_metrics(subject_metrics, _extract_from_valuation(valuation_resp))
     except Exception as exc:
         logger.warning("peer_benchmark: valuation failed for %s — %s", ticker, exc)
         warnings.append(f"valuation: {_short_error(exc)}")
@@ -134,9 +136,9 @@ async def get_peer_benchmark(ticker: str):
     for peer_ticker, peer_data in batch.get("peers", {}).items():
         peer_metrics: Dict[str, Optional[float]] = {}
         if "market" in peer_data:
-            peer_metrics.update(_extract_from_market_dict(peer_data["market"]))
+            _merge_metrics(peer_metrics, _extract_from_market_dict(peer_data["market"]))
         if "valuation" in peer_data:
-            peer_metrics.update(_extract_from_valuation_dict(peer_data["valuation"]))
+            _merge_metrics(peer_metrics, _extract_from_valuation_dict(peer_data["valuation"]))
         if peer_metrics:
             peers_metrics[peer_ticker] = peer_metrics
 
@@ -292,12 +294,15 @@ def _categorize_group(benchmarks: dict, metric_set: set, group_name: str) -> str
     at_median_count = 0
 
     for b in relevant.values():
-        label = b.get("label", "")
-        if "above" in label:
+        label = b.get("label", "").lower()
+
+        # Context-only valuation labels use premium/discount wording
+        # instead of above/below. Count both vocabularies.
+        if "above" in label or "premium" in label:
             above_count += 1
-        elif "below" in label:
+        elif "below" in label or "discount" in label:
             below_count += 1
-        elif "matches" in label:
+        elif "matches" in label or "at median" in label:
             at_median_count += 1
 
     total = above_count + below_count + at_median_count
@@ -316,6 +321,22 @@ def _categorize_group(benchmarks: dict, metric_set: set, group_name: str) -> str
 # ═══════════════════════════════════════════════════════════════
 #  Helpers
 # ═══════════════════════════════════════════════════════════════
+
+
+def _merge_metrics(
+    target: Dict[str, Optional[float]],
+    incoming: Dict[str, Optional[float]],
+) -> None:
+    """Merge incoming metrics into *target* without null-overwriting valid values.
+
+    Rule:
+      - always set when key is absent in target
+      - set when incoming value is not None
+      - keep existing non-None value when incoming is None
+    """
+    for key, value in incoming.items():
+        if key not in target or value is not None:
+            target[key] = value
 
 
 def _safe_float(value) -> Optional[float]:

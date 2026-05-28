@@ -640,3 +640,74 @@ class TestSummaryLabels:
         # For unavailable ticker, summary uses PeerBenchmarkSummary defaults
         assert isinstance(summary["relative_valuation"], str)
         assert isinstance(summary["confidence"], str)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Merge guards (null-overwrite regression)
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestMergeGuards:
+    """Route must not overwrite valid market metrics with None from valuation."""
+
+    def test_market_pe_ttm_survives_when_valuation_pe_current_is_missing(self):
+        """Regression: pe_ttm from market should not be replaced by valuation None."""
+        from backend.main import app
+        from fastapi.testclient import TestClient
+
+        client = TestClient(app)
+
+        subject_market = _mock_market_snapshot("NVDA")
+        subject_market["pe_ttm"] = 32.808575
+        subject_market["ps_ttm"] = 11.2
+
+        subject_valuation = _mock_valuation("NVDA")
+        subject_valuation["pe_current"] = None  # previously overwrote subject pe_ttm
+
+        peers_batch = {
+            "status": "complete",
+            "source": "curated",
+            "timestamp": "2026-05-25T12:00:00Z",
+            "ticker": "NVDA",
+            "group_id": "ai_semiconductor",
+            "group_label": "AI Semiconductor",
+            "sample_size": 3,
+            "total_peers": 3,
+            "errors": [],
+            "peers": {
+                "AMD": {
+                    "market": {"pe_ttm": 24.1, "ps_ttm": 7.9, "pb_ratio": 3.8},
+                    "valuation": {"pe_current": None, "pe_forward": 20.0, "peg_ratio": None, "total_debt": 8.0},
+                },
+                "AVGO": {
+                    "market": {"pe_ttm": 27.3, "ps_ttm": 9.4, "pb_ratio": 4.6},
+                    "valuation": {"pe_current": None, "pe_forward": 22.0, "peg_ratio": None, "total_debt": 11.0},
+                },
+                "TSM": {
+                    "market": {"pe_ttm": 19.6, "ps_ttm": 6.1, "pb_ratio": 4.1},
+                    "valuation": {"pe_current": None, "pe_forward": 17.0, "peg_ratio": None, "total_debt": 6.0},
+                },
+            },
+        }
+
+        with patch("backend.routes.peer_benchmark.get_peers", return_value=_mock_peers("NVDA")):
+            with patch("backend.routes.peer_benchmark.get_market_snapshot", return_value=subject_market):
+                with patch("backend.routes.peer_benchmark.get_valuation", return_value=subject_valuation):
+                    with patch(
+                        "backend.routes.peer_benchmark.get_peer_benchmark_snapshot",
+                        return_value=peers_batch,
+                    ):
+                        response = client.get("/api/peer-benchmark/NVDA")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Subject keeps market P/E even if valuation pe_current is None.
+        assert data["subject_metrics"]["pe_ttm"] == pytest.approx(32.808575)
+
+        pe_ttm_benchmark = data["benchmarks"]["pe_ttm"]
+        assert pe_ttm_benchmark["status"] == "available"
+        assert "ticker data unavailable" not in pe_ttm_benchmark["label"].lower()
+
+        # Summary should not degrade to a false "valuation data unavailable" for this case.
+        assert "valuation data unavailable" not in data["summary"]["relative_valuation"].lower()
