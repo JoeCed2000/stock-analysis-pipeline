@@ -26,6 +26,18 @@ _CONFIG_PATH = Path(__file__).resolve().parent / "peer_universe.json"
 _peer_universe: Optional[Dict[str, Any]] = None
 _load_errors: list[str] = []
 
+# Common share-class aliases that should map to the same peer group logic.
+_TICKER_ALIASES: Dict[str, set[str]] = {
+    "GOOG": {"GOOGL"},
+    "GOOGL": {"GOOG"},
+}
+
+
+def _equivalent_tickers(ticker: str) -> set[str]:
+    """Return ticker + known aliases for matching/skip logic."""
+    t = ticker.upper().strip()
+    return {t, *_TICKER_ALIASES.get(t, set())}
+
 
 def _load_config() -> Dict[str, Any]:
     # pyright: ignore[reportReturnType] — _peer_universe is never None after first load
@@ -136,15 +148,53 @@ def get_peers(ticker: str) -> Dict[str, Any]:
     # ── Search for ticker (case-insensitive match) ────────────────
     ticker_lower = ticker.lower()
     entry = config.get(ticker_lower)
+    equivalent = _equivalent_tickers(ticker)
+
+    derived_from_root: Optional[str] = None
 
     if entry is None:
-        # Try case-insensitive lookup across all groups
+        # Try case-insensitive lookup across all root groups.
         for key, group in config.items():
             if key.startswith("_"):
                 continue
-            if isinstance(group, dict) and group.get("ticker", "").upper() == ticker:
+            group_ticker = str(group.get("ticker", "")).upper().strip() if isinstance(group, dict) else ""
+            if group_ticker in equivalent:
                 entry = group
                 break
+
+    if entry is None:
+        # Fallback: if ticker appears as a peer inside a curated root group,
+        # derive a group on the fly instead of returning unavailable.
+        for key, group in config.items():
+            if key.startswith("_") or not isinstance(group, dict):
+                continue
+
+            root_ticker = str(group.get("ticker", "")).upper().strip()
+            raw_peers = group.get("peers", [])
+            peers = [
+                str(p).upper().strip()
+                for p in raw_peers
+                if isinstance(p, str) and str(p).strip()
+            ]
+
+            if not any(p in equivalent for p in peers):
+                continue
+
+            derived_peers = []
+            if root_ticker and root_ticker not in equivalent:
+                derived_peers.append(root_ticker)
+            for p in peers:
+                if p not in equivalent and p not in derived_peers:
+                    derived_peers.append(p)
+
+            entry = {
+                "ticker": ticker,
+                "group_id": group.get("group_id"),
+                "group_label": group.get("group_label"),
+                "peers": derived_peers,
+            }
+            derived_from_root = root_ticker or None
+            break
 
     if entry is None:
         return {
@@ -154,7 +204,7 @@ def get_peers(ticker: str) -> Dict[str, Any]:
             "ticker": ticker,
         }
 
-    return {
+    result = {
         "status": "available",
         "source": "curated",
         "timestamp": now,
@@ -163,6 +213,10 @@ def get_peers(ticker: str) -> Dict[str, Any]:
         "group_label": entry["group_label"],
         "peers": [p.upper() for p in entry["peers"]],
     }
+    if derived_from_root:
+        result["derived_from_root"] = derived_from_root
+
+    return result
 
 
 def reload() -> Dict[str, Any]:

@@ -55,6 +55,25 @@ def get_valuation(ticker: str) -> ValuationV2Response:
     currency = stock_data.get("currency", "USD")
     raw_source = stock_data.get("_source", "unknown")
 
+    financials = stock_data.get("financials") if isinstance(stock_data.get("financials"), dict) else {}
+
+    pe_current = _safe_float(stock_data.get("pe_current"))
+    pe_forward = _safe_float(stock_data.get("pe_forward"))
+    peg_ratio = _safe_float(stock_data.get("peg_ratio"))
+
+    # Keep both explicit EPS growth and legacy expected_growth compatibility.
+    eps_growth = _safe_float(stock_data.get("eps_growth"))
+    if eps_growth is None:
+        eps_growth = _safe_float(stock_data.get("expected_growth"))
+    if eps_growth is None:
+        eps_growth = _safe_float(financials.get("eps_yoy"))
+
+    revenue_growth = _safe_float(stock_data.get("revenue_growth"))
+    if revenue_growth is None:
+        revenue_growth = _safe_float(financials.get("revenue_yoy_growth"))
+    if revenue_growth is None:
+        revenue_growth = _safe_float(financials.get("revenue_annual_growth"))
+
     # Separate provider (source) from delivery method (served_from)
     KNOWN_PROVIDERS = {"finnhub", "yfinance", "twelvedata", "eodhd"}
     if raw_source in KNOWN_PROVIDERS:
@@ -85,6 +104,18 @@ def get_valuation(ticker: str) -> ValuationV2Response:
             or info.get("cash")
         )
         total_debt = _safe_float(info.get("totalDebt"))
+
+        # Fill missing valuation/growth fields from raw yfinance info.
+        if pe_current is None:
+            pe_current = _safe_float(info.get("trailingPE"))
+        if pe_forward is None:
+            pe_forward = _safe_float(info.get("forwardPE"))
+        if peg_ratio is None:
+            peg_ratio = _safe_float(info.get("pegRatio"))
+        if eps_growth is None:
+            eps_growth = _safe_float(info.get("earningsGrowth"))
+        if revenue_growth is None:
+            revenue_growth = _safe_float(info.get("revenueGrowth"))
     except Exception:
         logger.debug("yfinance enrichment skipped for %s", ticker)
 
@@ -131,6 +162,11 @@ def get_valuation(ticker: str) -> ValuationV2Response:
         shares_outstanding=shares,
         cash_and_equivalents=cash,
         total_debt=total_debt,
+        pe_current=pe_current,
+        pe_forward=pe_forward,
+        peg_ratio=peg_ratio,
+        eps_growth=eps_growth,
+        revenue_growth=revenue_growth,
         quote_timestamp=now,
         fundamentals_timestamp=now,
         fx_rate_eur=None,         # EUR disabled in V2.3

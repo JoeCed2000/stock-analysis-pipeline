@@ -16,13 +16,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from backend.models import ValuationV2Response
 
-# -- V2.3 contract: 22 required fields --------------------------------
+# -- V2.3 contract: 27 required fields --------------------------------
 REQUIRED_FIELDS = [
     "ticker", "exchange", "quote_currency", "display_currency",
     "price", "price_eur", "market_cap", "market_cap_eur",
     "enterprise_value", "enterprise_value_eur", "ev_source",
     "shares_outstanding",
     "cash_and_equivalents", "total_debt",
+    "pe_current", "pe_forward", "peg_ratio",
+    "eps_growth", "revenue_growth",
     "quote_timestamp", "fundamentals_timestamp",
     "fx_rate_eur", "fx_timestamp", "fx_status",
     "source", "served_from", "status",
@@ -47,9 +49,14 @@ def mock_stock_data():
             "revenue_quarterly": 95000000000.0,
             "net_income": 22000000000.0,
             "net_debt": None,
+            "revenue_yoy_growth": 0.08,
+            "revenue_annual_growth": 0.06,
+            "eps_yoy": 0.10,
         },
         "pe_current": 30.5,
         "pe_forward": 28.0,
+        "peg_ratio": 1.9,
+        "expected_growth": 0.12,
         "_source": "finnhub",
     }
 
@@ -74,10 +81,10 @@ def mock_yf_info():
 
 class TestSchemaValidation:
 
-    def test_model_has_all_22_fields(self):
-        """ValuationV2Response must have exactly 21 fields matching V2.3 contract."""
+    def test_model_has_all_27_fields(self):
+        """ValuationV2Response must expose the full V2.3+ contract."""
         fields = list(ValuationV2Response.model_fields.keys())
-        assert len(fields) == 22, f"Expected 22 fields, got {len(fields)}: {fields}"
+        assert len(fields) == 27, f"Expected 27 fields, got {len(fields)}: {fields}"
         for field in REQUIRED_FIELDS:
             assert field in fields, f"Missing required field: {field}"
 
@@ -124,6 +131,11 @@ class TestValuationLayer:
         assert resp.shares_outstanding == 15500000000
         assert resp.cash_and_equivalents == 65000000000
         assert resp.total_debt == 110000000000
+        assert resp.pe_current == 30.5
+        assert resp.pe_forward == 28.0
+        assert resp.peg_ratio == 1.9
+        assert resp.eps_growth == 0.12
+        assert resp.revenue_growth == 0.08
         assert resp.source == "finnhub"
         assert resp.served_from == "live"   # live fetch from provider
         assert resp.status in ("fresh", "cached")

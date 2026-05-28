@@ -70,6 +70,24 @@ class TestValidPeers:
         assert "TM" in result["peers"]
         assert "BYDDF" in result["peers"]
 
+    def test_goog_derives_from_mega_cap_group(self):
+        """GOOG is a configured peer of AAPL and should derive an available group."""
+        result = get_peers("GOOG")
+
+        assert result["status"] == "available"
+        assert result["ticker"] == "GOOG"
+        assert result["group_id"] == "mega_cap_consumer_tech"
+        assert result["group_label"] == "Mega-Cap Consumer Tech"
+        assert result.get("derived_from_root") == "AAPL"
+
+        # For derived members, peers include the root ticker + sibling peers.
+        assert "AAPL" in result["peers"]
+        assert "MSFT" in result["peers"]
+        assert "AMZN" in result["peers"]
+        assert "META" in result["peers"]
+        assert "GOOG" not in result["peers"]
+        assert len(result["peers"]) == 4
+
 
 # ═══════════════════════════════════════════════════════════════
 #  2. Unknown Ticker

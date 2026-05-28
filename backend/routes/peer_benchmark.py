@@ -46,6 +46,8 @@ _VALUATION_METRICS = {
     "pe_forward": "pe_forward",
     "peg_ratio": "peg_ratio",
     "total_debt": "total_debt",
+    "eps_growth": "eps_growth",
+    "revenue_growth": "revenue_growth",
 }
 
 

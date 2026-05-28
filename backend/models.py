@@ -243,6 +243,16 @@ class ValuationV2Response(BaseModel):
     shares_outstanding: Optional[float] = None
     cash_and_equivalents: Optional[float] = None
     total_debt: Optional[float] = None
+
+    # Core valuation multiples (nullable when provider does not supply them)
+    pe_current: Optional[float] = None
+    pe_forward: Optional[float] = None
+    peg_ratio: Optional[float] = None
+
+    # Growth context used by peer benchmark summaries
+    eps_growth: Optional[float] = None
+    revenue_growth: Optional[float] = None
+
     quote_timestamp: Optional[str] = None   # ISO 8601
     fundamentals_timestamp: Optional[str] = None  # ISO 8601
     fx_rate_eur: Optional[float] = None
