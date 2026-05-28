@@ -88,6 +88,15 @@ class TestFeedbackEndpoint:
         assert len(entries) >= 1
         assert "submitted_at" in entries[-1]
 
+    def test_admin_feedback_endpoint_reads_same_store(self, client):
+        self._submit(client, ticker="MSFT", text="Admin sees this")
+        resp = client.get("/api/admin/feedback", headers={"X-API-Key": TEST_KEY})
+        assert resp.status_code == 200
+        entries = resp.json()
+        assert len(entries) >= 1
+        assert entries[0]["ticker"] == "MSFT"
+        assert entries[0]["text"] == "Admin sees this"
+
     def test_multiple_entries_stacked(self, client):
         for i in range(3):
             self._submit(client, ticker="GOOGL", text=f"Feedback #{i}")

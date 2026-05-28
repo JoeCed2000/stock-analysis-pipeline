@@ -19,9 +19,11 @@ from typing import Any, Dict, List
 
 from fastapi import UploadFile
 
+from backend.storage_paths import get_analyses_dir
+
 logger = logging.getLogger(__name__)
 PARIS = __import__("zoneinfo").ZoneInfo("Europe/Paris")
-ANALYSES_DIR = Path(__file__).parent.parent / "analyses"
+ANALYSES_DIR = get_analyses_dir()
 
 
 def _feedback_dir(ticker: str) -> Path:

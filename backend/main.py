@@ -67,6 +67,7 @@ from backend.orchestrator import run_analysis_parallel
 from backend.earnings_deep_dive.schemas import DeepDiveRequest, DeepDiveResponse
 from backend.sources_collector import list_available_quarters, get_yahoo_data, get_yahoo_data_for_quarter
 from backend.search_logger import log_search
+from backend.storage_paths import get_analyses_dir
 from backend.routes.valuation_context import router as valuation_context_router
 from backend.routes.peer_benchmark import router as peer_benchmark_router
 
@@ -188,7 +189,8 @@ app.add_middleware(
 app.include_router(valuation_context_router)
 app.include_router(peer_benchmark_router)
 
-ANALYSES_DIR = Path(__file__).parent.parent / "analyses"
+ANALYSES_DIR = get_analyses_dir()
+logger.info("Canonical analyses dir: %s", ANALYSES_DIR)
 
 # Batch job store — persisted to batches/ on disk for restart resilience
 _batch_jobs: dict = {}

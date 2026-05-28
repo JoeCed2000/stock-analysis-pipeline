@@ -8,9 +8,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from backend.storage_paths import get_preload_root
+
 logger = logging.getLogger(__name__)
 
-PRELOAD_ROOT = Path(__file__).parent.parent.parent / "analyses" / "preload"
+PRELOAD_ROOT = get_preload_root()
 
 
 def _ticker_dir(ticker: str) -> Path:

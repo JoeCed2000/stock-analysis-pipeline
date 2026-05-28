@@ -72,8 +72,10 @@ class DeepDiveRequest(BaseModel):
     def _validate_output_dir(cls, v: str) -> str:
         """Ensure output_dir is under the approved analyses root."""
         from pathlib import Path
+        from backend.storage_paths import get_analyses_dir
+
         p = Path(v).resolve()
-        analyses_root = (Path(__file__).parent.parent.parent / "analyses").resolve()
+        analyses_root = get_analyses_dir(create=False).resolve()
         try:
             p.relative_to(analyses_root)
         except ValueError:
