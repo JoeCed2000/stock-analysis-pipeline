@@ -2051,9 +2051,13 @@ async def admin_list_feedback():
     return JSONResponse(get_all_admin_feedback())
 
 
-@app.get("/api/feedback-file/{bucket}/{filename:path}", dependencies=[Depends(_require_auth)])
+@app.get("/api/feedback-file/{bucket}/{filename:path}")
 async def download_feedback_file(bucket: str, filename: str):
-    """Serve a feedback attachment from the canonical feedback bucket store."""
+    """Serve a feedback attachment from the canonical feedback bucket store.
+
+    Public read endpoint by design so user-facing feedback links can open directly
+    in a new browser tab without exposing API keys in the URL.
+    """
     from backend.feedback_store import get_feedback_file_path
 
     try:
