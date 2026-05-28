@@ -759,6 +759,7 @@ def _quarterly_comparison_keys() -> list[str]:
         "capex",
         "free_cash_flow",
         "net_debt",
+        "cash_and_marketable_securities",
     )
     keys: list[str] = []
     for metric in metrics:
@@ -845,6 +846,18 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
 
         current_net_income = net_income(0)
         prior_net_income = net_income(4)
+
+        def net_income_ttm(start_index: int) -> Optional[float]:
+            values = [net_income(start_index + offset) for offset in range(4)]
+            if any(v is None for v in values):
+                return None
+            return float(sum(v for v in values if v is not None))
+
+        ttm_current_net_income = net_income_ttm(0)
+        ttm_prior_net_income = net_income_ttm(4)
+        efficiency_current_net_income = ttm_current_net_income if ttm_current_net_income is not None else current_net_income
+        efficiency_prior_net_income = ttm_prior_net_income if ttm_prior_net_income is not None else prior_net_income
+
         current_revenue = financial_value(("Total Revenue", "Revenue"), 0)
         prior_revenue = financial_value(("Total Revenue", "Revenue"), 4)
         current_gross_profit = financial_value(("Gross Profit",), 0)
@@ -915,10 +928,10 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
                     result["eps_estimate"] = forward_eps / 4.0
 
         current_values = {
-            "roe": _ratio(current_net_income, balance_value(("Stockholders Equity", "Common Stock Equity"), 0)),
-            "rotce": _ratio(current_net_income, balance_value(("Tangible Book Value",), 0)),
-            "roa": _ratio(current_net_income, balance_value(("Total Assets",), 0)),
-            "roic": _ratio(current_net_income, balance_value(("Invested Capital",), 0)),
+            "roe": _ratio(efficiency_current_net_income, balance_value(("Stockholders Equity", "Common Stock Equity"), 0)),
+            "rotce": _ratio(efficiency_current_net_income, balance_value(("Tangible Book Value",), 0)),
+            "roa": _ratio(efficiency_current_net_income, balance_value(("Total Assets",), 0)),
+            "roic": _ratio(efficiency_current_net_income, balance_value(("Invested Capital",), 0)),
             "buybacks": cashflow_abs_value(("Repurchase Of Capital Stock", "Repurchase Of Common Stock"), 0),
             "dividends": cashflow_abs_value(("Cash Dividends Paid", "Common Stock Dividend Paid"), 0),
             "gross_profit": current_gross_profit,
@@ -931,12 +944,18 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
             "capex": current_capex,
             "free_cash_flow": current_free_cash_flow,
             "net_debt": balance_value(("Net Debt",), 0),
+            "cash_and_marketable_securities": balance_value((
+                "Cash Cash Equivalents And Short Term Investments",
+                "Cash And Cash Equivalents",
+                "Cash And Short Term Investments",
+                "Cash Financial",
+            ), 0),
         }
         prior_values = {
-            "roe": _ratio(prior_net_income, balance_value(("Stockholders Equity", "Common Stock Equity"), 4)),
-            "rotce": _ratio(prior_net_income, balance_value(("Tangible Book Value",), 4)),
-            "roa": _ratio(prior_net_income, balance_value(("Total Assets",), 4)),
-            "roic": _ratio(prior_net_income, balance_value(("Invested Capital",), 4)),
+            "roe": _ratio(efficiency_prior_net_income, balance_value(("Stockholders Equity", "Common Stock Equity"), 4)),
+            "rotce": _ratio(efficiency_prior_net_income, balance_value(("Tangible Book Value",), 4)),
+            "roa": _ratio(efficiency_prior_net_income, balance_value(("Total Assets",), 4)),
+            "roic": _ratio(efficiency_prior_net_income, balance_value(("Invested Capital",), 4)),
             "buybacks": cashflow_abs_value(("Repurchase Of Capital Stock", "Repurchase Of Common Stock"), 4),
             "dividends": cashflow_abs_value(("Cash Dividends Paid", "Common Stock Dividend Paid"), 4),
             "gross_profit": prior_gross_profit,
@@ -949,6 +968,12 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
             "capex": prior_capex,
             "free_cash_flow": prior_free_cash_flow,
             "net_debt": balance_value(("Net Debt",), 4),
+            "cash_and_marketable_securities": balance_value((
+                "Cash Cash Equivalents And Short Term Investments",
+                "Cash And Cash Equivalents",
+                "Cash And Short Term Investments",
+                "Cash Financial",
+            ), 4),
         }
 
         for metric, current in current_values.items():
@@ -1039,6 +1064,9 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
         free_cash_flow_yoy=quarterly_comparison.get("free_cash_flow_yoy"),
         net_debt_prior_year=quarterly_comparison.get("net_debt_prior_year"),
         net_debt_yoy=quarterly_comparison.get("net_debt_yoy"),
+        cash_and_marketable_securities=quarterly_comparison.get("cash_and_marketable_securities"),
+        cash_and_marketable_securities_prior_year=quarterly_comparison.get("cash_and_marketable_securities_prior_year"),
+        cash_and_marketable_securities_yoy=quarterly_comparison.get("cash_and_marketable_securities_yoy"),
         rotce=comparison_pick("rotce", pick("rotce")),
         rotce_prior_year=quarterly_comparison.get("rotce_prior_year"),
         rotce_yoy=quarterly_comparison.get("rotce_yoy"),

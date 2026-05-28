@@ -354,9 +354,23 @@ export default function FeedbackPage({ lang = 'en', onClose }) {
 
                     {entry.files?.length > 0 && (
                       <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                        {entry.files.map((fileName) => (
-                          <span key={`${entry.id}-${fileName}`} style={fileChipStyle}>📄 {fileName}</span>
-                        ))}
+                        {entry.files.map((fileName) => {
+                          const bucket = encodeURIComponent(entry._ticker || entry.ticker || 'GENERAL');
+                          const encodedFile = encodeURIComponent(fileName);
+                          const href = `${API_BASE}/feedback-file/${bucket}/${encodedFile}`;
+                          return (
+                            <a
+                              key={`${entry.id}-${fileName}`}
+                              href={href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ ...fileChipStyle, textDecoration: 'none' }}
+                              title={lang === 'jp' ? '新しいタブで開く' : 'Open in new tab'}
+                            >
+                              📄 {fileName}
+                            </a>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

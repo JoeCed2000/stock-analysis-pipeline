@@ -64,6 +64,42 @@ def test_template_tables_match_model_expectations():
     assert tables["Guidance"] == ("Metric", "Guidance", "QoQ", "Medium-term Signal", "Source")
 
 
+def test_runtime_report_labels_use_quarter_and_ttm_naming():
+    report = build_earnings_deep_dive_report(
+        ticker="GOOG",
+        company="Alphabet Inc.",
+        quarter="2026Q1",
+        language="en",
+        metrics=FinancialMetrics(
+            operating_cash_flow=10_000_000_000,
+            capex=-2_000_000_000,
+            free_cash_flow=8_000_000_000,
+            net_debt=1_000_000_000,
+            buybacks=5_000_000_000,
+            dividends=1_000_000_000,
+            roe=0.18,
+            roic=0.15,
+        ),
+    )
+
+    by_key = {section.key: section for section in report.sections}
+
+    operating = by_key["Operating Metrics"]
+    assert operating.table.columns[1] == "Q1 2026"
+    assert operating.table.columns[2] == "Q1 2025"
+
+    cash_flow = by_key["Cash Flow"]
+    assert cash_flow.title == "Cash Flow & Liquidity"
+    assert cash_flow.summary_label == "Commentary"
+    assert cash_flow.table.columns[1] == "Q1 2026"
+    assert cash_flow.table.columns[2] == "Q1 2025"
+
+    capital = by_key["Capital Efficiency"]
+    assert capital.title == "Capital Allocation & Efficiency"
+    assert capital.table.columns[1] == "TTM Ending Q1 2026"
+    assert capital.table.columns[2] == "TTM Ending Q1 2025"
+
+
 def test_template_has_distinct_english_and_japanese_variants():
     assert TEMPLATE_LANGUAGE_CODES == ("en", "jp")
 

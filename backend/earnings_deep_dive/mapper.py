@@ -597,10 +597,17 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
             if ratio is None:
                 return MISSING
             if ratio > 0.8:
-                return "good"
+                return "strong"
             if ratio >= 0.5:
-                return "watch"
-            return "weak"
+                return "balanced"
+            return "pressured"
+
+        def _metric_value(*keys: str) -> Any:
+            for key in keys:
+                value = getattr(metrics, key, None)
+                if value is not None:
+                    return value
+            return None
 
         quality = cash_flow_quality()
         # Append FCF formula when both OCF and CapEx are available
@@ -614,6 +621,36 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
             except (TypeError, ValueError):
                 pass
         quality_display = quality + fcf_formula if quality != MISSING else quality
+
+        net_debt_value = _metric_value("net_debt")
+        is_japanese = any(ord(ch) > 127 for ch in "".join(row_labels))
+        net_label = "ネットキャッシュ /（純負債）" if is_japanese else "Net Cash / (Net Debt)"
+        if _has(net_debt_value):
+            try:
+                net_debt_number = float(net_debt_value)
+                net_quality = "Net cash (surplus)" if net_debt_number < 0 else "Net debt (leverage)"
+            except (TypeError, ValueError):
+                net_quality = "Leverage"
+        else:
+            net_quality = "Leverage"
+
+        cash_marketable_label = "現金・短期投資" if is_japanese else "Cash & Marketable Securities"
+        cash_marketable_value = _metric_value(
+            "cash_and_marketable_securities",
+            "cash_and_short_term_investments",
+            "cash_and_equivalents",
+        )
+        cash_marketable_prior = _metric_value(
+            "cash_and_marketable_securities_prior_year",
+            "cash_and_short_term_investments_prior_year",
+            "cash_and_equivalents_prior_year",
+        )
+        cash_marketable_yoy = _metric_value(
+            "cash_and_marketable_securities_yoy",
+            "cash_and_short_term_investments_yoy",
+            "cash_and_equivalents_yoy",
+        )
+
         rows = (
             (
                 row_labels[0],
@@ -640,17 +677,28 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 metrics.free_cash_flow,
             ),
             (
-                row_labels[3],
+                cash_marketable_label,
+                _money(cash_marketable_value),
+                _money(cash_marketable_prior),
+                _yoy_pct(cash_marketable_yoy),
+                "Liquidity buffer",
+                cash_marketable_value,
+            ),
+            (
+                net_label,
                 _money(metrics.net_debt),
                 _money(getattr(metrics, "net_debt_prior_year", None)),
                 _yoy_pct(getattr(metrics, "net_debt_yoy", None)),
-                "Leverage",
+                net_quality,
                 metrics.net_debt,
             ),
         )
         return [[label, value, prior, yoy, q, _source(raw)] for label, value, prior, yoy, q, raw in rows]
 
     if section_key == "Capital Efficiency":
+        is_japanese = any(ord(ch) > 127 for ch in "".join(row_labels))
+        buybacks_label = "資本配分 — 自社株買い" if is_japanese else "Capital Allocation — Buybacks"
+        dividends_label = "資本配分 — 配当" if is_japanese else "Capital Allocation — Dividends"
         rows = (
             (
                 row_labels[0],
@@ -685,7 +733,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 metrics.roic,
             ),
             (
-                row_labels[4],
+                buybacks_label,
                 _money(metrics.buybacks),
                 _money(getattr(metrics, "buybacks_prior_year", None)),
                 _yoy_pct(getattr(metrics, "buybacks_yoy", None)),
@@ -693,7 +741,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 metrics.buybacks,
             ),
             (
-                row_labels[5],
+                dividends_label,
                 _money(metrics.dividends),
                 _money(getattr(metrics, "dividends_prior_year", None)),
                 _yoy_pct(getattr(metrics, "dividends_yoy", None)),
@@ -1649,6 +1697,84 @@ def _resolved_quarter_label(quarter: str, metrics: FinancialMetrics) -> str:
     return f"FY{today.year} Q{q} (est.)"
 
 
+def _quarter_labels_from_resolved(resolved_quarter: str) -> tuple[str, str, str, str]:
+    """Return (current_q, prior_q, current_ttm, prior_ttm) labels.
+
+    Examples:
+      - 2026Q1 -> (Q1 2026, Q1 2025, TTM Ending Q1 2026, TTM Ending Q1 2025)
+      - FY2026 Q1 -> same labels
+    """
+    text = (resolved_quarter or "").strip()
+    patterns = (
+        r"(?i)^\s*(?:FY\s*)?(\d{4})\s*Q([1-4])\s*$",
+        r"(?i)^\s*Q([1-4])\s*(\d{4})\s*$",
+        r"(?i)^\s*(\d{4})Q([1-4])\s*$",
+    )
+    year = None
+    quarter_num = None
+    for pattern in patterns:
+        match = re.match(pattern, text)
+        if not match:
+            continue
+        a, b = match.groups()
+        if pattern.startswith("(?i)^\\s*Q"):
+            quarter_num = int(a)
+            year = int(b)
+        else:
+            year = int(a)
+            quarter_num = int(b)
+        break
+
+    if year is None or quarter_num is None:
+        current = text or "Current Quarter"
+        prior = "Prior Year Quarter"
+        return current, prior, f"TTM Ending {current}", f"TTM Ending {prior}"
+
+    current = f"Q{quarter_num} {year}"
+    prior = f"Q{quarter_num} {year - 1}"
+    return current, prior, f"TTM Ending {current}", f"TTM Ending {prior}"
+
+
+def _section_runtime_columns(section_key: str, base_columns: list[str], resolved_quarter: str) -> list[str]:
+    """Adjust runtime column labels to match quarter/TTM naming conventions."""
+    if not base_columns:
+        return base_columns
+
+    current_q, prior_q, current_ttm, prior_ttm = _quarter_labels_from_resolved(resolved_quarter)
+    columns = list(base_columns)
+
+    def _swap_pair(current_token: str, prior_token: str, repl_current: str, repl_prior: str) -> None:
+        for idx, col in enumerate(columns):
+            if col == current_token:
+                columns[idx] = repl_current
+            elif col == prior_token:
+                columns[idx] = repl_prior
+
+    if section_key in {"Operating Metrics", "Cash Flow", "Segments", "Geographic Segments"}:
+        _swap_pair("Actual", "Prior Year", current_q, prior_q)
+        _swap_pair("実績", "前年", current_q, prior_q)
+
+    if section_key == "Capital Efficiency":
+        _swap_pair("Actual", "Prior Year", current_ttm, prior_ttm)
+        _swap_pair("実績", "前年", current_ttm, prior_ttm)
+
+    return columns
+
+
+def _section_runtime_title(section_key: str, base_title: str, language: str) -> str:
+    if section_key == "Cash Flow":
+        return "キャッシュフロー & 流動性" if language == "jp" else "Cash Flow & Liquidity"
+    if section_key == "Capital Efficiency":
+        return "資本配分・資本効率" if language == "jp" else "Capital Allocation & Efficiency"
+    return base_title
+
+
+def _section_runtime_summary_label(section_key: str, base_label: str, language: str) -> str:
+    if section_key == "Cash Flow":
+        return "コメント" if language == "jp" else "Commentary"
+    return base_label
+
+
 def build_earnings_deep_dive_report(
     *,
     ticker: str,
@@ -1668,6 +1794,7 @@ def build_earnings_deep_dive_report(
     ticker_clean = ticker.strip().upper()
     company_name = company.strip() if isinstance(company, str) and company.strip() else ticker_clean
     template = get_earnings_template(report_language)
+    resolved_quarter = _resolved_quarter_label(quarter, metrics)
     analysis_by_key = section_analysis or {}
 
     # Sanitize prose: remove garbage ???? patterns and JP leakage from LLM output
@@ -1691,6 +1818,8 @@ def build_earnings_deep_dive_report(
         # Replace runs of 3+ JP/fullwidth chars (garbled leakage) with "" only for English mode
         if report_language == "en":
             text = _JP_GARBAGE_RE.sub('', text)
+            # Tone normalization requested by client: avoid categorical "weak" wording.
+            text = _re.sub(r'\bweak\b', 'pressured', text, flags=_re.IGNORECASE)
         # Clean up resulting empty lines or double dashes
         text = _re.sub(r'\n\s*—\s*\n', '\n', text)
         # 🔴 Fix: strip "One-line summary:" / "一言まとめ:" blockquotes — generic filler
@@ -1753,6 +1882,10 @@ def build_earnings_deep_dive_report(
     }
     
     for section in template:
+        runtime_columns = _section_runtime_columns(section.key, list(section.table_columns), resolved_quarter)
+        runtime_title = _section_runtime_title(section.key, section.title, report_language)
+        runtime_summary_label = _section_runtime_summary_label(section.key, section.summary_label, report_language)
+
         analysis_text = analysis_by_key.get(section.key) or analysis_by_key.get(section.title)
         rows: list[list[str]] = []
         if analysis_text:
@@ -1773,7 +1906,7 @@ def build_earnings_deep_dive_report(
         if section.key in _DATA_DRIVEN_SECTIONS:
             rows = _rows_for_section(section.key, section.table_rows, metrics, scoring)
             table = RenderedTable(
-                columns=list(section.table_columns),
+                columns=list(runtime_columns),
                 rows=[RenderedTableRow(
                     label=str(row[0]),
                     cells=[str(cell) for cell in row[1:]],
@@ -1843,7 +1976,7 @@ def build_earnings_deep_dive_report(
                                     cells=[NOT_APPLICABLE_EN] * 4,
                                 ))
                             table = RenderedTable(
-                                columns=list(section.table_columns),
+                                columns=list(runtime_columns),
                                 rows=remapped,
                             )
                             table = _sanitize_table(table)
@@ -1869,7 +2002,7 @@ def build_earnings_deep_dive_report(
                             for idx in range(len(segment_names), len(section.table_rows)):
                                 yf_rows.append([section.table_rows[idx], NOT_APPLICABLE_EN, NOT_APPLICABLE_EN, NOT_APPLICABLE_EN, NOT_APPLICABLE_EN])
                             table = RenderedTable(
-                                columns=list(section.table_columns),
+                                columns=list(runtime_columns),
                                 rows=[RenderedTableRow(label=str(r[0]), cells=[str(c) for c in r[1:]]) for r in yf_rows],
                             )
                             table = _sanitize_table(table)
@@ -1881,7 +2014,7 @@ def build_earnings_deep_dive_report(
         else:
             rows = _rows_for_section(section.key, section.table_rows, metrics, scoring)
             table = RenderedTable(
-                columns=list(section.table_columns),
+                columns=list(runtime_columns),
                 rows=[RenderedTableRow(
                     label=str(row[0]),
                     cells=[str(cell) for cell in row[1:]],
@@ -1957,11 +2090,11 @@ def build_earnings_deep_dive_report(
         sections.append(
             RenderedSection(
                 key=section.key,
-                title=section.title,
+                title=runtime_title,
                 question=section.question,
                 table=table,
                 analysis=analysis_items,
-                summary_label=section.summary_label,
+                summary_label=runtime_summary_label,
                 summary=_summary(report_language, ticker_clean, section.key, metrics),
             )
         )
@@ -2108,7 +2241,7 @@ def build_earnings_deep_dive_report(
     v27 = _build_v27_models(
         ticker=ticker_clean,
         company=company_name,
-        quarter=quarter,
+        quarter=resolved_quarter,
         metrics=metrics,
         generated_at=generated_at or datetime.now(timezone.utc).isoformat(),
         company_overview=company_overview,
@@ -2131,10 +2264,10 @@ def build_earnings_deep_dive_report(
     return EarningsDeepDiveReport(
         ticker=ticker_clean,
         company=company_name,
-        quarter=_resolved_quarter_label(quarter, metrics),
+        quarter=resolved_quarter,
         language=report_language,
         generated_at=generated_at or datetime.now(timezone.utc).isoformat(),
-        title=f"{company_name} ({ticker_clean}) - Earnings Deep-Dive ({_resolved_quarter_label(quarter, metrics)})",
+        title=f"{company_name} ({ticker_clean}) - Earnings Deep-Dive ({resolved_quarter})",
         sections=[s for s in sections if not _skip_section(s)],
         sources=sources,
         claim_sources=claim_sources,
