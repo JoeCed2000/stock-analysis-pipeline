@@ -1985,30 +1985,45 @@ async def search_stats():
 # ── Nami Feedback System ──────────────────────────────────────────────
 @app.post("/api/feedback", dependencies=[Depends(_require_auth)])
 async def submit_feedback(
-    ticker: str = Form(...),
+    ticker: str = Form(""),
     text: str = Form(""),
     files: list[UploadFile] = FastAPIFile(default=[]),
 ):
-    """Submit feedback for a ticker. Stores text + files in analyses/{TICKER}/feedback/.
-    
-    Nami can attach screenshots, annotated PDFs, or notes.
-    A cron job processes new feedback periodically.
+    """Submit feedback for a ticker or as general product feedback.
+
+    When ticker is omitted, feedback is stored in the GENERAL bucket so the user can
+    submit comments independently from any analysis card.
     """
     from backend.feedback_store import save_feedback
-    ticker = ticker.strip().upper()
-    if not TICKER_RE.match(ticker):
-        raise HTTPException(status_code=422, detail=f"Invalid ticker: {ticker}")
+    normalized_ticker = (ticker or "").strip().upper()
+    if normalized_ticker and not TICKER_RE.match(normalized_ticker):
+        raise HTTPException(status_code=422, detail=f"Invalid ticker: {normalized_ticker}")
+    if not text.strip() and not files:
+        raise HTTPException(status_code=422, detail="Feedback text or at least one attachment is required")
     
     try:
-        result = await save_feedback(ticker, text, files)
+        result = await save_feedback(normalized_ticker or None, text, files)
         return JSONResponse({"status": "ok", **result})
     except Exception as e:
-        logger.error(f"Feedback save failed for {ticker}: {e}")
+        scope = normalized_ticker or "GENERAL"
+        logger.error(f"Feedback save failed for {scope}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/feedback", dependencies=[Depends(_require_auth)])
+async def list_all_feedback():
+    """List all feedback entries across general + per-ticker buckets for the user page."""
+    from backend.feedback_store import list_all_feedback as list_all_fb
+    entries = list_all_fb()
+    return JSONResponse({
+        "total": len(entries),
+        "unprocessed": sum(1 for entry in entries if not entry.get("processed")),
+        "entries": entries,
+    })
+
+
 @app.get("/api/feedback/{ticker}", dependencies=[Depends(_require_auth)])
-async def list_feedback(ticker: str):
+async def list_ticker_feedback(ticker: str):
     """List all feedback entries for a ticker."""
     from backend.feedback_store import list_feedback as list_fb
     ticker = ticker.strip().upper()
