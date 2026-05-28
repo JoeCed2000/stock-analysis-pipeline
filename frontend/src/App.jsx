@@ -7,8 +7,9 @@ import SkeletonCard from './components/SkeletonCard.jsx';
 import AboutSection from './components/AboutSection.jsx';
 import LanguageSelector from './components/LanguageSelector.jsx';
 import AdminPage from './components/AdminPage.jsx';
+import FeedbackPage from './components/FeedbackPage.jsx';
 import NotFound from './components/NotFound.jsx';
-import { analyzeTickersAsync, getJobStatus, getDossierStatus, countDossierSections } from './api.js';
+import { analyzeTickersAsync, getJobStatus, getDossierStatus, countDossierSections, getSeekingAlphaAccessStatus } from './api.js';
 import translations from './i18n.js';
 import SearchMonitor from './components/SearchMonitor.jsx';
 // BUILD: v2 — SmartLoader 4-step activity, t() interpolation, skeleton loading
@@ -24,16 +25,19 @@ export default function App() {
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState({ current: 0, total: 0, ticker: '', companyName: '' });
   const [showAdmin, setShowAdmin] = useState(() => window.location.hash === '#admin');
+  const [showFeedback, setShowFeedback] = useState(() => window.location.hash === '#feedback');
+  const [saAccess, setSaAccess] = useState({ loading: true, configured: null, error: null });
   const [show404, setShow404] = useState(() => {
     const h = window.location.hash;
-    return h && h !== '#admin';
+    return h && h !== '#admin' && h !== '#feedback';
   });
 
   useEffect(() => {
     const onHashChange = () => {
       const h = window.location.hash;
       setShowAdmin(h === '#admin');
-      setShow404(Boolean(h) && h !== '#admin');
+      setShowFeedback(h === '#feedback');
+      setShow404(Boolean(h) && h !== '#admin' && h !== '#feedback');
     };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
@@ -53,6 +57,29 @@ export default function App() {
       localStorage.setItem('lang', newLang);
     }
   };
+
+  useEffect(() => {
+    let alive = true;
+
+    const refreshSeekingAlphaStatus = async () => {
+      try {
+        const data = await getSeekingAlphaAccessStatus();
+        if (!alive) return;
+        setSaAccess({ loading: false, configured: !!data?.configured, error: null });
+      } catch (err) {
+        if (!alive) return;
+        setSaAccess({ loading: false, configured: null, error: err?.message || 'status_error' });
+      }
+    };
+
+    refreshSeekingAlphaStatus();
+    const timer = setInterval(refreshSeekingAlphaStatus, 60000);
+
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
 
   const t = (key, params) => {
     let str = translations[lang]?.[key] || translations.en[key] || key;
@@ -226,10 +253,58 @@ export default function App() {
         <NotFound t={t} onBack={() => { window.location.hash = ''; }} />
       ) : showAdmin ? (
         <AdminPage t={t} onClose={() => { window.location.hash = ''; }} />
+      ) : showFeedback ? (
+        <FeedbackPage lang={lang} onClose={() => { window.location.hash = ''; }} />
       ) : (
       <>{/* Header — centered */}
       <div style={{ marginBottom: 24, textAlign: 'center' }}>
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => { window.location.hash = '#feedback'; }}
+            style={{
+              padding: '8px 14px',
+              fontSize: 13,
+              fontWeight: 600,
+              background: '#21262d',
+              color: '#c9d1d9',
+              border: '1px solid #30363d',
+              borderRadius: 6,
+              cursor: 'pointer',
+            }}
+          >
+            💬 Feedback
+          </button>
+          <span
+            title={saAccess.error || ''}
+            style={{
+              fontSize: 12,
+              padding: '5px 10px',
+              borderRadius: 999,
+              border: '1px solid #30363d',
+              background: saAccess.loading
+                ? '#21262d'
+                : saAccess.configured === true
+                  ? '#23863620'
+                  : saAccess.configured === false
+                    ? '#da363320'
+                    : '#d2992220',
+              color: saAccess.loading
+                ? '#8b949e'
+                : saAccess.configured === true
+                  ? '#3fb950'
+                  : saAccess.configured === false
+                    ? '#f85149'
+                    : '#d29922',
+            }}
+          >
+            {saAccess.loading
+              ? 'SA: checking…'
+              : saAccess.configured === true
+                ? 'SA: available'
+                : saAccess.configured === false
+                  ? 'SA: unavailable'
+                  : 'SA: unknown'}
+          </span>
           <LanguageSelector lang={lang} onLanguageChange={handleLanguageChange} />
         </div>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: '#e1e4e8', marginBottom: 4 }}>
