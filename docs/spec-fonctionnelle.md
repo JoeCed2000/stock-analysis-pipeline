@@ -528,3 +528,38 @@ Le mapper (`backend/earnings_deep_dive/mapper.py`) peuple les modèles V2.7 :
   - `GET /api/admin/seeking-alpha/access` → HTTP 200, `configured=false`, `server_side_only=true`
   - `POST /api/admin/seeking-alpha/test` → HTTP 200, `ok=false`, `reason=no_cookies_configured` (endpoint joignable, cookies non chargés)
 - Vérification métier connexe : la table admin montre l'unique consultation GOOG avec user-agent Mac à `28/05, 04:04:58`.
+
+## 18. Hard gate complétude données (peer/valuation/history/PDF) — 2026-05-28
+
+### 18.1 Metrics history : suppression des trimestres vides
+- Endpoint concerné : `GET /api/metrics-history/{ticker}` (`backend/main.py`).
+- Correctif :
+  - backfill de la date de trimestre depuis cash-flow/balance-sheet quand la ligne income statement est absente ;
+  - suppression des lignes où **toutes** les métriques sont `None` (évite les faux trimestres vides) ;
+  - exposition explicite `dropped_empty_quarters` + `dropped_count` pour auditabilité.
+- Non-régression : `backend/tests/test_metrics_history_endpoint.py` (2 tests) :
+  - drop des quarters 100% vides ;
+  - conservation des quarters partiels avec date valide.
+
+### 18.2 Placeholder normalization PDF
+- Fichiers :
+  - `backend/earnings_deep_dive/pdf_renderer.py`
+  - `backend/earnings_deep_dive/mapper.py`
+- Correctif :
+  - remplacement des placeholders `N/A` par `Not available` dans les notes/source rows ;
+  - normalisation cellule tableau `N/A` → `Not available` ;
+  - wording narratif aligné (`Not available or Not disclosed`, sans token `N/A`).
+- Non-régression : `tests/test_pdf_commentary.py::test_pdf_replaces_na_placeholders_with_not_available`.
+
+### 18.3 Vérifications exécutées
+- Suite ciblée :
+  - `PYTHONPATH=/home/ced/codex-projects/stock-analysis-pipeline/backend .venv/bin/python -m pytest backend/tests/test_metrics_history_endpoint.py backend/tests/test_peer_universe.py backend/tests/test_valuation_endpoint.py backend/tests/test_peer_benchmark_api.py backend/tests/test_peer_batch.py tests/test_pdf_commentary.py -q`
+  - Résultat : **57 passed**.
+- Audit API local 7 tickers (`NVDA,AAPL,MSFT,GOOG,TSLA,AMZN,META`) :
+  - champs valuation critiques complets (`price, market_cap, enterprise_value, pe_current, pe_forward, peg_ratio, eps_growth, revenue_growth, total_debt`) ;
+  - peer benchmark `status=available` avec `sample_size > 0` ;
+  - `metrics-history` sans lignes entièrement vides.
+- Audit production same-origin via navigateur (`sa.cedlabusa.net`) : mêmes résultats sur les 7 tickers.
+- PDF GOOG régénéré : `analyses/2026-05-28_230657_GOOG_Alphabet_Inc./07_final_report/earnings_deep_dive.pdf`
+  - occurrences `null/undefined/NaN/N/A` : **0** ;
+  - fallback restant : `Not available` explicite (cas réellement indisponibles).

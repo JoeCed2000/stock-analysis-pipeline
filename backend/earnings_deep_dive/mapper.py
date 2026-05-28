@@ -1587,7 +1587,7 @@ def _default_highlights_analysis(language: TemplateLanguage, metrics: FinancialM
                 "👉 A higher multiple requires confidence that revenue growth, margin, and free cash flow can persist.",
                 "",
                 "③ Disclosure gaps",
-                "● Items marked as Not available, Not disclosed, or N/A represent data limitations that should be verified against SEC filings before drawing investment conclusions.",
+                "● Items marked as Not available or Not disclosed represent data limitations that should be verified against SEC filings before drawing investment conclusions.",
                 "👉 Missing data is treated as a limitation, not as evidence for or against the company.",
                 "",
                 "🧠 Nami insight",
@@ -1678,7 +1678,7 @@ def _default_section_analysis(
         "② Separate confirmed data from interpretation; do not upgrade a missing field into a positive or negative claim.\n"
         "③ Compare the current quarter with the prior-year or consensus baseline shown in the table, because direction matters as much as the absolute number.\n"
         "④ Link the section back to the final verdict only when it changes growth durability, earnings quality, cash conversion, valuation, or forward visibility.\n"
-        "⑤ Treat every Not available, Not disclosed, or N/A cell as an audit flag for the source dossier rather than as permission to infer a number."
+        "⑤ Treat every Not available or Not disclosed cell as an audit flag for the source dossier rather than as permission to infer a number."
     )
     source_walkthrough = (
         "🧠 Source walkthrough: start with the table row, then open the matching transcript, press release, presentation, SEC filing, or yfinance field named in the Source column. "

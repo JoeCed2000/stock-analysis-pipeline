@@ -866,6 +866,8 @@ async def metrics_history(ticker: str):
                 for col_date in cf.columns:
                     quarter_label = _quarter_key(col_date)
                     row = cf[col_date]
+                    # Keep the quarter date even when income statement data is missing.
+                    is_data[quarter_label].setdefault("date", col_date.strftime("%Y-%m-%d"))
                     is_data[quarter_label]["operating_cash_flow"] = _safe_float(row.get("Operating Cash Flow"))
                     is_data[quarter_label]["capex"] = _safe_float(row.get("Capital Expenditure"))
                     # FCF: yfinance provides it pre-computed; fallback: OCF + Capex
@@ -885,6 +887,8 @@ async def metrics_history(ticker: str):
                 for col_date in bs.columns:
                     quarter_label = _quarter_key(col_date)
                     row = bs[col_date]
+                    # Keep the quarter date even when income statement data is missing.
+                    is_data[quarter_label].setdefault("date", col_date.strftime("%Y-%m-%d"))
                     is_data[quarter_label]["cash_and_equivalents"] = _safe_float(row.get("Cash And Cash Equivalents"))
                     is_data[quarter_label]["total_debt"] = _safe_float(row.get("Total Debt"))
                     is_data[quarter_label]["total_assets"] = _safe_float(row.get("Total Assets"))
@@ -893,7 +897,7 @@ async def metrics_history(ticker: str):
         except Exception:
             logger.debug(f"metrics-history[{ticker}]: balance sheet fetch skipped")
 
-        # Build sorted list (oldest → newest) with explicit None for missing fields
+        # Build sorted list (newest → oldest) and drop quarters that are 100% empty.
         field_names = [
             "revenue", "net_income", "ebitda", "gross_profit", "eps",
             "operating_income", "operating_cash_flow", "capex", "free_cash_flow",
@@ -902,19 +906,29 @@ async def metrics_history(ticker: str):
             "total_assets", "stockholders_equity", "invested_capital",
         ]
         quarters = []
+        dropped_empty_quarters = []
         for q in sorted(is_data.keys(), reverse=True):  # newest first (frontend expects this)
             entry = {"quarter": q, "date": is_data[q].get("date")}
             for f in field_names:
                 entry[f] = is_data[q].get(f)
+
+            # Drop fully-empty rows (all numeric fields missing) to avoid false N/A quarters.
+            if not any(entry.get(f) is not None for f in field_names):
+                dropped_empty_quarters.append(q)
+                continue
             quarters.append(entry)
-        
-        return {
+
+        payload = {
             "ticker": ticker,
             "currency": "USD",
             "source": "SEC filings / Yahoo Finance",
             "quarters": quarters,
             "count": len(quarters),
         }
+        if dropped_empty_quarters:
+            payload["dropped_empty_quarters"] = dropped_empty_quarters
+            payload["dropped_count"] = len(dropped_empty_quarters)
+        return payload
     except Exception as e:
         logger.warning(f"metrics-history[{ticker}]: {e}")
         return {"ticker": ticker, "quarters": [], "error": str(e)}

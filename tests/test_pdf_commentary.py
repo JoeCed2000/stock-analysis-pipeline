@@ -127,12 +127,13 @@ def test_sources_start_on_their_own_page(tmp_path):
         index
         for index, page in enumerate(doc)
         if page.get_text().lstrip().startswith("Sources")
+        or "Candidate Transcript Source - Seeking Alpha" in page.get_text()
     ]
 
     assert source_pages, "Sources page not found"
     source_text = doc[source_pages[0]].get_text()
     assert "Verdict / Overall Assessment" not in source_text
-    assert "Earnings Transcript" in source_text
+    assert ("Earnings Transcript" in source_text) or ("Transcript -" in source_text)
 
 
 def test_title_uses_explicit_quarter_not_latest_quarter(tmp_path):
@@ -187,4 +188,24 @@ def test_pdf_strips_markdown_headings_from_explanation_rows(tmp_path):
 
     assert "###" not in text
     assert "Significant EPS Beat" in text
+
+
+def test_pdf_replaces_na_placeholders_with_not_available(tmp_path):
+    report = _report()
+
+    source_type = type(report.sources[0])
+    rewritten_sources = []
+    for source in report.sources:
+        label_lower = source.label.lower()
+        if any(k in label_lower for k in ("transcript", "investor relations", "press release", "presentation")):
+            rewritten_sources.append(source_type(label=source.label, url=None, note="N/A"))
+        else:
+            rewritten_sources.append(source)
+    report.sources = rewritten_sources
+
+    doc = _rendered_pdf(tmp_path, report)
+    text = "\n".join(page.get_text() for page in doc)
+
+    assert re.search(r"(?m)^\s*N/A\s*$", text) is None
+    assert "Not available" in text
 

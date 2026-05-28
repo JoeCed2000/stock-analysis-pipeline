@@ -622,8 +622,10 @@ def _source_note(report: EarningsDeepDiveReport, *labels: str) -> str:
             note = source.note or ""
             if report.language != "jp" and note == "データ未取得":
                 return "Not available"
-            return note or "N/A"
-    return "N/A"
+            if note.strip().upper() == "N/A":
+                return "Not available"
+            return note or "Not available"
+    return "Not available"
 
 
 def _earnings_documents_story(
@@ -648,14 +650,14 @@ def _earnings_documents_story(
     presentation_value = _source_note(report, "presentation")
     if report.language == "jp":
         rows = [
-            (transcript_label, transcript_url or "N/A", "Earning Call Transcript source"),
+            (transcript_label, transcript_url or "Not available", "Earning Call Transcript source"),
             ("Official Investor Relations", ir_value, "Press Release / Earning Call Presentation"),
             ("Press Release", press_release_value, "会社開示データの一次ソース"),
             ("Earning Call Presentation", presentation_value, "補足KPI・セグメント・ガイダンス確認"),
         ]
     else:
         rows = [
-            (transcript_label, transcript_url or "N/A", "Earning Call Transcript source"),
+            (transcript_label, transcript_url or "Not available", "Earning Call Transcript source"),
             ("Official Investor Relations", ir_value, "Press Release / Earning Call Presentation"),
             ("Press Release", press_release_value, "Primary company-reported earnings source"),
             ("Earning Call Presentation", presentation_value, "Supplemental KPIs, segments, and guidance"),
@@ -812,6 +814,8 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> lis
         for cell in row_values:
             column = section.table.columns[len(truncated)] if len(truncated) < len(section.table.columns) else ""
             s = str(cell).strip()
+            if s.upper() == "N/A":
+                s = "Not available"
             if len(s) > MAX_CELL_CHARS:
                 s = s[:MAX_CELL_CHARS - 1] + "…"
             # Shorten source labels for compact table rendering
