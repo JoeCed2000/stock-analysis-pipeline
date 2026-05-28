@@ -135,7 +135,14 @@ def validate_render_model(report_model) -> List[str]:
             issues.append(f"Missing rows in PDF render model section: {getattr(section, 'title', 'unknown')}")
 
     sources = getattr(report_model, "sources", [])
-    if not any(getattr(source, "url", None) for source in sources):
+    has_any_url = any(getattr(source, "url", None) for source in sources)
+    has_transcript_url = any(
+        getattr(source, "url", None)
+        and isinstance(getattr(source, "label", None), str)
+        and getattr(source, "label", "").startswith(("Transcript -", "Earnings Transcript"))
+        for source in sources
+    )
+    if not has_any_url or not has_transcript_url:
         issues.append("Missing transcript/source URL in PDF render model")
 
     return issues

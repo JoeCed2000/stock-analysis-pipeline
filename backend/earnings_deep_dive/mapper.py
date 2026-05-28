@@ -41,6 +41,7 @@ NOT_APPLICABLE_EN = "N/A"
 NOT_CALCULABLE = "計算不可"
 NOT_CALCULABLE_EN = "Not calculable"
 SOURCE_COMPANY = "SEC Filing (10-Q/10-K) via EDGAR"
+SOURCE_COMPANY_JP = "会社開示 / 計算ベース"
 SOURCE_YFINANCE = "yfinance (Yahoo Finance)"
 SOURCE_CONSENSUS = "Yahoo Finance (consensus)"
 
@@ -111,6 +112,25 @@ def _source(*values: Any, source_type: str = "sec_edgar") -> str:
     if source_type == "yfinance":
         return SOURCE_YFINANCE
     return SOURCE_COMPANY
+
+
+def _labels_are_japanese(row_labels: tuple[str, ...]) -> bool:
+    return any(ord(ch) > 127 for ch in "".join(row_labels))
+
+
+def _localized_source(
+    *values: Any,
+    row_labels: tuple[str, ...] | None = None,
+    source_type: str = "sec_edgar",
+) -> str:
+    base = _source(*values, source_type=source_type)
+    if not row_labels or not _labels_are_japanese(row_labels):
+        return base
+    if base == SOURCE_COMPANY:
+        return SOURCE_COMPANY_JP
+    if base == MISSING_EN:
+        return MISSING_JP
+    return base
 
 
 def _source_descriptor(
@@ -532,58 +552,75 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         return _highlights_rows(metrics, row_labels)
 
     if section_key == "Operating Metrics":
-        rows = (
-            (
-                row_labels[0],  # Revenue (new first row)
-                _money(getattr(metrics, "revenue_actual", None) or getattr(metrics, "revenue_quarterly", None)),
-                _money(getattr(metrics, "revenue_quarterly_prior_year", None)),
-                _yoy_pct(getattr(metrics, "revenue_yoy", None)),
-                getattr(metrics, "revenue_actual", None) or getattr(metrics, "revenue_quarterly", None),
-            ),
-            (
-                row_labels[1],
-                _money(metrics.gross_profit),
-                _money(getattr(metrics, "gross_profit_prior_year", None)),
-                _yoy_pct(getattr(metrics, "gross_profit_yoy", None)),
-                metrics.gross_profit,
-            ),
-            (
-                row_labels[2],
-                _pct(metrics.gross_margin),
-                _pct(getattr(metrics, "gross_margin_prior_year", None)),
-                _yoy_pts(metrics.gross_margin, getattr(metrics, "gross_margin_prior_year", None)),
-                metrics.gross_margin,
-            ),
-            (
-                row_labels[3],
-                _money(metrics.opex),
-                _money(getattr(metrics, "opex_prior_year", None)),
-                _yoy_pct(getattr(metrics, "opex_yoy", None)),
-                metrics.opex,
-            ),
-            (
-                row_labels[4],
-                _money(metrics.operating_income),
-                _money(getattr(metrics, "operating_income_prior_year", None)),
-                _yoy_pct(getattr(metrics, "operating_income_yoy", None)),
-                metrics.operating_income,
-            ),
-            (
-                row_labels[5],
-                _pct(metrics.operating_margin),
-                _pct(getattr(metrics, "operating_margin_prior_year", None)),
-                _yoy_pts(metrics.operating_margin, getattr(metrics, "operating_margin_prior_year", None)),
-                metrics.operating_margin,
-            ),
-            (
-                row_labels[6],
-                _money(getattr(metrics, "net_income_quarterly", None)),
-                _money(getattr(metrics, "net_income_quarterly_prior_year", None)),
-                _yoy_pct(getattr(metrics, "net_income_yoy", None)),
-                getattr(metrics, "net_income_quarterly", None),
-            ),
+        rows = []
+
+        if len(row_labels) >= 7:
+            # New runtime layout with explicit Revenue row first.
+            rows.append(
+                (
+                    row_labels[0],
+                    _money(getattr(metrics, "revenue_actual", None) or getattr(metrics, "revenue_quarterly", None)),
+                    _money(getattr(metrics, "revenue_quarterly_prior_year", None)),
+                    _yoy_pct(getattr(metrics, "revenue_yoy", None)),
+                    getattr(metrics, "revenue_actual", None) or getattr(metrics, "revenue_quarterly", None),
+                )
+            )
+            base_idx = 1
+        else:
+            # Backward-compatible layout used by legacy tests/templates.
+            base_idx = 0
+
+        rows.extend(
+            [
+                (
+                    row_labels[base_idx + 0],
+                    _money(metrics.gross_profit),
+                    _money(getattr(metrics, "gross_profit_prior_year", None)),
+                    _yoy_pct(getattr(metrics, "gross_profit_yoy", None)),
+                    metrics.gross_profit,
+                ),
+                (
+                    row_labels[base_idx + 1],
+                    _pct(metrics.gross_margin),
+                    _pct(getattr(metrics, "gross_margin_prior_year", None)),
+                    _yoy_pct(getattr(metrics, "gross_margin_yoy", None)),
+                    metrics.gross_margin,
+                ),
+                (
+                    row_labels[base_idx + 2],
+                    _money(metrics.opex),
+                    _money(getattr(metrics, "opex_prior_year", None)),
+                    _yoy_pct(getattr(metrics, "opex_yoy", None)),
+                    metrics.opex,
+                ),
+                (
+                    row_labels[base_idx + 3],
+                    _money(metrics.operating_income),
+                    _money(getattr(metrics, "operating_income_prior_year", None)),
+                    _yoy_pct(getattr(metrics, "operating_income_yoy", None)),
+                    metrics.operating_income,
+                ),
+                (
+                    row_labels[base_idx + 4],
+                    _pct(metrics.operating_margin),
+                    _pct(getattr(metrics, "operating_margin_prior_year", None)),
+                    _yoy_pct(getattr(metrics, "operating_margin_yoy", None)),
+                    metrics.operating_margin,
+                ),
+                (
+                    row_labels[base_idx + 5],
+                    _money(getattr(metrics, "net_income_quarterly", None)),
+                    _money(getattr(metrics, "net_income_quarterly_prior_year", None)),
+                    _yoy_pct(getattr(metrics, "net_income_yoy", None)),
+                    getattr(metrics, "net_income_quarterly", None),
+                ),
+            ]
         )
-        return [[label, value, prior, yoy, _source(raw)] for label, value, prior, yoy, raw in rows]
+
+        return [
+            [label, value, prior, yoy, _localized_source(raw, row_labels=row_labels)]
+            for label, value, prior, yoy, raw in rows
+        ]
 
     if section_key == "Cash Flow":
         def cash_flow_quality() -> str:
@@ -623,7 +660,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         quality_display = quality + fcf_formula if quality != MISSING else quality
 
         net_debt_value = _metric_value("net_debt")
-        is_japanese = any(ord(ch) > 127 for ch in "".join(row_labels))
+        is_japanese = _labels_are_japanese(row_labels)
         net_label = "ネットキャッシュ /（純負債）" if is_japanese else "Net Cash / (Net Debt)"
         if _has(net_debt_value):
             try:
@@ -696,7 +733,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         return [[label, value, prior, yoy, q, _source(raw)] for label, value, prior, yoy, q, raw in rows]
 
     if section_key == "Capital Efficiency":
-        is_japanese = any(ord(ch) > 127 for ch in "".join(row_labels))
+        is_japanese = _labels_are_japanese(row_labels)
         buybacks_label = "資本配分 — 自社株買い" if is_japanese else "Capital Allocation — Buybacks"
         dividends_label = "資本配分 — 配当" if is_japanese else "Capital Allocation — Dividends"
         rows = (
@@ -749,7 +786,17 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 metrics.dividends,
             ),
         )
-        result = [[label, value, prior, yoy, comment, _source(raw)] for label, value, prior, yoy, comment, raw in rows]
+        result = [
+            [
+                label,
+                value,
+                prior,
+                yoy,
+                comment,
+                _localized_source(raw, row_labels=row_labels),
+            ]
+            for label, value, prior, yoy, comment, raw in rows
+        ]
         # Append total assets / equity to ROA / ROE comments if available
         if _has(metrics.total_assets):
             result[2][4] = str(result[2][4]) + f" (Assets: {_money(metrics.total_assets)})"
@@ -776,6 +823,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         ]
 
     if section_key == "Forward P/E":
+        is_japanese = _labels_are_japanese(row_labels)
         trailing_pe = getattr(metrics, "pe_trailing", None)
         if trailing_pe is None:
             trailing_pe = getattr(metrics, "pe_current", None)
@@ -810,9 +858,22 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         if _has(target):
             context_parts.append(f"Target: {_money(target)}")
         context = " | ".join(context_parts) if context_parts else "—"
+        reference_col = _multiple(trailing_pe) if is_japanese else context
         return [
-            [row_labels[0], _multiple(metrics.pe_forward), context, "—", _source(metrics.pe_forward)],
-            [row_labels[1], fwd_eps_display, _eps(getattr(metrics, "eps_estimate", None)), _yoy_pct(getattr(metrics, "eps_yoy", None)), _source(metrics.eps_estimate)],
+            [
+                row_labels[0],
+                _multiple(metrics.pe_forward),
+                reference_col,
+                MISSING,
+                _localized_source(metrics.pe_forward, row_labels=row_labels),
+            ],
+            [
+                row_labels[1],
+                fwd_eps_display,
+                _eps(getattr(metrics, "eps_estimate", None)),
+                _yoy_pct(getattr(metrics, "eps_yoy", None)),
+                _localized_source(metrics.eps_estimate, row_labels=row_labels),
+            ],
         ]
 
     if section_key == "Backlog":
@@ -2123,10 +2184,7 @@ def build_earnings_deep_dive_report(
     company_website_url = _metric_url(metrics, "company_website", "website", "weburl", "official_website")
     transcript_source = _metric_text(metrics, "transcript_source", "transcript_provider") or "Transcript"
     # Normalize: if source is a search engine, discovery tool, or the generic default, extract the real domain from URL
-    if transcript_url and (
-        transcript_source == "Transcript"
-        or any(x in transcript_source.lower() for x in ("duckduckgo", "web search", "google", "bing"))
-    ):
+    if transcript_url and transcript_source == "Transcript":
         from urllib.parse import urlparse
         try:
             domain = urlparse(transcript_url).netloc.replace("www.", "")
@@ -2152,7 +2210,7 @@ def build_earnings_deep_dive_report(
         source_counter += 1
         return sid
     if transcript_url or transcript_source not in ("Transcript", ""):
-        transcript_label = f"Earnings Transcript — {transcript_source}"
+        transcript_label = f"Transcript - {transcript_source}"
         transcript_display_url = transcript_url or ""
         sources.append(SourceRef(
             source_id=_next_sid(),
@@ -2204,14 +2262,15 @@ def build_earnings_deep_dive_report(
             url="https://finnhub.io",
             note="Real-time estimates, transcripts, and SEC filings index"
         ))
-    # Only add generic Seeking Alpha reference if we don't already have a specific transcript source
-    if not transcript_url:
-        sources.append(SourceRef(
-            source_id=_next_sid(), source_type="seeking_alpha",
-            label="Seeking Alpha Transcripts",
-            url=f"https://seekingalpha.com/symbol/{ticker_clean}/earnings/transcripts",
-            note="Earnings call transcripts (when available)"
-        ))
+
+    # Always keep the canonical Seeking Alpha candidate source visible,
+    # even when the effective transcript came from another domain.
+    sources.append(SourceRef(
+        source_id=_next_sid(), source_type="seeking_alpha",
+        label="Candidate Transcript Source - Seeking Alpha",
+        url=f"https://seekingalpha.com/symbol/{ticker_clean}/earnings/transcripts",
+        note="Fallback transcript source"
+    ))
 
     # Filter: skip Geographic Segments (never reported in quarterly filings)
     # and any truly empty sections

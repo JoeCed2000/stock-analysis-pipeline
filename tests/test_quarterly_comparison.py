@@ -187,7 +187,7 @@ def test_capital_efficiency_rows_use_prior_year_yoy_and_comments():
         metrics,
     )
 
-    assert rows[0] == ["ROE", "+25.0%", "+20.0%", "+25.0%", "improvement", "会社開示 / 計算ベース"]
+    assert rows[0] == ["ROE", "+25.0%", "+20.0%", "+25.0%", "improvement", "SEC Filing (10-Q/10-K) via EDGAR"]
     assert rows[1][4] == "decline"
     assert rows[3][4] == "flat"
     assert rows[4][2] == "$25"

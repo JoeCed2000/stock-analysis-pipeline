@@ -13,7 +13,6 @@ TEMPLATE_SECTION_KEYS = (
     "Cash Flow",
     "Capital Efficiency",
     "Segments",
-    "Geographic Segments",
     "Forward P/E",
     "Backlog",
     "Guidance",
@@ -79,14 +78,6 @@ EARNINGS_TEMPLATE: tuple[ReportSectionTemplate, ...] = (
         table_columns=("Segment", "Revenue", "Prior Year", "YoY", "% of Total", "Driver", "Source"),
         table_rows=("Data Center", "Gaming", "Professional Visualization", "Automotive", "OEM & Other", "Total"),
         summary_label="Segment takeaway",
-    ),
-    ReportSectionTemplate(
-        key="Geographic Segments",
-        title="Geographic Segments",
-        question="Please show regional revenue breakdown or explain why it's not disclosed in quarterly filings.",
-        table_columns=("Region", "Revenue", "Prior Year", "YoY", "% of Total", "Source"),
-        table_rows=("Americas", "Europe", "Greater China", "Japan", "APAC ex-China"),
-        summary_label="Geographic takeaway",
     ),
     ReportSectionTemplate(
         key="Forward P/E",
@@ -171,14 +162,6 @@ JAPANESE_EARNINGS_TEMPLATE: tuple[ReportSectionTemplate, ...] = (
         table_columns=("セグメント", "売上高", "前年", "前年同期比", "構成比", "ドライバー", "出所"),
         table_rows=("主要セグメント", "第二セグメント", "その他セグメント"),
         summary_label="セグメント要点",
-    ),
-    ReportSectionTemplate(
-        key="Geographic Segments",
-        title="地域別セグメント",
-        question="以下の地域別売上高の内訳を示すか、四半期報告で開示されていない理由を説明してください。",
-        table_columns=("地域", "売上高", "前年", "前年同期比", "構成比", "出所"),
-        table_rows=("米州", "欧州", "中華圏", "日本", "APAC（中国除く）"),
-        summary_label="地域別要点",
     ),
     ReportSectionTemplate(
         key="Forward P/E",

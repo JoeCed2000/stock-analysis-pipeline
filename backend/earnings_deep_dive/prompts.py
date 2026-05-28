@@ -790,8 +790,8 @@ def _language_rules(language: str) -> str:
         "Use English ONLY for the entire answer — no Japanese characters, no CJK. "
         "Use English labels only: 'For Nami-san:', 'Caution:', 'Essential insight:', "
         "and '> One-line summary:'. "
-        "Every table cell must contain a sourced value or —. "
-        "Compute a metric only when all formula inputs are supplied; otherwise write —. "
+        "Every table cell must contain either a sourced value or 'Not retrieved'. "
+        "Compute a metric only when all formula inputs are supplied; if inputs are missing, use 'Not retrieved'. "
         "Never leave a cell empty and never invent missing values."
     )
 
@@ -842,9 +842,8 @@ def _base_prompt(
         if transcript_excerpt
         else (
             "No transcript available. Use ONLY the financial_metrics data below. "
-            "Do NOT invent qualitative commentary. Use Data not available in transcript "
-            "for management commentary, business drivers, and other call discussion that "
-            "requires transcript evidence."
+            "Do NOT invent qualitative commentary. Mark transcript-dependent commentary as "
+            "'Not retrieved from transcript'."
         )
     )
 
@@ -865,11 +864,11 @@ Transcript excerpt: {transcript_context}
 The Metrics above are the SINGLE SOURCE OF TRUTH extracted from yfinance and SEC filings.
 The PDF renderer will validate your table against these exact values and replace
 any hallucinated numbers with data-driven corrections.
-- Every number in your table MUST come from Metrics. If a metric is missing → write —.
+- Every number in your table MUST come from Metrics. If a metric is missing → write Not retrieved.
 - Every number in your PROSE must match the table. Do not write "$4.91 EPS" if the table says "$1.76".
 - Never convert, annualize, or TTM-adjust the Metrics values. Use them as-is.
-- If you need a number that is not in Metrics, write — in the table and
-  "Data not available" in prose. Never guess.
+- If you need a number that is not in Metrics, write Not retrieved in the table and
+  "Not retrieved" in prose. Never guess.
 🔴 CROSS-SECTION CONSISTENCY — ALL sections MUST agree on these facts:
 - If any CRITICAL OVERRIDE in this prompt states EPS/Revenue BEAT or MISSED,
   you MUST use that exact direction. Do not contradict it.
@@ -891,8 +890,8 @@ Section output contract:
 - Under each ①②③ item, use ● for data bullets and 👉 for investor implications.
 - Include {nami_label} where specified.
 - Use direct transcript or supplied-metric evidence. Never invent financial data.
-- If the transcript excerpt says no transcript is available, use only Metrics and mark qualitative call evidence as Data not available in transcript.
-- Every table cell must contain a sourced value or —. Never leave cells empty and never invent missing values.
+- If the transcript excerpt says no transcript is available, use only Metrics and mark qualitative call evidence as Not retrieved from transcript.
+- Every table cell must contain a sourced value or Not retrieved. Never leave cells empty and never invent missing values.
 - CRITICAL Source column format: Every source cell MUST identify the real data origin with specificity. Use exact provenance — SEC 10-Q page and line number, yfinance key name, transcript quote with timestamp, or calculation formula with inputs. Generic labels like \"Company filing\" or \"Calculated\" are INSUFFICIENT.
 - CRITICAL: Never write \"Section unavailable\" or similar placeholder text. If specific data is missing, use — in table cells and provide qualitative analysis based on the company's known business model, sector position, and total revenue/growth trends from Metrics.
 🔴 CLAIM SOURCE GROUNDING — Every analytical claim in your prose MUST fall into one of these categories:
