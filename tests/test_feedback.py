@@ -134,3 +134,22 @@ class TestFeedbackEndpoint:
             files={"files": ("shot.png", b"fake png", "image/png")},
         )
         assert resp.status_code == 200
+
+    def test_feedback_file_download_endpoint_serves_saved_attachment(self, client):
+        self._submit(
+            client,
+            ticker="AAPL",
+            text="Screenshot",
+            files={"files": ("shot.png", b"fake png", "image/png")},
+        )
+        entries = json.loads((self.feedback_root / "feedback_AAPL" / "index.json").read_text())
+        file_name = entries[0]["files"][0]
+
+        resp = client.get(f"/api/feedback-file/AAPL/{file_name}", headers={"X-API-Key": TEST_KEY})
+
+        assert resp.status_code == 200
+        assert resp.content == b"fake png"
+
+    def test_feedback_file_download_missing_returns_404(self, client):
+        resp = client.get("/api/feedback-file/AAPL/missing.pdf", headers={"X-API-Key": TEST_KEY})
+        assert resp.status_code == 404

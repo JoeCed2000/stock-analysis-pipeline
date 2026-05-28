@@ -17,6 +17,7 @@ def search_seeking_alpha(ticker: str, limit: int = 5) -> List[Dict]:
     Returns list of {title, url, date, summary} dicts.
     """
     from backend.http_client import http
+    from backend.seeking_alpha_access import build_request_headers
     from xml.etree import ElementTree
 
     results = []
@@ -25,7 +26,7 @@ def search_seeking_alpha(ticker: str, limit: int = 5) -> List[Dict]:
         url = f"https://seekingalpha.com/api/sa/combined/{ticker}.xml"
         resp = http.get(
             url,
-            headers={"User-Agent": "StockAnalysisPipeline/1.0"},
+            headers=build_request_headers(),
             timeout=10
         )
         if resp.status_code == 200:
@@ -56,13 +57,14 @@ def search_earnings_transcript(ticker: str) -> Optional[Dict]:
     Returns {title, url, snippet} or None.
     """
     from backend.http_client import http
+    from backend.seeking_alpha_access import build_request_headers
 
     try:
         # Search for earnings transcript
         search_url = f"https://seekingalpha.com/symbol/{ticker}/earnings/transcripts"
         resp = http.get(
             search_url,
-            headers={"User-Agent": "StockAnalysisPipeline/1.0"},
+            headers=build_request_headers(),
             timeout=10
         )
         if resp.status_code == 200:

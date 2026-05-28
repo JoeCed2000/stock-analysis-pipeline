@@ -18,6 +18,7 @@ import sys
 import zipfile
 import re
 import hashlib
+import mimetypes
 import time
 from datetime import datetime, timezone
 
@@ -484,6 +485,15 @@ async def batch_upload(file: UploadFile = FastAPIFile(None)):
 
 class BatchAnalyzeRequest(BaseModel):
     tickers: List[str] = Field(..., min_length=1, max_length=25)
+
+
+class SeekingAlphaAccessUpdateRequest(BaseModel):
+    cookie_header: str = Field(..., min_length=10)
+    user_agent: str | None = Field(default=None, max_length=500)
+
+
+class SeekingAlphaProbeRequest(BaseModel):
+    ticker: str = Field(default="NVDA", min_length=1, max_length=10)
 
 
 @app.post("/api/batch/analyze", dependencies=[Depends(_require_auth)])
@@ -2035,6 +2045,85 @@ async def admin_list_feedback():
     """List all feedback across all tickers for the admin dashboard."""
     from backend.feedback_store import get_all_admin_feedback
     return JSONResponse(get_all_admin_feedback())
+
+
+@app.get("/api/feedback-file/{bucket}/{filename:path}", dependencies=[Depends(_require_auth)])
+async def download_feedback_file(bucket: str, filename: str):
+    """Serve a feedback attachment from the canonical feedback bucket store."""
+    from backend.feedback_store import get_feedback_file_path
+
+    try:
+        file_path = get_feedback_file_path(bucket, filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Feedback attachment not found") from exc
+
+    media_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+    return FileResponse(file_path, media_type=media_type)
+
+
+@app.get("/api/company-overview/{ticker}/download")
+async def download_company_overview(ticker: str, format: str = "auto"):
+    """Download the best available company overview artifact for a ticker."""
+    ticker = ticker.strip().upper()
+    selected_format = (format or "auto").strip().lower()
+    if selected_format not in {"auto", "pdf", "md", "json"}:
+        raise HTTPException(status_code=400, detail="Invalid format. Use auto, pdf, md, or json")
+
+    analysis_dirs = _find_analysis_dirs(ticker)
+    if not analysis_dirs:
+        raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
+
+    order = ["pdf", "md", "json"] if selected_format == "auto" else [selected_format]
+
+    for analysis_dir in analysis_dirs:
+        source_dir = analysis_dir / "01_official_company_sources"
+        candidates = {
+            "pdf": source_dir / f"company_profile_{ticker}.pdf",
+            "md": source_dir / f"company_profile_{ticker}.md",
+            "json": source_dir / f"company_overview_{ticker}.json",
+        }
+
+        for kind in order:
+            file_path = candidates[kind]
+            if file_path.exists():
+                media_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+                return FileResponse(file_path, media_type=media_type, filename=file_path.name)
+
+    raise HTTPException(status_code=404, detail=f"No company overview artifact found for {ticker}")
+
+
+@app.get("/api/admin/seeking-alpha/access", dependencies=[Depends(_require_auth)])
+async def get_seeking_alpha_access_status():
+    from backend.seeking_alpha_access import get_access_status
+
+    return JSONResponse(get_access_status())
+
+
+@app.post("/api/admin/seeking-alpha/access", dependencies=[Depends(_require_auth)])
+async def save_seeking_alpha_access(payload: SeekingAlphaAccessUpdateRequest):
+    from backend.seeking_alpha_access import save_access
+
+    try:
+        return JSONResponse(save_access(payload.cookie_header, payload.user_agent))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/admin/seeking-alpha/access", dependencies=[Depends(_require_auth)])
+async def clear_seeking_alpha_access():
+    from backend.seeking_alpha_access import clear_access
+
+    return JSONResponse(clear_access())
+
+
+@app.post("/api/admin/seeking-alpha/test", dependencies=[Depends(_require_auth)])
+async def test_seeking_alpha_access(payload: SeekingAlphaProbeRequest | None = None):
+    from backend.seeking_alpha_access import probe_access
+
+    ticker = payload.ticker if payload else "NVDA"
+    return JSONResponse(probe_access(ticker))
 
 
 # ── Cache transparency ──────────────────────────────────────────────────

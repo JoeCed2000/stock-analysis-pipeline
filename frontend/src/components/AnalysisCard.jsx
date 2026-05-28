@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchQuarters } from '../api.js';
 import { SCORE_COLORS, CONVICTION_COLORS, getConvictionLevel, getInsight, canDownloadDossier, scorePercent, scoreBarColor } from './AnalysisUtils.js';
 import useDossierPolling from './useDossierPolling.js';
-import { getTickerDownloadUrl } from '../api.js';
+import { getTickerDownloadUrl, getCompanyOverviewDownloadUrl } from '../api.js';
 import ScoringChart from './ScoringChart.jsx';
 import MetricsHistoryChart from './MetricsHistoryChart.jsx';
 import ValuationGroup from './ValuationGroup.jsx';
@@ -150,8 +150,26 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
       </div>
 
       {/* ── CACHE ── */}
-      <div style={{ padding: '4px 14px', borderBottom: '1px solid #21262d' }}>
+      <div style={{ padding: '4px 14px', borderBottom: '1px solid #21262d', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <CacheIndicator ticker={ticker} />
+        <a
+          href={getCompanyOverviewDownloadUrl(ticker)}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            fontSize: 11,
+            color: '#58a6ff',
+            background: '#21262d',
+            padding: '4px 10px',
+            borderRadius: 6,
+            textDecoration: 'none',
+            border: '1px solid #30363d',
+            fontWeight: 600,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          🏢 Company Overview
+        </a>
       </div>
 
       {/* ── VALUATION ── */}

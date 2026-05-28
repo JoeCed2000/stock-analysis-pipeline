@@ -54,6 +54,7 @@ SSH_SETUP.txt
 .vercel
 .bak
 tmp/
+.state/
 *.bak
 tests_e2e/screenshots/
 

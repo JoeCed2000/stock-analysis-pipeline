@@ -491,3 +491,40 @@ Le mapper (`backend/earnings_deep_dive/mapper.py`) peuple les modèles V2.7 :
 - Correction backend : les compteurs de rate limit sont séparés par `(IP, tier)` et `/api/batch/upload` est classé dans le tier léger `default` car utilisé pendant la saisie.
 - Correction frontend : en cas d'échec temporaire du parser live, `TickerInput` affiche un avertissement visible et utilise un fallback local pour tickers/ISINs simples au lieu d'échouer silencieusement.
 - Vérification associée : test de non-régression `test_page_loads_do_not_rate_limit_ticker_parser`, suite backend/API ciblée `193 passed`, build frontend Vite production passé.
+
+## 17. Admin feedback + accès Seeking Alpha — durcissement et preuve prod — 2026-05-28
+
+### 17.1 Backfill historique GOOG
+- Deux entrées historiques ont été injectées dans le store canonique `feedback_GOOG` à partir du texte WhatsApp fourni par le métier :
+  - `2026-05-28_043100` — demande sur les documents P1/P5/P7/P9
+  - `2026-05-28_052100` — demande "Company Overview" / investor perspective
+- Chaque entrée référence une pièce jointe PDF dédiée :
+  - `2026-05-28_043100_deep_dive_GOOG.pdf`
+  - `2026-05-28_052100_deep_dive_GOOG.pdf`
+- Les entrées sont visibles via `GET /api/admin/feedback` sur la prod et gardent le format canonique (`id`, `ticker`, `submitted_at`, `text`, `files`, `processed`).
+
+### 17.2 Route de téléchargement des pièces jointes feedback
+- La route `GET /api/feedback-file/{ticker}/{filename}` sert les pièces jointes stockées dans le répertoire canonique d'analyses.
+- Vérification prod : les deux PDFs GOOG ci-dessus répondent HTTP 200 avec `Content-Type: application/pdf` et `Content-Length: 372344`.
+
+### 17.3 Accès Seeking Alpha côté serveur
+- L'admin dispose de deux endpoints dédiés :
+  - `GET /api/admin/seeking-alpha/access` — état de configuration (`configured`, `cookie_count`, `server_side_only`, dates)
+  - `POST /api/admin/seeking-alpha/test` — test live de connectivité transcript sur un ticker
+- Le stockage serveur des cookies Seeking Alpha est durci :
+  - dossier parent créé avec permission stricte (`0700`, best-effort)
+  - écriture atomique via fichier temporaire puis rename
+  - fichier final en permission stricte (`0600`, best-effort)
+  - `.state/` ignoré par git pour éviter toute fuite accidentelle
+- Contrat sécurité : l'API ne renvoie jamais le `cookie_header` brut au frontend.
+
+### 17.4 Vérifications exécutées
+- Tests ciblés : `PYTHONPATH=/home/ced/codex-projects/stock-analysis-pipeline .venv/bin/pytest tests/test_seeking_alpha_access.py tests/test_feedback.py` → **21 passed**
+- Restart backend prod : uvicorn PID `311265`, start time `2026-05-28 13:11:37`, listener `0.0.0.0:8780`
+- Recette navigateur prod :
+  - `https://sa.cedlabusa.net/stock-analysis/` → page d'accueil OK, 0 erreur JS
+  - `https://sa.cedlabusa.net/stock-analysis/#admin` → panneau "Seeking Alpha Access" visible, table de recherches peuplée, 0 erreur JS
+- Vérification live des endpoints admin SA :
+  - `GET /api/admin/seeking-alpha/access` → HTTP 200, `configured=false`, `server_side_only=true`
+  - `POST /api/admin/seeking-alpha/test` → HTTP 200, `ok=false`, `reason=no_cookies_configured` (endpoint joignable, cookies non chargés)
+- Vérification métier connexe : la table admin montre l'unique consultation GOOG avec user-agent Mac à `28/05, 04:04:58`.

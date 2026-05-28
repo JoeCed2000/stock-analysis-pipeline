@@ -111,6 +111,56 @@ export function getTickerDownloadUrl(ticker, lang = 'en', quarter = null) {
   return base;
 }
 
+export function getFeedbackAttachmentUrl(ticker, fileName) {
+  const bucket = (ticker || 'GENERAL').trim().toUpperCase();
+  return `${API_BASE}/feedback-file/${encodeURIComponent(bucket)}/${encodeURIComponent(fileName)}`;
+}
+
+export function getCompanyOverviewDownloadUrl(ticker, format = 'auto') {
+  return `${API_BASE}/company-overview/${encodeURIComponent(ticker)}/download?format=${encodeURIComponent(format)}`;
+}
+
+export async function getSeekingAlphaAccessStatus() {
+  const res = await fetch(`${API_BASE}/admin/seeking-alpha/access`, { headers: NGROK_HEADER });
+  if (!res.ok) throw new Error(`Seeking Alpha status error: ${res.status}`);
+  return res.json();
+}
+
+export async function saveSeekingAlphaAccess(cookieHeader, userAgent = '') {
+  const res = await fetch(`${API_BASE}/admin/seeking-alpha/access`, {
+    method: 'POST',
+    headers: { ...NGROK_HEADER, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cookie_header: cookieHeader, user_agent: userAgent || undefined }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.detail || `Seeking Alpha save error: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function clearSeekingAlphaAccess() {
+  const res = await fetch(`${API_BASE}/admin/seeking-alpha/access`, {
+    method: 'DELETE',
+    headers: NGROK_HEADER,
+  });
+  if (!res.ok) throw new Error(`Seeking Alpha clear error: ${res.status}`);
+  return res.json();
+}
+
+export async function testSeekingAlphaAccess(ticker = 'NVDA') {
+  const res = await fetch(`${API_BASE}/admin/seeking-alpha/test`, {
+    method: 'POST',
+    headers: { ...NGROK_HEADER, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ticker }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.detail || `Seeking Alpha test error: ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function getDossierStatus(ticker) {
   const res = await fetch(`${API_BASE}/dossier/${ticker}/status`, { headers: NGROK_HEADER });
   if (!res.ok) return { ready: false, files: [], stage: 'error' };

@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getFeedbackAttachmentUrl } from '../api.js';
 import SearchMonitor from './SearchMonitor.jsx';
+import SeekingAlphaAccessPanel from './SeekingAlphaAccessPanel.jsx';
 
 const POLL_MS = 5000;
 const API = '/api';
@@ -67,6 +69,8 @@ export default function AdminPage({ t, onClose }) {
           ← Back
         </button>
       </div>
+
+      <SeekingAlphaAccessPanel />
 
       {/* Stats Cards — compact, one row */}
       {stats && (
@@ -217,12 +221,22 @@ export default function AdminPage({ t, onClose }) {
                 {fb.files?.length > 0 && (
                   <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     {fb.files.map((f, j) => (
-                      <span key={j} style={{
-                        fontSize: 11, color: '#8b949e',
-                        background: '#21262d', padding: '2px 8px', borderRadius: 4,
-                      }}>
+                      <a
+                        key={j}
+                        href={getFeedbackAttachmentUrl(fb.ticker, f)}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          fontSize: 11,
+                          color: '#58a6ff',
+                          background: '#21262d',
+                          padding: '2px 8px',
+                          borderRadius: 4,
+                          textDecoration: 'none',
+                        }}
+                      >
                         📄 {f}
-                      </span>
+                      </a>
                     ))}
                   </div>
                 )}

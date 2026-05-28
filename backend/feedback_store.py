@@ -101,6 +101,23 @@ def _decorate_entry(entry: dict[str, Any], bucket: str) -> dict[str, Any]:
     return decorated
 
 
+def get_feedback_file_path(bucket: str, filename: str) -> Path:
+    """Resolve a feedback attachment path safely within its bucket directory."""
+    normalized_bucket = _normalize_feedback_bucket(bucket)
+    fb_dir = (ANALYSES_DIR / f"feedback_{normalized_bucket}").resolve()
+    requested = Path(filename)
+
+    if requested.is_absolute() or requested.name != filename or ".." in requested.parts:
+        raise ValueError("Invalid feedback filename")
+
+    file_path = (fb_dir / requested.name).resolve()
+    if file_path.parent != fb_dir:
+        raise ValueError("Invalid feedback filename")
+    if not file_path.exists() or not file_path.is_file():
+        raise FileNotFoundError(filename)
+    return file_path
+
+
 async def save_feedback(
     ticker: str | None,
     text: str,
