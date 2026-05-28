@@ -435,8 +435,11 @@ def _format_markdown(text: str) -> str:
     text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
     text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<i>\1</i>', text)
     # Strip markdown headings that leak into the PDF
-    text = re.sub(r'^###\s+', '', text, flags=re.MULTILINE)
-    text = re.sub(r'^##\s+', '', text, flags=re.MULTILINE)
+    # Handles "##", "###", ... with optional leading spaces.
+    text = re.sub(r'^\s*#{2,6}\s*', '', text, flags=re.MULTILINE)
+    # Also strip inline heading markers that can appear after table labels
+    # (e.g. "Explanation ### Highlights").
+    text = re.sub(r'(?m)(^|\s)#{2,6}\s+', r'\1', text)
     # LLM artifacts: LaTeX-escaped dollar signs (\$35.6B → $35.6B)
     text = text.replace('\\$', '$')
     # LLM artifacts: backslash-escaped percent, ampersand, hash
@@ -476,6 +479,12 @@ def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragr
             rf'<br/>\1',
             formatted
         )
+    # Normalize numbered bullets and analysis markers often returned by LLMs
+    # Example: "(1) ... Data: ... Investor implication: ..."
+    formatted = _re_markers.sub(r'(?<!^)(\s*)(\(\d{1,2}\)\s+)', r'<br/>\2', formatted)
+    formatted = _re_markers.sub(r'\s+(Data:\s+)', r'<br/>\1', formatted)
+    formatted = _re_markers.sub(r'\s+(Investor implication:\s+)', r'<br/>\1', formatted)
+
     # ── Strip orphaned markers / empty bullets ──
     # Lines like "<br/>●" or "<br/>● " or "<br/>>" with nothing after are clutter
     formatted = _re_markers.sub(r'<br/>\s*(●|•|👉|→|>|🎯|⚠️|✅|❌)\s*<br/>', '<br/>', formatted)
@@ -745,7 +754,7 @@ def _shorten_source(label: str) -> str:
     return label
 
 
-def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Table:
+def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> list:
     """Build a ReportLab Table with proper word-wrapping via Paragraph cells."""
     MAX_CELL_CHARS = 80  # aggressive truncation — prevents cell overflow crashes
     
@@ -857,7 +866,10 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> Tab
             ]
         )
     )
-    return [table] + [Paragraph(escape(_glyph_safe(t[:300], font_name=fonts.regular)), cell_style) for t in explanation_rows]
+    # Render extracted prose rows through markdown-aware formatter so raw
+    # headings (e.g. ###) and list markers don't leak into the final PDF.
+    prose_rows = [_paragraph_md(t[:300], cell_style, font_name=fonts.regular) for t in explanation_rows]
+    return [table] + prose_rows
 
 
 # ── PyMuPDF Page Number Stamping ───────────────────────────────────────

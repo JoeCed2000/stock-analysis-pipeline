@@ -145,3 +145,46 @@ def test_title_uses_explicit_quarter_not_latest_quarter(tmp_path):
 
     assert "Earnings Deep-Dive - 2026Q1" in text
     assert "latest quarter" not in text.lower()
+
+
+def test_pdf_strips_markdown_headings_from_highlights_commentary(tmp_path):
+    report = _report()
+    highlights = next(section for section in report.sections if section.key == "Highlights")
+    highlights.analysis = [
+        "### Highlights\n"
+        "(1) Significant EPS Beat\n"
+        "Data: EPS actual was $5.11 vs estimate $2.63.\n"
+        "Investor implication: Earnings quality appears strong.\n"
+        "(2) Robust Revenue Growth\n"
+        "Data: Revenue grew 21.8% YoY.\n"
+        "Investor implication: Core demand remains resilient."
+    ]
+
+    doc = _rendered_pdf(tmp_path, report)
+    text = "\n".join(page.get_text() for page in doc)
+
+    assert "###" not in text
+    assert "Significant EPS Beat" in text
+    assert "Robust Revenue Growth" in text
+
+
+def test_pdf_strips_markdown_headings_from_explanation_rows(tmp_path):
+    report = _report()
+    eps_section = next(section for section in report.sections if section.key == "EPS & Revenue")
+    eps_section.table.rows.append(
+        type(eps_section.table.rows[0])(
+            label="Explanation",
+            cells=[
+                "### Highlights (1) Significant EPS Beat Data: EPS beat materially exceeded consensus.",
+                "Investor implication: positive read-through for next-quarter execution and confidence. " * 3,
+                "Internal note",
+            ],
+        )
+    )
+
+    doc = _rendered_pdf(tmp_path, report)
+    text = "\n".join(page.get_text() for page in doc)
+
+    assert "###" not in text
+    assert "Significant EPS Beat" in text
+
