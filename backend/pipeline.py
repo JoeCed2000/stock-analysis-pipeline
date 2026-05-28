@@ -2343,7 +2343,12 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
     # 1. Company profile (01) — from Yahoo Finance data
     try:
         from backend.company_profile import generate_company_profile
-        profile_path = generate_company_profile(output_dir, ticker, yf_data)
+        profile_path = generate_company_profile(
+            output_dir,
+            ticker,
+            yf_data,
+            company_overview=company_overview,
+        )
         if profile_path and os.path.exists(profile_path):
             from backend.pdf_generator import md_to_pdf
             profile_pdf = os.path.join(os.path.dirname(profile_path), f"company_profile_{ticker}.pdf")

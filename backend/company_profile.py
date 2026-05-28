@@ -5,16 +5,65 @@ from datetime import datetime, timezone
 from typing import Dict, Any
 
 
-def generate_company_profile(output_dir: str, ticker: str, data: Dict[str, Any]) -> str:
+def generate_company_profile(
+    output_dir: str,
+    ticker: str,
+    data: Dict[str, Any],
+    company_overview: Dict[str, Any] | None = None,
+) -> str:
     """Generate a structured company profile markdown in 01_official_company_sources.
-    
-    Uses Finnhub profile + quote + metrics data to create a comprehensive overview.
-    Returns the file path.
+
+    Uses Finnhub/Yahoo snapshots plus optional company_overview synthesis
+    to create an investor-oriented company overview document.
+    Returns the output markdown path.
     """
     profile_dir = os.path.join(output_dir, "01_official_company_sources")
     os.makedirs(profile_dir, exist_ok=True)
     
     fin = data.get("financials", {})
+    overview = company_overview or {}
+
+    def _ov_text(key: str, fallback: str = "N/A") -> str:
+        val = overview.get(key)
+        if val is None:
+            return fallback
+        if isinstance(val, str):
+            txt = val.strip()
+            return txt if txt else fallback
+        return str(val)
+
+    def _ov_list(key: str) -> list[str]:
+        val = overview.get(key)
+        if val is None:
+            return []
+        if isinstance(val, list):
+            out = []
+            for item in val:
+                if item is None:
+                    continue
+                txt = str(item).strip()
+                if txt:
+                    out.append(txt)
+            return out
+        if isinstance(val, str):
+            txt = val.strip()
+            if not txt:
+                return []
+            if "\n" in txt:
+                return [p.strip(" -•\t") for p in txt.split("\n") if p.strip()]
+            if "," in txt:
+                return [p.strip() for p in txt.split(",") if p.strip()]
+            return [txt]
+        return [str(val)]
+
+    def _write_bullets(title: str, items: list[str]):
+        if not items:
+            return
+        lines.append(title)
+        lines.append("")
+        for item in items[:8]:
+            lines.append(f"- {item}")
+        lines.append("")
     
     lines = []
     lines.append(f"# {data.get('company_name', ticker)} ({ticker}) — Company Profile")
@@ -127,11 +176,76 @@ def generate_company_profile(output_dir: str, ticker: str, data: Dict[str, Any])
     lines.append("")
     
     # Business Description
-    desc = data.get("description", "")
+    desc = _ov_text("business_description", fallback="")
+    if not desc:
+        desc = data.get("description", "")
     if desc:
         lines.append("## Business Description")
         lines.append("")
-        lines.append(desc[:2000])
+        lines.append(desc[:3000])
+        lines.append("")
+
+    # Investor Perspective (feedback-driven checklist)
+    lines.append("## Investor Perspective")
+    lines.append("")
+
+    revenue_model = _ov_text("revenue_model", fallback="")
+    if revenue_model and revenue_model != "N/A":
+        lines.append("### How the company makes money")
+        lines.append("")
+        lines.append(revenue_model)
+        lines.append("")
+
+    _write_bullets("### Business segments", _ov_list("business_segments"))
+    _write_bullets("### Main growth drivers", _ov_list("growth_drivers"))
+    _write_bullets("### Competitive advantages (moats)", _ov_list("moats"))
+    _write_bullets("### Key metrics / KPIs", _ov_list("key_kpis"))
+    _write_bullets("### Biggest business risks", _ov_list("business_risks"))
+
+    strengths = _ov_text("strengths_vs_competitors", fallback="")
+    if strengths and strengths != "N/A":
+        lines.append("### Strengths vs competitors")
+        lines.append("")
+        lines.append(strengths)
+        lines.append("")
+
+    weaker = _ov_text("weaker_areas_vs_competitors", fallback="")
+    if weaker and weaker != "N/A":
+        lines.append("### Weaker areas vs competitors")
+        lines.append("")
+        lines.append(weaker)
+        lines.append("")
+
+    competitors = overview.get("competitors")
+    if isinstance(competitors, list) and competitors:
+        lines.append("### Competitors")
+        lines.append("")
+        for comp in competitors[:8]:
+            if not isinstance(comp, dict):
+                continue
+            name = (comp.get("competitor_name") or "Competitor").strip()
+            text = (comp.get("text_en") or "").strip()
+            adv = (comp.get("competitive_advantage") or "").strip()
+            row = f"- **{name}**"
+            if text:
+                row += f": {text}"
+            if adv:
+                row += f" (Relative strength: {adv})"
+            lines.append(row)
+        lines.append("")
+
+    ceo_style = _ov_text("ceo_leadership_style", fallback="")
+    if ceo_style and ceo_style != "N/A":
+        lines.append("### CEO leadership style")
+        lines.append("")
+        lines.append(ceo_style)
+        lines.append("")
+
+    long_term_vision = _ov_text("long_term_vision", fallback="")
+    if long_term_vision and long_term_vision != "N/A":
+        lines.append("### Long-term vision")
+        lines.append("")
+        lines.append(long_term_vision)
         lines.append("")
     
     # Write file

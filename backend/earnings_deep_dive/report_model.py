@@ -187,9 +187,19 @@ class CompanyOverview(BaseModel):
     """
     company_profile: CompanyProfile
     business_description: str | None = None
+    revenue_model: str | None = None
+    business_segments: list[str] = Field(default_factory=list)
+    growth_drivers: list[str] = Field(default_factory=list)
+    moats: list[str] = Field(default_factory=list)
+    key_kpis: list[str] = Field(default_factory=list)
+    business_risks: list[str] = Field(default_factory=list)
     key_financials: KeyFinancials | None = None
     recent_developments: list[RecentDevelopment] = Field(default_factory=list)
     competitive_position: str | None = None
+    strengths_vs_competitors: str | None = None
+    weaker_areas_vs_competitors: str | None = None
+    ceo_leadership_style: str | None = None
+    long_term_vision: str | None = None
     competitors: list[CompetitorRef] = Field(default_factory=list)
     company_claims: list[CompanyClaim] = Field(default_factory=list)
 

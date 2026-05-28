@@ -1704,7 +1704,39 @@ def render_company_overview(
         story.append(Paragraph(safe_desc, styles["body"]))
         story.append(Spacer(1, 0.08 * inch))
 
-    # ── 3. Key Financials ──
+    def _render_small_bullet_section(title_key: str, items: list[str] | None):
+        cleaned = [str(x).strip() for x in (items or []) if str(x).strip()]
+        if not cleaned:
+            return
+        story.append(Paragraph(
+            f"<b>{translate(title_key, lang)}</b>",
+            styles["body"],
+        ))
+        story.append(Spacer(1, 0.04 * inch))
+        for item in cleaned[:8]:
+            safe_item = escape(_glyph_safe(item, font_name=fonts.regular))
+            story.append(Paragraph(f'<font size="9">● {safe_item}</font>', styles["small"]))
+            story.append(Spacer(1, 0.03 * inch))
+        story.append(Spacer(1, 0.05 * inch))
+
+    # ── 3. Investor perspective subsections ──
+    if co.revenue_model and co.revenue_model.strip():
+        story.append(Paragraph(
+            f"<b>{translate('Revenue Model', lang)}</b>",
+            styles["body"],
+        ))
+        story.append(Spacer(1, 0.04 * inch))
+        safe_rev = escape(_glyph_safe(co.revenue_model.strip(), font_name=fonts.regular))
+        story.append(Paragraph(safe_rev, styles["body"]))
+        story.append(Spacer(1, 0.08 * inch))
+
+    _render_small_bullet_section("Business Segments", co.business_segments)
+    _render_small_bullet_section("Growth Drivers", co.growth_drivers)
+    _render_small_bullet_section("Competitive Advantages (Moats)", co.moats)
+    _render_small_bullet_section("Key Metrics / KPIs", co.key_kpis)
+    _render_small_bullet_section("Biggest Business Risks", co.business_risks)
+
+    # ── 4. Key Financials ──
     kf = co.key_financials
     has_kf = kf is not None and any([
         kf.market_cap_display, kf.revenue_display, kf.pe_ratio,
@@ -1747,7 +1779,7 @@ def render_company_overview(
             story.append(Spacer(1, 0.03 * inch))
         story.append(Spacer(1, 0.05 * inch))
 
-    # ── 4. Competitive Position ──
+    # ── 5. Competitive Position ──
     if co.competitive_position and co.competitive_position.strip():
         story.append(Paragraph(
             f"<b>{translate('Competitive Position', lang)}</b>",
@@ -1758,7 +1790,47 @@ def render_company_overview(
         story.append(Paragraph(safe_cp, styles["body"]))
         story.append(Spacer(1, 0.08 * inch))
 
-    # ── 5. Recent Developments ──
+    if co.strengths_vs_competitors and co.strengths_vs_competitors.strip():
+        story.append(Paragraph(
+            f"<b>{translate('Strengths vs Competitors', lang)}</b>",
+            styles["body"],
+        ))
+        story.append(Spacer(1, 0.04 * inch))
+        safe_strengths = escape(_glyph_safe(co.strengths_vs_competitors.strip(), font_name=fonts.regular))
+        story.append(Paragraph(safe_strengths, styles["body"]))
+        story.append(Spacer(1, 0.06 * inch))
+
+    if co.weaker_areas_vs_competitors and co.weaker_areas_vs_competitors.strip():
+        story.append(Paragraph(
+            f"<b>{translate('Weaker Areas vs Competitors', lang)}</b>",
+            styles["body"],
+        ))
+        story.append(Spacer(1, 0.04 * inch))
+        safe_weak = escape(_glyph_safe(co.weaker_areas_vs_competitors.strip(), font_name=fonts.regular))
+        story.append(Paragraph(safe_weak, styles["body"]))
+        story.append(Spacer(1, 0.06 * inch))
+
+    if co.ceo_leadership_style and co.ceo_leadership_style.strip():
+        story.append(Paragraph(
+            f"<b>{translate('CEO Leadership Style', lang)}</b>",
+            styles["body"],
+        ))
+        story.append(Spacer(1, 0.04 * inch))
+        safe_ceo = escape(_glyph_safe(co.ceo_leadership_style.strip(), font_name=fonts.regular))
+        story.append(Paragraph(safe_ceo, styles["body"]))
+        story.append(Spacer(1, 0.06 * inch))
+
+    if co.long_term_vision and co.long_term_vision.strip():
+        story.append(Paragraph(
+            f"<b>{translate('Long-Term Vision', lang)}</b>",
+            styles["body"],
+        ))
+        story.append(Spacer(1, 0.04 * inch))
+        safe_vision = escape(_glyph_safe(co.long_term_vision.strip(), font_name=fonts.regular))
+        story.append(Paragraph(safe_vision, styles["body"]))
+        story.append(Spacer(1, 0.08 * inch))
+
+    # ── 6. Recent Developments ──
     devs = co.recent_developments
     if devs:
         story.append(Paragraph(
