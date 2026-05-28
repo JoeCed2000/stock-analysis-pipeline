@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
+import SeekingAlphaAccessPanel from './SeekingAlphaAccessPanel.jsx';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -40,8 +41,25 @@ function scopeLabel(entry, lang) {
   return entry.ticker;
 }
 
+const FEEDBACK_CATEGORY_OPTIONS = [
+  { value: 'general', en: 'General', jp: '一般' },
+  { value: 'ui_ux', en: 'UI / UX', jp: 'UI / UX' },
+  { value: 'data_quality', en: 'Data quality', jp: 'データ品質' },
+  { value: 'report_content', en: 'Report content', jp: 'レポート内容' },
+  { value: 'bug', en: 'Bug', jp: 'バグ' },
+  { value: 'feature_request', en: 'Feature request', jp: '機能要望' },
+  { value: 'seeking_alpha_access', en: 'Seeking Alpha access', jp: 'Seeking Alpha 接続' },
+];
+
+function categoryLabel(value, lang) {
+  const match = FEEDBACK_CATEGORY_OPTIONS.find((opt) => opt.value === value);
+  if (!match) return value || (lang === 'jp' ? '一般' : 'General');
+  return lang === 'jp' ? match.jp : match.en;
+}
+
 export default function FeedbackPage({ lang = 'en', onClose }) {
   const [ticker, setTicker] = useState('');
+  const [category, setCategory] = useState('general');
   const [text, setText] = useState('');
   const [files, setFiles] = useState([]);
   const [history, setHistory] = useState([]);
@@ -104,6 +122,7 @@ export default function FeedbackPage({ lang = 'en', onClose }) {
       if (ticker.trim()) {
         formData.append('ticker', ticker.trim().toUpperCase());
       }
+      formData.append('category', category || 'general');
       if (text.trim()) {
         formData.append('text', text.trim());
       }
@@ -119,6 +138,7 @@ export default function FeedbackPage({ lang = 'en', onClose }) {
       }
 
       setTicker('');
+      setCategory('general');
       setText('');
       setFiles([]);
       setLatestId(data.id || null);
@@ -167,8 +187,11 @@ export default function FeedbackPage({ lang = 'en', onClose }) {
       </div>
 
       <div className="feedback-page-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) 1fr', gap: 18, alignItems: 'start' }}>
-        <div style={panelStyle}>
-          <h3 style={panelTitleStyle}>{lang === 'jp' ? '新しいフィードバックを送る' : 'Send new feedback'}</h3>
+        <div>
+          <SeekingAlphaAccessPanel mode="feedback" lang={lang} />
+
+          <div style={panelStyle}>
+            <h3 style={panelTitleStyle}>{lang === 'jp' ? '新しいフィードバックを送る' : 'Send new feedback'}</h3>
           <p style={helperTextStyle}>
             {lang === 'jp'
               ? 'ティッカーを入力すると、その銘柄の最新 Deep Dive PDF が自動で添付されます。空欄のままなら一般フィードバックとして保存されます。'
@@ -186,6 +209,21 @@ export default function FeedbackPage({ lang = 'en', onClose }) {
               placeholder={lang === 'jp' ? '例: NVDA' : 'e.g. NVDA'}
               style={inputStyle}
             />
+
+            <label style={{ ...labelStyle, marginTop: 12 }}>
+              {lang === 'jp' ? 'カテゴリ' : 'Category'}
+            </label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              style={inputStyle}
+            >
+              {FEEDBACK_CATEGORY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {lang === 'jp' ? opt.jp : opt.en}
+                </option>
+              ))}
+            </select>
 
             <label style={{ ...labelStyle, marginTop: 12 }}>
               {lang === 'jp' ? 'フィードバック' : 'Feedback'}
@@ -240,6 +278,7 @@ export default function FeedbackPage({ lang = 'en', onClose }) {
               </span>
             </div>
           </form>
+          </div>
         </div>
 
         <div style={panelStyle}>
@@ -272,6 +311,9 @@ export default function FeedbackPage({ lang = 'en', onClose }) {
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
                         <span style={scopeBadgeStyle(entry)}>{scopeLabel(entry, lang)}</span>
+                        <span style={categoryBadgeStyle}>
+                          {categoryLabel(entry.category || 'general', lang)}
+                        </span>
                         <span style={{
                           fontSize: 11,
                           padding: '3px 8px',
@@ -472,3 +514,15 @@ const scopeBadgeStyle = (entry) => ({
   fontWeight: 700,
   letterSpacing: '0.3px',
 });
+
+const categoryBadgeStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  padding: '3px 8px',
+  borderRadius: 999,
+  background: '#161b22',
+  color: '#8b949e',
+  border: '1px solid #30363d',
+  fontSize: 11,
+  fontWeight: 600,
+};

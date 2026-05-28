@@ -97,6 +97,7 @@ def _decorate_entry(entry: dict[str, Any], bucket: str) -> dict[str, Any]:
     decorated["ticker"] = ticker
     decorated["_ticker"] = bucket
     decorated["is_general"] = ticker is None
+    decorated["category"] = decorated.get("category") or "general"
     decorated["status"] = "taken_into_account" if decorated.get("processed") else "pending"
     return decorated
 
@@ -122,6 +123,7 @@ async def save_feedback(
     ticker: str | None,
     text: str,
     files: list[UploadFile],
+    category: str = "general",
 ) -> dict[str, Any]:
     """Save feedback text + uploaded files.
 
@@ -133,6 +135,7 @@ async def save_feedback(
     bucket = _normalize_feedback_bucket(ticker)
     fb_dir = _feedback_dir(bucket)
     log_label = ticker or GENERAL_FEEDBACK_BUCKET
+    normalized_category = (category or "general").strip().lower().replace(" ", "_")
 
     files_saved: list[str] = []
     for upload in (files or []):
@@ -154,6 +157,7 @@ async def save_feedback(
     entry = {
         "id": entry_id,
         "ticker": ticker,
+        "category": normalized_category,
         "submitted_at": now.isoformat(),
         "text": text.strip() if text else "",
         "files": files_saved,
@@ -169,6 +173,7 @@ async def save_feedback(
     logger.info("[%s] Feedback saved: %s (%s files, %s chars)", log_label, entry_id, len(files_saved), len(text or ""))
     return {
         "ticker": ticker,
+        "category": normalized_category,
         "bucket": bucket,
         "id": entry_id,
         "files_saved": len(files_saved),

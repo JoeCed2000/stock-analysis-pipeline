@@ -38,16 +38,14 @@ export default function MetricsHistoryChart({ ticker, height = 280 }) {
       .finally(() => setLoading(false));
   }, [ticker]);
 
-  // ── Enrich and prepare data ──
-  const enriched = useMemo(() => {
-    if (!data || data.length < 2) return null;
-    return enrichData(data);
-  }, [data]);
-
+  // ── Normalize chronology first, then enrich ──
+  // API returns newest-first. Enrichment (TTM windows, rolling metrics) must run
+  // on oldest→newest order to avoid null tails on latest rendered points.
   const allSorted = useMemo(() => {
-    if (!enriched) return [];
-    return [...enriched].reverse(); // API is newest-first → reverse to oldest-first
-  }, [enriched]);
+    if (!data || data.length < 2) return [];
+    const chronological = [...data].reverse();
+    return enrichData(chronological);
+  }, [data]);
 
   const maxAvailable = allSorted.length;
 

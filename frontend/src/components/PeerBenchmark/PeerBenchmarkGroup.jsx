@@ -1,45 +1,32 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { setExportBridgeData } from '../../export/exportDataBridge.js';
 
 /**
  * PeerBenchmarkGroup — V2.5 Group 9: Peer-relative benchmarks.
  *
- * Fetches /api/peer-benchmark/{ticker} and renders:
- *   1. Summary Card — group_name + sample_size + confidence
- *   2. Relative Valuation Table — valuation multiples vs peers
- *   3. Quality vs Peers Table — quality & profitability metrics vs peers
- *
- * Props:
- *   ticker — stock ticker symbol
- *   result — analysis result object
- *   t     — i18n translation function
+ * NOTE:
+ * The current backend contract returns a valuation/context-focused metric set
+ * (pe_ttm, ps_ttm, pb_ratio, pe_forward, peg_ratio, total_debt).
+ * This component mirrors that contract and renders explicit per-metric
+ * unavailable reasons when a metric is missing for the ticker/peer set.
  */
 
-// ── Metric display metadata ──
+// ── Metric display metadata aligned with backend contract ──
 const VALUATION_METRICS = [
-  { key: 'pe_ttm',     label: 'P/E TTM' },
-  { key: 'ps_ttm',     label: 'P/S TTM' },
-  { key: 'ev_ebitda',  label: 'EV/EBITDA' },
-  { key: 'p_fcf',      label: 'P/FCF' },
-  { key: 'pe_forward', label: 'P/E Fwd' },
-  { key: 'peg_ratio',  label: 'PEG' },
+  { key: 'pe_ttm', label: 'P/E TTM' },
+  { key: 'ps_ttm', label: 'P/S TTM' },
+  { key: 'pb_ratio', label: 'P/B' },
 ];
 
-const QUALITY_METRICS = [
-  { key: 'gross_margin',     label: 'Gross Margin' },
-  { key: 'operating_margin', label: 'Op Margin' },
-  { key: 'net_margin',       label: 'Net Margin' },
-  { key: 'roic',             label: 'ROIC' },
-  { key: 'roe',              label: 'ROE' },
-  { key: 'roa',              label: 'ROA' },
-  { key: 'fcf_yield',        label: 'FCF Yield' },
-  { key: 'debt_to_equity',   label: 'D/E' },
-  { key: 'debt_to_ebitda',   label: 'Debt/EBITDA' },
+const CONTEXT_METRICS = [
+  { key: 'pe_forward', label: 'P/E Fwd' },
+  { key: 'peg_ratio', label: 'PEG' },
+  { key: 'total_debt', label: 'Total Debt' },
 ];
 
 const STATUS_COLORS = {
   available: '#3fb950',
-  limited:   '#d29922',
+  limited: '#d29922',
   unavailable: '#f85149',
 };
 
@@ -49,32 +36,27 @@ function fmtMultiple(v) {
   return v.toFixed(1);
 }
 
-function fmtPercent(v) {
-  if (v == null) return '—';
-  return `${v.toFixed(1)}%`;
-}
-
 function fmtRatio(v) {
   if (v == null) return '—';
   return v.toFixed(2);
 }
 
+function fmtMoney(v) {
+  if (v == null) return '—';
+  const abs = Math.abs(v);
+  if (abs >= 1e12) return `$${(v / 1e12).toFixed(2)}T`;
+  if (abs >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
+  return `$${v.toFixed(0)}`;
+}
+
 const METRIC_FORMATTERS = {
-  pe_ttm:     fmtMultiple,
-  ps_ttm:     fmtMultiple,
-  ev_ebitda:  fmtMultiple,
-  p_fcf:      fmtMultiple,
+  pe_ttm: fmtMultiple,
+  ps_ttm: fmtMultiple,
+  pb_ratio: fmtMultiple,
   pe_forward: fmtMultiple,
-  peg_ratio:  fmtRatio,
-  gross_margin:     fmtPercent,
-  operating_margin: fmtPercent,
-  net_margin:       fmtPercent,
-  roic:             fmtPercent,
-  roe:              fmtPercent,
-  roa:              fmtPercent,
-  fcf_yield:        fmtPercent,
-  debt_to_equity:   fmtRatio,
-  debt_to_ebitda:   fmtRatio,
+  peg_ratio: fmtRatio,
+  total_debt: fmtMoney,
 };
 
 export default function PeerBenchmarkGroup({ ticker, result, t }) {
@@ -168,9 +150,9 @@ export default function PeerBenchmarkGroup({ ticker, result, t }) {
 
   // ── Available state: full benchmark ──
   const confidenceColors = {
-    high:               { bg: 'rgba(63,185,80,0.15)', fg: '#3fb950' },
-    medium:             { bg: 'rgba(210,153,34,0.15)', fg: '#d29922' },
-    low:                { bg: 'rgba(248,81,73,0.15)', fg: '#f85149' },
+    high: { bg: 'rgba(63,185,80,0.15)', fg: '#3fb950' },
+    medium: { bg: 'rgba(210,153,34,0.15)', fg: '#d29922' },
+    low: { bg: 'rgba(248,81,73,0.15)', fg: '#f85149' },
     'no data available': { bg: 'rgba(72,79,88,0.15)', fg: '#484f58' },
     'insufficient data': { bg: 'rgba(72,79,88,0.15)', fg: '#484f58' },
   };
@@ -246,11 +228,16 @@ export default function PeerBenchmarkGroup({ ticker, result, t }) {
         />
       </div>
 
-      {/* ── Quality vs Peers Table ── */}
+      {/* ── Context table (aligned with backend keys) ── */}
       <div>
         <TableSection
-          title={t ? t('peer_quality_peers') : 'Quality vs Peers'}
-          metrics={QUALITY_METRICS}
+          title={t ? t('peer_quality_peers') : 'Forward / Balance Context vs Peers'}
+          subtitle={
+            t
+              ? undefined
+              : 'Rendered from current backend contract (pe_forward, peg_ratio, total_debt) with explicit unavailable reasons.'
+          }
+          metrics={CONTEXT_METRICS}
           benchmarks={benchmarks}
           t={t}
         />
@@ -279,75 +266,100 @@ function GroupHeader({ label, status, statusColor }) {
   );
 }
 
-function TableSection({ title, metrics, benchmarks, t }) {
-  const availableMetrics = metrics.filter(m => benchmarks[m.key]);
+function TableSection({ title, subtitle, metrics, benchmarks, t }) {
+  const rows = metrics.map((m) => {
+    const benchmark = benchmarks[m.key] || null;
+    const formatter = METRIC_FORMATTERS[m.key] || fmtMultiple;
+    const hasData = benchmark?.status === 'available';
 
-  if (availableMetrics.length === 0) {
-    return (
-      <div>
-        <div style={{
-          padding: '6px 10px', fontSize: 9, fontWeight: 600,
-          color: '#8b949e', letterSpacing: 0.3,
-        }}>
-          {title}
-        </div>
-        <div style={{ padding: '6px 10px', fontSize: 9, color: '#484f58', textAlign: 'center' }}>
-          {t ? t('peer_no_data') : 'No data available'}
-        </div>
-      </div>
-    );
-  }
+    let reason = '';
+    if (!benchmark) {
+      reason = t ? t('peer_no_data') : 'Not returned by backend contract';
+    } else if (!hasData) {
+      reason = benchmark.label || benchmark.status || (t ? t('peer_no_data') : 'No data available');
+    }
+
+    return {
+      metric: m,
+      benchmark,
+      hasData,
+      formatter,
+      reason,
+    };
+  });
+
+  const availableCount = rows.filter((r) => r.hasData).length;
 
   return (
     <div>
       <div style={{
-        padding: '6px 10px 2px', fontSize: 9, fontWeight: 600,
-        color: '#8b949e', letterSpacing: 0.3,
+        padding: subtitle ? '6px 10px 1px' : '6px 10px 2px',
+        fontSize: 9,
+        fontWeight: 600,
+        color: '#8b949e',
+        letterSpacing: 0.3,
       }}>
         {title}
       </div>
+
+      {subtitle && (
+        <div style={{ padding: '0 10px 6px', fontSize: 8, color: '#6e7681', lineHeight: 1.4 }}>
+          {subtitle}
+        </div>
+      )}
+
+      {availableCount === 0 && (
+        <div style={{ padding: '0 10px 6px', fontSize: 8, color: '#d29922', lineHeight: 1.4 }}>
+          ⚠ {t ? t('peer_no_data') : 'No available metrics in this section for current ticker/peer sample.'}
+        </div>
+      )}
+
       {/* Table header */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '1fr 0.8fr 0.8fr 1.2fr',
-        gap: 0, padding: '2px 10px 4px',
+        gridTemplateColumns: '1fr 0.9fr 0.9fr 1.4fr',
+        gap: 0,
+        padding: '2px 10px 4px',
       }}>
         <span style={thStyle}>{t ? t('peer_col_metric') : 'Metric'}</span>
         <span style={thStyle}>{t ? t('peer_col_company') : 'Company'}</span>
         <span style={thStyle}>{t ? t('peer_col_median') : 'Median'}</span>
         <span style={thStyle}>{t ? t('peer_col_context') : 'Context'}</span>
       </div>
+
       {/* Table rows */}
-      {availableMetrics.map(m => {
-        const b = benchmarks[m.key];
-        const formatter = METRIC_FORMATTERS[m.key] || fmtMultiple;
-        const hasData = b.status === 'available';
+      {rows.map(({ metric, benchmark, hasData, formatter, reason }) => {
         const labelShort = hasData
-          ? simplifyLabel(b.label, m.key)
-          : (b.label || 'N/A');
+          ? simplifyLabel(benchmark.label, metric.key)
+          : `N/A — ${reason}`;
 
         return (
-          <div key={m.key} style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 0.8fr 0.8fr 1.2fr',
-            gap: 0, padding: '3px 10px',
-            borderTop: '1px solid #21262d30',
-            cursor: hasData ? 'help' : 'default',
-          }} title={hasData ? b.label : undefined}>
+          <div
+            key={metric.key}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 0.9fr 0.9fr 1.4fr',
+              gap: 0,
+              padding: '3px 10px',
+              borderTop: '1px solid #21262d30',
+              cursor: hasData ? 'help' : 'default',
+            }}
+            title={hasData ? benchmark.label : reason}
+          >
             <span style={{ fontSize: 9, color: '#e1e4e8', fontWeight: 500 }}>
-              {m.label}
+              {metric.label}
             </span>
             <span style={{ fontSize: 9, color: hasData ? '#58a6ff' : '#484f58', fontWeight: 600 }}>
-              {hasData ? formatter(b.value) : '—'}
+              {hasData ? formatter(benchmark.value) : '—'}
             </span>
-            <span style={{ fontSize: 9, color: '#8b949e' }}>
-              {hasData ? formatter(b.peer_median) : '—'}
+            <span style={{ fontSize: 9, color: hasData ? '#8b949e' : '#484f58' }}>
+              {hasData ? formatter(benchmark.peer_median) : '—'}
             </span>
-            <span style={{ fontSize: 8, color: labelColor(b), lineHeight: 1.4 }}>
+            <span style={{ fontSize: 8, color: hasData ? labelColor(benchmark) : '#d29922', lineHeight: 1.4 }}>
               {labelShort}
-              {b.percentile_rank != null && (
+              {hasData && benchmark.percentile_rank != null && (
                 <span style={{ color: '#484f58', marginLeft: 2 }}>
-                  ({Math.round(b.percentile_rank)}%ile)
+                  ({Math.round(benchmark.percentile_rank)}%ile)
                 </span>
               )}
             </span>
@@ -361,19 +373,21 @@ function TableSection({ title, metrics, benchmarks, t }) {
 // ── Helpers ──
 
 const thStyle = {
-  fontSize: 7, fontWeight: 600, color: '#484f58',
-  textTransform: 'uppercase', letterSpacing: 0.5,
+  fontSize: 7,
+  fontWeight: 600,
+  color: '#484f58',
+  textTransform: 'uppercase',
+  letterSpacing: 0.5,
 };
 
-function simplifyLabel(fullLabel, metricKey) {
-  // Extract just the direction: "above peer median" / "below peer median" / "premium" / "discount"
+function simplifyLabel(fullLabel) {
   if (!fullLabel) return '';
   if (fullLabel.includes('premium')) return '↑ premium';
   if (fullLabel.includes('discount')) return '↓ discount';
   if (fullLabel.includes('above peer median')) return '↑ above median';
   if (fullLabel.includes('below peer median')) return '↓ below median';
   if (fullLabel.includes('matches peer median')) return '≈ median';
-  return fullLabel.length > 30 ? fullLabel.substring(0, 28) + '…' : fullLabel;
+  return fullLabel.length > 36 ? `${fullLabel.substring(0, 34)}…` : fullLabel;
 }
 
 function labelColor(benchmark) {

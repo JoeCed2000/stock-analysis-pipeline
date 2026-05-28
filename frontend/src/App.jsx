@@ -12,10 +12,29 @@ import NotFound from './components/NotFound.jsx';
 import { analyzeTickersAsync, getJobStatus, getDossierStatus, countDossierSections, getSeekingAlphaAccessStatus } from './api.js';
 import translations from './i18n.js';
 import SearchMonitor from './components/SearchMonitor.jsx';
-// BUILD: v2 — SmartLoader 4-step activity, t() interpolation, skeleton loading
+// BUILD: v3 — explicit loading state machine, no fake timer progress
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
-const ESTIMATED_SEC_PER_TICKER = 22;
+const INITIAL_PROGRESS = {
+  current: 0,
+  total: 0,
+  ticker: '',
+  companyName: '',
+  phase: 'idle',
+  phaseText: '',
+  percent: 0,
+};
+
+function deriveJobPhase(progressText = '') {
+  const text = String(progressText || '').toLowerCase();
+  if (text.includes('deep-dive') || text.includes('pdf')) {
+    return { phase: 'generating', percent: 68, phaseText: progressText };
+  }
+  if (text.includes('start') || text.includes('analysis')) {
+    return { phase: 'fetching', percent: 35, phaseText: progressText };
+  }
+  return { phase: 'fetching', percent: 42, phaseText: progressText || 'Processing analysis…' };
+}
 
 export default function App() {
   const [mode, setMode] = useState('single');
@@ -23,7 +42,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [dossierPhase, setDossierPhase] = useState(false); // true when building dossier after analysis
   const [error, setError] = useState(null);
-  const [progress, setProgress] = useState({ current: 0, total: 0, ticker: '', companyName: '' });
+  const [progress, setProgress] = useState(INITIAL_PROGRESS);
   const [showAdmin, setShowAdmin] = useState(() => window.location.hash === '#admin');
   const [showFeedback, setShowFeedback] = useState(() => window.location.hash === '#feedback');
   const [saAccess, setSaAccess] = useState({ loading: true, configured: null, error: null });
@@ -151,101 +170,178 @@ export default function App() {
 
   const handleAnalyze = async (tickers) => {
     setLoading(true);
+    setDossierPhase(false);
     setError(null);
     setResults([]);
 
-    const total = tickers.length;
-    setProgress({ current: 0, total, ticker: tickers[0] || '' });
+    const normalizedTickers = (tickers || [])
+      .map((tk) => String(tk || '').trim().toUpperCase())
+      .filter(Boolean);
+    const total = normalizedTickers.length;
 
-    // Fake progress ticker while polling
-    let current = 0;
-    const intervalMs = (ESTIMATED_SEC_PER_TICKER * 1000) / total;
-    const progressTimer = setInterval(() => {
-      current = Math.min(current + 1, total);
-      setProgress(p => ({ ...p, current }));
-    }, intervalMs);
+    if (total === 0) {
+      setLoading(false);
+      return;
+    }
+
+    setProgress({
+      ...INITIAL_PROGRESS,
+      current: 0,
+      total,
+      ticker: normalizedTickers[0],
+      phase: 'queued',
+      phaseText: 'Queued…',
+      percent: 8,
+    });
 
     try {
       // Submit async job — returns immediately with job_id
-      const { job_id } = await analyzeTickersAsync(tickers, lang);
+      const { job_id } = await analyzeTickersAsync(normalizedTickers, lang);
+      setProgress((p) => ({
+        ...p,
+        phase: 'fetching',
+        phaseText: 'Starting analysis…',
+        percent: Math.max(p.percent, 20),
+      }));
 
       // Poll until done (max 10 min)
       const MAX_POLLS = 200; // 200 * 3s = 10 min
       let timedOut = true;
-      for (let i = 0; i < MAX_POLLS; i++) {
-        await new Promise(r => setTimeout(r, 3000));
+      for (let i = 0; i < MAX_POLLS; i += 1) {
+        await new Promise((r) => setTimeout(r, 3000));
         try {
           const job = await getJobStatus(job_id);
 
           if (job.status === 'done') {
+            timedOut = false;
             const data = job.result;
             if (data?.errors?.length > 0) {
               setError(`Errors: ${data.errors.join(', ')}`);
             }
+
             // Don't show cards yet — wait for dossier to be fully built
             const resultsList = data?.results || [];
+            const resultsCount = Math.max(resultsList.length, 1);
             setDossierPhase(true);
-            setProgress({ current: total, total, ticker: resultsList[0]?.ticker || '' });
-            timedOut = false;
+            setProgress((p) => ({
+              ...p,
+              current: 0,
+              total: resultsList.length || p.total,
+              ticker: resultsList[0]?.ticker || p.ticker,
+              phase: 'finalizing',
+              phaseText: t('buildingDossier') || '📊 Building dossier…',
+              percent: Math.max(p.percent, 78),
+            }));
 
             // Poll dossier status for each ticker (wait up to 6 min)
-            for (const r of resultsList) {
+            for (let idx = 0; idx < resultsList.length; idx += 1) {
+              const r = resultsList[idx];
               let dossierReady = false;
-              for (let d = 0; d < 120; d++) {
-                await new Promise(r2 => setTimeout(r2, 3000));
+
+              for (let d = 0; d < 120; d += 1) {
+                await new Promise((r2) => setTimeout(r2, 3000));
                 try {
                   const ds = await getDossierStatus(r.ticker);
+                  const sectionCount = countDossierSections(ds?.files || []);
+                  const tickerProgress = (idx + Math.min(sectionCount, 7) / 7) / resultsCount;
+                  const pct = 78 + (tickerProgress * 20);
+
+                  setProgress((p) => ({
+                    ...p,
+                    current: idx,
+                    ticker: r.ticker,
+                    phase: 'finalizing',
+                    phaseText: `📊 Building dossier… ${sectionCount}/7`,
+                    percent: Math.max(p.percent, Math.min(98, pct)),
+                  }));
+
                   if (ds && ds.verified) {
                     dossierReady = true;
+                    setProgress((p) => ({
+                      ...p,
+                      current: idx + 1,
+                      ticker: r.ticker,
+                      phase: 'finalizing',
+                      phaseText: `✅ ${r.ticker} dossier verified`,
+                      percent: Math.max(p.percent, Math.min(99, 78 + (((idx + 1) / resultsCount) * 20))),
+                    }));
                     break;
                   }
-                  // Update progress text with section count
-                  const sectionCount = countDossierSections(ds?.files || []);
-                  setProgress(p => ({
-                    ...p,
-                    ticker: `📊 Building dossier… ${sectionCount}/7`,
-                  }));
                 } catch {
                   // transient — keep polling
                 }
               }
+
               if (!dossierReady) {
                 console.warn(`Dossier timeout for ${r.ticker} — showing card anyway`);
               }
             }
 
+            setProgress((p) => ({
+              ...p,
+              current: resultsList.length,
+              total: resultsList.length || p.total,
+              phase: 'done',
+              phaseText: 'Analysis complete',
+              percent: 100,
+            }));
             setResults(resultsList);
             setDossierPhase(false);
             break;
           }
+
           if (job.status === 'error') {
+            setProgress((p) => ({
+              ...p,
+              phase: 'error',
+              phaseText: job.error || 'Analysis failed',
+              percent: 100,
+            }));
             setError(job.error || 'Analysis failed');
             timedOut = false;
             break;
           }
-          // Still processing — update progress text
-          if (job.progress) {
-            setProgress(p => ({ ...p, ticker: job.progress }));
-          }
+
+          // Still processing — update phase from backend progress
+          const phaseUpdate = deriveJobPhase(job.progress);
+          setProgress((p) => ({
+            ...p,
+            phase: phaseUpdate.phase,
+            phaseText: phaseUpdate.phaseText,
+            percent: Math.max(p.percent, phaseUpdate.percent),
+          }));
         } catch (pollErr) {
           // Transient network error during poll — keep trying
           console.warn('Poll error:', pollErr.message);
         }
       }
+
       if (timedOut) {
+        setProgress((p) => ({
+          ...p,
+          phase: 'error',
+          phaseText: 'Analysis timed out',
+          percent: 100,
+        }));
         setError('Analysis timed out after 10 minutes. The data may still be processing — try again or check back later.');
       }
     } catch (e) {
+      setProgress((p) => ({
+        ...p,
+        phase: 'error',
+        phaseText: e.message || 'Analysis failed',
+        percent: 100,
+      }));
       if (e.status === 422 && e.body) {
         setError(e.body?.detail?.message || e.message);
       } else {
         setError(e.message);
       }
     } finally {
-      clearInterval(progressTimer);
       setLoading(false);
     }
   };
+
 
   return (
     <div className="app" style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
@@ -376,6 +472,9 @@ export default function App() {
             current={progress.current}
             ticker={progress.ticker}
             companyName={progress.companyName}
+            phase={progress.phase}
+            phaseText={progress.phaseText}
+            percent={progress.percent}
             t={t}
           />
 

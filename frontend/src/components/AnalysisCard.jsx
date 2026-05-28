@@ -7,7 +7,6 @@ import ScoringChart from './ScoringChart.jsx';
 import MetricsHistoryChart from './MetricsHistoryChart.jsx';
 import ValuationGroup from './ValuationGroup.jsx';
 import PeerBenchmarkGroup from './PeerBenchmark/PeerBenchmarkGroup.jsx';
-import FeedbackPanel from './FeedbackPanel.jsx';
 import ExportMenu from './ExportMenu.jsx';
 import CacheIndicator from './CacheIndicator.jsx';
 import { getExportBridgeData } from '../export/exportDataBridge.js';
@@ -257,8 +256,6 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
           {t(level)} {t('conviction')}</span>
       </div>
 
-      {/* ── FEEDBACK ── */}
-      <FeedbackPanel ticker={result.ticker} t={t} lang={lang} />
     </div>
   );
 }

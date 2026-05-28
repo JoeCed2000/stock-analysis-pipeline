@@ -193,21 +193,29 @@ function enrichData(sortedData) {
 function calculateStats(sortedData, metricKey, viewMode) {
   const transformed = transformValues(sortedData, metricKey, viewMode);
   const isPctView = viewMode !== 'absolute';
-  const values = isPctView ? transformed.filter(v => v != null) : transformed;
-  if (values.length < 2) return { values, latest: null, qoq: null, yoy: null, totalChange: null, peak: null, low: null, avg: null, isPctView };
+  const cleaned = transformed.map(v => Number.isFinite(v) ? v : null);
+  const values = cleaned.filter(v => v != null);
+
+  if (values.length < 2) {
+    return { values, latest: null, qoq: null, yoy: null, totalChange: null, peak: null, low: null, avg: null, isPctView };
+  }
+
   const latest = sortedData[sortedData.length - 1];
   const previous = sortedData[sortedData.length - 2];
   const first = sortedData[0];
-  const lastIdx = transformed.length - 1;
-  const latestVal = isPctView ? transformed[lastIdx] : latest[metricKey];
+  const lastIdx = cleaned.length - 1;
+
+  const latestVal = isPctView ? cleaned[lastIdx] : latest[metricKey];
   const firstVal = isPctView ? null : first[metricKey];
   const qoq = isPctView ? null : pctChange(latest[metricKey], previous?.[metricKey]);
   const totalChange = !isPctView ? pctChange(latest[metricKey], firstVal) : null;
+
   let yoy = null;
   if (!isPctView && sortedData.length > 4) {
     const yearAgo = sortedData[sortedData.length - 5];
     yoy = pctChange(latest[metricKey], yearAgo?.[metricKey]);
   }
+
   const peak = Math.max(...values);
   const low = Math.min(...values);
   const avg = values.reduce((a, b) => a + b, 0) / values.length;

@@ -1996,6 +1996,7 @@ async def search_stats():
 @app.post("/api/feedback", dependencies=[Depends(_require_auth)])
 async def submit_feedback(
     ticker: str = Form(""),
+    category: str = Form("general"),
     text: str = Form(""),
     files: list[UploadFile] = FastAPIFile(default=[]),
 ):
@@ -2006,13 +2007,16 @@ async def submit_feedback(
     """
     from backend.feedback_store import save_feedback
     normalized_ticker = (ticker or "").strip().upper()
+    normalized_category = (category or "general").strip().lower().replace(" ", "_")
+    if not re.match(r"^[a-z0-9_-]{1,40}$", normalized_category):
+        normalized_category = "general"
     if normalized_ticker and not TICKER_RE.match(normalized_ticker):
         raise HTTPException(status_code=422, detail=f"Invalid ticker: {normalized_ticker}")
     if not text.strip() and not files:
         raise HTTPException(status_code=422, detail="Feedback text or at least one attachment is required")
     
     try:
-        result = await save_feedback(normalized_ticker or None, text, files)
+        result = await save_feedback(normalized_ticker or None, text, files, category=normalized_category)
         return JSONResponse({"status": "ok", **result})
     except Exception as e:
         scope = normalized_ticker or "GENERAL"

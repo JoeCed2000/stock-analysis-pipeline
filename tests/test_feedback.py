@@ -34,10 +34,12 @@ class TestFeedbackEndpoint:
         self.feedback_root = tmp_path / "analyses"
         monkeypatch.setattr("backend.feedback_store.ANALYSES_DIR", self.feedback_root)
 
-    def _submit(self, client, ticker=None, text="", files=None):
+    def _submit(self, client, ticker=None, category=None, text="", files=None):
         data = {}
         if ticker is not None:
             data["ticker"] = ticker
+        if category is not None:
+            data["category"] = category
         if text:
             data["text"] = text
         headers = {"X-API-Key": TEST_KEY}
@@ -50,6 +52,15 @@ class TestFeedbackEndpoint:
         assert body["status"] == "ok"
         assert body["ticker"] is None
         assert body["bucket"] == "GENERAL"
+
+    def test_feedback_category_is_persisted(self, client):
+        resp = self._submit(client, ticker="NVDA", category="data_quality", text="Need better TTM consistency")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["category"] == "data_quality"
+
+        entries = json.loads((self.feedback_root / "feedback_NVDA" / "index.json").read_text())
+        assert entries[-1]["category"] == "data_quality"
 
     def test_general_feedback_stored_under_general_bucket(self, client):
         self._submit(client, text="General UX feedback")
