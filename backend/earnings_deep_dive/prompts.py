@@ -918,6 +918,8 @@ Section output contract:
   - Consensus estimates presented as company guidance
   - LLM output presented as source data (e.g. \"source: LLM analysis\")
   - Price targets, investment recommendations, or forward-looking predictions not explicitly requested
+  - Using \"SEC\" as source for estimates or consensus: SEC filings contain ACTUAL reported results only. Analyst consensus estimates come from Yahoo Finance/Bloomberg/FactSet, NOT from SEC. For estimate/consensus rows, use \"Analyst consensus (Yahoo Finance)\" or \"Consensus estimate\". For actual results, \"Company reported (SEC 10-Q)\" or \"SEC EDGAR 10-Q\" is correct.
+  - Using generic labels like \"yfinance\" or \"calculated\" in source cells. Every source must specify the DATA ORIGIN (SEC filing, Yahoo Finance, transcript, etc.)
 - End with exactly one final blockquote line: {summary_label}
 
 PDF-aligned section skeleton:
@@ -1030,7 +1032,7 @@ def highlights_prompt(language: str, ticker: str, company: str, quarter: str, me
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
     )
-    return base + extra
+    return base + extra + "\n\n🔴 HIGHLIGHTS DEDUPLICATION RULE: Each highlight OR lowlight must present a DISTINCT analytical point. Before finalizing, scan all items and merge any pair that overlap by more than 50% in theme or evidence. If Highlight ③ and Highlight ① both discuss revenue growth, merge them into one point with combined evidence. Maximum 5 highlights and 3 lowlights — prioritize the most impactful."
 
 
 def operating_metrics_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
@@ -1110,7 +1112,7 @@ def cash_flow_prompt(language: str, ticker: str, company: str, quarter: str, met
         try: extra += f"\n⚠️  CapEx = ${float(capex)/1e9:.2f}B. Use in CapEx row."
         except (TypeError, ValueError): pass
     if fcf is not None:
-        try: extra += f"\n⚠️  Free Cash Flow (FCF) = ${float(fcf)/1e9:.2f}B (= OCF - CapEx). Use in FCF row."
+        try: extra += f"\n⚠️  Free Cash Flow (FCF) = ${float(fcf)/1e9:.2f}B (= OCF - CapEx). Use in FCF row. CRITICAL: When mentioning FCF in prose, use this EXACT value (${float(fcf)/1e9:.2f}B). Do NOT cite different FCF figures from other sources or calculations — the table and prose must agree on the same FCF number."
         except (TypeError, ValueError): pass
     if ocf is not None and capex is not None:
         try:
@@ -1140,7 +1142,7 @@ def capital_efficiency_prompt(language: str, ticker: str, company: str, quarter:
     net_income = metrics.get("net_income") or metrics.get("net_income_quarterly")
     extra = ""
     if roe is not None:
-        try: extra += f"\n\n🔴 PRECISION INJECTION: ROE = {float(roe):.1f}%. USE THIS EXACT VALUE in the ROE row of the table."
+        try: extra += f"\n\n🔴 PRECISION INJECTION: ROE = {float(roe):.1f}%. USE THIS EXACT VALUE in the ROE row of the table. CRITICAL: Since ROE data IS available, never write 'Not available' or 'not retrievable' in the analysis — use the provided value."
         except (TypeError, ValueError): pass
     if rotce is not None:
         try: extra += f"\n⚠️  ROTCE/ROTE = {float(rotce):.1f}%. Use in ROTCE/ROTE row."
