@@ -99,12 +99,19 @@ def generate_company_profile(
             change = ((price - prev) / prev) * 100
             lines.append(f"- **Change:** {change:+.2f}%")
     if cap:
-        if cap >= 1e12:
-            lines.append(f"- **Market Cap:** ${cap/1e12:.2f}T")
-        elif cap >= 1e9:
-            lines.append(f"- **Market Cap:** ${cap/1e9:.2f}B")
-        else:
-            lines.append(f"- **Market Cap:** ${cap/1e6:,.0f}M")
+        # Normalize: cap might be a string like "$5.22T" from formatted data
+        if isinstance(cap, str):
+            try:
+                cap = float(cap.replace('$', '').replace(',', '').replace('T', 'e12').replace('B', 'e9').replace('M', 'e6'))
+            except (ValueError, TypeError):
+                cap = None
+        if cap is not None:
+            if cap >= 1e12:
+                lines.append(f"- **Market Cap:** ${cap/1e12:.2f}T")
+            elif cap >= 1e9:
+                lines.append(f"- **Market Cap:** ${cap/1e9:.2f}B")
+            else:
+                lines.append(f"- **Market Cap:** ${cap/1e6:,.0f}M")
     
     high_52 = data.get("52w_high")
     low_52 = data.get("52w_low")
