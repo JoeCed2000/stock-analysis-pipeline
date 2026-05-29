@@ -96,7 +96,15 @@ SECTION_QUESTIONS: Dict[str, Dict[str, str]] = {
             "Categorize each by theme (Operational, Strategic, Macro, Competitive) "
             "with a severity rating (High/Medium/Low). For each, provide the specific transcript "
             "or data evidence, explain WHY it matters to investors, and assess whether "
-            "it represents a durable shift or a one-quarter event."
+            "it represents a durable shift or a one-quarter event.\n\n"
+            "STRUCTURE REQUIREMENTS:\n"
+            "- Every bullet must have: claim + number/metric + source + investor implication.\n"
+            "- No empty bullets. No 'N/A' placeholders.\n"
+            "- No duplicate claims — each point must be distinct.\n"
+            "- If you list risks/concerns, do NOT also claim 'no major red flags'.\n"
+            "- Every highlight/lowlight must cite a specific number (%, $, multiple) or "
+            "a named source (transcript quote, SEC filing, press release, management guidance).\n"
+            "- Icons (🌟⚠️) are allowed for visual structure only, never as a replacement for content."
         ),
         "jp": (
             "今回の決算のハイライト、ローライトを、テーマ別（オペレーション/戦略/マクロ/競合）に分類し、"

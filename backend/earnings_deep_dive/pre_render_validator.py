@@ -759,6 +759,114 @@ def validate_pre_render(
             # Never crash the validator — log and continue
             logger.warning(f"[{ticker}] Period consistency gate error (non-fatal): {exc}")
 
+    # ── RULE 12 (BLOCKING): §10 Highlights/Lowlights quality ───────────────
+    #
+    # Enforce corrections.txt §10: no empty bullets, no duplicates,
+    # no unsubstantiated claims, no "no major red flags" paradox.
+
+    highlights_text = _sec.get("Highlights", "")
+    if isinstance(highlights_text, str) and highlights_text.strip():
+        hl = highlights_text
+
+        # 12a. Empty bullets — lines with just bullet marker and whitespace
+        empty_bullet_lines = []
+        for i, line in enumerate(hl.split("\n"), 1):
+            stripped = line.strip()
+            if re.match(r'^[•🌟⚠️🎯🧠\*\-]\s*$', stripped):
+                empty_bullet_lines.append(i)
+            # Also catch bullets where content is just the emoji + 1-2 chars
+            if re.match(r'^[•🌟⚠️🎯🧠\*\-]\s*.{1,3}$', stripped) and len(stripped) < 6:
+                empty_bullet_lines.append(i)
+        if empty_bullet_lines:
+            warnings.append(ValidationWarning(
+                check="highlights_empty_bullets",
+                section="Highlights",
+                detail=(
+                    f"Empty or near-empty bullet points found on lines: "
+                    f"{empty_bullet_lines[:10]}. Every highlight/lowlight must "
+                    f"have claim + evidence + why it matters."
+                ),
+                severity="error",
+            ))
+
+        # 12b. Duplicate highlights — check for near-identical lines
+        lines = [l.strip() for l in hl.split("\n") if len(l.strip()) > 20]
+        seen_normalized = {}
+        for line in lines:
+            # Normalize: lowercase, strip emojis/bullets/numbers
+            norm = re.sub(r'[•🌟⚠️🎯🧠①②③④⑤⑥⑦⑧⑨⑩\*\-]', '', line.lower()).strip()
+            norm = re.sub(r'\s+', ' ', norm)
+            if len(norm) < 30:
+                continue
+            for prev_norm, prev_line in seen_normalized.items():
+                # Check similarity — if 70%+ word overlap, it's a duplicate
+                words_norm = set(norm.split())
+                words_prev = set(prev_norm.split())
+                if words_norm and words_prev:
+                    overlap = len(words_norm & words_prev) / min(len(words_norm), len(words_prev))
+                    if overlap > 0.7:
+                        warnings.append(ValidationWarning(
+                            check="highlights_duplicates",
+                            section="Highlights",
+                            detail=(
+                                f"Duplicate or near-duplicate highlights detected:\n"
+                                f"  1. \"{prev_line[:120]}...\"\n"
+                                f"  2. \"{line[:120]}...\"\n"
+                                f"Overlap: {overlap:.0%}. Merge or remove duplicates."
+                            ),
+                            severity="error",
+                        ))
+                        break
+            seen_normalized[norm] = line
+
+        # 12c. "No major red flags" paradox — if material risks are listed
+        no_red_flags = bool(re.search(
+            r'no\s+major\s+red\s+flags?|no\s+significant\s+(concerns?|risks?|issues?)',
+            hl, re.IGNORECASE
+        ))
+        if no_red_flags:
+            # Count lowlight/risk entries
+            lowlight_count = len(re.findall(r'⚠️|lowlight|concern|risk|懸念|リスク', hl, re.IGNORECASE))
+            if lowlight_count >= 2:
+                warnings.append(ValidationWarning(
+                    check="highlights_red_flags_paradox",
+                    section="Highlights",
+                    detail=(
+                        f"Claims 'no major red flags' but {lowlight_count} risks/concerns "
+                        f"are listed. Either the risks are material (remove the claim) or "
+                        f"they aren't (remove the lowlights). Cannot have both."
+                    ),
+                    severity="error",
+                ))
+
+        # 12d. Unsubstantiated claims — highlight with no number or source
+        highlight_blocks = re.split(r'\n(?=🌟|⚠️|•)', hl)
+        unsubstantiated = []
+        for block in highlight_blocks:
+            block = block.strip()
+            if len(block) < 20:
+                continue
+            # A substantive highlight must have at least one number or source reference
+            has_number = bool(re.search(r'\$?\d+[\.\d]*\s*[BMK%]|[\d\.]+\s*%|[\d\.]+x', block))
+            has_source = bool(re.search(
+                r'(?:transcript|source|filing|press\s*release|10-[KQ]|SEC|'
+                r'management\s+said|CEO|CFO|according\s+to|reported\s+by)',
+                block, re.IGNORECASE
+            ))
+            if not has_number and not has_source:
+                unsubstantiated.append(block[:100])
+        if unsubstantiated and len(unsubstantiated) >= 2:
+            warnings.append(ValidationWarning(
+                check="highlights_unsubstantiated",
+                section="Highlights",
+                detail=(
+                    f"{len(unsubstantiated)} highlight/lowlight entries lack numerical evidence "
+                    f"or source attribution. Every claim requires a metric or source reference. "
+                    f"First: \"{unsubstantiated[0]}...\""
+                ),
+                severity="error",
+            ))
+
     # ── Determine pass/fail ────────────────────────────────────────────
 
     errors = [w for w in warnings if w.severity == "error"]

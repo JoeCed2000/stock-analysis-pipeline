@@ -599,3 +599,21 @@ Le mapper (`backend/earnings_deep_dive/mapper.py`) peuple les modèles V2.7 :
   - 3 tests builder (résolution, quarter différent, métriques enrichies)
   - 8 tests gate (all-matching, 5 mismatch rules, no-context skip, unparseable)
 - Non-régression : `pytest tests/spec_v27_*.py tests/test_v27_*.py` → **195 passed**.
+
+## 20. §10 Highlights/Lowlights Quality Gate — 2026-05-29
+
+### 20.1 RULE 12 — Highlights/Lowlights quality
+- Ajouté dans `pre_render_validator.py` — règle bloquante (error severity).
+- 4 sous-règles :
+  - **12a** — Empty bullets : lignes avec juste un marqueur et pas de contenu → ❌
+  - **12b** — Duplicates : 70%+ overlap entre deux highlights → ❌
+  - **12c** — "No major red flags" paradox : claim contredit par ≥2 risques listés → ❌
+  - **12d** — Unsubstantiated : ≥2 highlights sans chiffre ni source → ❌
+
+### 20.2 Prompt hardening
+- Prompt EN Highlights renforcé avec STRUCTURE REQUIREMENTS explicites (claim + number + source + implication, pas de empty bullets, pas de duplicates).
+
+### 20.3 Tests
+- `tests/spec_v27_highlights_quality.py` — **17 tests** :
+  - 4 empty bullets, 4 duplicates, 3 red-flags paradox, 4 unsubstantiated, 2 integration
+- Non-régression : `pytest tests/spec_v27_*.py tests/test_v27_*.py` → **212 passed**.
