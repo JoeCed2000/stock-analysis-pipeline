@@ -50,6 +50,8 @@ const translations = {
     downloadComplete: "✅ Download complete!",
     downloadFailed: "❌ Download failed",
     downloadReport: "📄 Download Report",
+    companyOverviewDownload: "🏢 Company Overview",
+    companyOverviewDownloadJP: "🏢 会社概要をダウンロード",
     
     // Scoring labels
     businessMomentum: "Business Momentum",
@@ -232,6 +234,8 @@ const translations = {
     downloadComplete: "✅ ダウンロード完了!",
     downloadFailed: "❌ ダウンロード失敗",
     downloadReport: "📄 レポートをダウンロード",
+    companyOverviewDownload: "🏢 Company Overview",
+    companyOverviewDownloadJP: "🏢 会社概要をダウンロード",
     
     // Scoring labels
     businessMomentum: "ビジネスモメンタム",

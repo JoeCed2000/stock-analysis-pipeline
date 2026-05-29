@@ -167,7 +167,7 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
             whiteSpace: 'nowrap',
           }}
         >
-          🏢 Company Overview
+          🏢 {lang === 'jp' ? '会社概要をダウンロード' : 'Company Overview'}
         </a>
       </div>
 

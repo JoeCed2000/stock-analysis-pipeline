@@ -2114,8 +2114,18 @@ async def download_company_overview(ticker: str, format: str = "auto"):
 
     for analysis_dir in analysis_dirs:
         source_dir = analysis_dir / "01_official_company_sources"
+        # New naming: {ticker}_company_overview_investor_profile_{date}.pdf
+        # Old naming: company_profile_{ticker}.pdf (backward compat)
+        pdf_candidates = sorted(
+            source_dir.glob(f"{ticker}_company_overview_investor_profile_*.pdf"),
+            reverse=True
+        )
+        legacy_pdf = source_dir / f"company_profile_{ticker}.pdf"
+        if not pdf_candidates and legacy_pdf.exists():
+            pdf_candidates = [legacy_pdf]
+
         candidates = {
-            "pdf": source_dir / f"company_profile_{ticker}.pdf",
+            "pdf": pdf_candidates[0] if pdf_candidates else source_dir / f"company_profile_{ticker}.pdf",
             "md": source_dir / f"company_profile_{ticker}.md",
             "json": source_dir / f"company_overview_{ticker}.json",
         }

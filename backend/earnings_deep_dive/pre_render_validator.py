@@ -2134,6 +2134,95 @@ def validate_pre_render(
                 ))
                 break
 
+    # ── RULE 33 (BLOCKING): Company Overview Download Gate ──────────────────
+    #
+    # The downloadable Company Overview PDF must be client-ready:
+    #   - No internal pipeline language (FORBIDDEN_MARKERS)
+    #   - CEO identified by name (not just "the CEO")
+    #   - Business segments are actual names (not numbers like "two")
+    #   - Competitors listed (not empty)
+    #   - Weaknesses are competitive analysis (not just valuation comments)
+
+    if company_overview is not None:
+        co = company_overview
+
+        # 33a. No internal pipeline language in text fields
+        FORBIDDEN_OVERVIEW_MARKERS = [
+            "LLM synthesis was unavailable",
+            "could not be reliably synthesized",
+            "transcript-level validation",
+            "requires transcript-level",
+            "fallback dataset",
+            "LLM synthesis unavailable",
+            "because LLM synthesis",
+        ]
+        text_fields = [
+            getattr(co, 'revenue_model', '') or '',
+            getattr(co, 'competitive_position', '') or '',
+            getattr(co, 'strengths_vs_competitors', '') or '',
+            getattr(co, 'weaker_areas_vs_competitors', '') or '',
+            getattr(co, 'ceo_leadership_style', '') or '',
+            getattr(co, 'long_term_vision', '') or '',
+        ]
+        for field_text in text_fields:
+            for marker in FORBIDDEN_OVERVIEW_MARKERS:
+                if marker.lower() in field_text.lower():
+                    warnings.append(ValidationWarning(
+                        check="company_overview_forbidden_marker",
+                        section="Company Overview",
+                        detail=(
+                            f"Forbidden internal pipeline language found: '{marker}'. "
+                            "Client-facing PDFs must never expose internal system state. "
+                            "Flush the overview cache and regenerate with updated prompts/fallback."
+                        ),
+                        severity="error",
+                    ))
+                    break
+
+        # 33b. CEO must be identified by name
+        ceo_text = getattr(co, 'ceo_leadership_style', '') or ''
+        ceo_profile = getattr(co, 'company_profile', None)
+        ceo_name_from_profile = getattr(ceo_profile, 'name', None) if ceo_profile else None
+        # Check if CEO is referenced but not identified by a proper name
+        # A proper name has at least two consecutive words starting with capital letters
+        has_ceo_reference = bool(re.search(
+            r'(?i)\b(?:the\s+)?CEO\b|chief\s+executive',
+            ceo_text
+        ))
+        # Look for a likely person name: "CEO Name Surname" or just "Name Surname"
+        has_proper_name = bool(re.search(
+            r'\b[A-Z][a-z]+\s+[A-Z][a-z]+',  # "Jensen Huang", "Sundar Pichai"
+            ceo_text
+        ))
+        if has_ceo_reference and not has_proper_name and not ceo_name_from_profile:
+            warnings.append(ValidationWarning(
+                check="company_overview_ceo_not_named",
+                section="Company Overview",
+                detail=(
+                    "CEO is referenced generically ('the CEO') but not identified by name. "
+                    "The downloadable PDF must identify the CEO by name."
+                ),
+                severity="error",
+            ))
+
+        # 33c. Business segments must not be numbers
+        segments = getattr(co, 'business_segments', None) or []
+        number_words = {"one", "two", "three", "four", "five", "six"}
+        for seg in segments:
+            seg_str = str(seg).strip().lower()
+            if seg_str in number_words:
+                warnings.append(ValidationWarning(
+                    check="company_overview_segment_is_number",
+                    section="Company Overview",
+                    detail=(
+                        f"Business segment is a number word ('{seg}') instead of an actual "
+                        f"segment name. This indicates fallback extraction failed. "
+                        f"Flush cache and regenerate with corrected segment parser."
+                    ),
+                    severity="error",
+                ))
+                break
+
     # ── Determine pass/fail ────────────────────────────────────────────
 
     errors = [w for w in warnings if w.severity == "error"]

@@ -271,7 +271,29 @@ def generate_company_profile(
     
     # Write file
     profile_path = os.path.join(profile_dir, f"company_profile_{ticker}.md")
+    content = "\n".join(lines)
+
+    # ── FORBIDDEN MARKERS check ──────────────────────────────────────
+    FORBIDDEN_MARKERS = [
+        "LLM synthesis was unavailable",
+        "could not be reliably synthesized",
+        "transcript-level validation",
+        "requires transcript-level",
+        "fallback dataset",
+        "LLM synthesis unavailable",
+        "because LLM synthesis",
+    ]
+    for marker in FORBIDDEN_MARKERS:
+        if marker.lower() in content.lower():
+            import logging
+            _log = logging.getLogger(__name__)
+            _log.warning(
+                f"Company profile for {ticker} contains forbidden marker: '{marker}'. "
+                "This indicates stale fallback cache or LLM prompt violation."
+            )
+            break
+
     with open(profile_path, "w") as f:
-        f.write("\n".join(lines))
+        f.write(content)
     
     return profile_path
