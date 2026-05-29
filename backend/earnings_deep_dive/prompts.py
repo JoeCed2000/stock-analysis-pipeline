@@ -96,15 +96,7 @@ SECTION_QUESTIONS: Dict[str, Dict[str, str]] = {
             "Categorize each by theme (Operational, Strategic, Macro, Competitive) "
             "with a severity rating (High/Medium/Low). For each, provide the specific transcript "
             "or data evidence, explain WHY it matters to investors, and assess whether "
-            "it represents a durable shift or a one-quarter event.\n\n"
-            "STRUCTURE REQUIREMENTS:\n"
-            "- Every bullet must have: claim + number/metric + source + investor implication.\n"
-            "- No empty bullets. No 'N/A' placeholders.\n"
-            "- No duplicate claims — each point must be distinct.\n"
-            "- If you list risks/concerns, do NOT also claim 'no major red flags'.\n"
-            "- Every highlight/lowlight must cite a specific number (%, $, multiple) or "
-            "a named source (transcript quote, SEC filing, press release, management guidance).\n"
-            "- Icons (🌟⚠️) are allowed for visual structure only, never as a replacement for content."
+            "it represents a durable shift or a one-quarter event."
         ),
         "jp": (
             "今回の決算のハイライト、ローライトを、テーマ別（オペレーション/戦略/マクロ/競合）に分類し、"
@@ -172,7 +164,7 @@ SECTION_QUESTIONS: Dict[str, Dict[str, str]] = {
     },
     "Verdict": {
         "en": (
-            "What is the overall earnings verdict for investors after weighing each dimension? "
+            "What is the overall earnings verdict for Nami-san after weighing each dimension? "
             "Rate each dimension (Growth, Margins, Cash Flow, Capital Efficiency, Valuation, "
             "Backlog/Guidance) on a simple scale: Strong / Neutral / Weak. "
             "Then produce an integrated verdict explaining how these dimensions interact — "
@@ -181,7 +173,7 @@ SECTION_QUESTIONS: Dict[str, Dict[str, str]] = {
         ),
         "jp": (
             "成長、利益率、キャッシュフロー、資本効率、バリュエーション、バックログ/ガイダンスの"
-            "各次元を「強い/普通/弱い」で評価し、投資家向けの総合評価を教えてください。"
+            "各次元を「強い/普通/弱い」で評価し、Namiさん向けの総合評価を教えてください。"
             "これらの次元がどのように相互作用するかも説明してください。"
         ),
     },
@@ -198,14 +190,7 @@ Required analysis format:
 ① EPS: beat/miss, YoY direction, and exact source.
 ② Revenue: beat/miss, YoY direction, and exact source.
 ③ Quality of the beat/miss: explain whether both top line and profit moved together.
-
-🔴 SOURCE COLUMN RULES:
-- Actual EPS/Revenue → "Company reported" or specific filing (e.g. "10-Q FY2026 Q1")
-- Estimate → "Analyst consensus" (NEVER "SEC" — SEC does not publish consensus)
-- YoY → "Calculated from reported data"
-- Never use raw provider keys (yfinance, trailingPE, etc.) as source labels.
-
-👉 投資家向け解釈: explain in plain Japanese-investor terms whether this is a high-quality surprise or not.""",
+👉 Namiさん向け解釈: explain in plain Japanese-investor terms whether this is a high-quality surprise or not.""",
     "Highlights": """Required table:
 {table_header}
 |---|---|---|---|---|---|
@@ -229,7 +214,7 @@ Required analysis format:
 
 ⚠️ リスク: 1〜2の具体的で裏付けのあるリスク。汎用的ではない。
 
-🧠 総合評価（投資家向け）: grade the quarter in one concise line.
+🧠 総合評価（Namiさん向け）: grade the quarter in one concise line.
 🎯 投資視点の一言: state the core takeaway without investment advice.""",
     "Operating Metrics": """Required table:
 {table_header}
@@ -255,7 +240,7 @@ Required analysis format:
 
 🎯 全体構造（超重要）: 収益成長の軌道 × マージンプロファイル × コスト構造の相互作用を要約。
 
-🧩 本質的理解: 収益品質が高いか（オペレーション主導、持続可能）脆弱か（コスト削減、一時的利益、景気循環的）を説明。
+🧩 Namiさん向けの本質理解: 収益品質が高いか（オペレーション主導、持続可能）脆弱か（コスト削減、一時的利益、景気循環的）を説明。
 
 ⚠️ リスク: 1〜2のマージンまたはコストに関する具体的リスク。
 
@@ -278,11 +263,11 @@ Required analysis format:
 
 競合コンテキスト: セクター平均と比較したFCF変換率とCapEx強度。
 
-🧩 投資家向け解釈: 企業が効率的に現金を生み出しているか現金を消費しているか、現在の現金使途（自社株買い、投資、債務）が価値創造的かを説明。
+🧩 Namiさん向け解釈: 企業が効率的に現金を生み出しているか現金を消費しているか、現在の現金使途（自社株買い、投資、債務）が価値創造的かを説明。
 
 ⚠️ リスク: 1〜2の運転資本または再投資リスク。
 
-⚠️ 注意点（投資家向け）: 一時的な運転資本や将来の投資リスクについて言及。""",
+⚠️ 注意点（Namiさん向け）: 一時的な運転資本や将来の投資リスクについて言及。""",
     "Capital Efficiency": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -297,7 +282,7 @@ Required analysis format:
 ① ROE: why high/low and whether buybacks distort it.
 ② ROTCE / ROTE and ROA: core efficiency and asset productivity.
 ③ ROIC: the most important capital-return read-through versus cost of capital.
-🎯 総合評価（投資家向け）: state whether capital efficiency is excellent, normal, or weak.
+🎯 総合評価（Namiさん向け）: state whether capital efficiency is excellent, normal, or weak.
 ⚠️ 注意点（かなり重要）: distinguish financial engineering from business-model strength.""",
     "Segments": """Required tables:
 {table_header}
@@ -326,7 +311,7 @@ Required analysis format:
 
 🎯 全体構造（超重要）: 収益集中リスク。顧客または製品依存度の分析。
 
-🧩 本質的理解: 短期/中期/長期のセグメントテーゼ — どのセグメントが勝ち、どれが衰えるか。
+🧩 Namiさん向け本質理解: 短期/中期/長期のセグメントテーゼ — どのセグメントが勝ち、どれが衰えるか。
 
 ⚠️ リスク: 1〜2のセグメント固有リスク（集中、競合代替、景気循環性）。
 
@@ -343,7 +328,7 @@ Required analysis format:
 ① Current multiple: state the value from supplied metrics.
 ② Comparison: sector, history, peers — use available context.
 ③ Justification: whether growth, margins, cash, backlog, or guidance support the multiple.
-👉 投資家向け解釈: explain if valuation looks supported, stretched, or not assessable.
+👉 Namiさん向け解釈: explain if valuation looks supported, stretched, or not assessable.
 ⚠️ 注意点: do not invent consensus numbers; mark missing data.""",
     "Backlog": """Required table:
 {table_header}
@@ -360,7 +345,7 @@ Required analysis format:
 ■ ③ なぜ質が高い/低いのか？: demand duration, customer commitment, supply constraints.
 ■ ④ ただし注意点（重要）: pricing, cancellation, coverage, and burn-down risk.
 ■ ⑤ バックログの“質”を一言でいうと: one direct phrase.
-■ 本質的理解: explain what visibility changed and list next questions.""",
+■ Namiさん向けの本質: explain what visibility changed and list next questions.""",
     "Guidance": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -383,7 +368,10 @@ Required analysis format:
 ② Margin direction
 ③ Stabilizing or risk factors
 ■ ただし注意点（かなり重要）: whether guidance is too strong, price dependent, or cyclical.
-■ 本質的理解: what the guide means and what to monitor next.""",
+■ Namiさん向けの本質: what the guide means and what to monitor next.
+■ 一言まとめ: [your one-line summary here]
+
+⚠️ 重要: 会社ガイダンス（経営陣が発表した会社の見通し）とコンセンサス/アナリスト予想（外部予測）を常に明確に区別してください。外部予想を「ガイダンス」と表記しないこと。「会社ガイダンス：…」または「経営陣のガイダンス：…」のように正確に表記すること。""",
     "Verdict": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -396,7 +384,7 @@ Required analysis format:
 | Backlog / Guidance | ... | ... | ... | ... |
 
 Required analysis format:
-🏆 総合評価（投資家向け、各次元3〜5文）
+🏆 総合評価（Namiさん向け、各次元3〜5文）
 ① 成長: 強い/普通/弱いで評価。収益とEPSの軌道。成長の質（オーガニックvs買収、経常的vs一時的）。セクター成長との比較。
 ② マージン: 強い/普通/弱いで評価。粗利益率と営業利益率のトレンド。価格決定力とコスト管理。セクター平均との比較。
 ③ キャッシュフロー: 強い/普通/弱いで評価。FCF生成と変換率。現金使途の質（自社株買い、再投資、債務）。FCF利回りの文脈。
@@ -426,7 +414,7 @@ Required analysis format:
 ① EPS: beat/miss, YoY direction, and exact source.
 ② Revenue: beat/miss, YoY direction, and exact source.
 ③ Quality of the beat/miss: explain whether both top line and profit moved together.
-Investor insight: explain in plain investor terms whether this is a high-quality surprise or not.
+For Nami-san: explain in plain investor terms whether this is a high-quality surprise or not.
 > One-line summary: [your one-line summary here]""",
     "Highlights": """Required table:
 {table_header}
@@ -451,7 +439,7 @@ Competitive context: How does this quarter's performance compare to sector peers
 
 ⚠️ Risk/Implications: 1-2 specific, sourced risks for this quarter's themes. Not generic.
 
-Key takeaway: grade the quarter in one concise line.
+Essential insight for Nami-san: grade the quarter in one concise line.
 Investment takeaway: state the core takeaway without investment advice.
 > One-line summary: [your one-line summary here]""",
     "Operating Metrics": """Required table:
@@ -478,7 +466,7 @@ Competitive context: Margin positioning vs sector peers — above/at/below avera
 
 Operating structure: Summarize revenue growth trajectory × margin profile × cost structure interaction.
 
-Key takeaway: Explain whether earnings quality is high (operationally driven, sustainable) or fragile (cost-cutting, one-time benefits, cyclical).
+Essential insight for Nami-san: Explain whether earnings quality is high (operationally driven, sustainable) or fragile (cost-cutting, one-time benefits, cyclical).
 
 ⚠️ Risk/Implications: 1-2 specific margin or cost risks. Not generic.
 
@@ -502,11 +490,11 @@ Cash structure: Compare cash generation versus reinvestment needs. Is the compan
 
 Competitive context: FCF conversion and CapEx intensity vs sector peers.
 
-Key takeaway: Explain whether the company creates cash efficiently or burns cash, and whether current cash usage (buybacks, investment, debt) is value-accretive.
+Essential insight for Nami-san: Explain whether the company creates cash efficiently or burns cash, and whether current cash usage (buybacks, investment, debt) is value-accretive.
 
 ⚠️ Risk/Implications: 1-2 working-capital or reinvestment risks. Not generic.
 
-Risk consideration: Mention one-off working-capital or future investment risks.
+Caution for Nami-san: Mention one-off working-capital or future investment risks.
 > One-line summary: [your one-line summary here]""",
     "Capital Efficiency": """Required table:
 {table_header}
@@ -522,7 +510,7 @@ Supporting calculation data: list net income, assets, equity, invested capital i
 ① ROE: why high/low and whether buybacks distort it.
 ② ROTCE / ROTE and ROA: core efficiency and asset productivity.
 ③ ROIC: the most important capital-return read-through versus cost of capital.
-Investor insight: state whether capital efficiency is excellent, normal, or weak.
+For Nami-san: state whether capital efficiency is excellent, normal, or weak.
 Caution: distinguish financial engineering from business-model strength.
 > One-line summary: [your one-line summary here]""",
     "Segments": """Required tables:
@@ -552,7 +540,7 @@ Competitive context: Segment mix positioning vs sector peers — more/less diver
 
 Overall structure: Revenue concentration risk. Customer or product dependency analysis.
 
-Key takeaway: Short/medium/long-term segment thesis — which segments win, which fade.
+Essential insight for Nami-san: Short/medium/long-term segment thesis — which segments win, which fade.
 
 ⚠️ Risk/Implications: 1-2 segment-specific risks (concentration, competitive displacement, cyclicality).
 
@@ -570,7 +558,7 @@ Required analysis format:
 ① Current multiple: state the value from supplied metrics.
 ② Comparison: sector, history, peers — use available context.
 ③ Justification: whether growth, margins, cash, backlog, or guidance support the multiple.
-Investor insight: explain if valuation looks supported, stretched, or not assessable.
+For Nami-san: explain if valuation looks supported, stretched, or not assessable.
 Caution: do not invent consensus numbers; mark missing data.
 > One-line summary: [your one-line summary here]""",
     "Backlog": """Required table:
@@ -588,7 +576,7 @@ Conclusion: quantity and quality in one line.
 ③ Why quality is high/low: demand duration, customer commitment, supply constraints.
 ④ Caution: pricing, cancellation, coverage, and burn-down risk.
 ⑤ Backlog quality in one phrase.
-Key takeaway: explain what visibility changed and list next questions.
+Essential insight for Nami-san: explain what visibility changed and list next questions.
 > One-line summary: [your one-line summary here]""",
     "Guidance": """Required table:
 {table_header}
@@ -612,8 +600,10 @@ Medium-term implications:
 ② Margin direction
 ③ Stabilizing or risk factors
 Caution: whether guidance is too strong, price dependent, or cyclical.
-Key takeaway: what the guide means and what to monitor next.
-> One-line summary: [your one-line summary here]""",
+Essential insight for Nami-san: what the guide means and what to monitor next.
+> One-line summary: [your one-line summary here]
+
+⚠️ CRITICAL: Always distinguish company guidance (company-issued forward outlook from management) from consensus/analyst estimates (external predictions). Never label external estimates as "guidance." Use precise language: "Company guidance: ..." or "Management guides: ..." when discussing company-issued outlooks.""",
     "Verdict": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -623,7 +613,7 @@ Key takeaway: what the guide means and what to monitor next.
 | Risks | ... | ... | ... | ... |
 
 Required analysis format:
-🏆 Overall assessment for investors (3-5 sentences each dimension)
+🏆 Overall assessment for Nami-san (3-5 sentences each dimension)
 ① Growth: Rate Strong/Neutral/Weak. Revenue and EPS trajectory. Quality of growth (organic vs acquired, recurring vs one-time). Compare to sector growth.
 ② Margins: Rate Strong/Neutral/Weak. Gross and operating margin trend. Pricing power and cost control. Margin vs sector peers.
 ③ Cash Flow: Rate Strong/Neutral/Weak. FCF generation and conversion. Cash usage quality (buybacks, reinvestment, debt). FCF yield context.
@@ -655,7 +645,7 @@ def system_prompt(language: str, sector: str = "", industry: str = "") -> str:
     sector_guidance = _sector_guidance(sector, industry)
 
     en_system = (
-        f"You are a senior buy-side equity analyst writing an earnings deep-dive for an institutional fund manager, "
+        f"You are a senior buy-side equity analyst writing an earnings deep-dive for Nami-san, "
         f"a fund manager who needs actionable, sector-specific insight.{sector_line}\n"
         f"{sector_guidance}\n\n"
         "THINK LIKE AN ANALYST — NOT A FORM FILLER:\n"
@@ -674,7 +664,7 @@ def system_prompt(language: str, sector: str = "", industry: str = "") -> str:
         "STRUCTURE:\n"
         "- Start each section with ## Section Name\n"
         "- Use numbered analysis ①②③ for key points (3-5 sentences each minimum)\n"
-        "- Include an 'Investor takeaway' line\n"
+        "- Include a 'Nami-san takeaway' line\n"
         "- End with > One-line summary: [concise verdict]\n"
         "- Every section must include a ⚠️ Risk/Implications paragraph with 1-2 specific, sourced risks\n\n"
         "DATA RULES:\n"
@@ -685,7 +675,7 @@ def system_prompt(language: str, sector: str = "", industry: str = "") -> str:
     )
 
     jp_system = (
-        f"あなたはバイサイドのシニアアナリストで、機関投資家向けに決算分析を書いています。{sector_line}\n"
+        f"あなたはバイサイドのシニアアナリストで、Namiさん向けに決算分析を書いています。{sector_line}\n"
         f"{sector_guidance}\n\n"
         "型にはまったフォーム記入ではなく、アナリストとして考えてください：\n"
         "- 各分析ポイントは3〜5文の実質的な内容で、具体的なデータ証拠、競合コンテキスト、投資家への示唆を含めてください。1行の回答は不十分です。\n"
@@ -694,7 +684,7 @@ def system_prompt(language: str, sector: str = "", industry: str = "") -> str:
         "- 決算トランスクリプトで経営陣が強調しているテーマに合わせて分析の深さを調整し、④⑤の追加分析ポイントを加えてください。\n"
         "- 可能な場合はセクター平均との比較を含めてください。\n"
         "- QoQトレンドをYoYと併せて示し、単なるスナップショットではなく変化を論じてください。\n\n"
-        "構造：## セクション名, ①②③, 投資家向け解釈, ⚠️ リスク, > 一言まとめ\n\n"
+        "構造：## セクション名, ①②③, Namiさん向け解釈, ⚠️ リスク, > 一言まとめ\n\n"
         "データルール：すべての数字に出所を明記。数値が入手できない場合は理由を説明。\n"
         "埋め草（Not available/Supplied metrics）を使用しない。日本語で記述。"
     )
@@ -782,14 +772,14 @@ def _format_question(section: str, language: str, ticker: str, company: str, qua
     jp = question["jp"].format(**values)
     normalized = language.lower()
 
-    if normalized in {"jp", "bilingual"}:
+    if normalized in {"jp", "ja", "bilingual"}:
         return f"Question (EN): {en}\nQuestion (JP): {jp}"
     return f"Question (EN): {en}"
 
 
 def _language_rules(language: str) -> str:
     normalized = language.lower()
-    if normalized == "jp":
+    if normalized in {"ja", "jp"}:
         return (
             "Use Japanese for the answer body. Keep important English financial terms in parentheses "
             "when helpful, for example 売上高 (Revenue), 営業キャッシュフロー (OCF), "
@@ -803,28 +793,12 @@ def _language_rules(language: str) -> str:
         )
     return (
         "Use English ONLY for the entire answer — no Japanese characters, no CJK. "
-        "Use English labels only: 'Investor insight:', 'Risk factor:', 'Key takeaway:', "
+        "Use English labels only: 'For Nami-san:', 'Caution:', 'Essential insight:', "
         "and '> One-line summary:'. "
-        "Every table cell must contain either a sourced value or '—'. "
-        "Compute a metric only when all formula inputs are supplied; if inputs are missing, use '—'. "
+        "Every table cell must contain a sourced value or a placeholder dash. "
+        "Compute a metric only when all formula inputs are supplied; otherwise use a dash. "
         "Never leave a cell empty and never invent missing values."
     )
-
-
-def _parse_quarter(quarter: str):
-    """Parse quarter like '2026Q1' → ('Q1 2026', 'Q1 2025'). Returns None if unparseable."""
-    try:
-        s = str(quarter)
-        if 'Q' not in s:
-            return None
-        year_part, q_part = s.split('Q', 1)
-        year = int(year_part)
-        q = int(q_part)
-        if q < 1 or q > 4:
-            return None
-        return (f"Q{q} {year}", f"Q{q} {year - 1}")
-    except (ValueError, TypeError):
-        return None
 
 
 def _base_prompt(
@@ -840,15 +814,7 @@ def _base_prompt(
     canonical = _canonical_section(section)
     title = _section_title(section)
     table_header = TABLE_REQUIREMENTS[canonical]
-    # F3: Dynamic column labels — "Q1 2026" / "Q1 2025" instead of "Actual" / "Prior Year"
-    parsed = _parse_quarter(quarter)
-    if parsed:
-        current_label, prior_label = parsed
-        table_header = table_header.replace("Actual", current_label).replace("Prior Year", prior_label)
-        # EPS & Revenue table: "Estimate" column → "{quarter} Est"
-        table_header = table_header.replace("| Estimate |", f"| {current_label} Est |")
-        table_header = table_header.replace("vs Estimate", f"vs {current_label} Est")
-    is_jp = language.lower() == "jp"
+    is_jp = language.lower() in {"jp", "ja"}
     format_source = SECTION_FORMATS if is_jp else EN_SECTION_FORMATS
     section_format = format_source[canonical].format(table_header=table_header)
     question = _format_question(canonical, language, ticker, company, quarter)
@@ -857,12 +823,13 @@ def _base_prompt(
         if transcript_excerpt
         else (
             "No transcript available. Use ONLY the financial_metrics data below. "
-            "Do NOT invent qualitative commentary. Mark transcript-dependent commentary as "
-            "'Unavailable from reviewed sources'."
+            "Do NOT invent qualitative commentary. Use Not retrieved from transcript "
+            "for management commentary, business drivers, and other call discussion that "
+            "requires transcript evidence."
         )
     )
 
-    insight_label = "投資家向け解釈 / 本質的理解" if is_jp else "Investor insight / Key takeaway"
+    nami_label = "Namiさん向け解釈 / Namiさん向けの本質理解" if is_jp else "For Nami-san / Essential insight"
     missing_label = "—"
     summary_label = "> 一言まとめ: [one-line summary]" if is_jp else "> One-line summary: [one-line summary]"
 
@@ -879,13 +846,13 @@ Transcript excerpt: {transcript_context}
 The Metrics above are the SINGLE SOURCE OF TRUTH extracted from yfinance and SEC filings.
 The PDF renderer will validate your table against these exact values and replace
 any hallucinated numbers with data-driven corrections.
-- Every number in your table MUST come from Metrics. If a metric is missing → write "—" and skip prose.
+- Every number in your table MUST come from Metrics. If a metric is missing → write —.
 - Every number in your PROSE must match the table. Do not write "$4.91 EPS" if the table says "$1.76".
 - Never convert, annualize, or TTM-adjust the Metrics values. Use them as-is.
-- If you need a number that is not in Metrics, write "—" in the table and
-  "Unavailable from reviewed sources" in prose. Never guess.
+- If you need a number that is not in Metrics, write — in the table and
+  "Data not available" in prose. Never guess.
 🔴 CROSS-SECTION CONSISTENCY — ALL sections MUST agree on these facts:
-- If any PRECISION INJECTION in this prompt states EPS/Revenue BEAT or MISSED,
+- If any CRITICAL OVERRIDE in this prompt states EPS/Revenue BEAT or MISSED,
   you MUST use that exact direction. Do not contradict it.
 - The EPS & Revenue section is the single source of truth for beat/miss status.
   All other sections (Highlights, Verdict) must echo the SAME direction.
@@ -903,14 +870,14 @@ Section output contract:
 - ALL detailed analysis, explanations, and interpretations go BELOW the table as structured prose.
 - Use numbered analysis markers ①②③. Use ④⑤⑥ only when the PDF section calls for more points.
 - Under each ①②③ item, use ● for data bullets and 👉 for investor implications.
-- Include {insight_label} where specified.
+- Include {nami_label} where specified.
 - Use direct transcript or supplied-metric evidence. Never invent financial data.
-- If the transcript excerpt says no transcript is available, use only Metrics and mark qualitative call evidence as Unavailable from reviewed sources.
-- Every table cell must contain a sourced value or —. Never leave cells empty and never invent missing values.
+- If the transcript excerpt says no transcript is available, use only Metrics and mark qualitative call evidence as Not retrieved.
+- Every table cell must contain a sourced value or a dash. Never leave cells empty and never invent missing values.
 - CRITICAL Source column format: Every source cell MUST identify the real data origin with specificity. Use exact provenance — SEC 10-Q page and line number, yfinance key name, transcript quote with timestamp, or calculation formula with inputs. Generic labels like \"Company filing\" or \"Calculated\" are INSUFFICIENT.
 - CRITICAL: Never write \"Section unavailable\" or similar placeholder text. If specific data is missing, use — in table cells and provide qualitative analysis based on the company's known business model, sector position, and total revenue/growth trends from Metrics.
 🔴 CLAIM SOURCE GROUNDING — Every analytical claim in your prose MUST fall into one of these categories:
-  1. SOURCED — backed by a specific number from Metrics, a transcript quote, or an SEC filing fact. When sourced, cite the evidence inline with HUMAN-READABLE labels. NEVER use raw field names like "yfinance eps_actual". Instead use: (source: SEC 10-Q/K — EPS actual $5.11) or (source: Yahoo Finance — analyst consensus $2.67) or (source: SEC EDGAR 10-Q p.42) or (source: yfinance — revenue $109.90B). The source label must tell the reader WHERE the data came from, not the internal API field name.
+  1. SOURCED — backed by a specific number from Metrics, a transcript quote, or an SEC filing fact. When sourced, cite the evidence inline: (source: yfinance eps_actual) or (source: 10-Q p.42).
   2. INFERRED — analyst interpretation based on sourced data. Label explicitly: \"Based on the metrics above, we infer that...\" or \"Model interpretation: ...\"
   3. UNSUPPORTED — do NOT emit. If you lack data to support an analytical claim, omit the claim entirely rather than inventing reasoning. A missing claim is better than a fabricated one.
 🔴 FORBIDDEN CLAIM PATTERNS — These are BLOCKED at PDF generation:
@@ -918,8 +885,6 @@ Section output contract:
   - Consensus estimates presented as company guidance
   - LLM output presented as source data (e.g. \"source: LLM analysis\")
   - Price targets, investment recommendations, or forward-looking predictions not explicitly requested
-  - Using \"SEC\" as source for estimates or consensus: SEC filings contain ACTUAL reported results only. Analyst consensus estimates come from Yahoo Finance/Bloomberg/FactSet, NOT from SEC. For estimate/consensus rows, use \"Analyst consensus (Yahoo Finance)\" or \"Consensus estimate\". For actual results, \"Company reported (SEC 10-Q)\" or \"SEC EDGAR 10-Q\" is correct.
-  - Using generic labels like \"yfinance\" or \"calculated\" in source cells. Every source must specify the DATA ORIGIN (SEC filing, Yahoo Finance, transcript, etc.)
 - End with exactly one final blockquote line: {summary_label}
 
 PDF-aligned section skeleton:
@@ -928,7 +893,7 @@ PDF-aligned section skeleton:
 
 
 def eps_revenue_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    # 🔴 PRECISION INJECTION: inject exact EPS & Revenue values so the LLM
+    # 🔴 CRITICAL OVERRIDE: inject exact EPS & Revenue values so the LLM
     # cannot invent conflicting numbers. This section is the single source
     # of truth that all other sections cross-reference against.
     eps_actual = metrics.get("eps_actual")
@@ -951,7 +916,7 @@ def eps_revenue_prompt(language: str, ticker: str, company: str, quarter: str, m
         direction = "BEAT" if pct > 0 else "MISSED"
         try: eps_actual_f = float(eps_actual); eps_est_f = float(eps_est)
         except (TypeError, ValueError): eps_actual_f = eps_actual; eps_est_f = eps_est
-        extra += f"\n\n🔴 PRECISION INJECTION — EPS: {direction} consensus by {abs(pct):.1f}% (actual=${eps_actual_f:.2f}, estimate=${eps_est_f:.2f}). USE THESE EXACT VALUES in the EPS row of the table. State '{direction}' in prose."
+        extra += f"\n\n🔴 CRITICAL OVERRIDE — EPS: {direction} consensus by {abs(pct):.1f}% (actual=${eps_actual_f:.2f}, estimate=${eps_est_f:.2f}). USE THESE EXACT VALUES in the EPS row of the table. State '{direction}' in prose."
     elif eps_actual is not None:
         try: extra += f"\n⚠️  EPS actual = ${float(eps_actual):.2f}. Use in table. Estimate unavailable — mark vs Estimate as —."
         except (TypeError, ValueError): pass
@@ -966,7 +931,7 @@ def eps_revenue_prompt(language: str, ticker: str, company: str, quarter: str, m
         direction = "BEAT" if pct > 0 else "MISSED"
         try: rev_f = float(rev_actual) / 1e9; rev_est_f = float(rev_est) / 1e9
         except (TypeError, ValueError): rev_f = rev_actual; rev_est_f = rev_est
-        extra += f"\n🔴 PRECISION INJECTION — Revenue: {direction} consensus by {abs(pct):.1f}% (actual=${rev_f:.2f}B, estimate=${rev_est_f:.2f}B). USE THESE EXACT VALUES in the Revenue row. State '{direction}' in prose."
+        extra += f"\n🔴 CRITICAL OVERRIDE — Revenue: {direction} consensus by {abs(pct):.1f}% (actual=${rev_f:.2f}B, estimate=${rev_est_f:.2f}B). USE THESE EXACT VALUES in the Revenue row. State '{direction}' in prose."
     # Use revenue_quarterly if revenue_actual is missing
     if rev_actual is None and rev_q is not None:
         try: extra += f"\n⚠️  Revenue (quarterly) = ${float(rev_q)/1e9:.2f}B. Use in Revenue row."
@@ -993,7 +958,7 @@ def eps_revenue_prompt(language: str, ticker: str, company: str, quarter: str, m
 
 
 def highlights_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    # PRECISION INJECTION: the LLM must know whether EPS/Revenue beat or missed
+    # CRITICAL OVERRIDE: the LLM must know whether EPS/Revenue beat or missed
     # before classifying highlights. Without this it will hallucinate "Revenue beat"
     # when the EPS & Revenue table shows a miss.
     eps_actual = metrics.get("eps_actual")
@@ -1013,7 +978,7 @@ def highlights_prompt(language: str, ticker: str, company: str, quarter: str, me
         direction = "BEAT" if pct > 0 else "MISSED"
         try: eps_actual_f = float(eps_actual); eps_est_f = float(eps_est)
         except (TypeError, ValueError): eps_actual_f = eps_actual; eps_est_f = eps_est
-        extra += f"\n\n🔴 PRECISION INJECTION: EPS {direction} consensus estimates by {abs(pct):.1f}% (actual=${eps_actual_f:.2f}, estimate=${eps_est_f:.2f}). Frame highlights consistent with this result."
+        extra += f"\n\n🔴 CRITICAL OVERRIDE: EPS {direction} consensus estimates by {abs(pct):.1f}% (actual=${eps_actual_f:.2f}, estimate=${eps_est_f:.2f}). Frame highlights consistent with this result."
     rev_vs = _vs(rev_actual, rev_est) if rev_actual is not None and rev_est is not None else None
     if rev_vs is not None:
         pct = rev_vs * 100
@@ -1032,11 +997,11 @@ def highlights_prompt(language: str, ticker: str, company: str, quarter: str, me
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
     )
-    return base + extra + "\n\n🔴 HIGHLIGHTS DEDUPLICATION RULE: Each highlight OR lowlight must present a DISTINCT analytical point. Before finalizing, scan all items and merge any pair that overlap by more than 50% in theme or evidence. If Highlight ③ and Highlight ① both discuss revenue growth, merge them into one point with combined evidence. Maximum 5 highlights and 3 lowlights — prioritize the most impactful."
+    return base + extra
 
 
 def operating_metrics_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    # PRECISION INJECTION: the LLM frequently hallucinates the revenue value
+    # CRITICAL OVERRIDE: the LLM frequently hallucinates the revenue value
     # (e.g. writing $2,025,000,000 instead of $111.18B). Surface the real
     # numbers explicitly to prevent this.
     rev_q = metrics.get("revenue_quarterly")
@@ -1050,7 +1015,7 @@ def operating_metrics_prompt(language: str, ticker: str, company: str, quarter: 
     if rev_q is not None:
         try:
             rev_b = float(rev_q) / 1e9
-            extra += f"\n\n🔴 PRECISION INJECTION: Revenue (current quarter) = ${rev_b:.2f}B. USE THIS EXACT VALUE in the Revenue row of the table. Do NOT invent a different revenue number."
+            extra += f"\n\n🔴 CRITICAL OVERRIDE: Revenue (current quarter) = ${rev_b:.2f}B. USE THIS EXACT VALUE in the Revenue row of the table. Do NOT invent a different revenue number."
         except (TypeError, ValueError):
             pass
     if rev_prior is not None:
@@ -1100,19 +1065,19 @@ def operating_metrics_prompt(language: str, ticker: str, company: str, quarter: 
 
 
 def cash_flow_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    # 🔴 PRECISION INJECTION: surface exact cash flow numbers to prevent hallucination.
+    # 🔴 CRITICAL OVERRIDE: surface exact cash flow numbers to prevent hallucination.
     ocf = metrics.get("operating_cash_flow")
     capex = metrics.get("capex")
     fcf = metrics.get("free_cash_flow")
     extra = ""
     if ocf is not None:
-        try: extra += f"\n\n🔴 PRECISION INJECTION: Operating Cash Flow = ${float(ocf)/1e9:.2f}B. USE THIS EXACT VALUE in the OCF row of the table."
+        try: extra += f"\n\n🔴 CRITICAL OVERRIDE: Operating Cash Flow = ${float(ocf)/1e9:.2f}B. USE THIS EXACT VALUE in the OCF row of the table."
         except (TypeError, ValueError): pass
     if capex is not None:
         try: extra += f"\n⚠️  CapEx = ${float(capex)/1e9:.2f}B. Use in CapEx row."
         except (TypeError, ValueError): pass
     if fcf is not None:
-        try: extra += f"\n⚠️  Free Cash Flow (FCF) = ${float(fcf)/1e9:.2f}B (= OCF - CapEx). Use in FCF row. CRITICAL: When mentioning FCF in prose, use this EXACT value (${float(fcf)/1e9:.2f}B). Do NOT cite different FCF figures from other sources or calculations — the table and prose must agree on the same FCF number."
+        try: extra += f"\n⚠️  Free Cash Flow (FCF) = ${float(fcf)/1e9:.2f}B (= OCF - CapEx). Use in FCF row."
         except (TypeError, ValueError): pass
     if ocf is not None and capex is not None:
         try:
@@ -1134,7 +1099,7 @@ def cash_flow_prompt(language: str, ticker: str, company: str, quarter: str, met
 
 
 def capital_efficiency_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    # 🔴 PRECISION INJECTION: surface exact capital efficiency ratios to prevent hallucination.
+    # 🔴 CRITICAL OVERRIDE: surface exact capital efficiency ratios to prevent hallucination.
     roe = metrics.get("roe")
     roa = metrics.get("roa")
     roic = metrics.get("roic")
@@ -1142,7 +1107,7 @@ def capital_efficiency_prompt(language: str, ticker: str, company: str, quarter:
     net_income = metrics.get("net_income") or metrics.get("net_income_quarterly")
     extra = ""
     if roe is not None:
-        try: extra += f"\n\n🔴 PRECISION INJECTION: ROE = {float(roe):.1f}%. USE THIS EXACT VALUE in the ROE row of the table. CRITICAL: Since ROE data IS available, never write 'Not available' or 'not retrievable' in the analysis — use the provided value."
+        try: extra += f"\n\n🔴 CRITICAL OVERRIDE: ROE = {float(roe):.1f}%. USE THIS EXACT VALUE in the ROE row of the table."
         except (TypeError, ValueError): pass
     if rotce is not None:
         try: extra += f"\n⚠️  ROTCE/ROTE = {float(rotce):.1f}%. Use in ROTCE/ROTE row."
@@ -1206,7 +1171,7 @@ def forward_pe_prompt(language: str, ticker: str, company: str, quarter: str, me
         except (TypeError, ValueError):
             pe_str = str(pe_val)
         extra += (
-            f"\n\n🔴 PRECISION INJECTION: The forward P/E ratio IS {pe_str} "
+            f"\n\n🔴 CRITICAL OVERRIDE: The forward P/E ratio IS {pe_str} "
             f"(from yfinance, key=pe_forward). This value EXISTS in the Metrics line above. "
             f"Your FIRST sentence MUST state: \"The forward P/E is {pe_str}.\" "
             f"Do NOT claim it is missing, not provided, not disclosed, or unavailable — "
@@ -1307,7 +1272,7 @@ def guidance_prompt(language: str, ticker: str, company: str, quarter: str, metr
 
 
 def verdict_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    # PRECISION INJECTION: the Verdict MUST be consistent with EPS & Revenue results.
+    # CRITICAL OVERRIDE: the Verdict MUST be consistent with EPS & Revenue results.
     # Without this the LLM will contradict its own earlier sections (e.g. "EPS beat"
     # in Highlights then "EPS did not beat consensus" in Verdict).
     eps_actual = metrics.get("eps_actual")
