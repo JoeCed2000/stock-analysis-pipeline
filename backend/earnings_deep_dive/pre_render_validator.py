@@ -964,6 +964,99 @@ def validate_pre_render(
                 severity="error",
             ))
 
+    # ── RULE 14 (BLOCKING): §26 Raw Markdown rendering — no pipe tables, heading markers ─
+    #
+    # PDF must never contain raw Markdown syntax leaked from the LLM.
+
+    for section_name, text in _sec.items():
+        if not isinstance(text, str) or not text.strip():
+            continue
+        # 14a. Raw Markdown pipe table syntax
+        pipe_table_lines = [l for l in text.split("\n") if re.match(r'^\s*\|.*\|\s*$', l) and '---' not in l]
+        if len(pipe_table_lines) >= 2:  # At least header + separator
+            warnings.append(ValidationWarning(
+                check="raw_markdown_table",
+                section=section_name,
+                detail=(
+                    f"Raw Markdown table syntax found in section '{section_name}'. "
+                    f"Pipe tables must be rendered, not leaked as text. "
+                    f"First line: '{pipe_table_lines[0][:100]}'"
+                ),
+                severity="error",
+            ))
+
+        # 14b. Raw heading markers (###, ##) in prose
+        heading_markers = re.findall(r'^#{1,3}\s+\w', text, re.MULTILINE)
+        if heading_markers:
+            warnings.append(ValidationWarning(
+                check="raw_markdown_headings",
+                section=section_name,
+                detail=(
+                    f"Raw Markdown heading markers found in section '{section_name}': "
+                    f"{heading_markers[:3]}. Use rendered headings, not raw '###'."
+                ),
+                severity="error",
+            ))
+
+        # 14c. Raw bullet markers that should be rendered
+        raw_bullets = re.findall(r'(?m)^[\*\-\+]\s+(?!\s)', text)
+        if len(raw_bullets) >= 3:
+            warnings.append(ValidationWarning(
+                check="raw_markdown_bullets",
+                section=section_name,
+                detail=(
+                    f"Raw Markdown bullet markers found in section '{section_name}'. "
+                    f"Use rendered bullets ('•'), not raw '* ' or '- '."
+                ),
+                severity="error",
+            ))
+
+    # ── RULE 15 (BLOCKING): §25 Chart data consistency ─────────────────────
+    #
+    # Chart must not contradict text/table, and must use real data.
+
+    # This check runs on the validator's metrics input — not on the PDF output.
+    # It prevents chart generation with placeholder/fake data.
+
+    eps_actual_m = metric_map.get("eps_actual")
+    eps_estimate_m = metric_map.get("eps_estimate")
+    rev_actual_m = metric_map.get("revenue_actual")
+    rev_estimate_m = metric_map.get("revenue_estimate")
+
+    # Check if EPS & Revenue text contradicts chart data
+    if eps_actual_m is not None and eps_estimate_m is not None:
+        eps_rev_t = _sec.get("EPS & Revenue", "")
+        if isinstance(eps_rev_t, str) and eps_rev_t.strip():
+            # If text says "beat" but metrics say actual < estimate → contradiction
+            text_beat = bool(re.search(r'\b(beat|exceeded|surpassed|above)\s+(consensus|estimate)', eps_rev_t, re.IGNORECASE))
+            if text_beat and eps_actual_m < eps_estimate_m:
+                warnings.append(ValidationWarning(
+                    check="chart_eps_contradiction",
+                    section="EPS & Revenue",
+                    detail=(
+                        f"Text says EPS beat consensus but metrics show "
+                        f"actual=${eps_actual_m:.2f} < estimate=${eps_estimate_m:.2f}. "
+                        f"Chart and text MUST agree."
+                    ),
+                    severity="error",
+                ))
+
+    if rev_actual_m is not None and rev_estimate_m is not None:
+        eps_rev_t = _sec.get("EPS & Revenue", "")
+        if isinstance(eps_rev_t, str) and eps_rev_t.strip():
+            text_beat = bool(re.search(r'\b(beat|exceeded|surpassed|above)\s+(consensus|estimate)', eps_rev_t, re.IGNORECASE))
+            if text_beat and rev_actual_m < rev_estimate_m:
+                warnings.append(ValidationWarning(
+                    check="chart_revenue_contradiction",
+                    section="EPS & Revenue",
+                    detail=(
+                        f"Text says Revenue beat consensus but metrics show "
+                        f"actual=${rev_actual_m:,.0f} < estimate=${rev_estimate_m:,.0f}. "
+                        f"Chart and text MUST agree."
+                    ),
+                    severity="error",
+                ))
+
     # ── Determine pass/fail ────────────────────────────────────────────
 
     errors = [w for w in warnings if w.severity == "error"]

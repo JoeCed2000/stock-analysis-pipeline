@@ -276,6 +276,7 @@ def _styles(fonts: PdfFontSet) -> dict[str, ParagraphStyle]:
             textColor=_TEXT,
             spaceBefore=3,
             spaceAfter=7,
+            keepWithNext=1,  # §24 — prevents orphan section titles
         ),
         "question": ParagraphStyle(
             "DeepDiveQuestion",
@@ -857,7 +858,7 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> lis
     else:
         col_widths = [max(MIN_COL, available_width / col_count)] * col_count
 
-    table = Table(data, colWidths=col_widths, splitByRow=1, hAlign="LEFT")
+    table = Table(data, colWidths=col_widths, splitByRow=1, repeatRows=1, hAlign="LEFT")
     table.setStyle(
         TableStyle(
             [
@@ -1105,7 +1106,17 @@ def _generate_metrics_chart(chart_data, ticker: str) -> RLImage | None:
 
     Uses matplotlib to render a compact, dark-themed chart (matching the PDF header style)
     showing two comparison panels: EPS and Revenue.
+
+    §25 — returns None if NO data is available (no placeholder charts).
     """
+    # §25 — skip chart entirely if no data at all
+    eps_ok = (chart_data.eps_actual is not None and chart_data.eps_estimate is not None
+              and chart_data.eps_actual != 0 and chart_data.eps_estimate != 0)
+    rev_ok = (chart_data.revenue_actual is not None and chart_data.revenue_estimate is not None
+              and chart_data.revenue_actual != 0 and chart_data.revenue_estimate != 0)
+    if not eps_ok and not rev_ok:
+        return None  # no placeholder chart — skip entirely
+
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -1149,9 +1160,8 @@ def _generate_metrics_chart(chart_data, ticker: str) -> RLImage | None:
                      ha="center", fontsize=8, fontweight="bold", color=color,
                      bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor=color, alpha=0.9))
     else:
+        # §25 — no placeholder: skip panel, don't show "data not available"
         ax1.axis("off")
-        ax1.text(0.5, 0.5, "EPS data not available", transform=ax1.transAxes,
-                 ha="center", va="center", fontsize=8, color="#999999")
 
     # ── Right panel: Revenue ──
     rev_actual = chart_data.revenue_actual
@@ -1180,9 +1190,8 @@ def _generate_metrics_chart(chart_data, ticker: str) -> RLImage | None:
                      ha="center", fontsize=8, fontweight="bold", color=color,
                      bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor=color, alpha=0.9))
     else:
+        # §25 — no placeholder: skip panel, don't show "data not available"
         ax2.axis("off")
-        ax2.text(0.5, 0.5, "Revenue data not available", transform=ax2.transAxes,
-                 ha="center", va="center", fontsize=8, color="#999999")
 
     for ax, has_data in ((ax1, eps_has_data), (ax2, rev_has_data)):
         if not has_data:
