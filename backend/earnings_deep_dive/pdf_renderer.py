@@ -458,17 +458,17 @@ def _paragraph_md(text: str, style: ParagraphStyle, *, font_name: str) -> Paragr
     # Double newlines → paragraph break, single newlines → line break
     formatted = formatted.replace('\n\n', '<br/><br/>')
     formatted = formatted.replace('\n', '<br/>')
-    formatted = formatted.replace('For Nami-san', 'For\u00A0Nami-san')
+    formatted = formatted.replace('Investor insight', 'Investor\u00A0insight')
     # Ensure bullet markers and key phrases always start on a new line.
-    # Process LONGER phrases first to avoid partial matches (e.g., 'For Nami-san'
-    # before 'Nami-san'). Only match when preceded by space or at line start.
+    # Process LONGER phrases first to avoid partial matches (e.g., 'Investor insight'
+    # before 'insight'). Only match when preceded by space or at line start.
     import re as _re_markers
     marker_list = sorted([
         '●', '•', '👉', '→', '🎯', '⚠️', '✅', '❌',
-        'For Nami-san', 'Nami-san', 'Namiさん',
+        'Investor insight', 'Key takeaway', 'Risk factor',
         '①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩',
         'Caution:', 'Essential insight:', 'One-line summary:',
-        'Nami takeaway:', 'Verdict takeaway:', 'Operating takeaway:',
+        'Investor takeaway:', 'Verdict takeaway:', 'Operating takeaway:',
         'Cash flow takeaway:', 'Capital efficiency takeaway:',
         'Valuation takeaway:',
     ], key=len, reverse=True)  # longest first
@@ -2231,7 +2231,7 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             "This deep-dive combines quantitative metrics from SEC filings "
             "(via yfinance/Finnhub) with qualitative analysis of the earnings call transcript. "
             "All figures are sourced; no data is invented. "
-            "Ratings reflect Nami-grade buy-side analysis standards.",
+            "Ratings reflect institutional buy-side analysis standards.",
             report.language,
         )
         story.append(Paragraph(

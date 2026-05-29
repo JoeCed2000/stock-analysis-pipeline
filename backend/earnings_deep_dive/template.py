@@ -45,7 +45,7 @@ EARNINGS_TEMPLATE: tuple[ReportSectionTemplate, ...] = (
         question="Please identify the main positive and negative points from the quarter.",
         table_columns=("Type", "Point", "Source"),
         table_rows=("Highlight 1", "Highlight 2", "Lowlight 1", "Lowlight 2"),
-        summary_label="Nami takeaway",
+        summary_label="Investor takeaway",
     ),
     ReportSectionTemplate(
         key="Operating Metrics",
@@ -129,7 +129,7 @@ JAPANESE_EARNINGS_TEMPLATE: tuple[ReportSectionTemplate, ...] = (
         question="以下の四半期について、主なポジティブ要因とリスク要因を整理してください。",
         table_columns=("テーマ", "シグナル", "根拠", "影響", "出所"),
         table_rows=("主なポジティブ要因", "主なリスク", "経営陣トーン"),
-        summary_label="Namiコメント",
+        summary_label="投資家コメント",
     ),
     ReportSectionTemplate(
         key="Operating Metrics",

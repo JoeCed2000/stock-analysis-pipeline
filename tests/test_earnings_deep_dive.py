@@ -45,7 +45,7 @@ def test_pdf_aligned_prompts_require_nami_template_shape():
     )
 
     assert len(SECTION_ORDER) == 10
-    assert "Nami" in system_prompt("jp")
+    assert "機関投資家" in system_prompt("jp")
     assert "sourced: (Transcript" in system_prompt("en")
     assert "DATA RULES" in system_prompt("en")
 
@@ -63,7 +63,7 @@ def test_pdf_aligned_prompts_require_nami_template_shape():
         assert "Question (EN):" in prompt
         assert "Question (JP):" in prompt
         assert "①" in prompt and "②" in prompt and "③" in prompt
-        assert "Namiさん" in prompt
+        assert "投資家向け" in prompt
         assert "> 一言まとめ:" in prompt
         # F3: Dynamic column labels — for sections with "Actual"/"Prior Year" or "Estimate",
         # the table_header now uses quarter-specific labels ("Q1 2026", "Q1 2025", "Q1 2026 Est")

@@ -91,11 +91,11 @@ TRANSLATIONS = {
         "This deep-dive combines quantitative metrics from SEC filings "
         "(via yfinance/Finnhub) with qualitative analysis of the earnings call transcript. "
         "All figures are sourced; no data is invented. "
-        "Ratings reflect Nami-grade buy-side analysis standards.":
+        "Ratings reflect institutional buy-side analysis standards.":
             "この詳細分析は、SEC提出書類（yfinance/Finnhub経由）の定量指標と"
             "決算説明会トランスクリプトの定性分析を組み合わせています。"
             "すべての数値はソースに基づき、捏造データはありません。"
-            "格付けはNami基準のバイサイド分析水準を反映しています。",
+            "格付けは機関投資家基準のバイサイド分析水準を反映しています。",
         "Every analytical claim in this report is traceable to a specific data source. "
         "This appendix provides the audit trail.":
             "このレポートのすべての分析的主張は特定のデータソースに遡ることができます。"

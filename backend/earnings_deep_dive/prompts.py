@@ -172,7 +172,7 @@ SECTION_QUESTIONS: Dict[str, Dict[str, str]] = {
     },
     "Verdict": {
         "en": (
-            "What is the overall earnings verdict for Nami-san after weighing each dimension? "
+            "What is the overall earnings verdict for investors after weighing each dimension? "
             "Rate each dimension (Growth, Margins, Cash Flow, Capital Efficiency, Valuation, "
             "Backlog/Guidance) on a simple scale: Strong / Neutral / Weak. "
             "Then produce an integrated verdict explaining how these dimensions interact — "
@@ -181,7 +181,7 @@ SECTION_QUESTIONS: Dict[str, Dict[str, str]] = {
         ),
         "jp": (
             "成長、利益率、キャッシュフロー、資本効率、バリュエーション、バックログ/ガイダンスの"
-            "各次元を「強い/普通/弱い」で評価し、Namiさん向けの総合評価を教えてください。"
+            "各次元を「強い/普通/弱い」で評価し、投資家向けの総合評価を教えてください。"
             "これらの次元がどのように相互作用するかも説明してください。"
         ),
     },
@@ -205,7 +205,7 @@ Required analysis format:
 - YoY → "Calculated from reported data"
 - Never use raw provider keys (yfinance, trailingPE, etc.) as source labels.
 
-👉 Namiさん向け解釈: explain in plain Japanese-investor terms whether this is a high-quality surprise or not.""",
+👉 投資家向け解釈: explain in plain Japanese-investor terms whether this is a high-quality surprise or not.""",
     "Highlights": """Required table:
 {table_header}
 |---|---|---|---|---|---|
@@ -229,7 +229,7 @@ Required analysis format:
 
 ⚠️ リスク: 1〜2の具体的で裏付けのあるリスク。汎用的ではない。
 
-🧠 総合評価（Namiさん向け）: grade the quarter in one concise line.
+🧠 総合評価（投資家向け）: grade the quarter in one concise line.
 🎯 投資視点の一言: state the core takeaway without investment advice.""",
     "Operating Metrics": """Required table:
 {table_header}
@@ -255,7 +255,7 @@ Required analysis format:
 
 🎯 全体構造（超重要）: 収益成長の軌道 × マージンプロファイル × コスト構造の相互作用を要約。
 
-🧩 Namiさん向けの本質理解: 収益品質が高いか（オペレーション主導、持続可能）脆弱か（コスト削減、一時的利益、景気循環的）を説明。
+🧩 本質的理解: 収益品質が高いか（オペレーション主導、持続可能）脆弱か（コスト削減、一時的利益、景気循環的）を説明。
 
 ⚠️ リスク: 1〜2のマージンまたはコストに関する具体的リスク。
 
@@ -278,11 +278,11 @@ Required analysis format:
 
 競合コンテキスト: セクター平均と比較したFCF変換率とCapEx強度。
 
-🧩 Namiさん向け解釈: 企業が効率的に現金を生み出しているか現金を消費しているか、現在の現金使途（自社株買い、投資、債務）が価値創造的かを説明。
+🧩 投資家向け解釈: 企業が効率的に現金を生み出しているか現金を消費しているか、現在の現金使途（自社株買い、投資、債務）が価値創造的かを説明。
 
 ⚠️ リスク: 1〜2の運転資本または再投資リスク。
 
-⚠️ 注意点（Namiさん向け）: 一時的な運転資本や将来の投資リスクについて言及。""",
+⚠️ 注意点（投資家向け）: 一時的な運転資本や将来の投資リスクについて言及。""",
     "Capital Efficiency": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -297,7 +297,7 @@ Required analysis format:
 ① ROE: why high/low and whether buybacks distort it.
 ② ROTCE / ROTE and ROA: core efficiency and asset productivity.
 ③ ROIC: the most important capital-return read-through versus cost of capital.
-🎯 総合評価（Namiさん向け）: state whether capital efficiency is excellent, normal, or weak.
+🎯 総合評価（投資家向け）: state whether capital efficiency is excellent, normal, or weak.
 ⚠️ 注意点（かなり重要）: distinguish financial engineering from business-model strength.""",
     "Segments": """Required tables:
 {table_header}
@@ -326,7 +326,7 @@ Required analysis format:
 
 🎯 全体構造（超重要）: 収益集中リスク。顧客または製品依存度の分析。
 
-🧩 Namiさん向け本質理解: 短期/中期/長期のセグメントテーゼ — どのセグメントが勝ち、どれが衰えるか。
+🧩 本質的理解: 短期/中期/長期のセグメントテーゼ — どのセグメントが勝ち、どれが衰えるか。
 
 ⚠️ リスク: 1〜2のセグメント固有リスク（集中、競合代替、景気循環性）。
 
@@ -343,7 +343,7 @@ Required analysis format:
 ① Current multiple: state the value from supplied metrics.
 ② Comparison: sector, history, peers — use available context.
 ③ Justification: whether growth, margins, cash, backlog, or guidance support the multiple.
-👉 Namiさん向け解釈: explain if valuation looks supported, stretched, or not assessable.
+👉 投資家向け解釈: explain if valuation looks supported, stretched, or not assessable.
 ⚠️ 注意点: do not invent consensus numbers; mark missing data.""",
     "Backlog": """Required table:
 {table_header}
@@ -360,7 +360,7 @@ Required analysis format:
 ■ ③ なぜ質が高い/低いのか？: demand duration, customer commitment, supply constraints.
 ■ ④ ただし注意点（重要）: pricing, cancellation, coverage, and burn-down risk.
 ■ ⑤ バックログの“質”を一言でいうと: one direct phrase.
-■ Namiさん向けの本質: explain what visibility changed and list next questions.""",
+■ 本質的理解: explain what visibility changed and list next questions.""",
     "Guidance": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -383,7 +383,7 @@ Required analysis format:
 ② Margin direction
 ③ Stabilizing or risk factors
 ■ ただし注意点（かなり重要）: whether guidance is too strong, price dependent, or cyclical.
-■ Namiさん向けの本質: what the guide means and what to monitor next.""",
+■ 本質的理解: what the guide means and what to monitor next.""",
     "Verdict": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -396,7 +396,7 @@ Required analysis format:
 | Backlog / Guidance | ... | ... | ... | ... |
 
 Required analysis format:
-🏆 総合評価（Namiさん向け、各次元3〜5文）
+🏆 総合評価（投資家向け、各次元3〜5文）
 ① 成長: 強い/普通/弱いで評価。収益とEPSの軌道。成長の質（オーガニックvs買収、経常的vs一時的）。セクター成長との比較。
 ② マージン: 強い/普通/弱いで評価。粗利益率と営業利益率のトレンド。価格決定力とコスト管理。セクター平均との比較。
 ③ キャッシュフロー: 強い/普通/弱いで評価。FCF生成と変換率。現金使途の質（自社株買い、再投資、債務）。FCF利回りの文脈。
@@ -426,7 +426,7 @@ Required analysis format:
 ① EPS: beat/miss, YoY direction, and exact source.
 ② Revenue: beat/miss, YoY direction, and exact source.
 ③ Quality of the beat/miss: explain whether both top line and profit moved together.
-For Nami-san: explain in plain investor terms whether this is a high-quality surprise or not.
+Investor insight: explain in plain investor terms whether this is a high-quality surprise or not.
 > One-line summary: [your one-line summary here]""",
     "Highlights": """Required table:
 {table_header}
@@ -451,7 +451,7 @@ Competitive context: How does this quarter's performance compare to sector peers
 
 ⚠️ Risk/Implications: 1-2 specific, sourced risks for this quarter's themes. Not generic.
 
-Essential insight for Nami-san: grade the quarter in one concise line.
+Key takeaway: grade the quarter in one concise line.
 Investment takeaway: state the core takeaway without investment advice.
 > One-line summary: [your one-line summary here]""",
     "Operating Metrics": """Required table:
@@ -478,7 +478,7 @@ Competitive context: Margin positioning vs sector peers — above/at/below avera
 
 Operating structure: Summarize revenue growth trajectory × margin profile × cost structure interaction.
 
-Essential insight for Nami-san: Explain whether earnings quality is high (operationally driven, sustainable) or fragile (cost-cutting, one-time benefits, cyclical).
+Key takeaway: Explain whether earnings quality is high (operationally driven, sustainable) or fragile (cost-cutting, one-time benefits, cyclical).
 
 ⚠️ Risk/Implications: 1-2 specific margin or cost risks. Not generic.
 
@@ -502,11 +502,11 @@ Cash structure: Compare cash generation versus reinvestment needs. Is the compan
 
 Competitive context: FCF conversion and CapEx intensity vs sector peers.
 
-Essential insight for Nami-san: Explain whether the company creates cash efficiently or burns cash, and whether current cash usage (buybacks, investment, debt) is value-accretive.
+Key takeaway: Explain whether the company creates cash efficiently or burns cash, and whether current cash usage (buybacks, investment, debt) is value-accretive.
 
 ⚠️ Risk/Implications: 1-2 working-capital or reinvestment risks. Not generic.
 
-Caution for Nami-san: Mention one-off working-capital or future investment risks.
+Risk consideration: Mention one-off working-capital or future investment risks.
 > One-line summary: [your one-line summary here]""",
     "Capital Efficiency": """Required table:
 {table_header}
@@ -522,7 +522,7 @@ Supporting calculation data: list net income, assets, equity, invested capital i
 ① ROE: why high/low and whether buybacks distort it.
 ② ROTCE / ROTE and ROA: core efficiency and asset productivity.
 ③ ROIC: the most important capital-return read-through versus cost of capital.
-For Nami-san: state whether capital efficiency is excellent, normal, or weak.
+Investor insight: state whether capital efficiency is excellent, normal, or weak.
 Caution: distinguish financial engineering from business-model strength.
 > One-line summary: [your one-line summary here]""",
     "Segments": """Required tables:
@@ -552,7 +552,7 @@ Competitive context: Segment mix positioning vs sector peers — more/less diver
 
 Overall structure: Revenue concentration risk. Customer or product dependency analysis.
 
-Essential insight for Nami-san: Short/medium/long-term segment thesis — which segments win, which fade.
+Key takeaway: Short/medium/long-term segment thesis — which segments win, which fade.
 
 ⚠️ Risk/Implications: 1-2 segment-specific risks (concentration, competitive displacement, cyclicality).
 
@@ -570,7 +570,7 @@ Required analysis format:
 ① Current multiple: state the value from supplied metrics.
 ② Comparison: sector, history, peers — use available context.
 ③ Justification: whether growth, margins, cash, backlog, or guidance support the multiple.
-For Nami-san: explain if valuation looks supported, stretched, or not assessable.
+Investor insight: explain if valuation looks supported, stretched, or not assessable.
 Caution: do not invent consensus numbers; mark missing data.
 > One-line summary: [your one-line summary here]""",
     "Backlog": """Required table:
@@ -588,7 +588,7 @@ Conclusion: quantity and quality in one line.
 ③ Why quality is high/low: demand duration, customer commitment, supply constraints.
 ④ Caution: pricing, cancellation, coverage, and burn-down risk.
 ⑤ Backlog quality in one phrase.
-Essential insight for Nami-san: explain what visibility changed and list next questions.
+Key takeaway: explain what visibility changed and list next questions.
 > One-line summary: [your one-line summary here]""",
     "Guidance": """Required table:
 {table_header}
@@ -612,7 +612,7 @@ Medium-term implications:
 ② Margin direction
 ③ Stabilizing or risk factors
 Caution: whether guidance is too strong, price dependent, or cyclical.
-Essential insight for Nami-san: what the guide means and what to monitor next.
+Key takeaway: what the guide means and what to monitor next.
 > One-line summary: [your one-line summary here]""",
     "Verdict": """Required table:
 {table_header}
@@ -623,7 +623,7 @@ Essential insight for Nami-san: what the guide means and what to monitor next.
 | Risks | ... | ... | ... | ... |
 
 Required analysis format:
-🏆 Overall assessment for Nami-san (3-5 sentences each dimension)
+🏆 Overall assessment for investors (3-5 sentences each dimension)
 ① Growth: Rate Strong/Neutral/Weak. Revenue and EPS trajectory. Quality of growth (organic vs acquired, recurring vs one-time). Compare to sector growth.
 ② Margins: Rate Strong/Neutral/Weak. Gross and operating margin trend. Pricing power and cost control. Margin vs sector peers.
 ③ Cash Flow: Rate Strong/Neutral/Weak. FCF generation and conversion. Cash usage quality (buybacks, reinvestment, debt). FCF yield context.
@@ -655,7 +655,7 @@ def system_prompt(language: str, sector: str = "", industry: str = "") -> str:
     sector_guidance = _sector_guidance(sector, industry)
 
     en_system = (
-        f"You are a senior buy-side equity analyst writing an earnings deep-dive for Nami-san, "
+        f"You are a senior buy-side equity analyst writing an earnings deep-dive for an institutional fund manager, "
         f"a fund manager who needs actionable, sector-specific insight.{sector_line}\n"
         f"{sector_guidance}\n\n"
         "THINK LIKE AN ANALYST — NOT A FORM FILLER:\n"
@@ -674,7 +674,7 @@ def system_prompt(language: str, sector: str = "", industry: str = "") -> str:
         "STRUCTURE:\n"
         "- Start each section with ## Section Name\n"
         "- Use numbered analysis ①②③ for key points (3-5 sentences each minimum)\n"
-        "- Include a 'Nami-san takeaway' line\n"
+        "- Include an 'Investor takeaway' line\n"
         "- End with > One-line summary: [concise verdict]\n"
         "- Every section must include a ⚠️ Risk/Implications paragraph with 1-2 specific, sourced risks\n\n"
         "DATA RULES:\n"
@@ -685,7 +685,7 @@ def system_prompt(language: str, sector: str = "", industry: str = "") -> str:
     )
 
     jp_system = (
-        f"あなたはバイサイドのシニアアナリストで、Namiさん向けに決算分析を書いています。{sector_line}\n"
+        f"あなたはバイサイドのシニアアナリストで、機関投資家向けに決算分析を書いています。{sector_line}\n"
         f"{sector_guidance}\n\n"
         "型にはまったフォーム記入ではなく、アナリストとして考えてください：\n"
         "- 各分析ポイントは3〜5文の実質的な内容で、具体的なデータ証拠、競合コンテキスト、投資家への示唆を含めてください。1行の回答は不十分です。\n"
@@ -694,7 +694,7 @@ def system_prompt(language: str, sector: str = "", industry: str = "") -> str:
         "- 決算トランスクリプトで経営陣が強調しているテーマに合わせて分析の深さを調整し、④⑤の追加分析ポイントを加えてください。\n"
         "- 可能な場合はセクター平均との比較を含めてください。\n"
         "- QoQトレンドをYoYと併せて示し、単なるスナップショットではなく変化を論じてください。\n\n"
-        "構造：## セクション名, ①②③, Namiさん向け解釈, ⚠️ リスク, > 一言まとめ\n\n"
+        "構造：## セクション名, ①②③, 投資家向け解釈, ⚠️ リスク, > 一言まとめ\n\n"
         "データルール：すべての数字に出所を明記。数値が入手できない場合は理由を説明。\n"
         "埋め草（Not available/Supplied metrics）を使用しない。日本語で記述。"
     )
@@ -803,7 +803,7 @@ def _language_rules(language: str) -> str:
         )
     return (
         "Use English ONLY for the entire answer — no Japanese characters, no CJK. "
-        "Use English labels only: 'For Nami-san:', 'Caution:', 'Essential insight:', "
+        "Use English labels only: 'Investor insight:', 'Risk factor:', 'Key takeaway:', "
         "and '> One-line summary:'. "
         "Every table cell must contain either a sourced value or '—'. "
         "Compute a metric only when all formula inputs are supplied; if inputs are missing, use '—'. "
@@ -862,7 +862,7 @@ def _base_prompt(
         )
     )
 
-    nami_label = "Namiさん向け解釈 / Namiさん向けの本質理解" if is_jp else "For Nami-san / Essential insight"
+    insight_label = "投資家向け解釈 / 本質的理解" if is_jp else "Investor insight / Key takeaway"
     missing_label = "—"
     summary_label = "> 一言まとめ: [one-line summary]" if is_jp else "> One-line summary: [one-line summary]"
 
@@ -903,7 +903,7 @@ Section output contract:
 - ALL detailed analysis, explanations, and interpretations go BELOW the table as structured prose.
 - Use numbered analysis markers ①②③. Use ④⑤⑥ only when the PDF section calls for more points.
 - Under each ①②③ item, use ● for data bullets and 👉 for investor implications.
-- Include {nami_label} where specified.
+- Include {insight_label} where specified.
 - Use direct transcript or supplied-metric evidence. Never invent financial data.
 - If the transcript excerpt says no transcript is available, use only Metrics and mark qualitative call evidence as Unavailable from reviewed sources.
 - Every table cell must contain a sourced value or —. Never leave cells empty and never invent missing values.

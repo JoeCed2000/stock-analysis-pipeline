@@ -330,7 +330,7 @@ def test_japanese_template_outputs_nami_style_explanation_markers():
 
     assert "🌟 ハイライト（良かった点）" in rendered
     assert "⚠️ ローライト（懸念点）" in rendered
-    assert "🧠 総合評価（Namiさん向け）" in rendered
+    assert "🧠 総合評価（投資家向け）" in rendered
     assert "🎯 投資視点の一言" in rendered
     assert "👉" in rendered
     assert "●" in rendered
