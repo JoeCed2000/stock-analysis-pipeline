@@ -1333,6 +1333,237 @@ def validate_pre_render(
                 severity="error",
             ))
 
+    # ── RULE 21 (BLOCKING): §20 Verdict consistency ─────────────────────────
+    #
+    # Verdict must be consistent with EPS beat/miss, risks, valuation, Data Quality.
+
+    verdict_text = _sec.get("Verdict", "")
+    if isinstance(verdict_text, str) and verdict_text.strip():
+        vd = verdict_text
+
+        # 21a. Score-commentary alignment (extends RULE 7)
+        score_match = SCORE_RE.search(vd)
+        if score_match:
+            score = int(score_match.group(1))
+            if score >= 7:
+                negative_count = sum(
+                    1 for phrase in NEGATIVE_PHRASES if phrase.lower() in vd.lower()
+                )
+                if negative_count >= 2:
+                    warnings.append(ValidationWarning(
+                        check="verdict_score_negative_contradiction",
+                        section="Verdict",
+                        detail=(
+                            f"Score is {score}/10 (positive) but {negative_count} negative "
+                            f"phrases found ('sell immediately', 'crash', 'avoid', etc.). "
+                            f"Verdict must align with score."
+                        ),
+                        severity="error",
+                    ))
+
+        # 21b. If EPS beat but verdict too negative
+        eps_beat = _detect_eps_direction(eps_rev_text)
+        if eps_beat == "BEAT":
+            vd_lower = vd.lower()
+            strong_negative = [
+                "sell", "avoid this stock", "dump", "bearish",
+                "downgrade", "underperform", "negative outlook"
+            ]
+            if sum(1 for p in strong_negative if p in vd_lower) >= 2:
+                warnings.append(ValidationWarning(
+                    check="verdict_beat_but_too_negative",
+                    section="Verdict",
+                    detail=(
+                        "EPS beat consensus but Verdict uses strongly negative language "
+                        "(e.g. 'sell', 'avoid', 'downgrade'). If risks truly outweigh "
+                        "the beat, explain why explicitly."
+                    ),
+                    severity="error",
+                ))
+
+        # 21c. "No major red flags" but material risks / data confidence is medium
+        no_red_flags_v = bool(re.search(
+            r'no\s+major\s+(red\s+flags?|risks?|concerns?)',
+            vd, re.IGNORECASE
+        ))
+        if no_red_flags_v:
+            risks_count = len(re.findall(
+                r'\b(risk|concern|headwind|threat|uncertain|pressure|competition|'
+                r'regulatory|geopolitical|supply\s+chain|margin\s+compression)\b',
+                vd, re.IGNORECASE
+            ))
+            if risks_count >= 3:
+                warnings.append(ValidationWarning(
+                    check="verdict_no_red_flags_paradox",
+                    section="Verdict",
+                    detail=(
+                        f"Claims 'no major red flags' but {risks_count} risk-related "
+                        f"terms found. If risks are material, don't claim otherwise."
+                    ),
+                    severity="error",
+                ))
+
+    # ── RULE 22 (BLOCKING): §19 Valuation sanity ─────────────────────────────
+    #
+    # FCF yield below 2% must be flagged. High P/FCF must be flagged.
+    # "Attractive" requires quantitative support.
+
+    # Check valuation signals from metrics
+    fcf_yield_m = metric_map.get("fcf_yield")
+    pfcf_m = metric_map.get("price_to_fcf") or metric_map.get("pfcf")
+    pe_fwd_m = metric_map.get("pe_forward")
+
+    # Also check Valuation V2.7 section if present
+    valuation_text = _sec.get("Valuation", "")
+
+    # 22a. FCF yield < 2% but valuation claims "attractive"
+    if fcf_yield_m is not None and fcf_yield_m < 2.0:
+        all_val_text = (valuation_text or "") + " " + (verdict_text or "")
+        has_attractive = bool(re.search(
+            r'\b(attractive|compelling|cheap|undervalued|bargain)\b',
+            all_val_text, re.IGNORECASE
+        ))
+        if has_attractive:
+            warnings.append(ValidationWarning(
+                check="valuation_fcf_yield_warning",
+                section="Valuation",
+                detail=(
+                    f"FCF yield is {fcf_yield_m:.1f}% (<2%) but valuation conclusion "
+                    f"uses 'attractive'/'compelling'/'cheap'. "
+                    f"FCF yield below 2% MUST be highlighted as a valuation risk."
+                ),
+                severity="error",
+            ))
+
+    # 22b. High P/FCF not flagged
+    if pfcf_m is not None and pfcf_m > 40:
+        all_val_text = (valuation_text or "") + " " + (verdict_text or "")
+        has_pfcf_warning = bool(re.search(
+            r'(?:high|elevated|stretched|expensive)\s*(?:P/?FCF|price.to.free.cash)'
+            r'|(?:P/?FCF|price.to.free.cash).{0,20}(?:high|elevated|stretched|expensive)',
+            all_val_text, re.IGNORECASE
+        ))
+        if not has_pfcf_warning:
+            warnings.append(ValidationWarning(
+                check="valuation_pfcf_not_flagged",
+                section="Valuation",
+                detail=(
+                    f"P/FCF is {pfcf_m:.1f}x (>40x) but not flagged as elevated. "
+                    f"High P/FCF MUST be highlighted as a valuation risk."
+                ),
+                severity="error",
+            ))
+
+    # ── RULE 23 (BLOCKING): §21 Data Quality truthfulness ────────────────────
+    #
+    # Completeness can't be 100 if critical metrics missing. Confidence can't be
+    # high if period mismatch or sources not used.
+
+    dq_text = _sec.get("Data Quality", "")
+    if isinstance(dq_text, str) and dq_text.strip():
+        dq = dq_text
+
+        # 23a. Completeness 100/100 but critical metrics missing
+        completeness_match = re.search(
+            r'(?:Completeness|completeness).*?(\d+)\s*/\s*100', dq, re.IGNORECASE
+        )
+        if completeness_match:
+            score_val = int(completeness_match.group(1))
+            if score_val >= 95:
+                # Check if critical metrics are actually unavailable
+                critical_missing = []
+                for field, label in [
+                    ("eps_actual", "EPS actual"),
+                    ("revenue_actual", "Revenue actual"),
+                    ("free_cash_flow", "Free cash flow"),
+                    ("gross_margin", "Gross margin"),
+                ]:
+                    if metric_map.get(field) is None:
+                        critical_missing.append(label)
+                if len(critical_missing) >= 2:
+                    warnings.append(ValidationWarning(
+                        check="data_quality_false_completeness",
+                        section="Data Quality",
+                        detail=(
+                            f"Completeness claims {score_val}/100 but {len(critical_missing)} "
+                            f"critical metrics are missing: {', '.join(critical_missing[:5])}. "
+                            f"Completeness cannot be near-100 if critical metrics are absent."
+                        ),
+                        severity="error",
+                    ))
+
+        # 23b. "All sources used" but transcript/SEC not used
+        all_sources_used = bool(re.search(
+            r'all\s+sources?\s+(?:used|available|verified)|every\s+source',
+            dq, re.IGNORECASE
+        ))
+        if all_sources_used:
+            # Check if the report text indicates no transcript
+            tx_ok = True
+            if "transcript not available" in dq.lower() or "no transcript" in dq.lower():
+                tx_ok = False
+            if not tx_ok:
+                warnings.append(ValidationWarning(
+                    check="data_quality_sources_inaccurate",
+                    section="Data Quality",
+                    detail=(
+                        "Claims 'all sources used' but transcript is noted as "
+                        "unavailable. Source usage status MUST be truthful."
+                    ),
+                    severity="error",
+                ))
+
+    # ── RULE 24 (BLOCKING): §14 Segments hierarchy reconciliation ────────────
+    #
+    # No parent/child double-counting. No "Total Not available" if total exists.
+
+    segments_text = _sec.get("Segments", "")
+    if isinstance(segments_text, str) and segments_text.strip():
+        sg = segments_text
+
+        # 24a. "Total Not available" but total revenue exists
+        has_total_na = bool(re.search(
+            r'Total\s*:?\s*(?:is\s+)?(?:Not\s+available|N/A|—)',
+            sg, re.IGNORECASE
+        ))
+        if has_total_na:
+            rev_q_m = metric_map.get("revenue_quarterly") or metric_map.get("revenue_actual")
+            if rev_q_m is not None:
+                warnings.append(ValidationWarning(
+                    check="segments_total_na_contradiction",
+                    section="Segments",
+                    detail=(
+                        f"'Total Not available' in Segments but metrics contain "
+                        f"revenue data. If total revenue exists in the ledger, "
+                        f"do not show 'Not available' for the total."
+                    ),
+                    severity="error",
+                ))
+
+        # 24b. Parent/child mixing — check for common subsegment overlap patterns
+        # If both "Data Center" and sub-categories appear, flag potential double-count
+        parent_terms = ["data center", "compute", "networking", "gaming", "automotive"]
+        found_parents = [t for t in parent_terms if t in sg.lower()]
+        if len(found_parents) >= 2:
+            # Check if any parent appears alongside likely subsegments
+            subsegment_indicators = re.findall(
+                r'(?:sub.segment|breakdown|of\s+which|including:|comprised?\s+of)',
+                sg, re.IGNORECASE
+            )
+            if not subsegment_indicators:
+                # No explicit subsegment notation — might be mixing levels
+                if len(re.findall(r'\$\d+', sg)) > len(found_parents) * 2:
+                    warnings.append(ValidationWarning(
+                        check="segments_hierarchy_warning",
+                        section="Segments",
+                        detail=(
+                            f"Multiple revenue figures found across segment categories "
+                            f"({', '.join(found_parents[:3])}). Verify parent/child rows "
+                            f"are not being summed — use subsegment labels if mixing levels."
+                        ),
+                        severity="error",
+                    ))
+
     # ── Determine pass/fail ────────────────────────────────────────────
 
     errors = [w for w in warnings if w.severity == "error"]
