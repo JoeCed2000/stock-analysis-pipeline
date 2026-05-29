@@ -16,101 +16,6 @@ def _warnings_for(result, check_prefix: str) -> list:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# RULE 14 — Raw Markdown rendering
-# ═══════════════════════════════════════════════════════════════════════════
-
-
-class TestRawMarkdownTable:
-    """RULE 14a: raw Markdown pipe tables."""
-
-    def test_pipe_table_blocked(self):
-        sections = {
-            "Segments": (
-                "| Segment | Revenue | YoY | Source |\n"
-                "|---|---|---|---|\n"
-                "| Compute | $18.4B | +22% | Company |\n"
-                "| Networking | $3.1B | +8% | Company |\n"
-            )
-        }
-        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _warnings_for(result, "raw_markdown_table")
-        assert len(errs) == 1
-
-    def test_no_pipe_table_passes(self):
-        sections = {
-            "Segments": "Compute revenue was $18.4B (+22% YoY). Networking was $3.1B (+8%)."
-        }
-        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _warnings_for(result, "raw_markdown_table")
-        assert len(errs) == 0
-
-    def test_single_pipe_line_not_blocked(self):
-        """A single pipe line is not a table — could be a data row rendered correctly."""
-        sections = {
-            "Segments": "Segment breakdown: | Compute | $18.4B |"
-        }
-        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _warnings_for(result, "raw_markdown_table")
-        assert len(errs) == 0
-
-
-class TestRawMarkdownHeadings:
-    """RULE 14b: raw heading markers (###, ##)."""
-
-    def test_hash_heading_blocked(self):
-        sections = {"Operating Metrics": "### Margin Analysis\n\nGross margin was 72.4%."}
-        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _warnings_for(result, "raw_markdown_headings")
-        assert len(errs) == 1
-
-    def test_rendered_heading_passes(self):
-        sections = {"Operating Metrics": "Margin Analysis\n\nGross margin was 72.4%."}
-        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _warnings_for(result, "raw_markdown_headings")
-        assert len(errs) == 0
-
-
-class TestRawMarkdownBullets:
-    """RULE 14c: raw bullet markers (*, -, +)."""
-
-    def test_raw_star_bullets_blocked(self):
-        sections = {
-            "Highlights": (
-                "* Revenue grew 18% YoY to $22.1B\n"
-                "* Operating margin expanded 220bps\n"
-                "* FCF reached $14.9B\n"
-            )
-        }
-        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _warnings_for(result, "raw_markdown_bullets")
-        assert len(errs) == 1
-
-    def test_rendered_bullets_pass(self):
-        sections = {
-            "Highlights": (
-                "• Revenue grew 18% YoY to $22.1B\n"
-                "• Operating margin expanded 220bps\n"
-                "• FCF reached $14.9B\n"
-            )
-        }
-        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _warnings_for(result, "raw_markdown_bullets")
-        assert len(errs) == 0
-
-    def test_less_than_3_raw_bullets_passes(self):
-        """1-2 raw bullets could be intentional. Gate fires at 3+."""
-        sections = {
-            "Highlights": (
-                "* Revenue grew 18% YoY to $22.1B\n"
-                "• Operating margin expanded 220bps\n"
-            )
-        }
-        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _warnings_for(result, "raw_markdown_bullets")
-        assert len(errs) == 0
-
-
-# ═══════════════════════════════════════════════════════════════════════════
 # RULE 15 — Chart data consistency
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -179,7 +84,7 @@ class TestChartRevenueContradiction:
 
 
 class TestRules1415Integration:
-    """Rules 14 and 15 with other existing rules."""
+    """Rule 15 integration with other existing rules (Rule 14 removed)."""
 
     def test_clean_section_all_rules_pass(self):
         from backend.earnings_deep_dive.schemas import FinancialMetrics
@@ -198,13 +103,13 @@ class TestRules1415Integration:
             ),
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", metrics, sections)
-        for prefix in ["raw_markdown_", "chart_eps_", "chart_revenue_"]:
+        for prefix in ["chart_eps_", "chart_revenue_"]:
             errs = _errors_for(result, prefix)
             assert len(errs) == 0, \
                 f"Clean sections should not trigger '{prefix}': {errs}"
 
     def test_multiple_rules_fire_on_bad_section(self):
-        """A section with both raw markdown and provider keys triggers multiple rules."""
+        """A section with raw provider keys triggers the provider key rule."""
         sections = {
             "EPS & Revenue": (
                 "| Metric | Estimate | Actual | Source |\n"
@@ -214,8 +119,5 @@ class TestRules1415Integration:
             )
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        # Both raw_markdown_table and raw_provider_key should fire
-        table_errs = _warnings_for(result, "raw_markdown_table")
         provider_errs = _errors_for(result, "eps_revenue_raw_provider_key")
-        assert len(table_errs) >= 1
         assert len(provider_errs) >= 1

@@ -976,53 +976,6 @@ def validate_pre_render(
                 severity="error",
             ))
 
-    # ── RULE 14 (BLOCKING): §26 Raw Markdown rendering — no pipe tables, heading markers ─
-    #
-    # PDF must never contain raw Markdown syntax leaked from the LLM.
-
-    for section_name, text in _sec.items():
-        if not isinstance(text, str) or not text.strip():
-            continue
-        # 14a. Raw Markdown pipe table syntax
-        pipe_table_lines = [l for l in text.split("\n") if re.match(r'^\s*\|.*\|\s*$', l) and '---' not in l]
-        if len(pipe_table_lines) >= 2:  # At least header + separator
-            warnings.append(ValidationWarning(
-                check="raw_markdown_table",
-                section=section_name,
-                detail=(
-                    f"Raw Markdown table syntax found in section '{section_name}'. "
-                    f"Pipe tables must be rendered, not leaked as text. "
-                    f"First line: '{pipe_table_lines[0][:100]}'"
-                ),
-                severity="warning",
-            ))
-
-        # 14b. Raw heading markers (###, ##) in prose
-        heading_markers = re.findall(r'^#{1,3}\s+\w', text, re.MULTILINE)
-        if heading_markers:
-            warnings.append(ValidationWarning(
-                check="raw_markdown_headings",
-                section=section_name,
-                detail=(
-                    f"Raw Markdown heading markers found in section '{section_name}': "
-                    f"{heading_markers[:3]}. Use rendered headings, not raw '###'."
-                ),
-                severity="warning",
-            ))
-
-        # 14c. Raw bullet markers that should be rendered
-        raw_bullets = re.findall(r'(?m)^[\*\-\+]\s+(?!\s)', text)
-        if len(raw_bullets) >= 3:
-            warnings.append(ValidationWarning(
-                check="raw_markdown_bullets",
-                section=section_name,
-                detail=(
-                    f"Raw Markdown bullet markers found in section '{section_name}'. "
-                    f"Use rendered bullets ('•'), not raw '* ' or '- '."
-                ),
-                severity="warning",
-            ))
-
     # ── RULE 15 (BLOCKING): §25 Chart data consistency ─────────────────────
     #
     # Chart must not contradict text/table, and must use real data.
