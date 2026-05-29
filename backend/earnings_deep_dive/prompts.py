@@ -198,6 +198,13 @@ Required analysis format:
 ① EPS: beat/miss, YoY direction, and exact source.
 ② Revenue: beat/miss, YoY direction, and exact source.
 ③ Quality of the beat/miss: explain whether both top line and profit moved together.
+
+🔴 SOURCE COLUMN RULES:
+- Actual EPS/Revenue → "Company reported" or specific filing (e.g. "10-Q FY2026 Q1")
+- Estimate → "Analyst consensus" (NEVER "SEC" — SEC does not publish consensus)
+- YoY → "Calculated from reported data"
+- Never use raw provider keys (yfinance, trailingPE, etc.) as source labels.
+
 👉 Namiさん向け解釈: explain in plain Japanese-investor terms whether this is a high-quality surprise or not.""",
     "Highlights": """Required table:
 {table_header}

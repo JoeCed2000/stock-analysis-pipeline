@@ -867,6 +867,103 @@ def validate_pre_render(
                 severity="error",
             ))
 
+    # ── RULE 13 (BLOCKING): §9 EPS & Revenue reconciliation ───────────────
+    #
+    # Enforce corrections.txt §9: source accuracy, no false "Not available",
+    # no raw provider keys, no CRITICAL OVERRIDE in final output.
+
+    eps_rev_text = _sec.get("EPS & Revenue", "")
+    if isinstance(eps_rev_text, str) and eps_rev_text.strip():
+        er = eps_rev_text
+
+        # 13a. SEC as consensus source — "SEC" should not appear near estimate/consensus
+        sec_as_source = bool(re.search(
+            r'(?:Source|source).*?SEC|SEC.*?(?:estimate|consensus)',
+            er, re.IGNORECASE | re.DOTALL
+        ))
+        if sec_as_source:
+            warnings.append(ValidationWarning(
+                check="eps_revenue_sec_as_consensus_source",
+                section="EPS & Revenue",
+                detail=(
+                    "FATAL: 'SEC' appears near estimate/consensus context in Source column. "
+                    "Consensus estimates come from analyst consensus, not SEC filings. "
+                    "Use 'Company reported' for actuals, 'Analyst consensus' for estimates."
+                ),
+                severity="error",
+            ))
+
+        # 13b. "Not available" in text when metrics have the value
+        eps_actual_val = metric_map.get("eps_actual")
+        rev_actual_val = metric_map.get("revenue_actual")
+        has_not_available = bool(re.search(
+            r'Not\s+available|Not\s+retrieved|DATA\s+NOT\s+AVAILABLE|N/A',
+            er, re.IGNORECASE
+        ))
+        if has_not_available:
+            if eps_actual_val is not None and eps_actual_val != 0:
+                warnings.append(ValidationWarning(
+                    check="eps_revenue_not_available_contradiction",
+                    section="EPS & Revenue",
+                    detail=(
+                        f"EPS & Revenue section says 'Not available' but metrics contain "
+                        f"eps_actual=${eps_actual_val:.2f}. Table and text MUST show the value."
+                    ),
+                    severity="error",
+                ))
+            if rev_actual_val is not None and rev_actual_val != 0:
+                warnings.append(ValidationWarning(
+                    check="eps_revenue_not_available_contradiction",
+                    section="EPS & Revenue",
+                    detail=(
+                        f"EPS & Revenue section says 'Not available' but metrics contain "
+                        f"revenue_actual=${rev_actual_val:,.0f}. Table and text MUST show the value."
+                    ),
+                    severity="error",
+                ))
+
+        # 13c. Raw provider keys — no yfinance field names or debug labels
+        raw_provider_patterns = [
+            (r'yfinance\s+key', 'yfinance key'),
+            (r'trailingPE\b', 'trailingPE'),
+            (r'earningsGrowth\b', 'earningsGrowth'),
+            (r'revenueGrowth\b', 'revenueGrowth'),
+            (r'pegRatio\b', 'pegRatio'),
+            (r'raw\s+provider', 'raw provider'),
+            (r'provider\s+key', 'provider key'),
+        ]
+        for pattern, label in raw_provider_patterns:
+            if re.search(pattern, er, re.IGNORECASE):
+                warnings.append(ValidationWarning(
+                    check="eps_revenue_raw_provider_key",
+                    section="EPS & Revenue",
+                    detail=(
+                        f"FATAL: Raw provider key/field name '{label}' found in EPS & Revenue. "
+                        f"Use human-readable source labels only — never expose internal field names."
+                    ),
+                    severity="error",
+                ))
+                break  # One is enough to block
+
+        # 13d. If estimate is missing but beat/miss is discussed — impossible
+        has_beat_or_miss = bool(re.search(
+            r'\b(beat|miss|exceed|surpass|above|below)\s+(consensus|estimate|expectation)',
+            er, re.IGNORECASE
+        ))
+        eps_est_val = metric_map.get("eps_estimate")
+        rev_est_val = metric_map.get("revenue_estimate")
+        if has_beat_or_miss and eps_est_val is None and rev_est_val is None:
+            warnings.append(ValidationWarning(
+                check="eps_revenue_beat_miss_without_estimate",
+                section="EPS & Revenue",
+                detail=(
+                    "FATAL: Beat/miss language detected but neither EPS nor Revenue "
+                    "estimate is available in metrics. Beat/miss is 'not calculable "
+                    "from reviewed sources' — do not invent it."
+                ),
+                severity="error",
+            ))
+
     # ── Determine pass/fail ────────────────────────────────────────────
 
     errors = [w for w in warnings if w.severity == "error"]
