@@ -24,6 +24,11 @@ def _errors_for(result, check_prefix: str) -> list:
     return [e for e in result.errors if e.check == check_prefix]
 
 
+def _warnings_for(result, check_prefix: str) -> list:
+    """Extract warnings matching a given check prefix."""
+    return [w for w in result.warnings if w.check == check_prefix]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 12a — Empty bullets
 # ═══════════════════════════════════════════════════════════════════════════
@@ -81,7 +86,7 @@ class TestDuplicateHighlights:
         )
         sections = _make_sections(text)
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "highlights_duplicates")
+        errs = _warnings_for(result, "highlights_duplicates")
         assert len(errs) >= 1
 
     def test_near_duplicate_blocked(self):
@@ -94,7 +99,7 @@ class TestDuplicateHighlights:
         )
         sections = _make_sections(text)
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "highlights_duplicates")
+        errs = _warnings_for(result, "highlights_duplicates")
         # High overlap expected
         assert len(errs) >= 1
 
@@ -110,7 +115,7 @@ class TestDuplicateHighlights:
         )
         sections = _make_sections(text)
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "highlights_duplicates")
+        errs = _warnings_for(result, "highlights_duplicates")
         assert len(errs) == 0
 
     def test_short_lines_skipped(self):
@@ -118,7 +123,7 @@ class TestDuplicateHighlights:
         text = "🌟 Highlights\n\n• Beat.\n\n• Miss.\n\n"
         sections = _make_sections(text)
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "highlights_duplicates")
+        errs = _warnings_for(result, "highlights_duplicates")
         assert len(errs) == 0
 
 

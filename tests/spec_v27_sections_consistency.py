@@ -13,6 +13,10 @@ def _errors_for(result, check_prefix: str) -> list:
     return [e for e in result.errors if e.check == check_prefix]
 
 
+def _warnings_for(result, check_prefix: str) -> list:
+    return [w for w in result.warnings if w.check == check_prefix]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # RULE 16 — §11 Operating Metrics
 # ═══════════════════════════════════════════════════════════════════════════
@@ -109,7 +113,7 @@ class TestCashFlow:
             "Cash Flow": "Free cash flow was $20.0B this quarter, a new record."
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", metrics, sections)
-        errs = _errors_for(result, "cash_flow_fcf_consistency")
+        errs = _warnings_for(result, "cash_flow_fcf_consistency")
         assert len(errs) == 1
 
     def test_fcf_matching_passes(self):
@@ -119,7 +123,7 @@ class TestCashFlow:
             "Cash Flow": "Free cash flow reached $14.9B, up 45% YoY."
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", metrics, sections)
-        errs = _errors_for(result, "cash_flow_fcf_consistency")
+        errs = _warnings_for(result, "cash_flow_fcf_consistency")
         assert len(errs) == 0
 
 
@@ -138,7 +142,7 @@ class TestCapitalEfficiency:
             "Capital Efficiency": "ROE: Not available. ROIC: data not retrieved."
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", metrics, sections)
-        errs = _errors_for(result, "capital_efficiency_not_available_contradiction")
+        errs = _warnings_for(result, "capital_efficiency_not_available_contradiction")
         assert len(errs) == 1
 
     def test_clean_efficiency_passes(self):
@@ -148,7 +152,7 @@ class TestCapitalEfficiency:
             "Capital Efficiency": "ROE: 85.5%. ROIC: 42.3%. Both strong and sustainable."
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", metrics, sections)
-        errs = _errors_for(result, "capital_efficiency_not_available_contradiction")
+        errs = _warnings_for(result, "capital_efficiency_not_available_contradiction")
         assert len(errs) == 0
 
     def test_extreme_roe_without_provider_label_blocked(self):

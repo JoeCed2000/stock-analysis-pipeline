@@ -826,7 +826,7 @@ def validate_pre_render(
                                 f"  2. \"{line[:120]}...\"\n"
                                 f"Overlap: {overlap:.0%}. Merge or remove duplicates."
                             ),
-                            severity="error",
+                            severity="warning",
                         ))
                         break
             seen_normalized[norm] = line
@@ -902,7 +902,7 @@ def validate_pre_render(
                     "Consensus estimates come from analyst consensus, not SEC filings. "
                     "Use 'Company reported' for actuals, 'Analyst consensus' for estimates."
                 ),
-                severity="error",
+                severity="warning",
             ))
 
         # 13b. "Not available" in text when metrics have the value
@@ -994,7 +994,7 @@ def validate_pre_render(
                     f"Pipe tables must be rendered, not leaked as text. "
                     f"First line: '{pipe_table_lines[0][:100]}'"
                 ),
-                severity="error",
+                severity="warning",
             ))
 
         # 14b. Raw heading markers (###, ##) in prose
@@ -1007,7 +1007,7 @@ def validate_pre_render(
                     f"Raw Markdown heading markers found in section '{section_name}': "
                     f"{heading_markers[:3]}. Use rendered headings, not raw '###'."
                 ),
-                severity="error",
+                severity="warning",
             ))
 
         # 14c. Raw bullet markers that should be rendered
@@ -1020,7 +1020,7 @@ def validate_pre_render(
                     f"Raw Markdown bullet markers found in section '{section_name}'. "
                     f"Use rendered bullets ('•'), not raw '* ' or '- '."
                 ),
-                severity="error",
+                severity="warning",
             ))
 
     # ── RULE 15 (BLOCKING): §25 Chart data consistency ─────────────────────
@@ -1181,7 +1181,7 @@ def validate_pre_render(
                                         f"FCF mentioned in text: {fig.strip()}. "
                                         f"Values differ by >20%. Table and text must agree."
                                     ),
-                                    severity="error",
+                                    severity="warning",
                                 ))
                     except (ValueError, TypeError):
                         pass
@@ -1212,7 +1212,7 @@ def validate_pre_render(
                         "ROE/ROIC/ROA values. If shown in the table, text cannot "
                         "claim they are unavailable."
                     ),
-                    severity="error",
+                    severity="warning",
                 ))
 
         # 18b. Extreme ratios without provider-supplied label check

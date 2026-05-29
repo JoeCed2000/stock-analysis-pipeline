@@ -11,6 +11,10 @@ def _errors_for(result, check_prefix: str) -> list:
     return [e for e in result.errors if e.check == check_prefix]
 
 
+def _warnings_for(result, check_prefix: str) -> list:
+    return [w for w in result.warnings if w.check == check_prefix]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # RULE 14 — Raw Markdown rendering
 # ═══════════════════════════════════════════════════════════════════════════
@@ -29,7 +33,7 @@ class TestRawMarkdownTable:
             )
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "raw_markdown_table")
+        errs = _warnings_for(result, "raw_markdown_table")
         assert len(errs) == 1
 
     def test_no_pipe_table_passes(self):
@@ -37,7 +41,7 @@ class TestRawMarkdownTable:
             "Segments": "Compute revenue was $18.4B (+22% YoY). Networking was $3.1B (+8%)."
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "raw_markdown_table")
+        errs = _warnings_for(result, "raw_markdown_table")
         assert len(errs) == 0
 
     def test_single_pipe_line_not_blocked(self):
@@ -46,7 +50,7 @@ class TestRawMarkdownTable:
             "Segments": "Segment breakdown: | Compute | $18.4B |"
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "raw_markdown_table")
+        errs = _warnings_for(result, "raw_markdown_table")
         assert len(errs) == 0
 
 
@@ -56,13 +60,13 @@ class TestRawMarkdownHeadings:
     def test_hash_heading_blocked(self):
         sections = {"Operating Metrics": "### Margin Analysis\n\nGross margin was 72.4%."}
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "raw_markdown_headings")
+        errs = _warnings_for(result, "raw_markdown_headings")
         assert len(errs) == 1
 
     def test_rendered_heading_passes(self):
         sections = {"Operating Metrics": "Margin Analysis\n\nGross margin was 72.4%."}
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "raw_markdown_headings")
+        errs = _warnings_for(result, "raw_markdown_headings")
         assert len(errs) == 0
 
 
@@ -78,7 +82,7 @@ class TestRawMarkdownBullets:
             )
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "raw_markdown_bullets")
+        errs = _warnings_for(result, "raw_markdown_bullets")
         assert len(errs) == 1
 
     def test_rendered_bullets_pass(self):
@@ -90,7 +94,7 @@ class TestRawMarkdownBullets:
             )
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "raw_markdown_bullets")
+        errs = _warnings_for(result, "raw_markdown_bullets")
         assert len(errs) == 0
 
     def test_less_than_3_raw_bullets_passes(self):
@@ -102,7 +106,7 @@ class TestRawMarkdownBullets:
             )
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "raw_markdown_bullets")
+        errs = _warnings_for(result, "raw_markdown_bullets")
         assert len(errs) == 0
 
 
@@ -211,7 +215,7 @@ class TestRules1415Integration:
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
         # Both raw_markdown_table and raw_provider_key should fire
-        table_errs = _errors_for(result, "raw_markdown_table")
+        table_errs = _warnings_for(result, "raw_markdown_table")
         provider_errs = _errors_for(result, "eps_revenue_raw_provider_key")
         assert len(table_errs) >= 1
         assert len(provider_errs) >= 1

@@ -15,6 +15,10 @@ def _errors_for(result, check_prefix: str) -> list:
     return [e for e in result.errors if e.check == check_prefix]
 
 
+def _warnings_for(result, check_prefix: str) -> list:
+    return [w for w in result.warnings if w.check == check_prefix]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 13a — SEC as consensus source
 # ═══════════════════════════════════════════════════════════════════════════
@@ -32,7 +36,7 @@ class TestSECAsConsensusSource:
             )
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "eps_revenue_sec_as_consensus_source")
+        errs = _warnings_for(result, "eps_revenue_sec_as_consensus_source")
         assert len(errs) == 1
 
     def test_company_reported_passes(self):
@@ -44,7 +48,7 @@ class TestSECAsConsensusSource:
             )
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "eps_revenue_sec_as_consensus_source")
+        errs = _warnings_for(result, "eps_revenue_sec_as_consensus_source")
         assert len(errs) == 0
 
     def test_analyst_consensus_passes(self):
@@ -54,7 +58,7 @@ class TestSECAsConsensusSource:
             )
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "eps_revenue_sec_as_consensus_source")
+        errs = _warnings_for(result, "eps_revenue_sec_as_consensus_source")
         assert len(errs) == 0
 
 
