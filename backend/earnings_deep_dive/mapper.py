@@ -47,7 +47,9 @@ SOURCE_YFINANCE = "yfinance (Yahoo Finance)"
 SOURCE_CONSENSUS = "Yahoo Finance (consensus)"
 
 _PLACEHOLDER_PATTERNS = {
-    "?", "N/A", "NA", "Not available", "データ未取得",
+    "?", "N/A", "NA", "Not available", "Not disclosed", "Not applicable",
+    "Unavailable from reviewed sources", "Not calculable from reviewed sources",
+    "データ未取得",
     "該当なし", "開示なし", "計算不可",
     "-", "--", "—", "–", "…", "...",
     "Consensus / company guide",
@@ -816,11 +818,11 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         # Show the framework with "Not disclosed" and explain why.
         region_comment = "Not disclosed — geographic revenue breakdown not published in quarterly filings"
         return [
-            [row_labels[0], NOT_DISCLOSED_EN, "N/A", "N/A", "N/A", region_comment],
-            [row_labels[1], NOT_DISCLOSED_EN, "N/A", "N/A", "N/A", region_comment],
-            [row_labels[2], NOT_DISCLOSED_EN, "N/A", "N/A", "N/A", region_comment],
-            [row_labels[3], NOT_DISCLOSED_EN, "N/A", "N/A", "N/A", region_comment],
-            [row_labels[4], NOT_DISCLOSED_EN, "N/A", "N/A", "N/A", region_comment],
+            [row_labels[0], NOT_DISCLOSED_EN, "Not disclosed", "Not disclosed", "Not disclosed", region_comment],
+            [row_labels[1], NOT_DISCLOSED_EN, "Not disclosed", "Not disclosed", "Not disclosed", region_comment],
+            [row_labels[2], NOT_DISCLOSED_EN, "Not disclosed", "Not disclosed", "Not disclosed", region_comment],
+            [row_labels[3], NOT_DISCLOSED_EN, "Not disclosed", "Not disclosed", "Not disclosed", region_comment],
+            [row_labels[4], NOT_DISCLOSED_EN, "Not disclosed", "Not disclosed", "Not disclosed", region_comment],
         ]
 
     if section_key == "Forward P/E":
@@ -885,12 +887,12 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         return [
             [row_labels[0],
              backlog_value,
-             "N/A" if not has_backlog else "—",
+             "Not applicable" if not has_backlog else "—",
              "Not disclosed (company does not report backlog); use revenue guidance + Data Center growth trajectory as demand proxy" if not has_backlog else "—",
              backlog_source],
             [row_labels[1],
              NOT_APPLICABLE_EN if not has_backlog else NOT_DISCLOSED_EN,
-             "N/A",
+             "Not applicable",
              "Inferred from hyperscaler capex commitments and supply chain constraints" if not has_backlog else "—",
              backlog_source],
         ]
@@ -2707,7 +2709,7 @@ def _build_valuation_context(
             # Try earningsGrowth as fallback
             growth = _f("earningsGrowth")
         if growth is None or growth <= 0:
-            return "N/A (no growth data)"
+            return "Not calculable (no growth data)"
         # Ratio relative to growth: ratio/growth < 0.5 → attractive, > 1.5 → expensive
         ratio_to_growth = ratio / (growth * 100) if growth > 0 else float('inf')
         if ratio_to_growth < 0.5:
@@ -2924,7 +2926,7 @@ def _compute_peer_labels(
         # Build per-metric detail string (labels are self-describing)
         detail_parts = []
         for k, b in sorted(relevant.items()):
-            lbl = b.get("label", "N/A")
+            lbl = b.get("label", "Not disclosed")
             detail_parts.append(lbl)
         detail = "; ".join(detail_parts) if detail_parts else None
 

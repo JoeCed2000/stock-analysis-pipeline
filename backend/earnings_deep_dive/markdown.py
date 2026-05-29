@@ -5,7 +5,7 @@ from backend.earnings_deep_dive.prompts import SECTION_ORDER
 
 
 def _placeholder(section: str) -> str:
-    return f"## {section}\n\n- Section unavailable. Not disclosed."
+    return f"## {section}\n\n- Unavailable from reviewed sources."
 
 
 def assemble_final_report(

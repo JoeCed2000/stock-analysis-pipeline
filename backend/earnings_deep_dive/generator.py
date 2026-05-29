@@ -608,8 +608,13 @@ def _truncate_clean(text: str, max_chars: int) -> str:
 
 
 def _placeholder_section(section: str, reason: str) -> str:
-    reason_text = reason or "Section unavailable"
-    return f"## {section}\n\n- Section unavailable. Not disclosed.\n- Reason: {reason_text}"
+    reason_map = {
+        "primary_returned_no_content": "Unavailable from reviewed sources",
+        "no_transcript": "Unavailable from reviewed sources",
+        "no_content": "Unavailable from reviewed sources",
+    }
+    clean_reason = reason_map.get(reason, "Unavailable from reviewed sources")
+    return f"## {section}\n\n- {clean_reason}."
 
 
 def _company_website_from_metrics(metrics: Dict[str, Any]) -> str | None:

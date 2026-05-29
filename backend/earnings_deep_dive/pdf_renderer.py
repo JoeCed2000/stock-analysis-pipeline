@@ -621,11 +621,11 @@ def _source_note(report: EarningsDeepDiveReport, *labels: str) -> str:
                 return source.url
             note = source.note or ""
             if report.language != "jp" and note == "データ未取得":
-                return "Not available"
+                return "Unavailable from reviewed sources"
             if note.strip().upper() == "N/A":
-                return "Not available"
-            return note or "Not available"
-    return "Not available"
+                return "Unavailable from reviewed sources"
+            return note or "Unavailable from reviewed sources"
+    return "Unavailable from reviewed sources"
 
 
 def _earnings_documents_story(
@@ -650,14 +650,14 @@ def _earnings_documents_story(
     presentation_value = _source_note(report, "presentation")
     if report.language == "jp":
         rows = [
-            (transcript_label, transcript_url or "Not available", "Earning Call Transcript source"),
+            (transcript_label, transcript_url or "Unavailable from reviewed sources", "Earning Call Transcript source"),
             ("Official Investor Relations", ir_value, "Press Release / Earning Call Presentation"),
             ("Press Release", press_release_value, "会社開示データの一次ソース"),
             ("Earning Call Presentation", presentation_value, "補足KPI・セグメント・ガイダンス確認"),
         ]
     else:
         rows = [
-            (transcript_label, transcript_url or "Not available", "Earning Call Transcript source"),
+            (transcript_label, transcript_url or "Unavailable from reviewed sources", "Earning Call Transcript source"),
             ("Official Investor Relations", ir_value, "Press Release / Earning Call Presentation"),
             ("Press Release", press_release_value, "Primary company-reported earnings source"),
             ("Earning Call Presentation", presentation_value, "Supplemental KPIs, segments, and guidance"),
@@ -814,7 +814,7 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> lis
             column = section.table.columns[len(truncated)] if len(truncated) < len(section.table.columns) else ""
             s = str(cell).strip()
             if s.upper() == "N/A":
-                s = "Not available"
+                s = "Not disclosed"
             column_lower = column.lower()
             cell_limit = BASE_MAX_CELL_CHARS
             if "source" in column_lower:
@@ -971,7 +971,7 @@ def _section_is_empty(section) -> bool:
     if len(rows) == 1:
         # Check if the only row is a placeholder
         cells = getattr(rows[0], 'cells', [])
-        if all(c.strip() in ('', '-', '—', 'No backlog', 'Not available', 'N/A', 'データ未取得')
+        if all(c.strip() in ('', '-', '—', 'No backlog', 'Not available', 'N/A', 'Not disclosed', 'Unavailable from reviewed sources', 'データ未取得')
                for c in cells):
             return True
     return False
