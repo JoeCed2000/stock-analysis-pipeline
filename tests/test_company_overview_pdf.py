@@ -274,3 +274,19 @@ class TestRenderCompanyOverview:
                          "United States", "Santa Clara", "32,000", "1993",
                          "nvidia.com"]:
             assert expected in all_text, f"Missing: {expected}"
+
+    def test_competitor_advantage_keeps_long_sentence_context(self):
+        """Long advantage text should not be clipped to fragments like 'rather than p'."""
+        co = _sample_co_en()
+        co.competitors[0].competitive_advantage = (
+            "NVIDIA offers a more integrated AI compute and networking platform rather than "
+            "primarily custom or component-level solutions."
+        )
+        report = _minimal_report(co=co)
+        fonts = resolve_pdf_fonts("en")
+        styles = _styles(fonts)
+        result = render_company_overview(report, styles, fonts)
+        all_text = " ".join(str(f.__dict__) for f in result)
+
+        assert "rather than primarily custom or component-level solutions" in all_text
+
