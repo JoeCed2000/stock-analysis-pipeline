@@ -145,3 +145,82 @@ class TestIntegration:
         dq = "Completeness: 100/100."
         results = run_all_gates(text, dq, missing_critical_metrics=5, contradiction_count=0)
         assert not is_client_ready(results)
+
+
+class TestAudienceSanitizer:
+    """Tests for _sanitize_for_audience() — post-generation Nami/missing-data cleanup."""
+    
+    def _get_sanitizer(self):
+        from backend.earnings_deep_dive.generator import _sanitize_for_audience
+        return _sanitize_for_audience
+
+    def test_client_report_strips_for_nami_san(self):
+        sanitize = self._get_sanitizer()
+        text = "EPS beat estimates. For Nami-san: this is a high-quality surprise."
+        result = sanitize(text, "client_report")
+        assert "For Nami-san" not in result
+        assert "For investors" in result
+
+    def test_client_report_strips_essential_insight_nami(self):
+        sanitize = self._get_sanitizer()
+        text = "Essential insight for Nami-san: strong quarter."
+        result = sanitize(text, "client_report")
+        assert "Nami-san" not in result
+        assert "Essential insight for investors" in result
+
+    def test_client_report_strips_nami_takeaway(self):
+        sanitize = self._get_sanitizer()
+        text = "Nami-san takeaway: buy more."
+        result = sanitize(text, "client_report")
+        assert "Nami-san" not in result
+        assert "Investor takeaway" in result
+
+    def test_client_report_strips_overall_assessment_nami(self):
+        sanitize = self._get_sanitizer()
+        text = "🏆 Overall assessment for Nami-san (3-5 sentences)"
+        result = sanitize(text, "client_report")
+        assert "Nami-san" not in result
+        assert "Overall assessment" in result
+
+    def test_client_report_strips_japanese_nami(self):
+        sanitize = self._get_sanitizer()
+        text = "🧠 Namiさん向けの本質理解: 強い四半期です。"
+        result = sanitize(text, "client_report")
+        assert "Namiさん" not in result
+        assert "投資家向け" in result
+
+    def test_nami_personal_preserves_nami_language(self):
+        sanitize = self._get_sanitizer()
+        text = "For Nami-san: this is a high-quality surprise."
+        result = sanitize(text, "nami_personal")
+        assert "For Nami-san" in result
+        assert "For investors" not in result
+
+    def test_normalizes_not_retrieved(self):
+        sanitize = self._get_sanitizer()
+        text = "Revenue: Not retrieved. EPS: Not retrieved."
+        result = sanitize(text, "client_report")
+        assert "Not retrieved" not in result
+        assert "Not disclosed" in result
+
+    def test_normalizes_not_retrieved_in_all_modes(self):
+        sanitize = self._get_sanitizer()
+        text = "Revenue: Not retrieved."
+        result = sanitize(text, "nami_personal")
+        assert "Not retrieved" not in result
+        assert "Not disclosed" in result
+
+    def test_normalizes_not_retrieved_from_transcript(self):
+        sanitize = self._get_sanitizer()
+        text = "Management commentary: Not retrieved from transcript."
+        result = sanitize(text, "client_report")
+        assert "Not retrieved" not in result
+        assert "Not verified from reviewed sources" in result
+
+    def test_no_false_positives_on_dynamic(self):
+        sanitize = self._get_sanitizer()
+        text = "Revenue growth dynamics are strong."
+        result = sanitize(text, "client_report")
+        # "dynamic" contains "nami" substring — must not be stripped
+        assert "dynamics" in result
+

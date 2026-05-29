@@ -577,10 +577,10 @@ AUDIENCE_NAMI_PATTERNS: list[tuple[str, str]] = [
     ("Nami-san", ""),  # standalone Nami-san → remove (catch-all, last)
 ]
 MISSING_DATA_REPLACEMENTS: list[tuple[str, str]] = [
-    ("Not retrieved", "Not disclosed"),
-    ("not retrieved", "not disclosed"),
     ("Not retrieved from transcript", "Not verified from reviewed sources"),
     ("not retrieved from transcript", "not verified from reviewed sources"),
+    ("Not retrieved", "Not disclosed"),
+    ("not retrieved", "not disclosed"),
 ]
 
 
