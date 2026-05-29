@@ -294,6 +294,7 @@ def validate_pre_render(
     metrics_ledger: Optional[Any] = None,  # MetricsLedger — §4
     management_analysis: Optional[Any] = None,  # ManagementAnalysis — §18
     competitive_positioning: Optional[Any] = None,  # CompetitivePositioning — §17
+    company_overview: Optional[Any] = None,  # CompanyOverview — §7-8
 ) -> ValidationResult:
     """Validate deep-dive content before PDF rendering.
 
@@ -2077,6 +2078,108 @@ def validate_pre_render(
                     severity="error",
                 ))
                 break  # One per section is enough
+
+    # ── RULE 31 (BLOCKING): §7 Company Overview completeness ─────────────────
+    #
+    # The Company Overview section must answer all required questions.
+    # If present, it must contain: competitors, strengths, weaknesses,
+    # segments, clients, management strengths/weaknesses.
+
+    if company_overview is not None:
+        co = company_overview
+
+        # 31a. Competitors must exist (not empty)
+        competitors = getattr(co, 'competitors', None)
+        if competitors is not None and len(competitors) == 0:
+            warnings.append(ValidationWarning(
+                check="company_overview_no_competitors",
+                section="Company Overview",
+                detail="Company Overview has zero competitors. At least one competitor must be listed.",
+                severity="error",
+            ))
+
+        # 31b. Business segments must exist
+        segments = getattr(co, 'business_segments', None)
+        if segments is not None and len(segments) == 0:
+            warnings.append(ValidationWarning(
+                check="company_overview_no_segments",
+                section="Company Overview",
+                detail="Company Overview has zero business segments. At least one segment must be listed.",
+                severity="error",
+            ))
+
+        # 31c. Management strengths and weaknesses
+        strengths = getattr(co, 'strengths_vs_competitors', None)
+        weaknesses = getattr(co, 'weaker_areas_vs_competitors', None)
+        if (strengths is not None and not strengths) and (weaknesses is not None and not weaknesses):
+            warnings.append(ValidationWarning(
+                check="company_overview_no_strengths_weaknesses",
+                section="Company Overview",
+                detail=(
+                    "Company Overview is missing strengths vs competitors AND "
+                    "weaker areas vs competitors. At least one must be present."
+                ),
+                severity="error",
+            ))
+
+        # 31d. Company claims must have source IDs
+        claims = getattr(co, 'company_claims', None)
+        if claims:
+            unsourced = [c for c in claims if not (getattr(c, 'source_id', None) or (isinstance(c, dict) and c.get('source_id')))]
+            if unsourced:
+                warnings.append(ValidationWarning(
+                    check="company_overview_unsourced_claims",
+                    section="Company Overview",
+                    detail=(
+                        f"{len(unsourced)} company claim(s) lack source_id. "
+                        f"Every claim must be traceable to a source."
+                    ),
+                    severity="error",
+                ))
+
+    # ── RULE 32 (BLOCKING): §8 Layer separation — CO vs Earnings Analysis ────
+    #
+    # Company Overview must not contain quarterly beat/miss language.
+    # It's a strategic/long-term section, not a quarterly update.
+
+    # Check section text for quarterly language in Company Overview context
+    co_section_text = _sec.get("Company Overview", "")
+    if isinstance(co_section_text, str) and co_section_text.strip():
+        quarterly_in_co = re.findall(
+            r'\b(?:beat|missed?|surpassed?|exceeded?)\s+(?:consensus|estimate|expectation)',
+            co_section_text, re.IGNORECASE
+        )
+        if quarterly_in_co:
+            warnings.append(ValidationWarning(
+                check="company_overview_quarterly_language_leak",
+                section="Company Overview",
+                detail=(
+                    f"Quarterly beat/miss language found in Company Overview: "
+                    f"'{quarterly_in_co[0]}'. Company Overview is a long-term "
+                    f"strategic section — move quarterly performance to Earnings Analysis."
+                ),
+                severity="error",
+            ))
+
+        # Check for quarterly-specific metrics without period labels
+        quarterly_metric_indicators = [
+            r'Q\d\s+(?:revenue|EPS|earnings|growth)',
+            r'(?:revenue|EPS|earnings)\s+(?:grew|declined|increased|decreased)\s+(?:by\s+)?\d+%',
+        ]
+        for pattern in quarterly_metric_indicators:
+            matches = re.findall(pattern, co_section_text, re.IGNORECASE)
+            if matches and 'TTM' not in co_section_text and 'annual' not in co_section_text.lower():
+                warnings.append(ValidationWarning(
+                    check="company_overview_unlabeled_quarterly_metric",
+                    section="Company Overview",
+                    detail=(
+                        f"Potential quarterly metric without period label: '{matches[0]}'. "
+                        f"Company Overview metrics must have explicit period/type labels "
+                        f"(e.g., 'TTM', 'FY2026', 'annual')."
+                    ),
+                    severity="error",
+                ))
+                break
 
     # ── Determine pass/fail ────────────────────────────────────────────
 
