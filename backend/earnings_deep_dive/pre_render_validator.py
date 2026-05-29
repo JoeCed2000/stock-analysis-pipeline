@@ -41,6 +41,11 @@ FORBIDDEN_MARKERS = [
     "primary returned no content",
     "fallback failed",
     "provider returned empty",
+    "Model example",
+    # §23 — debug/template/internal leaks
+    "Model example company figures",
+    "For Nami-san:",
+    "Namiさん向け",
 ]
 
 # ── Negative sentiment keywords for contradiction detection ────────────────
@@ -510,9 +515,10 @@ def validate_pre_render(
         for marker in FORBIDDEN_MARKERS:
             if marker in text:
                 warnings.append(ValidationWarning(
-                    check="not_available",
+                    check="forbidden_marker_leak",
                     section=section_name,
-                    detail=f"'{marker}' found in section '{section_name}'",
+                    detail=f"'{marker}' found in section '{section_name}' — internal/debug/template leak blocked",
+                    severity="error",  # §23: all internal leaks are blocking
                 ))
                 break
 
@@ -2011,6 +2017,66 @@ def validate_pre_render(
                     ),
                     severity="error",
                 ))
+
+    # ── RULE 30 (BLOCKING): §22+§23 Missing-data language + internal leaks ──
+    #
+    # §22: Strict missing-data taxonomy (no standalone "Not available", no "Reason:")
+    # §23: No programming-language artifacts (null, None, NaN, undefined, debug)
+
+    for section_name, text in _sec.items():
+        if not isinstance(text, str) or not text.strip():
+            continue
+
+        # 30a. "Reason:" exposed in output — internal reasoning leak
+        if re.search(r'\bReason\s*:', text):
+            warnings.append(ValidationWarning(
+                check="missing_data_reason_leak",
+                section=section_name,
+                detail=(
+                    f"'Reason:' found in '{section_name}'. "
+                    f"Internal failure reasons must stay in logs only. "
+                    f"Use client-facing language: 'Unavailable from reviewed sources'."
+                ),
+                severity="error",
+            ))
+
+        # 30b. Programming-language null artifacts (with word boundaries)
+        # NOTE: "None" is case-SENSITIVE (Python None), "none" is a valid English word.
+        null_artifacts_case_sensitive = [
+            (r'\bNone\b', 'None'),
+        ]
+        null_artifacts_case_insensitive = [
+            (r'\bnull\b', 'null'),
+            (r'\bNaN\b', 'NaN'),
+            (r'\bundefined\b', 'undefined'),
+            (r'\bdebug\b', 'debug'),
+        ]
+        for pattern, label in null_artifacts_case_sensitive:
+            if re.search(pattern, text):
+                warnings.append(ValidationWarning(
+                    check="missing_data_null_artifact",
+                    section=section_name,
+                    detail=(
+                        f"Programming artifact '{label}' found in '{section_name}'. "
+                        f"Use professional language: 'Not disclosed', 'Unavailable from "
+                        f"reviewed sources', or remove the field entirely."
+                    ),
+                    severity="error",
+                ))
+                break
+        for pattern, label in null_artifacts_case_insensitive:
+            if re.search(pattern, text, re.IGNORECASE):
+                warnings.append(ValidationWarning(
+                    check="missing_data_null_artifact",
+                    section=section_name,
+                    detail=(
+                        f"Programming artifact '{label}' found in '{section_name}'. "
+                        f"Use professional language: 'Not disclosed', 'Unavailable from "
+                        f"reviewed sources', or remove the field entirely."
+                    ),
+                    severity="error",
+                ))
+                break  # One per section is enough
 
     # ── Determine pass/fail ────────────────────────────────────────────
 
