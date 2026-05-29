@@ -285,8 +285,8 @@ def calculate_valuation_support(
             "dominant": "insufficient_data",
         }
 
-    # Dead heat between support and concern → mixed (equal opposing signals)
-    if support == concern and support > neutral:
+    # Any support/concern dead heat means mixed (including 1/1/1).
+    if support == concern and support > 0:
         dominant = "mixed"
     elif support >= neutral and support >= concern:
         dominant = "supportive"

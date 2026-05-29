@@ -46,12 +46,37 @@ def _best_transcript_source(sources: List[Dict[str, Any]]) -> tuple[str, Dict[st
     return best_text, best_source
 
 
-def _transcript_url(source: Dict[str, Any]) -> Optional[str]:
-    """Return the source URL for transcript citation, when provided by a finder."""
+def _transcript_url(source: Dict[str, Any], ticker: str | None = None) -> Optional[str]:
+    """Return a stable transcript citation URL when provided by a finder.
+
+    For StockAnalysis deep links, normalize to the listing page
+    `/stocks/{ticker}/transcripts/` to avoid link rot on transcript IDs.
+    """
     for key in ("url", "link", "source_url"):
         value = source.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
+        if not isinstance(value, str) or not value.strip():
+            continue
+
+        url = value.strip()
+        try:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(url)
+            host = parsed.netloc.lower().replace("www.", "")
+            path = parsed.path.strip("/")
+            if host == "stockanalysis.com":
+                match = re.match(
+                    r"stocks/([^/]+)/transcripts(?:/[^/]+)?/?$",
+                    path,
+                    re.IGNORECASE,
+                )
+                if match:
+                    canonical_ticker = (ticker or match.group(1)).strip().lower()
+                    return f"https://stockanalysis.com/stocks/{canonical_ticker}/transcripts/"
+        except Exception:
+            pass
+
+        return url
     return None
 
 
@@ -1328,7 +1353,7 @@ def _add_earnings_deep_dive_if_transcript(
                 transcript_quarter = f"{datetime.now().year}Q{(datetime.now().month-1)//3+1}"
         else:
             has_transcript = True
-            transcript_url = _transcript_url(transcript_source)
+            transcript_url = _transcript_url(transcript_source, ticker=ticker)
             transcript_source_name = str(
                 (transcript_source or {}).get("source")
                 or (transcript_source or {}).get("title")
