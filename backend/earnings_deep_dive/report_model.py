@@ -417,6 +417,66 @@ class DataQualitySection(BaseModel):
     generated_at: str | None = None
 
 
+class EarningsDocumentsChecklist(BaseModel):
+    """Pre-generation checklist of required earnings documents — §6 corrections.txt.
+
+    Tracks which documents are expected, retrieved, and their status.
+    Used by the validator to ensure no section fabricates data from a missing source.
+    """
+    # ── Transcript ──
+    transcript_status: str | None = None          # "retrieved" | "unavailable" | "not_applicable"
+    transcript_source_id: str | None = None
+    transcript_period_match: bool = False
+
+    # ── Earnings Presentation ──
+    presentation_status: str | None = None         # "retrieved" | "unavailable" | "not_applicable"
+    presentation_source_id: str | None = None
+    presentation_period_match: bool = False
+
+    # ── Press Release ──
+    press_release_status: str | None = None        # "retrieved" | "unavailable" | "not_applicable"
+    press_release_source_id: str | None = None
+    press_release_period_match: bool = False
+
+    # ── SEC Filing (10-Q/10-K) ──
+    sec_filing_status: str | None = None           # "retrieved" | "unavailable" | "not_applicable"
+    sec_filing_source_id: str | None = None
+    sec_filing_period_match: bool = False
+
+    # ── Consensus Estimates ──
+    consensus_status: str | None = None            # "retrieved" | "unavailable" | "not_applicable"
+    consensus_source_id: str | None = None
+    consensus_period_match: bool = False
+
+    # ── Overall ──
+    all_documents_match_period: bool = False
+    missing_document_public_note: str | None = None
+    missing_document_internal_reason: str | None = None
+
+    # ── Metadata ──
+    generated_at: str | None = None
+
+    @property
+    def critical_sources_available(self) -> bool:
+        """At minimum, SEC filing and consensus must be available."""
+        return (
+            self.sec_filing_status == "retrieved"
+            and self.consensus_status == "retrieved"
+        )
+
+    @property
+    def transcript_available(self) -> bool:
+        return self.transcript_status == "retrieved"
+
+    @property
+    def presentation_available(self) -> bool:
+        return self.presentation_status == "retrieved"
+
+    @property
+    def press_release_available(self) -> bool:
+        return self.press_release_status == "retrieved"
+
+
 class ReportPeriodContext(BaseModel):
     """Single source of truth for report period — §3 corrections.txt.
 
@@ -468,3 +528,5 @@ class EarningsDeepDiveReport(BaseModel):
     data_quality: DataQualitySection | None = None
     # ── §3 report period context ──
     period_context: ReportPeriodContext | None = None
+    # ── §6 earnings documents checklist ──
+    earnings_documents: EarningsDocumentsChecklist | None = None

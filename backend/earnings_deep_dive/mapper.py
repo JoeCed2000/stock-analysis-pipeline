@@ -1895,6 +1895,110 @@ def _parse_fiscal_quarter(resolved_quarter: str) -> tuple[int | None, int | None
     return None, None
 
 
+def _build_earnings_documents_checklist(
+    *,
+    ticker: str,
+    resolved_quarter: str,
+    sources: list | None = None,
+    transcript_url: str | None = None,
+    generated_at: str | None = None,
+) -> "EarningsDocumentsChecklist":
+    """Build the pre-generation earnings documents checklist — §6 corrections.txt.
+
+    Determines which core earnings documents are available and tracks their status.
+    This feeds into the validator to prevent fabricating data from missing sources.
+    """
+    from backend.earnings_deep_dive.report_model import EarningsDocumentsChecklist
+
+    sources_list = sources or []
+    has_source = lambda label_fragment: any(
+        label_fragment.lower() in (s.get("label", "") if isinstance(s, dict) else getattr(s, "label", "")).lower()
+        for s in sources_list
+    )
+    has_source_type = lambda st: any(
+        st.lower() == (s.get("source_type", "") if isinstance(s, dict) else getattr(s, "source_type", "")).lower()
+        or st.lower() in (s.get("label", "") if isinstance(s, dict) else getattr(s, "label", "")).lower()
+        for s in sources_list
+    )
+
+    # ── Transcript ──
+    transcript_status = "retrieved" if transcript_url else "unavailable"
+    transcript_source = None
+    if transcript_url:
+        for s in sources_list:
+            lbl = s.get("label", "") if isinstance(s, dict) else getattr(s, "label", "")
+            if "transcript" in lbl.lower() or "seeking" in lbl.lower():
+                transcript_source = s.get("source_id", "") if isinstance(s, dict) else getattr(s, "source_id", "")
+                break
+
+    # ── SEC Filing ──
+    sec_status = "retrieved" if has_source_type("sec_edgar") or has_source("edgar") or has_source("10-q") or has_source("10-k") else "unavailable"
+    sec_source = None
+    for s in sources_list:
+        lbl = s.get("label", "") if isinstance(s, dict) else getattr(s, "label", "")
+        stype = s.get("source_type", "") if isinstance(s, dict) else getattr(s, "source_type", "")
+        if "sec" in lbl.lower() or "edgar" in lbl.lower() or "10-q" in lbl.lower() or "10-k" in lbl.lower() or stype == "sec_edgar":
+            sec_source = s.get("source_id", "") if isinstance(s, dict) else getattr(s, "source_id", "")
+            break
+
+    # ── Press Release ──
+    pr_status = "retrieved" if has_source("press release") or has_source_type("press_release") else "unavailable"
+    pr_source = None
+    for s in sources_list:
+        lbl = s.get("label", "") if isinstance(s, dict) else getattr(s, "label", "")
+        if "press" in lbl.lower() and "release" in lbl.lower():
+            pr_source = s.get("source_id", "") if isinstance(s, dict) else getattr(s, "source_id", "")
+            break
+
+    # ── Presentation ──
+    pres_status = "retrieved" if has_source("presentation") or has_source("earnings call") or has_source("earnings deck") else "unavailable"
+    pres_source = None
+    for s in sources_list:
+        lbl = s.get("label", "") if isinstance(s, dict) else getattr(s, "label", "")
+        if "presentation" in lbl.lower() or "deck" in lbl.lower() or "earnings call" in lbl.lower():
+            pres_source = s.get("source_id", "") if isinstance(s, dict) else getattr(s, "source_id", "")
+            break
+
+    # ── Consensus ──
+    cons_status = "retrieved" if has_source("consensus") or has_source("yfinance") or has_source_type("market_data") else "unavailable"
+    cons_source = None
+    for s in sources_list:
+        lbl = s.get("label", "") if isinstance(s, dict) else getattr(s, "label", "")
+        stype = s.get("source_type", "") if isinstance(s, dict) else getattr(s, "source_type", "")
+        if "consensus" in lbl.lower() or "yfinance" in lbl.lower() or stype == "market_data":
+            cons_source = s.get("source_id", "") if isinstance(s, dict) else getattr(s, "source_id", "")
+            break
+
+    return EarningsDocumentsChecklist(
+        transcript_status=transcript_status,
+        transcript_source_id=transcript_source,
+        transcript_period_match=bool(transcript_url),
+        presentation_status=pres_status,
+        presentation_source_id=pres_source,
+        presentation_period_match=pres_status == "retrieved",
+        press_release_status=pr_status,
+        press_release_source_id=pr_source,
+        press_release_period_match=pr_status == "retrieved",
+        sec_filing_status=sec_status,
+        sec_filing_source_id=sec_source,
+        sec_filing_period_match=sec_status == "retrieved",
+        consensus_status=cons_status,
+        consensus_source_id=cons_source,
+        consensus_period_match=cons_status == "retrieved",
+        all_documents_match_period=(
+            transcript_url is not None
+            and sec_status == "retrieved"
+            and cons_status == "retrieved"
+        ),
+        missing_document_public_note=(
+            None if sec_status == "retrieved" and cons_status == "retrieved"
+            else "Some documents were unavailable at the time of analysis; conclusions are based on available sources."
+        ),
+        missing_document_internal_reason=None,
+        generated_at=generated_at,
+    )
+
+
 def _section_runtime_columns(section_key: str, base_columns: list[str], resolved_quarter: str) -> list[str]:
     """Adjust runtime column labels to match quarter/TTM naming conventions."""
     if not base_columns:
@@ -2430,6 +2534,15 @@ def build_earnings_deep_dive_report(
         generated_at=generated_at or datetime.now(timezone.utc).isoformat(),
     )
 
+    # ── §6 earnings documents checklist ──
+    earnings_docs = _build_earnings_documents_checklist(
+        ticker=ticker_clean,
+        resolved_quarter=resolved_quarter,
+        sources=[s.model_dump() if hasattr(s, 'model_dump') else s for s in sources],
+        transcript_url=transcript_url,
+        generated_at=generated_at or datetime.now(timezone.utc).isoformat(),
+    )
+
     return EarningsDeepDiveReport(
         ticker=ticker_clean,
         company=company_name,
@@ -2453,6 +2566,8 @@ def build_earnings_deep_dive_report(
         data_quality=v27["data_quality"],
         # §3 report period context
         period_context=period_context,
+        # §6 earnings documents checklist
+        earnings_documents=earnings_docs,
     )
 
 

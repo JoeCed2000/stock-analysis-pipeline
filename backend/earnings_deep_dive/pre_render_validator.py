@@ -284,6 +284,7 @@ def validate_pre_render(
     section_analysis: Optional[Dict[str, str]],
     *,
     period_context: Optional[Any] = None,  # ReportPeriodContext — §3
+    earnings_documents: Optional[Any] = None,  # EarningsDocumentsChecklist — §6
 ) -> ValidationResult:
     """Validate deep-dive content before PDF rendering.
 
@@ -1563,6 +1564,109 @@ def validate_pre_render(
                         ),
                         severity="error",
                     ))
+
+    # ── RULE 25 (BLOCKING): §6 Earnings Documents Checklist ──────────────────
+    #
+    # No management commentary if transcript is missing.
+    # No presentation-derived KPI claims if presentation is unavailable.
+    # No beat/miss for metrics without consensus.
+
+    if earnings_documents is not None:
+        ed = earnings_documents
+
+        # 25a. Missing transcript → no management commentary
+        mgmt_key = "Management & Tone"
+        if not getattr(ed, 'transcript_available', False) and mgmt_key in _sec and isinstance(
+            _sec.get(mgmt_key, ""), str
+        ):
+            mgmt_text = _sec[mgmt_key]
+            # Check for transcript-derived language
+            transcript_indicators = [
+                "CEO said", "CFO mentioned", "management stated",
+                "during the call", "on the earnings call",
+                "management guided", "according to the transcript",
+                "per the transcript"
+            ]
+            found = [ti for ti in transcript_indicators if ti.lower() in mgmt_text.lower()]
+            if found:
+                warnings.append(ValidationWarning(
+                    check="earnings_docs_missing_transcript_management_claims",
+                    section="Management & Tone",
+                    detail=(
+                        f"Management commentary suggests transcript access but "
+                        f"transcript_status={getattr(ed, 'transcript_status', '?')}. "
+                        f"Remove transcript-derived claims or mark them as 'from press release / SEC filing'. "
+                        f"Detected: {', '.join(found[:3])}"
+                    ),
+                    severity="error",
+                ))
+
+        # 25b. Missing presentation → no presentation-derived claims
+        if not getattr(ed, 'presentation_available', False) and isinstance(
+            _sec.get("Operating Metrics", ""), str
+        ):
+            op_text = _sec.get("Operating Metrics", "")
+            pres_indicators = [
+                "earnings presentation", "investor deck",
+                "slide deck", "earnings slides",
+                "IR presentation"
+            ]
+            found = [pi for pi in pres_indicators if pi.lower() in op_text.lower()]
+            if found:
+                warnings.append(ValidationWarning(
+                    check="earnings_docs_missing_presentation_claims",
+                    section="Operating Metrics",
+                    detail=(
+                        f"KPI claims reference presentation but "
+                        f"presentation_status={getattr(ed, 'presentation_status', '?')}. "
+                        f"Remove presentation-derived claims or source them from SEC filing."
+                    ),
+                    severity="error",
+                ))
+
+        # 25c. Missing consensus → no beat/miss claims
+        if getattr(ed, 'consensus_status', '') != "retrieved":
+            for section_name in ["EPS & Revenue", "Highlights & Lowlights"]:
+                sec_text = _sec.get(section_name, "")
+                if not isinstance(sec_text, str):
+                    continue
+                # Check if beat/miss language appears without consensus
+                beat_words = re.findall(
+                    r'(beat|missed?|above|below|surprise|vs\.?\s*consensus|vs\.?\s*estimate)[\w\s]*',
+                    sec_text, re.IGNORECASE
+                )
+                if beat_words and "not calculable" not in sec_text.lower():
+                    warnings.append(ValidationWarning(
+                        check="earnings_docs_missing_consensus_beat_miss",
+                        section=section_name,
+                        detail=(
+                            f"Beat/miss language detected but consensus_status="
+                            f"{getattr(ed, 'consensus_status', '?')}. "
+                            f"Without consensus, beat/miss must say 'not calculable from reviewed sources'."
+                            f" Detected: {', '.join(beat_words[:3])}"
+                        ),
+                        severity="error",
+                    ))
+
+        # 25d. Missing SEC filing — critical
+        if getattr(ed, 'sec_filing_status', '') != "retrieved":
+            # Scan all sections for SEC/10-Q/10-K citations
+            for section_name in _sec:
+                sec_text = _sec.get(section_name, "")
+                if not isinstance(sec_text, str):
+                    continue
+                if re.search(r'\b(?:SEC|10-[KQ]|EDGAR|filing)\b', sec_text, re.IGNORECASE):
+                    warnings.append(ValidationWarning(
+                        check="earnings_docs_missing_sec_filing_citation",
+                        section=section_name,
+                        detail=(
+                            f"SEC/10-Q/10-K reference found but "
+                            f"sec_filing_status={getattr(ed, 'sec_filing_status', '?')}. "
+                            f"Remove SEC citations or source data from available documents."
+                        ),
+                        severity="error",
+                    ))
+                    break  # One warning is enough
 
     # ── Determine pass/fail ────────────────────────────────────────────
 
