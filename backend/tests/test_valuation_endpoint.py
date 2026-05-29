@@ -289,6 +289,178 @@ class TestAlternativeProviderBackfill:
         assert resp.revenue_growth == 0.07
         assert resp.total_debt == 35000000000.0
 
+    def test_get_valuation_promotes_source_when_fmp_backfill_used(self):
+        """When external chain reports FMP fills, source should be fmp/fallback."""
+        from backend.valuation import get_valuation
+
+        stock_data = {
+            "ticker": "INTC",
+            "price": 42.0,
+            "market_cap": 170000000000.0,
+            "currency": "USD",
+            "financials": {},
+            "_source": "cache",
+        }
+
+        with patch("backend.valuation.get_stock_data", return_value=stock_data):
+            with patch("backend.valuation._yf_ticker_safe", side_effect=RuntimeError("no yfinance")):
+                with patch(
+                    "backend.valuation._backfill_from_external_providers",
+                    return_value=(
+                        {
+                            "pe_current": 18.7,
+                            "pe_forward": 15.9,
+                            "peg_ratio": 1.0,
+                            "eps_growth": 0.09,
+                            "revenue_growth": 0.04,
+                            "total_debt": 12000000000.0,
+                        },
+                        "fmp",
+                    ),
+                ):
+                    resp = get_valuation("INTC")
+
+        assert resp.source == "fmp"
+        assert resp.served_from == "fallback"
+        assert resp.pe_current == 18.7
+        assert resp.pe_forward == 15.9
+        assert resp.peg_ratio == 1.0
+        assert resp.eps_growth == 0.09
+        assert resp.revenue_growth == 0.04
+        assert resp.total_debt == 12000000000.0
+
+    def test_backfill_from_fmp_fills_missing_without_overwrite(self):
+        """FMP fallback fills null fields but never overwrites existing values."""
+        from backend.valuation import _backfill_from_fmp
+
+        def _fake_fmp_request(endpoint, _ticker, params=None):
+            _ = params
+            if endpoint == "ratios-ttm":
+                return [{
+                    "peRatioTTM": "31.2",
+                    "forwardPERatio": "25.4",
+                    "pegRatioTTM": "1.6",
+                }]
+            if endpoint == "income-statement-growth":
+                return [{
+                    "growthEPS": "15.5",
+                    "growthRevenue": "9.0",
+                }]
+            if endpoint == "balance-sheet-statement":
+                return [{"totalDebt": "42000000000"}]
+            return None
+
+        current = {
+            "pe_current": 22.0,
+            "pe_forward": None,
+            "peg_ratio": None,
+            "eps_growth": None,
+            "revenue_growth": None,
+            "total_debt": None,
+        }
+
+        with patch("backend.valuation._fmp_request", side_effect=_fake_fmp_request):
+            out = _backfill_from_fmp("INTC", current)
+
+        assert out["pe_current"] == 22.0  # no overwrite
+        assert out["pe_forward"] == 25.4
+        assert out["peg_ratio"] == 1.6
+        assert out["eps_growth"] == pytest.approx(0.155, rel=1e-9)
+        assert out["revenue_growth"] == pytest.approx(0.09, rel=1e-9)
+        assert out["total_debt"] == 42000000000.0
+
+    def test_external_backfill_keeps_first_provider_provenance(self):
+        """Provider provenance stays on the first fallback that filled missing data."""
+        from backend.valuation import _backfill_from_external_providers
+
+        alpha_out = {
+            "pe_current": None,
+            "pe_forward": None,
+            "peg_ratio": None,
+            "eps_growth": None,
+            "revenue_growth": None,
+            "total_debt": None,
+        }
+        fmp_out = {
+            "pe_current": 19.3,
+            "pe_forward": None,
+            "peg_ratio": None,
+            "eps_growth": None,
+            "revenue_growth": None,
+            "total_debt": None,
+        }
+        eodhd_out = {
+            "pe_current": 19.3,
+            "pe_forward": 17.9,
+            "peg_ratio": 1.2,
+            "eps_growth": 0.08,
+            "revenue_growth": 0.05,
+            "total_debt": 15000000000.0,
+        }
+
+        with patch("backend.valuation._backfill_from_alpha_vantage", return_value=alpha_out):
+            with patch("backend.valuation._backfill_from_fmp", return_value=fmp_out):
+                with patch("backend.valuation._backfill_from_eodhd", return_value=eodhd_out):
+                    out, provider = _backfill_from_external_providers(
+                        ticker="INTC",
+                        pe_current=None,
+                        pe_forward=None,
+                        peg_ratio=None,
+                        eps_growth=None,
+                        revenue_growth=None,
+                        total_debt=None,
+                    )
+
+        assert provider == "fmp"
+        assert out["pe_current"] == 19.3
+        assert out["pe_forward"] == 17.9
+        assert out["peg_ratio"] == 1.2
+        assert out["eps_growth"] == 0.08
+        assert out["revenue_growth"] == 0.05
+        assert out["total_debt"] == 15000000000.0
+
+    def test_external_backfill_uses_eodhd_when_alpha_and_fmp_empty(self):
+        """Chain falls through to EODHD when prior fallbacks provide no values."""
+        from backend.valuation import _backfill_from_external_providers
+
+        empty = {
+            "pe_current": None,
+            "pe_forward": None,
+            "peg_ratio": None,
+            "eps_growth": None,
+            "revenue_growth": None,
+            "total_debt": None,
+        }
+        eodhd_out = {
+            "pe_current": 14.2,
+            "pe_forward": 12.8,
+            "peg_ratio": 0.9,
+            "eps_growth": 0.06,
+            "revenue_growth": 0.04,
+            "total_debt": 9000000000.0,
+        }
+
+        with patch("backend.valuation._backfill_from_alpha_vantage", return_value=empty):
+            with patch("backend.valuation._backfill_from_fmp", return_value=empty):
+                with patch("backend.valuation._backfill_from_eodhd", return_value=eodhd_out):
+                    out, provider = _backfill_from_external_providers(
+                        ticker="INTC",
+                        pe_current=None,
+                        pe_forward=None,
+                        peg_ratio=None,
+                        eps_growth=None,
+                        revenue_growth=None,
+                        total_debt=None,
+                    )
+
+        assert provider == "eodhd"
+        assert out["pe_current"] == 14.2
+        assert out["pe_forward"] == 12.8
+        assert out["peg_ratio"] == 0.9
+        assert out["eps_growth"] == 0.06
+        assert out["revenue_growth"] == 0.04
+        assert out["total_debt"] == 9000000000.0
+
 
 # =====================================================================
 # ENDPOINT INTEGRATION — 2 tests

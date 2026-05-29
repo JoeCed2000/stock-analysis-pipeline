@@ -126,6 +126,253 @@ def _backfill_from_alpha_vantage(
     return result
 
 
+def _first_dict(payload: Any) -> Dict[str, Any]:
+    """Return first dict from list payloads; empty dict otherwise."""
+    if isinstance(payload, dict):
+        return payload
+    if isinstance(payload, list) and payload and isinstance(payload[0], dict):
+        return payload[0]
+    return {}
+
+
+def _fmp_request(endpoint: str, ticker: str, params: Optional[Dict[str, Any]] = None) -> Optional[Any]:
+    """Best-effort FMP request (returns None on key/quota/errors)."""
+    api_key = os.getenv("FMP_API_KEY", "").strip()
+    if not api_key:
+        return None
+
+    query = dict(params or {})
+    query["apikey"] = api_key
+    url = f"https://financialmodelingprep.com/api/v3/{endpoint}/{ticker}"
+
+    try:
+        resp = http.get(url, params=query, timeout=12)
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+
+        if isinstance(data, dict):
+            msg = str(
+                data.get("Error Message")
+                or data.get("error")
+                or data.get("message")
+                or ""
+            ).lower()
+            if msg and any(
+                token in msg
+                for token in ("invalid", "forbidden", "limit", "subscribe", "denied", "not available")
+            ):
+                return None
+        elif isinstance(data, list) and data and isinstance(data[0], str):
+            if "error" in data[0].lower():
+                return None
+
+        return data
+    except Exception as exc:
+        logger.debug("FMP %s failed for %s — %s", endpoint, ticker, exc)
+        return None
+
+
+def _eodhd_fundamentals_request(ticker: str) -> Optional[Dict[str, Any]]:
+    """Best-effort EODHD fundamentals request (returns None on key/quota/errors)."""
+    api_key = os.getenv("EODHD_API_KEY", "").strip()
+    if not api_key:
+        return None
+
+    try:
+        resp = http.get(
+            f"https://eodhd.com/api/fundamentals/{ticker}",
+            params={"api_token": api_key, "fmt": "json"},
+            timeout=12,
+        )
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        if not isinstance(data, dict):
+            return None
+        if data.get("error") or data.get("message"):
+            return None
+        return data
+    except Exception as exc:
+        logger.debug("EODHD fundamentals failed for %s — %s", ticker, exc)
+        return None
+
+
+def _backfill_from_fmp(
+    ticker: str,
+    current: Dict[str, Optional[float]],
+) -> Dict[str, Optional[float]]:
+    """Fill remaining missing valuation fields from FMP when available."""
+    result = dict(current)
+    if all(value is not None for value in result.values()):
+        return result
+
+    ratios = _first_dict(_fmp_request("ratios-ttm", ticker))
+    if ratios:
+        if result["pe_current"] is None:
+            result["pe_current"] = _safe_float_loose(
+                ratios.get("peRatioTTM")
+                or ratios.get("priceEarningsRatioTTM")
+                or ratios.get("priceEarningsRatio")
+                or ratios.get("peRatio")
+            )
+        if result["pe_forward"] is None:
+            result["pe_forward"] = _safe_float_loose(
+                ratios.get("forwardPERatio")
+                or ratios.get("forwardPE")
+            )
+        if result["peg_ratio"] is None:
+            result["peg_ratio"] = _safe_float_loose(
+                ratios.get("pegRatioTTM")
+                or ratios.get("pegRatio")
+                or ratios.get("priceEarningsToGrowthRatio")
+            )
+
+    growth = _first_dict(_fmp_request("income-statement-growth", ticker, params={"limit": 1}))
+    if growth:
+        if result["eps_growth"] is None:
+            result["eps_growth"] = _normalize_growth_decimal(
+                growth.get("growthEPS")
+                or growth.get("epsGrowth")
+                or growth.get("growthEps")
+            )
+        if result["revenue_growth"] is None:
+            result["revenue_growth"] = _normalize_growth_decimal(
+                growth.get("growthRevenue")
+                or growth.get("revenueGrowth")
+            )
+
+    if result["total_debt"] is None:
+        balance = _first_dict(_fmp_request("balance-sheet-statement", ticker, params={"limit": 1}))
+        if balance:
+            result["total_debt"] = _safe_float_loose(
+                balance.get("totalDebt")
+                or balance.get("shortTermDebt")
+                or balance.get("longTermDebt")
+                or balance.get("totalLiabilities")
+            )
+
+    return result
+
+
+def _backfill_from_eodhd(
+    ticker: str,
+    current: Dict[str, Optional[float]],
+) -> Dict[str, Optional[float]]:
+    """Fill remaining missing valuation fields from EODHD fundamentals when available."""
+    result = dict(current)
+    if all(value is not None for value in result.values()):
+        return result
+
+    payload = _eodhd_fundamentals_request(ticker)
+    if not payload:
+        return result
+
+    highlights = _first_dict(payload.get("Highlights"))
+    valuation = _first_dict(payload.get("Valuation"))
+    financials = _first_dict(payload.get("Financials"))
+
+    if result["pe_current"] is None:
+        result["pe_current"] = _safe_float_loose(
+            highlights.get("PERatio")
+            or valuation.get("TrailingPE")
+            or valuation.get("PriceEarningsTTM")
+        )
+    if result["pe_forward"] is None:
+        result["pe_forward"] = _safe_float_loose(
+            highlights.get("ForwardPE")
+            or valuation.get("ForwardPE")
+        )
+    if result["peg_ratio"] is None:
+        result["peg_ratio"] = _safe_float_loose(
+            highlights.get("PEGRatio")
+            or valuation.get("PEGRatio")
+        )
+    if result["eps_growth"] is None:
+        result["eps_growth"] = _normalize_growth_decimal(
+            highlights.get("QuarterlyEarningsGrowthYOY")
+            or highlights.get("EarningsGrowthYOY")
+        )
+    if result["revenue_growth"] is None:
+        result["revenue_growth"] = _normalize_growth_decimal(
+            highlights.get("QuarterlyRevenueGrowthYOY")
+            or highlights.get("RevenueGrowthYOY")
+        )
+
+    if result["total_debt"] is None:
+        bs = _first_dict(financials.get("Balance_Sheet"))
+        quarterly = bs.get("quarterly") if isinstance(bs, dict) else None
+        annual = bs.get("yearly") if isinstance(bs, dict) else None
+
+        latest = {}
+        if isinstance(quarterly, dict) and quarterly:
+            latest_key = sorted(quarterly.keys(), reverse=True)[0]
+            latest = _first_dict(quarterly.get(latest_key))
+        elif isinstance(annual, dict) and annual:
+            latest_key = sorted(annual.keys(), reverse=True)[0]
+            latest = _first_dict(annual.get(latest_key))
+
+        if latest:
+            result["total_debt"] = _safe_float_loose(
+                latest.get("shortLongTermDebtTotal")
+                or latest.get("LongTermDebt")
+                or latest.get("ShortTermDebt")
+                or latest.get("TotalDebt")
+            )
+
+    return result
+
+
+def _backfill_from_external_providers(
+    ticker: str,
+    pe_current: Optional[float],
+    pe_forward: Optional[float],
+    peg_ratio: Optional[float],
+    eps_growth: Optional[float],
+    revenue_growth: Optional[float],
+    total_debt: Optional[float],
+) -> tuple[Dict[str, Optional[float]], Optional[str]]:
+    """Apply fallback providers in order and return first provider that filled data."""
+    result = {
+        "pe_current": pe_current,
+        "pe_forward": pe_forward,
+        "peg_ratio": peg_ratio,
+        "eps_growth": eps_growth,
+        "revenue_growth": revenue_growth,
+        "total_debt": total_debt,
+    }
+
+    fallback_chain = [
+        ("alpha_vantage", _backfill_from_alpha_vantage),
+        ("fmp", _backfill_from_fmp),
+        ("eodhd", _backfill_from_eodhd),
+    ]
+
+    provider_used: Optional[str] = None
+    for provider_name, provider_fn in fallback_chain:
+        if all(value is not None for value in result.values()):
+            break
+
+        before = dict(result)
+        if provider_name == "alpha_vantage":
+            result = provider_fn(
+                ticker=ticker,
+                pe_current=result["pe_current"],
+                pe_forward=result["pe_forward"],
+                peg_ratio=result["peg_ratio"],
+                eps_growth=result["eps_growth"],
+                revenue_growth=result["revenue_growth"],
+                total_debt=result["total_debt"],
+            )
+        else:
+            result = provider_fn(ticker=ticker, current=result)
+
+        if provider_used is None and any(before[k] is None and result[k] is not None for k in result):
+            provider_used = provider_name
+
+    return result, provider_used
+
+
 def get_valuation(ticker: str) -> ValuationV2Response:
     """Fetch valuation data for a ticker following V2.3 contract.
 
@@ -186,7 +433,7 @@ def get_valuation(ticker: str) -> ValuationV2Response:
         revenue_growth = _safe_float(financials.get("revenue_annual_growth"))
 
     # Separate provider (source) from delivery method (served_from)
-    KNOWN_PROVIDERS = {"finnhub", "yfinance", "twelvedata", "eodhd", "alpha_vantage"}
+    KNOWN_PROVIDERS = {"finnhub", "yfinance", "twelvedata", "eodhd", "alpha_vantage", "fmp"}
     if raw_source in KNOWN_PROVIDERS:
         source = raw_source          # actual financial data provider
         served_from = "live"         # live fetch, not cached
@@ -239,7 +486,7 @@ def get_valuation(ticker: str) -> ValuationV2Response:
         "revenue_growth": revenue_growth,
         "total_debt": total_debt,
     }
-    backfill = _backfill_from_alpha_vantage(
+    backfill, backfill_provider = _backfill_from_external_providers(
         ticker=ticker,
         pe_current=pe_current,
         pe_forward=pe_forward,
@@ -255,11 +502,11 @@ def get_valuation(ticker: str) -> ValuationV2Response:
     revenue_growth = backfill["revenue_growth"]
     total_debt = backfill["total_debt"]
 
-    if source == "unknown" and any(
+    if source == "unknown" and backfill_provider and any(
         before_backfill[key] is None and backfill[key] is not None
         for key in backfill
     ):
-        source = "alpha_vantage"
+        source = backfill_provider
         served_from = "fallback"
 
     # -- 3. Enterprise value (reported or computed) -------------------
@@ -282,7 +529,7 @@ def get_valuation(ticker: str) -> ValuationV2Response:
         status = "unavailable"
     elif cache_state in ("fresh", "cached", "stale"):
         status = cache_state
-    elif source in ("finnhub", "yfinance", "twelvedata", "eodhd", "alpha_vantage"):
+    elif source in ("finnhub", "yfinance", "twelvedata", "eodhd", "alpha_vantage", "fmp"):
         status = "fresh"  # live fetch succeeded
     elif served_from == "cache":
         status = "cached"
