@@ -242,7 +242,18 @@ def _ticker_dir_key(ticker: str) -> str:
 def _find_analysis_dirs(ticker: str) -> list[Path]:
     """Find analysis directories for a ticker, case-insensitively.
     Returns newest first. The PDF endpoint handles async generation if needed."""
-    return sorted(ANALYSES_DIR.glob(f"*_{_ticker_dir_key(ticker)}_*"), reverse=True)
+    key = _ticker_dir_key(ticker)
+    # Primary: glob pattern like *_NVDA_* (legacy)
+    dirs = sorted(ANALYSES_DIR.glob(f"*_{key}_*"), reverse=True)
+    # Fallback: exact ticker name directory (e.g., "NVDA")
+    exact = ANALYSES_DIR / key
+    if exact.is_dir() and exact not in dirs:
+        dirs.append(exact)
+    # Fallback: any dir ending with ticker (e.g., "NVDA_NVIDIA", "NVDA_2026Q2")
+    for d in sorted(ANALYSES_DIR.glob(f"{key}*"), reverse=True):
+        if d.is_dir() and d not in dirs:
+            dirs.append(d)
+    return dirs
 
 
 def _ticker_from_analysis_dir(entry: Path) -> str | None:

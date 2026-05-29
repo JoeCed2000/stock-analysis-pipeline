@@ -246,6 +246,14 @@ def md_to_pdf(md_path: str, pdf_path: str, title: str = "") -> str:
     h2_style = ParagraphStyle('MDH2', parent=styles['Heading2'], fontSize=12, textColor='#0969da', spaceBefore=8, spaceAfter=4)
     body_style = ParagraphStyle('MDBody', parent=styles['Normal'], fontSize=9, textColor='#1f2328', leading=13)
     
+    import re
+    
+    def _md_to_xml(text: str) -> str:
+        """Convert basic markdown formatting to XML for ReportLab Paragraph."""
+        text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)  # bold
+        text = re.sub(r'\*(.+?)\*', r'<i>\1</i>', text)      # italic
+        return text
+    
     in_table = False
     for line in content.split("\n"):
         stripped = line.strip()
@@ -261,10 +269,11 @@ def md_to_pdf(md_path: str, pdf_path: str, title: str = "") -> str:
             # Skip markdown tables for simplicity — they're in the main PDF
             continue
         elif stripped.startswith("**") and ":**" in stripped:
-            # Key-value line
-            story.append(Paragraph(f"<b>{stripped}</b>", body_style))
+            # Key-value line: "**Key:** value" → <b>Key:</b> value
+            kv = _md_to_xml(stripped)
+            story.append(Paragraph(kv, body_style))
         else:
-            story.append(Paragraph(stripped, body_style))
+            story.append(Paragraph(_md_to_xml(stripped), body_style))
     
     doc.build(story)
     return pdf_path

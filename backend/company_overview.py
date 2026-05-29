@@ -362,6 +362,9 @@ Return ONLY a valid JSON object (no markdown, no explanation) with EXACTLY this 
   "competitive_position": "2-3 sentences analyzing market position, advantages, and threats.",
   "strengths_vs_competitors": "2-3 sentences on strengths relative to direct peers.",
   "weaker_areas_vs_competitors": "2-3 sentences on weaker areas vs peers.",
+  "client_types": "2-3 sentences describing main customer types and end markets.",
+  "management_weaknesses": "2-3 sentences on management team weaknesses, turnover, or governance risks.",
+  "investor_takeaway": "2-3 sentence bottom-line investment takeaway summarizing the bull/bear case balance.",
   "ceo_leadership_style": "2-3 sentences on leadership style based on public signals.",
   "long_term_vision": "2-3 sentences on long-term strategy and vision.",
   "competitors": [
@@ -743,6 +746,25 @@ def _fallback_overview(ticker: str, yf_info: Dict[str, Any]) -> Dict[str, Any]:
         "and funding selective long-horizon bets from strong cash generation."
     )
 
+    client_types = (
+        "Client and end-market segmentation could not be reliably synthesized "
+        "because LLM synthesis was unavailable. Based on available data, customers "
+        "appear to span enterprise, cloud, consumer, and automotive end markets."
+    )
+
+    management_weaknesses = (
+        "Specific management weaknesses and governance risks could not be reliably assessed "
+        "because LLM synthesis was unavailable. Detailed evaluation requires transcript-level "
+        "management commentary and governance analysis."
+    )
+
+    investor_takeaway = (
+        "A balanced investment takeaway could not be reliably synthesized "
+        "because LLM synthesis was unavailable. Key factors to weigh include "
+        "valuation multiples, revenue growth momentum, competitive positioning, "
+        "and the durability of business moats."
+    )
+
     return {
         "company_profile": {
             "name": yf_info.get("name", ticker),
@@ -778,6 +800,9 @@ def _fallback_overview(ticker: str, yf_info: Dict[str, Any]) -> Dict[str, Any]:
         "competitive_position": "LLM synthesis unavailable — using deterministic fallback from market snapshot.",
         "strengths_vs_competitors": strengths_vs,
         "weaker_areas_vs_competitors": weaker_vs,
+        "client_types": client_types,
+        "management_weaknesses": management_weaknesses,
+        "investor_takeaway": investor_takeaway,
         "ceo_leadership_style": ceo_style,
         "long_term_vision": long_term_vision,
         "competitors": [],

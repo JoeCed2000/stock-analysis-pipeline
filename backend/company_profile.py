@@ -216,6 +216,27 @@ def generate_company_profile(
         lines.append(weaker)
         lines.append("")
 
+    client_types = _ov_text("client_types", fallback="")
+    if client_types and client_types != "N/A":
+        lines.append("### Client types / end markets")
+        lines.append("")
+        lines.append(client_types)
+        lines.append("")
+
+    mgmt_weak = _ov_text("management_weaknesses", fallback="")
+    if mgmt_weak and mgmt_weak != "N/A":
+        lines.append("### Management weaknesses / governance risks")
+        lines.append("")
+        lines.append(mgmt_weak)
+        lines.append("")
+
+    takeaway = _ov_text("investor_takeaway", fallback="")
+    if takeaway and takeaway != "N/A":
+        lines.append("### Investor takeaway")
+        lines.append("")
+        lines.append(takeaway)
+        lines.append("")
+
     competitors = overview.get("competitors")
     if isinstance(competitors, list) and competitors:
         lines.append("### Competitors")
