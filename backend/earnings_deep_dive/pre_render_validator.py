@@ -1057,6 +1057,282 @@ def validate_pre_render(
                     severity="error",
                 ))
 
+    # ── RULE 16 (BLOCKING): §11 Operating Metrics consistency ──────────────
+    #
+    # Table values must not be contradicted by text. Margin changes must be
+    # labeled as bps/percentage-points when appropriate.
+
+    op_metrics_text = _sec.get("Operating Metrics", "")
+    if isinstance(op_metrics_text, str) and op_metrics_text.strip():
+        om = op_metrics_text
+
+        # 16a. Table shows metric but text says "not retrieved/available"
+        has_not_avail = bool(re.search(
+            r'Not\s+(available|retrieved)|DATA\s+NOT\s+AVAILABLE', om, re.IGNORECASE
+        ))
+        if has_not_avail:
+            gross_margin_m = metric_map.get("gross_margin")
+            op_margin_m = metric_map.get("operating_margin")
+            op_income_m = metric_map.get("operating_income")
+            net_income_m = metric_map.get("net_income_quarterly") or metric_map.get("net_income")
+            if gross_margin_m is not None or op_margin_m is not None:
+                warnings.append(ValidationWarning(
+                    check="operating_metrics_not_available_contradiction",
+                    section="Operating Metrics",
+                    detail=(
+                        "Operating Metrics says 'Not available' but metrics contain "
+                        "gross_margin, operating_margin, or other values. "
+                        "If the value is in the table, text cannot say it was not retrieved."
+                    ),
+                    severity="error",
+                ))
+            elif op_income_m is not None or net_income_m is not None:
+                warnings.append(ValidationWarning(
+                    check="operating_metrics_not_available_contradiction",
+                    section="Operating Metrics",
+                    detail=(
+                        "Operating Metrics says 'Not available' but metrics contain "
+                        "operating_income or net_income values. Table/text must agree."
+                    ),
+                    severity="error",
+                ))
+
+        # 16b. Margin changes labeled as % growth instead of bps/pp
+        margin_pct_growth = bool(re.search(
+            r'(?:gross|operating|net)\s*margin\s*(?:grew|increased|expanded|rose|up)\s+(?:by\s+)?[\d.]+\s*%',
+            om, re.IGNORECASE
+        ))
+        has_bps_mention = bool(re.search(
+            r'\bbps\b|\bbasis\s+points?\b|\bpercentage\s+points?\b|\bpp\b', om, re.IGNORECASE
+        ))
+        if margin_pct_growth and not has_bps_mention:
+            warnings.append(ValidationWarning(
+                check="operating_metrics_margin_label",
+                section="Operating Metrics",
+                detail=(
+                    "Margin changes described as percent growth (e.g. 'margin grew by 5%'). "
+                    "Margin changes should use basis points (bps) or percentage points — "
+                    "a margin going from 60% to 65% is +500bps, not +5% growth."
+                ),
+                severity="error",
+            ))
+
+    # ── RULE 17 (BLOCKING): §12 Cash Flow sign conventions ─────────────────
+    #
+    # No raw provider keys. FCF must be consistent. CapEx sign normalized.
+
+    cash_flow_text = _sec.get("Cash Flow", "")
+    if isinstance(cash_flow_text, str) and cash_flow_text.strip():
+        cf = cash_flow_text
+
+        # 17a. Raw provider keys in Cash Flow
+        cf_raw_patterns = [
+            (r'yfinance\s+key', 'yfinance key'),
+            (r'operating_cash_flow\b', 'operating_cash_flow'),
+            (r'capital_expenditure\b', 'capital_expenditure'),
+            (r'free_cash_flow\b', 'free_cash_flow'),
+        ]
+        for pattern, label in cf_raw_patterns:
+            if re.search(pattern, cf, re.IGNORECASE):
+                warnings.append(ValidationWarning(
+                    check="cash_flow_raw_provider_key",
+                    section="Cash Flow",
+                    detail=(
+                        f"Raw provider key '{label}' found in Cash Flow. "
+                        f"Use human-readable labels: 'Operating cash flow', 'CapEx', 'Free cash flow'."
+                    ),
+                    severity="error",
+                ))
+                break
+
+        # 17b. FCF in table but inconsistent in narrative
+        fcf_m = metric_map.get("free_cash_flow")
+        if fcf_m is not None:
+            # Only check dollar amounts near "free cash flow" / "FCF" mentions
+            fcf_contexts = re.findall(
+                r'(?:free\s+cash\s+flow|FCF).{0,80}(\$[\d,.]+(?:\s*(?:billion|million|B|M))?)',
+                cf, re.IGNORECASE
+            )
+            if fcf_contexts and abs(fcf_m) > 1e9:
+                fcf_b = abs(fcf_m) / 1e9
+                for fig in fcf_contexts:
+                    try:
+                        clean = re.sub(r'[^\d.BM]', '', fig, flags=re.IGNORECASE)
+                        if 'B' in clean.upper():
+                            val = float(clean.upper().replace('B', ''))
+                            if abs(val - fcf_b) > fcf_b * 0.20:
+                                warnings.append(ValidationWarning(
+                                    check="cash_flow_fcf_consistency",
+                                    section="Cash Flow",
+                                    detail=(
+                                        f"FCF in metrics: ${fcf_b:.1f}B. "
+                                        f"FCF mentioned in text: {fig.strip()}. "
+                                        f"Values differ by >20%. Table and text must agree."
+                                    ),
+                                    severity="error",
+                                ))
+                    except (ValueError, TypeError):
+                        pass
+
+    # ── RULE 18 (BLOCKING): §13 Capital Efficiency validation ──────────────
+    #
+    # Table shows ratio but text says unavailable. Provider-supplied must be labeled.
+
+    cap_eff_text = _sec.get("Capital Efficiency", "")
+    if isinstance(cap_eff_text, str) and cap_eff_text.strip():
+        ce = cap_eff_text
+
+        # 18a. Table shows ROE/ROIC/ROA but text says unavailable
+        has_not_avail_ce = bool(re.search(
+            r'Not\s+(available|retrieved)|DATA\s+NOT\s+AVAILABLE|unavailable',
+            ce, re.IGNORECASE
+        ))
+        if has_not_avail_ce:
+            roe_m = metric_map.get("roe")
+            roic_m = metric_map.get("roic")
+            roa_m = metric_map.get("roa")
+            if roe_m is not None or roic_m is not None or roa_m is not None:
+                warnings.append(ValidationWarning(
+                    check="capital_efficiency_not_available_contradiction",
+                    section="Capital Efficiency",
+                    detail=(
+                        "Capital Efficiency says 'Not available' but metrics contain "
+                        "ROE/ROIC/ROA values. If shown in the table, text cannot "
+                        "claim they are unavailable."
+                    ),
+                    severity="error",
+                ))
+
+        # 18b. Extreme ratios without provider-supplied label check
+        roe_v = metric_map.get("roe")
+        roic_v = metric_map.get("roic")
+        extreme = False
+        extreme_detail = ""
+        if roe_v is not None and abs(roe_v) > 100:
+            extreme = True
+            extreme_detail = f"ROE={roe_v:.0f}%"
+        if roic_v is not None and abs(roic_v) > 100:
+            extreme = True
+            extreme_detail += (", " if extreme_detail else "") + f"ROIC={roic_v:.0f}%"
+        if extreme:
+            has_provider_label = bool(re.search(
+                r'provider.supplied|provider.sourced|as\s+reported\s+by', ce, re.IGNORECASE
+            ))
+            if not has_provider_label:
+                warnings.append(ValidationWarning(
+                    check="capital_efficiency_extreme_unlabeled",
+                    section="Capital Efficiency",
+                    detail=(
+                        f"Extreme ratio(s) detected: {extreme_detail}. "
+                        f"Values >100% require a provider-supplied label or "
+                        f"denominator validation. Add 'Provider-supplied' or verify the calculation."
+                    ),
+                    severity="error",
+                ))
+
+    # ── RULE 19 (BLOCKING): §15 Guidance reconciliation ─────────────────────
+    #
+    # Consensus is not management guidance. Current actual is not guidance.
+
+    guidance_text = _sec.get("Guidance", "")
+    if isinstance(guidance_text, str) and guidance_text.strip():
+        gd = guidance_text
+
+        # 19a. Consensus/analyst estimate presented as guidance
+        has_consensus_as_guidance = bool(re.search(
+            r'(?:analyst|consensus)\s+(?:estimate|forecast|expectation).{0,60}guidance',
+            gd, re.IGNORECASE
+        ))
+        if has_consensus_as_guidance:
+            warnings.append(ValidationWarning(
+                check="guidance_consensus_conflated",
+                section="Guidance",
+                detail=(
+                    "Analyst consensus/estimate is presented as guidance. "
+                    "Consensus is NOT management guidance — they are distinct. "
+                    "Label each clearly: 'Management guidance' vs 'Analyst consensus'."
+                ),
+                severity="error",
+            ))
+
+        # 19b. Current quarter actual presented as guidance
+        current_as_guidance = bool(re.search(
+            r'(?:current|this)\s*(?:quarter|period|Q\d).{0,40}guidance',
+            gd, re.IGNORECASE
+        ))
+        if current_as_guidance:
+            warnings.append(ValidationWarning(
+                check="guidance_current_as_guidance",
+                section="Guidance",
+                detail=(
+                    "Current quarter actual presented as guidance. "
+                    "Current actuals are NOT guidance — guidance is forward-looking. "
+                    "Separate 'Current quarter actual' from 'Forward guidance'."
+                ),
+                severity="error",
+            ))
+
+        # 19c. "Not guided" in table but narrative contains guidance
+        has_not_guided = bool(re.search(
+            r'Not\s+guided|no\s+guidance\s+(?:provided|issued|given)',
+            gd, re.IGNORECASE
+        ))
+        has_guidance_narrative = bool(re.search(
+            r'(?:management|company)\s+(?:guided|guidance|expects|forecasts|outlook|sees|projects)',
+            gd, re.IGNORECASE
+        ))
+        if has_not_guided and has_guidance_narrative:
+            warnings.append(ValidationWarning(
+                check="guidance_table_narrative_contradiction",
+                section="Guidance",
+                detail=(
+                    "Table says 'Not guided' but narrative contains guidance language. "
+                    "If management issued guidance, the table must reflect it. "
+                    "If table says not guided, narrative cannot present guidance."
+                ),
+                severity="error",
+            ))
+
+    # ── RULE 20 (BLOCKING): §16 Backlog / Demand visibility ─────────────────
+    #
+    # No forced backlog. No "Backlog is Not available." No empty table.
+
+    backlog_text = _sec.get("Backlog", "")
+    if isinstance(backlog_text, str) and backlog_text.strip():
+        bl = backlog_text
+
+        # 20a. "Backlog is Not available" — replace with professional language
+        has_na_backlog = bool(re.search(
+            r'Backlog\s+(?:is\s+)?Not\s+available|Backlog.*?N/A',
+            bl, re.IGNORECASE
+        ))
+        if has_na_backlog:
+            warnings.append(ValidationWarning(
+                check="backlog_na_language",
+                section="Backlog",
+                detail=(
+                    "'Backlog is Not available' found. Use professional language: "
+                    "'The company does not publicly disclose backlog figures.' "
+                    "Do not force a backlog table when no data exists."
+                ),
+                severity="error",
+            ))
+
+        # 20b. Empty or near-empty backlog section — likely forced
+        cleaned = re.sub(r'[•🌟⚠️🎯🧠\*\-#\|\s]', '', bl)
+        if len(cleaned) < 30:
+            warnings.append(ValidationWarning(
+                check="backlog_empty_or_forced",
+                section="Backlog",
+                detail=(
+                    f"Backlog section appears empty or near-empty "
+                    f"(meaningful content: {len(cleaned)} chars). "
+                    f"If the company does not disclose backlog/RPO/orders, "
+                    f"use a short 'Demand visibility' note instead of a forced table."
+                ),
+                severity="error",
+            ))
+
     # ── Determine pass/fail ────────────────────────────────────────────
 
     errors = [w for w in warnings if w.severity == "error"]
