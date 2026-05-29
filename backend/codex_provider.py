@@ -4,6 +4,8 @@ Uses os.openpty() for PTY (required by Codex CLI).
 import os
 import json
 import logging
+import pwd
+import shutil
 import subprocess
 import tempfile
 import time
@@ -11,7 +13,22 @@ from typing import Optional, Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
-CODEX_BIN = os.path.expanduser("~/.hermes/node/bin/codex")
+# Resolve Codex binary using the real OS login home (not profile-local ~).
+# Hermes profiles redirect $HOME, so os.path.expanduser("~") points to
+# the profile-local fake home where Codex is NOT installed.
+_REAL_HOME = pwd.getpwuid(os.getuid()).pw_dir
+_CODEX_CANDIDATES = [
+    os.path.join(_REAL_HOME, ".hermes", "node", "bin", "codex"),  # Ced's canonical install
+    shutil.which("codex"),                                           # PATH fallback
+]
+CODEX_BIN = None
+for _c in _CODEX_CANDIDATES:
+    if _c and os.path.exists(_c):
+        CODEX_BIN = _c
+        break
+
+if CODEX_BIN is None:
+    CODEX_BIN = _CODEX_CANDIDATES[0]  # keep for clearer error message
 CODEX_TIMEOUT = 600  # seconds per attempt (agents need time to finish — 10 min)
 CODEX_MAX_RETRIES = 2  # total attempts = 1 + MAX_RETRIES = 3
 CODEX_RETRY_BACKOFF = [2.0, 4.0]  # seconds between retries (jittered ±50%)
