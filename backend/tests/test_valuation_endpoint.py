@@ -207,6 +207,90 @@ class TestValuationLayer:
 
 
 # =====================================================================
+# ALTERNATIVE PROVIDER BACKFILL — 2 tests
+# =====================================================================
+
+
+class TestAlternativeProviderBackfill:
+
+    def test_backfill_from_alpha_vantage_overview_and_balance_sheet(self):
+        """Alpha Vantage payload fills missing valuation fields with normalized decimals."""
+        from backend.valuation import _backfill_from_alpha_vantage
+
+        def _fake_request(function, _ticker):
+            if function == "OVERVIEW":
+                return {
+                    "PERatio": "24.1",
+                    "ForwardPE": "21.3",
+                    "PEGRatio": "1.45",
+                    "QuarterlyEarningsGrowthYOY": "12.5",
+                    "QuarterlyRevenueGrowthYOY": "8.2",
+                }
+            if function == "BALANCE_SHEET":
+                return {
+                    "quarterlyReports": [
+                        {"shortLongTermDebtTotal": "1234567890"}
+                    ]
+                }
+            return None
+
+        with patch("backend.valuation._alpha_vantage_request", side_effect=_fake_request):
+            out = _backfill_from_alpha_vantage(
+                ticker="INTC",
+                pe_current=None,
+                pe_forward=None,
+                peg_ratio=None,
+                eps_growth=None,
+                revenue_growth=None,
+                total_debt=None,
+            )
+
+        assert out["pe_current"] == 24.1
+        assert out["pe_forward"] == 21.3
+        assert out["peg_ratio"] == 1.45
+        assert out["eps_growth"] == 0.125
+        assert out["revenue_growth"] == pytest.approx(0.082, rel=1e-9)
+        assert out["total_debt"] == 1234567890.0
+
+    def test_get_valuation_promotes_source_when_backfill_used(self):
+        """When yfinance misses fields and fallback fills them, source becomes alpha_vantage."""
+        from backend.valuation import get_valuation
+
+        stock_data = {
+            "ticker": "INTC",
+            "price": 42.0,
+            "market_cap": 170000000000.0,
+            "currency": "USD",
+            "financials": {},
+            "_source": "cache",
+        }
+
+        with patch("backend.valuation.get_stock_data", return_value=stock_data):
+            with patch("backend.valuation._yf_ticker_safe", side_effect=RuntimeError("no yfinance")):
+                with patch(
+                    "backend.valuation._backfill_from_alpha_vantage",
+                    return_value={
+                        "pe_current": 19.2,
+                        "pe_forward": 16.8,
+                        "peg_ratio": 1.1,
+                        "eps_growth": 0.11,
+                        "revenue_growth": 0.07,
+                        "total_debt": 35000000000.0,
+                    },
+                ):
+                    resp = get_valuation("INTC")
+
+        assert resp.source == "alpha_vantage"
+        assert resp.served_from == "fallback"
+        assert resp.pe_current == 19.2
+        assert resp.pe_forward == 16.8
+        assert resp.peg_ratio == 1.1
+        assert resp.eps_growth == 0.11
+        assert resp.revenue_growth == 0.07
+        assert resp.total_debt == 35000000000.0
+
+
+# =====================================================================
 # ENDPOINT INTEGRATION — 2 tests
 # =====================================================================
 

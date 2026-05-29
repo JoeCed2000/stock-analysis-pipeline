@@ -6,13 +6,124 @@ EUR conversion is disabled in V2.3 (fx_status='unavailable').
 """
 
 import logging
+import os
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 
+from backend.http_client import http
 from backend.sources_collector import get_stock_data, _yf_ticker_safe
 from backend.models import ValuationV2Response
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_float_loose(val) -> Optional[float]:
+    """Safe float parsing for provider strings (commas, %, N/A tokens)."""
+    if val is None:
+        return None
+    if isinstance(val, str):
+        s = val.strip()
+        if not s or s.lower() in {"none", "n/a", "na", "null", "-"}:
+            return None
+        s = s.replace(",", "")
+        if s.endswith("%"):
+            s = s[:-1]
+        return _safe_float(s)
+    return _safe_float(val)
+
+
+def _normalize_growth_decimal(val) -> Optional[float]:
+    """Normalize growth values to decimal form (0.12 = 12%)."""
+    f = _safe_float_loose(val)
+    if f is None:
+        return None
+    # Providers may return 12.3 instead of 0.123.
+    if abs(f) > 1:
+        return f / 100.0
+    return f
+
+
+def _alpha_vantage_request(function: str, ticker: str) -> Optional[Dict[str, Any]]:
+    """Best-effort Alpha Vantage request (returns None on quota/errors)."""
+    api_key = os.getenv("ALPHA_VANTAGE_API_KEY", "").strip()
+    if not api_key:
+        return None
+
+    try:
+        resp = http.get(
+            "https://www.alphavantage.co/query",
+            params={"function": function, "symbol": ticker, "apikey": api_key},
+            timeout=12,
+        )
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        if not isinstance(data, dict):
+            return None
+        if data.get("Note") or data.get("Information") or data.get("Error Message"):
+            return None
+        return data
+    except Exception as exc:
+        logger.debug("Alpha Vantage %s failed for %s — %s", function, ticker, exc)
+        return None
+
+
+def _backfill_from_alpha_vantage(
+    ticker: str,
+    pe_current: Optional[float],
+    pe_forward: Optional[float],
+    peg_ratio: Optional[float],
+    eps_growth: Optional[float],
+    revenue_growth: Optional[float],
+    total_debt: Optional[float],
+) -> Dict[str, Optional[float]]:
+    """Fill missing valuation fields from Alpha Vantage when available."""
+    result = {
+        "pe_current": pe_current,
+        "pe_forward": pe_forward,
+        "peg_ratio": peg_ratio,
+        "eps_growth": eps_growth,
+        "revenue_growth": revenue_growth,
+        "total_debt": total_debt,
+    }
+
+    if all(value is not None for value in result.values()):
+        return result
+
+    overview = _alpha_vantage_request("OVERVIEW", ticker)
+    if overview:
+        if result["pe_current"] is None:
+            result["pe_current"] = _safe_float_loose(overview.get("PERatio"))
+        if result["pe_forward"] is None:
+            result["pe_forward"] = _safe_float_loose(overview.get("ForwardPE"))
+        if result["peg_ratio"] is None:
+            result["peg_ratio"] = _safe_float_loose(overview.get("PEGRatio"))
+        if result["eps_growth"] is None:
+            # Prefer quarterly earnings growth YOY, fallback earnings growth YOY.
+            result["eps_growth"] = _normalize_growth_decimal(
+                overview.get("QuarterlyEarningsGrowthYOY")
+                or overview.get("EPSGrowthYOY")
+            )
+        if result["revenue_growth"] is None:
+            result["revenue_growth"] = _normalize_growth_decimal(
+                overview.get("QuarterlyRevenueGrowthYOY")
+            )
+
+    if result["total_debt"] is None:
+        bs = _alpha_vantage_request("BALANCE_SHEET", ticker)
+        if bs:
+            reports = bs.get("quarterlyReports") or bs.get("annualReports") or []
+            if isinstance(reports, list) and reports:
+                latest = reports[0] if isinstance(reports[0], dict) else {}
+                total_debt_candidate = (
+                    latest.get("shortLongTermDebtTotal")
+                    or latest.get("longTermDebtNoncurrent")
+                    or latest.get("longTermDebt")
+                    or latest.get("shortTermDebt")
+                )
+                result["total_debt"] = _safe_float_loose(total_debt_candidate)
+
+    return result
 
 
 def get_valuation(ticker: str) -> ValuationV2Response:
@@ -75,7 +186,7 @@ def get_valuation(ticker: str) -> ValuationV2Response:
         revenue_growth = _safe_float(financials.get("revenue_annual_growth"))
 
     # Separate provider (source) from delivery method (served_from)
-    KNOWN_PROVIDERS = {"finnhub", "yfinance", "twelvedata", "eodhd"}
+    KNOWN_PROVIDERS = {"finnhub", "yfinance", "twelvedata", "eodhd", "alpha_vantage"}
     if raw_source in KNOWN_PROVIDERS:
         source = raw_source          # actual financial data provider
         served_from = "live"         # live fetch, not cached
@@ -119,6 +230,38 @@ def get_valuation(ticker: str) -> ValuationV2Response:
     except Exception:
         logger.debug("yfinance enrichment skipped for %s", ticker)
 
+    # -- 2.5 Alternative provider backfill (best-effort) ----------------
+    before_backfill = {
+        "pe_current": pe_current,
+        "pe_forward": pe_forward,
+        "peg_ratio": peg_ratio,
+        "eps_growth": eps_growth,
+        "revenue_growth": revenue_growth,
+        "total_debt": total_debt,
+    }
+    backfill = _backfill_from_alpha_vantage(
+        ticker=ticker,
+        pe_current=pe_current,
+        pe_forward=pe_forward,
+        peg_ratio=peg_ratio,
+        eps_growth=eps_growth,
+        revenue_growth=revenue_growth,
+        total_debt=total_debt,
+    )
+    pe_current = backfill["pe_current"]
+    pe_forward = backfill["pe_forward"]
+    peg_ratio = backfill["peg_ratio"]
+    eps_growth = backfill["eps_growth"]
+    revenue_growth = backfill["revenue_growth"]
+    total_debt = backfill["total_debt"]
+
+    if source == "unknown" and any(
+        before_backfill[key] is None and backfill[key] is not None
+        for key in backfill
+    ):
+        source = "alpha_vantage"
+        served_from = "fallback"
+
     # -- 3. Enterprise value (reported or computed) -------------------
     computed_ev = _compute_ev(market_cap, total_debt, cash)
 
@@ -139,7 +282,7 @@ def get_valuation(ticker: str) -> ValuationV2Response:
         status = "unavailable"
     elif cache_state in ("fresh", "cached", "stale"):
         status = cache_state
-    elif source in ("finnhub", "yfinance", "twelvedata", "eodhd"):
+    elif source in ("finnhub", "yfinance", "twelvedata", "eodhd", "alpha_vantage"):
         status = "fresh"  # live fetch succeeded
     elif served_from == "cache":
         status = "cached"

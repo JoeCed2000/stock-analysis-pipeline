@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -32,11 +34,70 @@ _TICKER_ALIASES: Dict[str, set[str]] = {
     "GOOGL": {"GOOG"},
 }
 
+_DYNAMIC_PEER_CACHE: Dict[str, List[str]] = {}
+_VALID_TICKER = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,9}$")
+
 
 def _equivalent_tickers(ticker: str) -> set[str]:
     """Return ticker + known aliases for matching/skip logic."""
     t = ticker.upper().strip()
     return {t, *_TICKER_ALIASES.get(t, set())}
+
+
+def _normalize_dynamic_peers(raw_peers: Any, equivalent: set[str]) -> List[str]:
+    """Normalize provider peer symbols and drop invalid/self/duplicates."""
+    if not isinstance(raw_peers, list):
+        return []
+
+    out: List[str] = []
+    for raw in raw_peers:
+        if not isinstance(raw, str):
+            continue
+        sym = raw.upper().strip()
+        if not sym or sym in equivalent:
+            continue
+        if not _VALID_TICKER.match(sym):
+            continue
+        if sym not in out:
+            out.append(sym)
+
+    # Keep a compact basket for stable UI/latency.
+    return out[:8]
+
+
+def _fetch_dynamic_peers_from_finnhub(ticker: str, equivalent: set[str]) -> List[str]:
+    """Try Finnhub company_peers as runtime fallback for non-curated tickers."""
+    ticker = ticker.upper().strip()
+
+    if ticker in _DYNAMIC_PEER_CACHE:
+        return _DYNAMIC_PEER_CACHE[ticker]
+
+    api_key = os.getenv("FINNHUB_API_KEY", "").strip()
+    if not api_key:
+        return []
+
+    try:
+        from backend.http_client import http
+
+        resp = http.get(
+            "https://finnhub.io/api/v1/stock/peers",
+            params={"symbol": ticker, "token": api_key},
+            timeout=8,
+        )
+        if resp.status_code != 200:
+            logger.debug(
+                "dynamic peers: finnhub HTTP %s for %s",
+                resp.status_code,
+                ticker,
+            )
+            return []
+
+        peers = _normalize_dynamic_peers(resp.json(), equivalent)
+        _DYNAMIC_PEER_CACHE[ticker] = peers
+        return peers
+    except Exception as exc:
+        logger.debug("dynamic peers: finnhub fetch failed for %s — %s", ticker, exc)
+        return []
 
 
 def _load_config() -> Dict[str, Any]:
@@ -122,7 +183,7 @@ def get_peers(ticker: str) -> Dict[str, Any]:
     Returns:
         dict with keys:
           - status: "available" | "unavailable" | "error"
-          - source: "curated" | "none"
+          - source: "curated" | "dynamic_finnhub" | "none"
           - timestamp: ISO-8601 UTC
           - ticker: resolved uppercase ticker
           - group_id: peer group identifier (only when available)
@@ -197,6 +258,19 @@ def get_peers(ticker: str) -> Dict[str, Any]:
             break
 
     if entry is None:
+        dynamic_peers = _fetch_dynamic_peers_from_finnhub(ticker, equivalent)
+        if len(dynamic_peers) >= 2:
+            return {
+                "status": "available",
+                "source": "dynamic_finnhub",
+                "timestamp": now,
+                "ticker": ticker,
+                "group_id": f"dynamic_{ticker_lower}",
+                "group_label": "Dynamic Peers (Finnhub)",
+                "peers": dynamic_peers,
+                "derived_from_provider": "finnhub",
+            }
+
         return {
             "status": "unavailable",
             "source": "curated",
@@ -224,4 +298,5 @@ def reload() -> Dict[str, Any]:
     global _peer_universe, _load_errors
     _peer_universe = None
     _load_errors = []
+    _DYNAMIC_PEER_CACHE.clear()
     return _load_config()

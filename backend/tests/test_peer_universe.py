@@ -11,6 +11,7 @@ Covers all 6 acceptance criteria from SA-V25-T1:
 """
 
 import pytest
+from unittest.mock import patch
 from peer_universe import get_peers, reload, _validate_and_cache
 
 
@@ -95,8 +96,9 @@ class TestValidPeers:
 
 
 def test_unknown_ticker():
-    """Unknown ticker returns status='unavailable'."""
-    result = get_peers("ZZZZZ")
+    """Unknown ticker returns status='unavailable' when dynamic fallback has no peers."""
+    with patch("peer_universe._fetch_dynamic_peers_from_finnhub", return_value=[]):
+        result = get_peers("ZZZZZ")
     assert result["status"] == "unavailable"
     assert result["source"] == "curated"
     assert result["ticker"] == "ZZZZZ"
@@ -104,6 +106,19 @@ def test_unknown_ticker():
     # No group_id, group_label, or peers for unavailable tickers
     assert "group_id" not in result
     assert "peers" not in result
+
+
+def test_unknown_ticker_dynamic_fallback_from_finnhub():
+    """Unknown ticker can become available when provider peers are returned."""
+    with patch("peer_universe._fetch_dynamic_peers_from_finnhub", return_value=["AMD", "NVDA", "AVGO"]):
+        result = get_peers("INTC")
+
+    assert result["status"] == "available"
+    assert result["source"] == "dynamic_finnhub"
+    assert result["ticker"] == "INTC"
+    assert result["group_id"] == "dynamic_intc"
+    assert result["group_label"] == "Dynamic Peers (Finnhub)"
+    assert result["peers"] == ["AMD", "NVDA", "AVGO"]
 
 
 # ═══════════════════════════════════════════════════════════════
