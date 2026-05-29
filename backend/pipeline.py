@@ -85,37 +85,79 @@ def _best_transcript_source(sources: List[Dict[str, Any]]) -> tuple[str, Dict[st
     return fallback_text, fallback_source
 
 
-def _transcript_url(source: Dict[str, Any], ticker: str | None = None) -> Optional[str]:
-    """Return a stable transcript citation URL when provided by a finder.
+def _transcript_url(source: Dict[str, Any], ticker: str | None = None,
+                    all_sources: list | None = None) -> Optional[str]:
+    """Return a stable transcript citation URL.
+
+    Priority:
+    1) StockAnalysis listing page (most stable, no link rot)
+    2) Seeking Alpha transcript URL
+    3) Source-provided URL
+    4) Fallback to stockanalysis.com listing for known tickers
 
     For StockAnalysis deep links, normalize to the listing page
     `/stocks/{ticker}/transcripts/` to avoid link rot on transcript IDs.
+    Investor-relations URLs (investor.*.com) are never returned when a
+    better alternative exists.
     """
-    for key in ("url", "link", "source_url"):
-        value = source.get(key)
-        if not isinstance(value, str) or not value.strip():
+    from urllib.parse import urlparse
+
+    def _is_ir_portal(host: str) -> bool:
+        """Investor-relations portals should not be primary transcript citations."""
+        return bool(re.match(r"^investor\.", host))
+
+    def _extract_url(src: Dict[str, Any]) -> Optional[str]:
+        for key in ("url", "link", "source_url"):
+            value = src.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    # Collect candidate URLs from this source and all available sources
+    candidates: list[tuple[int, str]] = []  # (priority, url)
+
+    all_candidate_sources = [source]
+    if all_sources:
+        all_candidate_sources = list(all_sources)
+
+    for src in all_candidate_sources:
+        url = _extract_url(src)
+        if not url:
             continue
-
-        url = value.strip()
         try:
-            from urllib.parse import urlparse
-
             parsed = urlparse(url)
             host = parsed.netloc.lower().replace("www.", "")
             path = parsed.path.strip("/")
+
             if host == "stockanalysis.com":
                 match = re.match(
                     r"stocks/([^/]+)/transcripts(?:/[^/]+)?/?$",
                     path,
                     re.IGNORECASE,
                 )
-                if match:
-                    canonical_ticker = (ticker or match.group(1)).strip().lower()
-                    return f"https://stockanalysis.com/stocks/{canonical_ticker}/transcripts/"
+                canonical_ticker = (ticker or (match.group(1) if match else "")).strip().lower()
+                if canonical_ticker:
+                    candidates.append((400, f"https://stockanalysis.com/stocks/{canonical_ticker}/transcripts/"))
+            elif "seekingalpha.com" in host:
+                candidates.append((300, url))
+            elif _is_ir_portal(host):
+                candidates.append((50, url))  # Low priority — investor relations portal
+            else:
+                candidates.append((100, url))
         except Exception:
             pass
 
-        return url
+    if candidates:
+        best = max(candidates, key=lambda x: x[0])
+        # Never return an investor-relations portal URL when we have a ticker
+        if best[0] <= 50 and ticker:
+            return f"https://stockanalysis.com/stocks/{ticker.strip().lower()}/transcripts/"
+        return best[1]
+
+    # Fallback: construct stockanalysis.com URL when ticker is known
+    if ticker:
+        return f"https://stockanalysis.com/stocks/{ticker.strip().lower()}/transcripts/"
+
     return None
 
 
@@ -1392,7 +1434,7 @@ def _add_earnings_deep_dive_if_transcript(
                 transcript_quarter = f"{datetime.now().year}Q{(datetime.now().month-1)//3+1}"
         else:
             has_transcript = True
-            transcript_url = _transcript_url(transcript_source, ticker=ticker)
+            transcript_url = _transcript_url(transcript_source, ticker=ticker, all_sources=sources)
             transcript_source_name = str(
                 (transcript_source or {}).get("source")
                 or (transcript_source or {}).get("title")

@@ -9,7 +9,7 @@ def test_transcript_url_canonicalizes_stockanalysis_deep_link():
     assert _transcript_url(source, ticker="NVDA") == "https://stockanalysis.com/stocks/nvda/transcripts/"
 
 
-def test_transcript_url_keeps_non_stockanalysis_links_unchanged():
+def test_transcript_url_keeps_seekingalpha_links():
     source = {"url": "https://seekingalpha.com/article/1234567-foo"}
 
     assert _transcript_url(source, ticker="NVDA") == "https://seekingalpha.com/article/1234567-foo"
@@ -21,6 +21,41 @@ def test_transcript_url_uses_source_path_when_ticker_hint_missing():
     }
 
     assert _transcript_url(source) == "https://stockanalysis.com/stocks/msft/transcripts/"
+
+
+def test_transcript_url_demotes_investor_relations_portal():
+    """Investor-relations URLs must never be returned when a better alternative exists."""
+    source = {
+        "url": "https://investor.nvidia.com/home/default.aspx"
+    }
+    # Without all_sources, and with ticker known, fall back to stockanalysis.com
+    result = _transcript_url(source, ticker="NVDA")
+    assert "stockanalysis.com" in result
+    assert "investor.nvidia.com" not in result
+
+
+def test_transcript_url_falls_back_to_stockanalysis_for_any_ticker():
+    """Any ticker should get a stockanalysis.com listing URL as fallback."""
+    for ticker in ("AAPL", "GOOGL", "TSLA", "BRK.B"):
+        source = {"url": "https://investor.example.com/"}
+        result = _transcript_url(source, ticker=ticker)
+        assert f"stocks/{ticker.strip().lower()}" in result.lower()
+
+
+def test_transcript_url_prefers_stockanalysis_in_all_sources():
+    """When all_sources is provided, prefer stockanalysis.com over IR portal."""
+    primary = {"url": "https://investor.nvidia.com/home/default.aspx"}
+    all_srcs = [
+        primary,
+        {"source": "Public search", "url": "https://stockanalysis.com/stocks/nvda/transcripts/"},
+    ]
+    result = _transcript_url(primary, ticker="NVDA", all_sources=all_srcs)
+    assert "stockanalysis.com/stocks/nvda/transcripts/" in result
+    assert "investor.nvidia.com" not in result
+
+
+def test_transcript_url_no_source_no_ticker_returns_none():
+    assert _transcript_url({}) is None
 
 
 def test_best_transcript_source_prefers_seeking_alpha_when_both_usable():

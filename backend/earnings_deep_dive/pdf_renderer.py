@@ -697,7 +697,6 @@ def _section_continuation(section, report: EarningsDeepDiveReport) -> list[str]:
                 "● 例示企業の数字は使わず、対象企業の実績・前年比・ガイダンスだけで判断します。",
             ],
             "Operating Metrics": [
-                "🧠 Namiさん向け補足",
                 "👉 売上、粗利、営業利益、純利益は同じ会計基準・同じ期間で比較し、成長の質を確認します。",
             ],
             "Cash Flow": [
@@ -707,15 +706,15 @@ def _section_continuation(section, report: EarningsDeepDiveReport) -> list[str]:
         }.get(section.key, [])
     return {
         "Highlights": [
-            f"For Nami-san: {report.company} ({report.ticker}) positives and risks must tie back to this company's sourced metrics, transcript, press release, or presentation.",
-            "Model example company figures are never reused for another ticker.",
+            "Key takeaways are derived from sourced metrics, transcript, press release, or company presentation.",
+            "All figures are sourced; no data is invented.",
         ],
         "Operating Metrics": [
-            "For Nami-san: revenue, gross profit, operating income, and net income must be compared on a consistent period and accounting basis.",
+            "Revenue, gross profit, operating income, and net income are compared on a consistent period and accounting basis to assess earnings quality.",
         ],
         "Cash Flow": [
-            "FCF = OCF - CapEx.",
-            "Cash flow is used to verify whether accounting earnings are turning into owner cash.",
+            "FCF = OCF − CapEx.",
+            "Cash flow analysis verifies whether accounting earnings are converting to owner cash.",
         ],
     }.get(section.key, [])
 
@@ -1906,10 +1905,10 @@ def render_company_overview(
         )
         available_w = LETTER[0] - 1.24 * inch
         col_widths = [
-            1.50 * inch,         # Competitor name
-            available_w - 3.10 * inch,  # Comparison text
-            1.00 * inch,         # Advantage
-            0.55 * inch,         # Source
+            1.25 * inch,                 # Competitor name
+            available_w - 4.00 * inch,   # Comparison text
+            2.20 * inch,                 # Advantage (wider to avoid clipped rationale)
+            0.55 * inch,                 # Source
         ]
 
         comp_data = [[
@@ -1924,8 +1923,8 @@ def render_company_overview(
             adv = comp.competitive_advantage or "—"
             comp_data.append([
                 Paragraph(escape(_glyph_safe(comp.competitor_name, font_name=fonts.regular)), cell_style_small),
-                Paragraph(escape(_glyph_safe(text[:200], font_name=fonts.regular)), cell_style_small),
-                Paragraph(escape(_glyph_safe(adv[:80], font_name=fonts.regular)), cell_style_small),
+                Paragraph(escape(_glyph_safe(text[:260], font_name=fonts.regular)), cell_style_small),
+                Paragraph(escape(_glyph_safe(adv[:220], font_name=fonts.regular)), cell_style_small),
                 Paragraph(
                     f'<font size="7" color="#2563EB"><b>{escape(comp.source_id)}</b></font>',
                     cell_style_small,

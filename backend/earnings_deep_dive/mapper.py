@@ -31,15 +31,16 @@ if TYPE_CHECKING:
     from backend.models import Scoring
 
 
-MISSING = "Not available"
-MISSING_JP = "データ未取得"
-MISSING_EN = "Not available"
+MISSING = "Not disclosed"
+MISSING_JP = "開示なし"
+MISSING_EN = "Not disclosed"
 NOT_DISCLOSED = "開示なし"
 NOT_DISCLOSED_EN = "Not disclosed"
 NOT_APPLICABLE = "該当なし"
-NOT_APPLICABLE_EN = "N/A"
+NOT_APPLICABLE_EN = "Not applicable"
 NOT_CALCULABLE = "計算不可"
 NOT_CALCULABLE_EN = "Not calculable"
+UNAVAILABLE_EN = "Unavailable from reviewed sources"
 SOURCE_COMPANY = "SEC Filing (10-Q/10-K) via EDGAR"
 SOURCE_COMPANY_JP = "会社開示 / 計算ベース"
 SOURCE_YFINANCE = "yfinance (Yahoo Finance)"
