@@ -212,6 +212,181 @@ class TestValuationLayer:
 # =====================================================================
 
 
+class TestYFinanceMaxCoverageFallbacks:
+
+    def test_brk_dot_b_uses_hyphen_alias_for_missing_fields(self):
+        """BRK.B should retry BRK-B alias and fill missing valuation fields when available."""
+        from backend.valuation import get_valuation
+
+        stock_data = {
+            "ticker": "BRK.B",
+            "price": 477.5,
+            "market_cap": 1029725159424.0,
+            "currency": "USD",
+            "financials": {},
+            "_source": "cache",
+        }
+
+        def _fake_ticker(symbol, timeout=20):
+            t = MagicMock()
+            t.quarterly_income_stmt = None
+            if symbol == "BRK.B":
+                t.info = {
+                    "trailingPE": None,
+                    "forwardPE": None,
+                    "pegRatio": None,
+                    "earningsGrowth": None,
+                    "revenueGrowth": None,
+                    "totalDebt": None,
+                    "trailingEps": None,
+                }
+                return t
+            if symbol == "BRK-B":
+                t.info = {
+                    "trailingPE": 14.2,
+                    "forwardPE": 22.4,
+                    "pegRatio": 10.06,
+                    "earningsGrowth": 1.196,
+                    "revenueGrowth": 0.044,
+                    "totalDebt": 128885997568.0,
+                    "trailingEps": 33.61,
+                }
+                return t
+            raise RuntimeError(f"unexpected symbol {symbol}")
+
+        with patch("backend.valuation.get_stock_data", return_value=stock_data):
+            with patch("backend.valuation._yf_ticker_safe", side_effect=_fake_ticker) as mock_yf:
+                with patch(
+                    "backend.valuation._backfill_from_external_providers",
+                    return_value=(
+                        {
+                            "pe_current": 14.2,
+                            "pe_forward": 22.4,
+                            "peg_ratio": 10.06,
+                            "eps_growth": 1.196,
+                            "revenue_growth": 0.044,
+                            "total_debt": 128885997568.0,
+                        },
+                        None,
+                    ),
+                ):
+                    resp = get_valuation("BRK.B")
+
+        assert resp.peg_ratio == 10.06
+        assert resp.total_debt == 128885997568.0
+        called_symbols = [call.args[0] for call in mock_yf.call_args_list]
+        assert "BRK.B" in called_symbols
+        assert "BRK-B" in called_symbols
+
+    def test_pe_current_computed_from_price_and_trailing_eps_when_missing(self):
+        """If trailingPE is missing but trailingEps exists, compute PE = price / trailingEps."""
+        from backend.valuation import get_valuation
+
+        stock_data = {
+            "ticker": "NIO",
+            "price": 5.55,
+            "market_cap": 13906452480.0,
+            "currency": "USD",
+            "financials": {},
+            "_source": "cache",
+        }
+
+        yfinance_ticker = MagicMock()
+        yfinance_ticker.info = {
+            "trailingPE": None,
+            "forwardPE": 40.877277,
+            "pegRatio": None,
+            "earningsGrowth": None,
+            "revenueGrowth": 1.122,
+            "totalDebt": 26567524352.0,
+            "trailingEps": -0.55,
+        }
+        yfinance_ticker.quarterly_income_stmt = None
+
+        with patch("backend.valuation.get_stock_data", return_value=stock_data):
+            with patch("backend.valuation._yf_ticker_safe", return_value=yfinance_ticker):
+                with patch(
+                    "backend.valuation._backfill_from_external_providers",
+                    side_effect=lambda **kwargs: (
+                        {
+                            "pe_current": kwargs["pe_current"],
+                            "pe_forward": kwargs["pe_forward"],
+                            "peg_ratio": kwargs["peg_ratio"],
+                            "eps_growth": kwargs["eps_growth"],
+                            "revenue_growth": kwargs["revenue_growth"],
+                            "total_debt": kwargs["total_debt"],
+                        },
+                        None,
+                    ),
+                ):
+                    resp = get_valuation("NIO")
+
+        assert resp.pe_current == pytest.approx(-10.0909090909, rel=1e-9)
+
+    def test_eps_growth_computed_from_quarterly_eps_when_info_is_missing(self):
+        """If earningsGrowth is missing, derive EPS YoY growth from quarterly EPS history."""
+        from backend.valuation import get_valuation
+
+        class _LocProxy:
+            def __init__(self, rows):
+                self._rows = rows
+
+            def __getitem__(self, item):
+                return self._rows[item]
+
+        class _FakeQuarterlyIncomeStmt:
+            def __init__(self):
+                self._rows = {
+                    "Diluted EPS": {
+                        datetime(2026, 3, 31): -0.20,
+                        datetime(2025, 3, 31): -3.29,
+                    }
+                }
+                self.index = list(self._rows.keys())
+                self.loc = _LocProxy(self._rows)
+
+        stock_data = {
+            "ticker": "NIO",
+            "price": 5.55,
+            "market_cap": 13906452480.0,
+            "currency": "USD",
+            "financials": {},
+            "_source": "cache",
+        }
+
+        yfinance_ticker = MagicMock()
+        yfinance_ticker.info = {
+            "trailingPE": None,
+            "forwardPE": 40.877277,
+            "pegRatio": None,
+            "earningsGrowth": None,
+            "revenueGrowth": 1.122,
+            "totalDebt": 26567524352.0,
+            "trailingEps": -0.55,
+        }
+        yfinance_ticker.quarterly_income_stmt = _FakeQuarterlyIncomeStmt()
+
+        with patch("backend.valuation.get_stock_data", return_value=stock_data):
+            with patch("backend.valuation._yf_ticker_safe", return_value=yfinance_ticker):
+                with patch(
+                    "backend.valuation._backfill_from_external_providers",
+                    side_effect=lambda **kwargs: (
+                        {
+                            "pe_current": kwargs["pe_current"],
+                            "pe_forward": kwargs["pe_forward"],
+                            "peg_ratio": kwargs["peg_ratio"],
+                            "eps_growth": kwargs["eps_growth"],
+                            "revenue_growth": kwargs["revenue_growth"],
+                            "total_debt": kwargs["total_debt"],
+                        },
+                        None,
+                    ),
+                ):
+                    resp = get_valuation("NIO")
+
+        assert resp.eps_growth == pytest.approx(0.9392097264, rel=1e-6)
+
+
 class TestAlternativeProviderBackfill:
 
     def test_backfill_from_alpha_vantage_overview_and_balance_sheet(self):
@@ -461,6 +636,36 @@ class TestAlternativeProviderBackfill:
         assert out["eps_growth"] == 0.06
         assert out["revenue_growth"] == 0.04
         assert out["total_debt"] == 9000000000.0
+
+
+    def test_external_backfill_retries_dot_hyphen_aliases(self):
+        """Fallback chain retries BRK.B/BRK-B aliases before giving up."""
+        from backend.valuation import _backfill_from_external_providers
+
+        def _alpha_side_effect(ticker, **kwargs):
+            if ticker == "BRK-B":
+                out = dict(kwargs)
+                out["peg_ratio"] = 10.06
+                out["total_debt"] = 128885997568.0
+                return out
+            return dict(kwargs)
+
+        with patch("backend.valuation._backfill_from_alpha_vantage", side_effect=_alpha_side_effect):
+            with patch("backend.valuation._backfill_from_fmp", side_effect=lambda ticker, current: dict(current)):
+                with patch("backend.valuation._backfill_from_eodhd", side_effect=lambda ticker, current: dict(current)):
+                    out, provider = _backfill_from_external_providers(
+                        ticker="BRK.B",
+                        pe_current=14.2,
+                        pe_forward=22.4,
+                        peg_ratio=None,
+                        eps_growth=1.196,
+                        revenue_growth=0.044,
+                        total_debt=None,
+                    )
+
+        assert provider == "alpha_vantage"
+        assert out["peg_ratio"] == 10.06
+        assert out["total_debt"] == 128885997568.0
 
 
 class TestMissingFieldReasonLedger:

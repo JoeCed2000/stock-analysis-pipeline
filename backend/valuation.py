@@ -21,6 +21,97 @@ _MISSING_REASON_NOT_REPORTED_YET = "not_reported_yet"
 _MISSING_REASON_FALLBACK_EXHAUSTED = "fallback_exhausted"
 
 
+def _ticker_variants(ticker: str) -> list[str]:
+    """Return normalized ticker variants (dot/hyphen aliases) in priority order."""
+    base = ticker.upper().strip()
+    variants: list[str] = []
+    for candidate in (base, base.replace(".", "-"), base.replace("-", ".")):
+        if candidate and candidate not in variants:
+            variants.append(candidate)
+    return variants
+
+
+def _safe_datetime_key(raw_key: Any) -> Optional[datetime]:
+    """Best-effort conversion of quarterly index keys to datetime."""
+    if isinstance(raw_key, datetime):
+        return raw_key
+
+    if hasattr(raw_key, "to_pydatetime"):
+        try:
+            return raw_key.to_pydatetime()
+        except Exception:
+            pass
+
+    if hasattr(raw_key, "year") and hasattr(raw_key, "month") and hasattr(raw_key, "day"):
+        try:
+            return datetime(int(raw_key.year), int(raw_key.month), int(raw_key.day))
+        except Exception:
+            pass
+
+    raw = str(raw_key)
+    if not raw:
+        return None
+
+    for candidate in (raw, raw[:10]):
+        try:
+            return datetime.fromisoformat(candidate)
+        except Exception:
+            continue
+
+    return None
+
+
+def _compute_eps_growth_from_quarterly_eps(quarterly_income_stmt: Any) -> Optional[float]:
+    """Compute YoY EPS growth from quarterly diluted/basic EPS when available.
+
+    Returns decimal form (0.12 = +12%).
+    """
+    if quarterly_income_stmt is None:
+        return None
+
+    try:
+        index = getattr(quarterly_income_stmt, "index", None)
+        if index is None:
+            return None
+
+        eps_row = None
+        for candidate_row in ("Diluted EPS", "Basic EPS"):
+            if candidate_row in index:
+                eps_row = candidate_row
+                break
+
+        if eps_row is None:
+            return None
+
+        eps_series = quarterly_income_stmt.loc[eps_row]
+        entries: list[tuple[datetime, float]] = []
+        for raw_key, raw_value in eps_series.items():
+            value = _safe_float(raw_value)
+            dt = _safe_datetime_key(raw_key)
+            if value is None or dt is None:
+                continue
+            entries.append((dt, value))
+
+        if not entries:
+            return None
+
+        entries.sort(key=lambda item: item[0], reverse=True)
+        latest_dt, latest_eps = entries[0]
+
+        prev_eps = None
+        for dt, eps_val in entries[1:]:
+            if dt.year == latest_dt.year - 1 and dt.month == latest_dt.month:
+                prev_eps = eps_val
+                break
+
+        if prev_eps is None or prev_eps == 0:
+            return None
+
+        return (latest_eps - prev_eps) / abs(prev_eps)
+    except Exception:
+        return None
+
+
 def _fallback_provider_availability() -> Dict[str, bool]:
     """Return whether each fallback provider is configured via API key."""
     return {
@@ -402,7 +493,11 @@ def _backfill_from_external_providers(
     revenue_growth: Optional[float],
     total_debt: Optional[float],
 ) -> tuple[Dict[str, Optional[float]], Optional[str]]:
-    """Apply fallback providers in order and return first provider that filled data."""
+    """Apply fallback providers in order and return first provider that filled data.
+
+    The function also retries provider lookups on ticker aliases (dot/hyphen)
+    to avoid avoidable gaps such as BRK.B vs BRK-B.
+    """
     result = {
         "pe_current": pe_current,
         "pe_forward": pe_forward,
@@ -418,27 +513,33 @@ def _backfill_from_external_providers(
         ("eodhd", _backfill_from_eodhd),
     ]
 
+    ticker_candidates = _ticker_variants(ticker)
     provider_used: Optional[str] = None
+
     for provider_name, provider_fn in fallback_chain:
         if all(value is not None for value in result.values()):
             break
 
-        before = dict(result)
-        if provider_name == "alpha_vantage":
-            result = provider_fn(
-                ticker=ticker,
-                pe_current=result["pe_current"],
-                pe_forward=result["pe_forward"],
-                peg_ratio=result["peg_ratio"],
-                eps_growth=result["eps_growth"],
-                revenue_growth=result["revenue_growth"],
-                total_debt=result["total_debt"],
-            )
-        else:
-            result = provider_fn(ticker=ticker, current=result)
+        for candidate in ticker_candidates:
+            if all(value is not None for value in result.values()):
+                break
 
-        if provider_used is None and any(before[k] is None and result[k] is not None for k in result):
-            provider_used = provider_name
+            before = dict(result)
+            if provider_name == "alpha_vantage":
+                result = provider_fn(
+                    ticker=candidate,
+                    pe_current=result["pe_current"],
+                    pe_forward=result["pe_forward"],
+                    peg_ratio=result["peg_ratio"],
+                    eps_growth=result["eps_growth"],
+                    revenue_growth=result["revenue_growth"],
+                    total_debt=result["total_debt"],
+                )
+            else:
+                result = provider_fn(ticker=candidate, current=result)
+
+            if provider_used is None and any(before[k] is None and result[k] is not None for k in result):
+                provider_used = provider_name
 
     return result, provider_used
 
@@ -521,31 +622,67 @@ def get_valuation(ticker: str) -> ValuationV2Response:
     cash = None
     total_debt = None
 
-    try:
-        yt = _yf_ticker_safe(ticker, timeout=20)
-        info = yt.info or {}
-        exchange = info.get("exchange") or info.get("exchangeName")
-        reported_ev = _safe_float(info.get("enterpriseValue"))
-        shares = _safe_float(info.get("sharesOutstanding"))
-        cash = _safe_float(
-            info.get("totalCash")
-            or info.get("cash")
-        )
-        total_debt = _safe_float(info.get("totalDebt"))
+    ticker_candidates = _ticker_variants(ticker)
 
-        # Fill missing valuation/growth fields from raw yfinance info.
-        if pe_current is None:
-            pe_current = _safe_float(info.get("trailingPE"))
-        if pe_forward is None:
-            pe_forward = _safe_float(info.get("forwardPE"))
-        if peg_ratio is None:
-            peg_ratio = _safe_float(info.get("pegRatio"))
-        if eps_growth is None:
-            eps_growth = _safe_float(info.get("earningsGrowth"))
-        if revenue_growth is None:
-            revenue_growth = _safe_float(info.get("revenueGrowth"))
-    except Exception:
-        logger.debug("yfinance enrichment skipped for %s", ticker)
+    for candidate in ticker_candidates:
+        try:
+            yt = _yf_ticker_safe(candidate, timeout=20)
+            info = yt.info or {}
+
+            if exchange is None:
+                exchange = info.get("exchange") or info.get("exchangeName")
+            if reported_ev is None:
+                reported_ev = _safe_float(info.get("enterpriseValue"))
+            if shares is None:
+                shares = _safe_float(info.get("sharesOutstanding"))
+            if cash is None:
+                cash = _safe_float(
+                    info.get("totalCash")
+                    or info.get("cash")
+                )
+            if total_debt is None:
+                total_debt = _safe_float(info.get("totalDebt"))
+
+            trailing_eps = _safe_float(info.get("trailingEps"))
+
+            # Fill missing valuation/growth fields from raw yfinance info.
+            if pe_current is None:
+                pe_current = _safe_float(info.get("trailingPE"))
+            if pe_current is None and price is not None and trailing_eps not in (None, 0):
+                # Best-effort PE fallback for cases where providers omit trailingPE.
+                pe_current = price / trailing_eps
+
+            if pe_forward is None:
+                pe_forward = _safe_float(info.get("forwardPE"))
+            if peg_ratio is None:
+                peg_ratio = _safe_float(info.get("pegRatio"))
+
+            if eps_growth is None:
+                eps_growth = _safe_float(info.get("earningsGrowth"))
+            if eps_growth is None:
+                eps_growth = _compute_eps_growth_from_quarterly_eps(
+                    getattr(yt, "quarterly_income_stmt", None)
+                )
+
+            if revenue_growth is None:
+                revenue_growth = _safe_float(info.get("revenueGrowth"))
+        except Exception as exc:
+            logger.debug("yfinance enrichment skipped for %s (%s)", candidate, exc)
+            continue
+
+        # Stop once all critical tracked fields are populated.
+        if all(
+            value is not None
+            for value in (
+                pe_current,
+                pe_forward,
+                peg_ratio,
+                eps_growth,
+                revenue_growth,
+                total_debt,
+            )
+        ):
+            break
 
     # -- 2.5 Alternative provider backfill (best-effort) ----------------
     before_backfill = {
@@ -571,6 +708,14 @@ def get_valuation(ticker: str) -> ValuationV2Response:
     eps_growth = backfill["eps_growth"]
     revenue_growth = backfill["revenue_growth"]
     total_debt = backfill["total_debt"]
+
+    if peg_ratio is None and pe_current is not None and eps_growth not in (None, 0):
+        # Best-effort internal PEG backfill using existing PE + growth inputs.
+        # eps_growth is stored as decimal (0.10 = 10%), hence *100 in denominator.
+        try:
+            peg_ratio = pe_current / (eps_growth * 100.0)
+        except Exception:
+            pass
 
     if source == "unknown" and backfill_provider and any(
         before_backfill[key] is None and backfill[key] is not None
