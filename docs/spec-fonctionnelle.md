@@ -650,3 +650,26 @@ Le mapper (`backend/earnings_deep_dive/mapper.py`) peuple les modèles V2.7 :
 - **356 tests** V2.x passants
 - **4 commits** cette session (6f491f8, bdb0e68, 23fbba7, c13c9d5)
 - Couverture corrections.txt : 16 sections / ~29
+
+## 22. §§22-23, §§7-8 — Qualité langage + Company Overview — 2026-05-29
+
+### §22-23 — Missing-data + Internal leaks (ee294bf)
+- FORBIDDEN_MARKERS étendus : 'Model example', 'For Nami-san:', 'Namiさん向け'
+- RULE 5 (FORBIDDEN_MARKERS) : severity warning → error (BLOCKING)
+- RULE 30 : §22+§23 combiné
+  - 30a : 'Reason:' dans le output → bloqué
+  - 30b : artefacts de code (null/None/NaN/undefined/debug) → bloqués
+  - None = case-sensitive (le mot anglais 'none' est valide)
+- Tests : 15
+
+### §7-8 — Company Overview gates (5b67e8d)
+- RULE 31 : complétude CO — pas de competitors vides, pas de segments vides, unsourced claims
+- RULE 32 : séparation des couches — pas de beat/miss trimestriel dans le CO, métriques sans label période
+- Paramètre `company_overview` ajouté à `validate_pre_render()`
+- Tests : 11
+
+### État global final
+- **RULES 1-32** actives, toutes `severity="error"`
+- **382 tests** V2.x passants
+- **7 commits** cette session
+- Couverture corrections.txt : **22 sections / 30** (hors §§0-2 meta, §§27-30 livrables)
