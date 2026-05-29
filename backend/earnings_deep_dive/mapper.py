@@ -2059,6 +2059,63 @@ def _build_source_registry(
     return SourceRegistry(entries=entries, generated_at=generated_at)
 
 
+def _build_metrics_ledger(
+    *,
+    metrics: Any = None,
+    generated_at: str | None = None,
+) -> "MetricsLedger":
+    """Build a lightweight metrics ledger from the V2.7 FinancialMetrics model — §4.
+
+    Seeds the ledger with EPS, Revenue, margin, growth, and FCF entries
+    extracted from the structured FinancialMetrics. The ledger is the single
+    source of truth — all PDF sections should reference it rather than
+    computing values independently.
+    """
+    from backend.earnings_deep_dive.report_model import MetricsLedger, MetricsLedgerEntry
+
+    entries: list[MetricsLedgerEntry] = []
+
+    if metrics is None:
+        return MetricsLedger(entries=entries, generated_at=generated_at)
+
+    def _add(
+        mid: str, cname: str, dname: str, val: Any,
+        unit: str = "USD", period: str = "quarterly",
+        source_type: str = "yfinance", basis: str = "provider_supplied",
+    ) -> None:
+        if val is None:
+            return
+        try:
+            fval = float(val)
+        except (TypeError, ValueError):
+            return
+        entries.append(MetricsLedgerEntry(
+            metric_id=mid, canonical_metric_name=cname, display_name=dname,
+            value=fval, unit=unit, period_type=period,
+            source_type=source_type, basis=basis,
+            validation_status="unverified", confidence="medium",
+            display_label=f"${fval:,.2f}" if unit == "USD" else f"{fval:.2f}",
+        ))
+
+    # EPS
+    _add("EPS-001", "eps_actual", "EPS (Actual)", getattr(metrics, "eps_actual", None))
+    _add("EPS-002", "eps_estimate", "EPS (Estimate)", getattr(metrics, "eps_estimate", None), source_type="consensus", basis="consensus")
+    # Revenue
+    _add("REV-001", "revenue_actual", "Revenue (Actual)", getattr(metrics, "revenue_actual", None))
+    _add("REV-002", "revenue_estimate", "Revenue (Estimate)", getattr(metrics, "revenue_estimate", None), source_type="consensus", basis="consensus")
+    # Margins
+    _add("MAR-001", "gross_margin", "Gross Margin", getattr(metrics, "gross_margin", None), unit="%")
+    _add("MAR-002", "operating_margin", "Operating Margin", getattr(metrics, "operating_margin", None), unit="%")
+    _add("MAR-003", "net_margin", "Net Margin", getattr(metrics, "net_margin", None), unit="%")
+    # Growth
+    _add("GRW-001", "revenue_growth_yoy", "Revenue Growth (YoY)", getattr(metrics, "revenue_growth_yoy", None), unit="%")
+    _add("GRW-002", "eps_growth_yoy", "EPS Growth (YoY)", getattr(metrics, "eps_growth_yoy", None), unit="%")
+    # FCF
+    _add("FCF-001", "fcf", "Free Cash Flow", getattr(metrics, "fcf", None))
+
+    return MetricsLedger(entries=entries, generated_at=generated_at)
+
+
 def _section_runtime_columns(section_key: str, base_columns: list[str], resolved_quarter: str) -> list[str]:
     """Adjust runtime column labels to match quarter/TTM naming conventions."""
     if not base_columns:
@@ -2610,6 +2667,12 @@ def build_earnings_deep_dive_report(
         generated_at=generated_at or datetime.now(timezone.utc).isoformat(),
     )
 
+    # ── §4 metrics ledger ──
+    metrics_ledger = _build_metrics_ledger(
+        metrics=v27.get("financial_metrics"),
+        generated_at=generated_at or datetime.now(timezone.utc).isoformat(),
+    )
+
     return EarningsDeepDiveReport(
         ticker=ticker_clean,
         company=company_name,
@@ -2637,6 +2700,8 @@ def build_earnings_deep_dive_report(
         earnings_documents=earnings_docs,
         # §5 source registry
         source_registry=source_registry,
+        # §4 metrics ledger
+        metrics_ledger=metrics_ledger,
     )
 
 

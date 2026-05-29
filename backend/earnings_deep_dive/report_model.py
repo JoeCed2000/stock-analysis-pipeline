@@ -537,6 +537,77 @@ class SourceRegistry(BaseModel):
         return None
 
 
+class MetricsLedgerEntry(BaseModel):
+    """Single entry in the metrics ledger — §4 corrections.txt.
+
+    Every displayed number in the PDF must derive from a ledger entry.
+    This prevents contradictions where a metric appears in a table but
+    the narrative says it was 'not retrieved'.
+    """
+    metric_id: str                          # e.g. "EPS-001", "REV-002"
+    canonical_metric_name: str              # "eps_actual", "revenue_ttm"
+    display_name: str                       # "EPS (Actual)", "Revenue (TTM)"
+    value: float | None = None
+    unit: str | None = None                 # "USD", "shares", "ratio", "%"
+    scale: str | None = None                # "billions", "millions", "units"
+    period_type: str | None = None          # quarterly | annual | TTM | LTM | guidance | consensus | market_data | calculated
+    fiscal_period: str | None = None        # "FY2026 Q1"
+    calendar_period: str | None = None      # "2026-03-31"
+    source_id: str | None = None
+    source_type: str | None = None          # yfinance | sec_edgar | seeking_alpha | calculated
+    basis: str | None = None                # GAAP | non-GAAP | adjusted | consensus | market | calculated | provider_supplied
+    formula: str | None = None              # "revenue_actual / shares_outstanding"
+    numerator: float | None = None
+    denominator: float | None = None
+    validation_status: str | None = None    # verified | unverified | flagged
+    confidence: str | None = None           # high | medium | low
+    allowed_sections: list[str] = Field(default_factory=list)  # ["EPS & Revenue", "Financials"]
+    display_label: str | None = None        # "$2.94" or "22.4B"
+
+
+class MetricsLedger(BaseModel):
+    """Single source of truth for all displayed numbers — §4 corrections.txt.
+
+    Rules enforced:
+    - No number may appear in the PDF unless present in this ledger.
+    - Tables, charts, callouts, narrative, and source appendix use the same values.
+    - Quarterly and TTM revenue may coexist only if explicitly labeled.
+    - Consensus estimates must not be labeled as SEC data.
+    - Provider-supplied ratios must be labeled as provider-supplied.
+    - Calculated ratios must store inputs, formula, and source IDs.
+    """
+    entries: list[MetricsLedgerEntry] = Field(default_factory=list)
+    generated_at: str | None = None
+
+    def get(self, metric_id: str) -> MetricsLedgerEntry | None:
+        for e in self.entries:
+            if e.metric_id == metric_id:
+                return e
+        return None
+
+    def get_by_name(self, canonical_name: str) -> MetricsLedgerEntry | None:
+        for e in self.entries:
+            if e.canonical_metric_name == canonical_name:
+                return e
+        return None
+
+    @property
+    def metric_ids(self) -> set[str]:
+        return {e.metric_id for e in self.entries}
+
+    @property
+    def canonical_names(self) -> set[str]:
+        return {e.canonical_metric_name for e in self.entries}
+
+    @property
+    def count(self) -> int:
+        return len(self.entries)
+
+    @property
+    def verified_count(self) -> int:
+        return len([e for e in self.entries if e.validation_status == "verified"])
+
+
 class ReportPeriodContext(BaseModel):
     """Single source of truth for report period — §3 corrections.txt.
 
@@ -592,3 +663,5 @@ class EarningsDeepDiveReport(BaseModel):
     earnings_documents: EarningsDocumentsChecklist | None = None
     # ── §5 source registry ──
     source_registry: SourceRegistry | None = None
+    # ── §4 metrics ledger ──
+    metrics_ledger: MetricsLedger | None = None

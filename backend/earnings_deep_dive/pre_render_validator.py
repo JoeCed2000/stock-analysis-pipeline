@@ -286,6 +286,7 @@ def validate_pre_render(
     period_context: Optional[Any] = None,  # ReportPeriodContext — §3
     earnings_documents: Optional[Any] = None,  # EarningsDocumentsChecklist — §6
     source_registry: Optional[Any] = None,  # SourceRegistry — §5
+    metrics_ledger: Optional[Any] = None,  # MetricsLedger — §4
 ) -> ValidationResult:
     """Validate deep-dive content before PDF rendering.
 
@@ -1753,6 +1754,114 @@ def validate_pre_render(
                         severity="error",
                     ))
 
+    # ── RULE 27 (BLOCKING): §4 Metrics Ledger Sanity Checks ─────────────────
+    #
+    # - No "not retrieved" if metric exists in the ledger
+    # - Sanity bounds: dividend yield > 20%, margin > 100%, extreme ratios
+    # - No consensus/guidance ambiguity
+
+    if metrics_ledger is not None:
+        ml = metrics_ledger
+        ledger_entries = getattr(ml, 'entries', [])
+        ledger_names = {getattr(e, 'canonical_metric_name', '') for e in ledger_entries}
+
+        # 27a. "Not retrieved" / "Not available" but metric exists in ledger
+        all_text = "\n".join(t for t in _sec.values() if isinstance(t, str))
+        not_retrieved_pattern = re.compile(
+            r'(?:was|were|is|are)\s+not\s+(?:retrieved|available|disclosed)',
+            re.IGNORECASE
+        )
+        not_retrieved_matches = not_retrieved_pattern.findall(all_text)
+        if not_retrieved_matches and ledger_names:
+            # Check common metric keywords near "not retrieved"
+            metric_keywords = {
+                'eps': 'eps_actual', 'revenue': 'revenue_actual',
+                'net income': 'net_income', 'free cash flow': 'fcf',
+                'gross margin': 'gross_margin', 'operating margin': 'operating_margin',
+            }
+            for keyword, canonical in metric_keywords.items():
+                if canonical in ledger_names:
+                    # Check if keyword appears near "not retrieved"
+                    for section_name, text in _sec.items():
+                        if not isinstance(text, str):
+                            continue
+                        if keyword.lower() in text.lower() and re.search(
+                            r'(?:was|were|is|are)\s+not\s+(?:retrieved|available|disclosed)',
+                            text, re.IGNORECASE
+                        ):
+                            # Check proximity: keyword within 200 chars of "not retrieved"
+                            idx_kw = text.lower().find(keyword.lower())
+                            idx_nr = -1
+                            for m in re.finditer(
+                                r'(?:was|were|is|are)\s+not\s+(?:retrieved|available|disclosed)',
+                                text, re.IGNORECASE
+                            ):
+                                idx_nr = m.start()
+                                break
+                            if idx_kw >= 0 and idx_nr >= 0 and abs(idx_kw - idx_nr) < 200:
+                                warnings.append(ValidationWarning(
+                                    check="metrics_ledger_not_retrieved_contradiction",
+                                    section=section_name,
+                                    detail=(
+                                        f"'{keyword}' appears near 'not retrieved/available' but "
+                                        f"'{canonical}' exists in the metrics ledger. "
+                                        f"Do not claim a metric is unavailable if it is displayed."
+                                    ),
+                                    severity="error",
+                                ))
+
+        # 27b. Sanity bounds
+        for entry in ledger_entries:
+            val = getattr(entry, 'value', None)
+            name = getattr(entry, 'canonical_metric_name', '')
+            unit = getattr(entry, 'unit', '')
+
+            if val is None:
+                continue
+
+            # Dividend yield > 20% is exceptional
+            if 'dividend_yield' in name and val > 20:
+                warnings.append(ValidationWarning(
+                    check="metrics_ledger_sanity_dividend_yield",
+                    section="Valuation",
+                    detail=(
+                        f"Dividend yield = {val:.1f}% exceeds 20%. "
+                        f"Verify the value or add an explicit explanation."
+                    ),
+                    severity="error",
+                ))
+
+            # Margin > 100% is impossible for standard business
+            if unit == "%" and 'margin' in name and val > 100:
+                warnings.append(ValidationWarning(
+                    check="metrics_ledger_sanity_margin_exceeds_100",
+                    section="Financials",
+                    detail=(
+                        f"{name} = {val:.1f}% exceeds 100%. "
+                        f"Margins cannot exceed 100% in standard business; verify the value."
+                    ),
+                    severity="error",
+                ))
+
+        # 27c. Consensus vs SEC labeling check
+        for section_name, text in _sec.items():
+            if not isinstance(text, str):
+                continue
+            # EPS/revenue from SEC is not consensus
+            sec_consensus_mix = re.search(
+                r'SEC.{0,50}(?:consensus|estimate)|(?:consensus|estimate).{0,50}SEC',
+                text, re.IGNORECASE
+            )
+            if sec_consensus_mix:
+                warnings.append(ValidationWarning(
+                    check="metrics_ledger_sec_consensus_confusion",
+                    section=section_name,
+                    detail=(
+                        f"'SEC' and 'consensus/estimate' appear together in '{section_name}'. "
+                        f"Consensus estimates must not be labeled as SEC data."
+                    ),
+                    severity="error",
+                ))
     # ── Determine pass/fail ────────────────────────────────────────────
 
     errors = [w for w in warnings if w.severity == "error"]
