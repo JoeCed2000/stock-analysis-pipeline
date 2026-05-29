@@ -25,6 +25,7 @@ from backend.earnings_deep_dive.schemas import (
 _LAZY_IMPORTS = {
     "generate_deep_dive": ("backend.earnings_deep_dive.generator", "generate_deep_dive"),
     "assemble_final_report": ("backend.earnings_deep_dive.markdown", "assemble_final_report"),
+    "post_process_markdown": ("backend.earnings_deep_dive.markdown", "post_process_markdown"),
     "build_earnings_deep_dive_report": ("backend.earnings_deep_dive.mapper", "build_earnings_deep_dive_report"),
     "render_earnings_deep_dive_pdf": ("backend.earnings_deep_dive.pdf_renderer", "render_earnings_deep_dive_pdf"),
 }
@@ -54,5 +55,6 @@ __all__ = [
     "assemble_final_report",
     "build_earnings_deep_dive_report",
     "generate_deep_dive",
+    "post_process_markdown",
     "render_earnings_deep_dive_pdf",
 ]

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from backend.earnings_deep_dive.errors import KimiFailureError, TranscriptMissingError, ValidationError
-from backend.earnings_deep_dive.markdown import assemble_final_report
+from backend.earnings_deep_dive.markdown import assemble_final_report, post_process_markdown
 from backend.earnings_deep_dive.prompts import (
     SECTION_KEYWORDS,
     SECTION_ORDER,
@@ -279,7 +279,9 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
     transcript_source = transcript_meta.get("primary_source") or transcript_meta.get("source") or ""
     company_website = _company_website_from_metrics(metrics)
     report_markdown = _append_sources_section(
-        assemble_final_report(sections, warnings=warnings, company_website=company_website),
+        post_process_markdown(
+            assemble_final_report(sections, warnings=warnings, company_website=company_website)
+        ),
         transcript_url,
         company_website,
         transcript_source=transcript_source,
