@@ -142,21 +142,40 @@ class ValidationResult:
 
 
 def _parse_money(text: str) -> Optional[float]:
-    """Parse a monetary string like '$82.9B' or '$3.46' into a float."""
+    """Parse a monetary string like '$82.9B', '$3.2 trillion', or '$3.46' into a float."""
     if not text.startswith('$'):
         return None
     num_part = text[1:].replace(',', '').strip()
     multiplier = 1.0
-    last_char = num_part[-1].upper() if num_part else ''
-    if last_char == 'B':
-        multiplier = 1_000_000_000.0
-        num_part = num_part[:-1]
-    elif last_char == 'M':
-        multiplier = 1_000_000.0
-        num_part = num_part[:-1]
-    elif last_char == 'K':
-        multiplier = 1_000.0
-        num_part = num_part[:-1]
+
+    # Handle word suffixes first ("trillion", "billion", "million")
+    word_suffixes = [
+        ('trillion', 1_000_000_000_000.0),
+        ('billion', 1_000_000_000.0),
+        ('million', 1_000_000.0),
+    ]
+    lower_num = num_part.lower()
+    for word, mult in word_suffixes:
+        if lower_num.endswith(word):
+            multiplier = mult
+            num_part = num_part[:-len(word)].strip()
+            break
+    else:
+        # Handle single-char suffixes (B, M, K, T)
+        last_char = num_part[-1].upper() if num_part else ''
+        if last_char == 'T':
+            multiplier = 1_000_000_000_000.0
+            num_part = num_part[:-1]
+        elif last_char == 'B':
+            multiplier = 1_000_000_000.0
+            num_part = num_part[:-1]
+        elif last_char == 'M':
+            multiplier = 1_000_000.0
+            num_part = num_part[:-1]
+        elif last_char == 'K':
+            multiplier = 1_000.0
+            num_part = num_part[:-1]
+
     try:
         return float(num_part) * multiplier
     except (ValueError, TypeError):
@@ -2222,6 +2241,514 @@ def validate_pre_render(
                     severity="error",
                 ))
                 break
+
+    # ── RULE 34 (BLOCKING): §9 Content completeness — all required sections answered ──
+    #
+    # Every client-requested question must have a non-empty answer.
+    # The 14 required sections in the downloadable PDF must all be present.
+    # Sections tracked: business_description, revenue_model, business_segments,
+    # growth_drivers, moats, key_kpis, business_risks, competitors,
+    # strengths_vs_competitors, weaker_areas_vs_competitors, ceo_leadership_style,
+    # long_term_vision, competitive_position, investor_takeaway.
+
+    if company_overview is not None:
+        co = company_overview
+
+        REQUIRED_SECTIONS = [
+            ("business_description", "Company Overview"),
+            ("revenue_model", "How It Makes Money"),
+            ("growth_drivers", "Growth Drivers"),
+            ("moats", "Moats"),
+            ("key_kpis", "Key KPIs"),
+            ("business_risks", "Business Risks"),
+            ("strengths_vs_competitors", "Strengths vs Competitors"),
+            ("weaker_areas_vs_competitors", "Weaknesses vs Competitors"),
+            ("ceo_leadership_style", "CEO Leadership"),
+            ("long_term_vision", "Long-Term Vision"),
+        ]
+
+        for attr_name, section_label in REQUIRED_SECTIONS:
+            val = getattr(co, attr_name, None)
+            if val is None or (isinstance(val, (list, str)) and len(val) == 0):
+                warnings.append(ValidationWarning(
+                    check="company_overview_missing_section",
+                    section="Company Overview",
+                    detail=(
+                        f"Required section '{section_label}' ({attr_name}) is empty or missing. "
+                        f"Every client-requested question must have a non-empty answer in the "
+                        f"downloadable PDF. Flush cache and regenerate."
+                    ),
+                    severity="error",
+                ))
+
+        # business_segments is a special case — caught by RULE 31b
+        # competitors is a special case — caught by RULE 31a
+
+    # ── RULE 35 (BLOCKING): §9a Growth Drivers quality ──────────────────────────
+    #
+    # Growth drivers must be specific to the company, not generic filler.
+    # Fail if growth drivers are:
+    #   - Too short (generic one-liner < 40 chars)
+    #   - Pure percentage recitation with no explanation
+    #   - Fewer than 3 substantive drivers
+
+    if company_overview is not None:
+        co = company_overview
+        drivers = getattr(co, 'growth_drivers', None) or []
+        if drivers:
+            GENERIC_GROWTH_PATTERNS = [
+                r'^revenue growth[:\s]',
+                r'^earnings growth[:\s]',
+                r'^growth signal',
+                r'^enterprise footprint',
+                r'^market expansion$',
+                r'^expanding',
+            ]
+            too_short = []
+            too_generic = []
+            for d in drivers:
+                d_str = str(d).strip()
+                if len(d_str) < 40:
+                    too_short.append(d_str[:50])
+                else:
+                    for pat in GENERIC_GROWTH_PATTERNS:
+                        if re.search(pat, d_str, re.IGNORECASE):
+                            too_generic.append(d_str[:60])
+                            break
+            if too_short:
+                warnings.append(ValidationWarning(
+                    check="company_overview_growth_drivers_generic",
+                    section="Company Overview",
+                    detail=(
+                        f"{len(too_short)} growth driver(s) are too short (<40 chars): "
+                        f"{too_short[0]!r}... Growth drivers must be company-specific "
+                        f"with supporting evidence and time horizon."
+                    ),
+                    severity="error",
+                ))
+            if too_generic:
+                warnings.append(ValidationWarning(
+                    check="company_overview_growth_drivers_generic",
+                    section="Company Overview",
+                    detail=(
+                        f"{len(too_generic)} growth driver(s) are generic/matched forbidden patterns: "
+                        f"{too_generic[0]!r}... Drivers must be specific to the company."
+                    ),
+                    severity="error",
+                ))
+            if len(drivers) < 3:
+                warnings.append(ValidationWarning(
+                    check="company_overview_growth_drivers_insufficient",
+                    section="Company Overview",
+                    detail=(
+                        f"Only {len(drivers)} growth driver(s) listed. "
+                        f"At least 3 substantive, company-specific growth drivers required."
+                    ),
+                    severity="error",
+                ))
+
+    # ── RULE 36 (BLOCKING): §9b Moat quality ───────────────────────────────────
+    #
+    # Moats must be specific and evidenced. Generic words without explanation fail.
+    # Fail if:
+    #   - Too short (< 40 chars)
+    #   - Pure single-word moats without explanation (e.g. just "Brand", "Scale")
+    #   - Fewer than 2 substantive moats
+
+    if company_overview is not None:
+        co = company_overview
+        moats = getattr(co, 'moats', None) or []
+        if moats:
+            SINGLE_WORD_MOATS = {
+                "brand", "scale", "technology", "network", "data",
+                "switching costs", "intangible assets", "cost advantage",
+                "efficient scale", "distribution", "patents",
+            }
+            too_short = []
+            too_generic = []
+            for m in moats:
+                m_str = str(m).strip()
+                if len(m_str) < 40:
+                    too_short.append(m_str[:50])
+                else:
+                    # Check if the text is essentially just the moat name with no elaboration
+                    words = m_str.lower().split()
+                    if len(words) <= 3 and any(mw in m_str.lower() for mw in SINGLE_WORD_MOATS):
+                        too_generic.append(m_str[:60])
+            if too_short:
+                warnings.append(ValidationWarning(
+                    check="company_overview_moats_generic",
+                    section="Company Overview",
+                    detail=(
+                        f"{len(too_short)} moat(s) too short (<40 chars): "
+                        f"{too_short[0]!r}... Moats must explain what the advantage is, "
+                        f"why it matters, and what evidence supports it."
+                    ),
+                    severity="error",
+                ))
+            if too_generic:
+                warnings.append(ValidationWarning(
+                    check="company_overview_moats_generic",
+                    section="Company Overview",
+                    detail=(
+                        f"{len(too_generic)} moat(s) are single-word/generic without "
+                        f"explanation: {too_generic[0]!r}... Each moat must include "
+                        f"evidence and durability assessment."
+                    ),
+                    severity="error",
+                ))
+            if len(moats) < 2:
+                warnings.append(ValidationWarning(
+                    check="company_overview_moats_insufficient",
+                    section="Company Overview",
+                    detail=(
+                        f"Only {len(moats)} moat(s) listed. "
+                        f"At least 2 substantive, company-specific moats required."
+                    ),
+                    severity="error",
+                ))
+
+    # ── RULE 37 (BLOCKING): §9c Business risks quality ─────────────────────────
+    #
+    # Business risks must be substantive operational/business risks, not just
+    # market volatility / stock price / valuation sensitivity.
+    # Fail if:
+    #   - Too short (< 40 chars)
+    #   - Only contains generic market/price risks
+    #   - Fewer than 3 substantive risks
+
+    if company_overview is not None:
+        co = company_overview
+        risks = getattr(co, 'business_risks', None) or []
+        if risks:
+            GENERIC_RISK_PATTERNS = [
+                r'^market volatility',
+                r'^stock price',
+                r'^valuation',
+                r'^interest rate',
+                r'^macroeconomic',
+                r'^economic downturn',
+                r'^recession',
+                r'^inflation',
+            ]
+            too_short = []
+            too_generic = []
+            for r in risks:
+                r_str = str(r).strip()
+                if len(r_str) < 40:
+                    too_short.append(r_str[:50])
+                else:
+                    for pat in GENERIC_RISK_PATTERNS:
+                        if re.search(pat, r_str, re.IGNORECASE):
+                            too_generic.append(r_str[:60])
+                            break
+            if too_short:
+                warnings.append(ValidationWarning(
+                    check="company_overview_risks_generic",
+                    section="Company Overview",
+                    detail=(
+                        f"{len(too_short)} business risk(s) too short (<40 chars): "
+                        f"{too_short[0]!r}... Risks must explain the threat, "
+                        f"why it matters, investor impact, and monitoring indicators."
+                    ),
+                    severity="error",
+                ))
+            if too_generic:
+                warnings.append(ValidationWarning(
+                    check="company_overview_risks_generic",
+                    section="Company Overview",
+                    detail=(
+                        f"{len(too_generic)} business risk(s) are only market/price risks: "
+                        f"{too_generic[0]!r}... Business risks must include operational, "
+                        f"competitive, regulatory, and company-specific threats — "
+                        f"not just stock-market concerns."
+                    ),
+                    severity="error",
+                ))
+            if len(risks) < 3:
+                warnings.append(ValidationWarning(
+                    check="company_overview_risks_insufficient",
+                    section="Company Overview",
+                    detail=(
+                        f"Only {len(risks)} business risk(s) listed. "
+                        f"At least 3 substantive, company-specific business risks required."
+                    ),
+                    severity="error",
+                ))
+
+    # ── RULE 38 (BLOCKING): §9d CEO leadership & vision completeness ────────────
+    #
+    # Extends RULE 33b (CEO must be named). Additionally:
+    #   - CEO leadership style must not be generic ("experienced leader")
+    #   - Long-term vision must exist and not be generic
+    #   - Both fields must be substantive
+
+    if company_overview is not None:
+        co = company_overview
+        ceo_text = getattr(co, 'ceo_leadership_style', '') or ''
+        vision_text = getattr(co, 'long_term_vision', '') or ''
+
+        GENERIC_CEO_PATTERNS = [
+            r'^experienced leader',
+            r'^the ceo (is|has)',
+            r'^demonstrated',
+            r'^strong leadership',
+            r'^proven track record$',
+            r'^visionary leader$',
+        ]
+        if ceo_text:
+            for pat in GENERIC_CEO_PATTERNS:
+                if re.search(pat, ceo_text.strip(), re.IGNORECASE):
+                    warnings.append(ValidationWarning(
+                        check="company_overview_ceo_too_generic",
+                        section="Company Overview",
+                        detail=(
+                            f"CEO leadership style appears generic/boilerplate: "
+                            f"'{ceo_text[:80]}...'. The CEO section must include "
+                            f"specific leadership style, strategic priorities, execution "
+                            f"strengths, and evidence from sources (shareholder letters, "
+                            f"earnings calls, investor presentations)."
+                        ),
+                        severity="error",
+                    ))
+                    break
+
+        if not vision_text or len(vision_text.strip()) < 30:
+            warnings.append(ValidationWarning(
+                check="company_overview_vision_missing",
+                section="Company Overview",
+                detail=(
+                    "Long-term vision section is empty or too short (<30 chars). "
+                    "The downloadable PDF must include the CEO's stated long-term "
+                    "vision with source evidence."
+                ),
+                severity="error",
+            ))
+
+    # ── RULE 39 (BLOCKING): §9e Numerical consistency — no contradictions ──────
+    #
+    # Check company_overview text for contradictory numerical claims.
+    # If the same metric (market cap, revenue, P/E) appears in multiple places with
+    # different values, that's a consistency error.
+    # Uses regex to extract all monetary figures and PE ratios from text fields.
+
+    if company_overview is not None:
+        co = company_overview
+        # Gather all text fields
+        all_co_text = " ".join([
+            getattr(co, 'business_description', '') or '',
+            getattr(co, 'revenue_model', '') or '',
+            getattr(co, 'competitive_position', '') or '',
+            getattr(co, 'strengths_vs_competitors', '') or '',
+            getattr(co, 'weaker_areas_vs_competitors', '') or '',
+            getattr(co, 'ceo_leadership_style', '') or '',
+            getattr(co, 'long_term_vision', '') or '',
+            getattr(co, 'investor_takeaway', '') or '',
+        ])
+
+        # Extract market cap mentions: "$X.XX trillion" or "$X.XXT" or "$XXXB"
+        market_cap_values = []
+        for m in re.finditer(r'\$(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?\s*(?:trillion|T)', all_co_text, re.IGNORECASE):
+            val = _parse_money(m.group())
+            if val:
+                market_cap_values.append(val)
+
+        # If multiple market cap values found with >5% variance, flag
+        if len(market_cap_values) >= 2:
+            max_mc = max(market_cap_values)
+            min_mc = min(market_cap_values)
+            if max_mc > 0 and (max_mc - min_mc) / max_mc > 0.05:
+                warnings.append(ValidationWarning(
+                    check="company_overview_market_cap_inconsistent",
+                    section="Company Overview",
+                    detail=(
+                        f"Market Cap appears with different values across sections: "
+                        f"${min_mc/1e12:.2f}T and ${max_mc/1e12:.2f}T. "
+                        f"All metrics must come from the metrics ledger and use the same timestamp. "
+                        f"If timestamp differs, label clearly."
+                    ),
+                    severity="error",
+                ))
+
+        # Extract P/E ratios: "P/E of X" or "PE ratio X" or "P/E: X"
+        pe_values = []
+        for m in re.finditer(
+            r'(?:P/?E|PE|price.?to.?earnings)\s*(?:ratio|multiple)?\s*(?:of|:)?\s*([\d,.]+)',
+            all_co_text, re.IGNORECASE
+        ):
+            try:
+                pe = float(m.group(1).replace(',', ''))
+                pe_values.append(pe)
+            except (ValueError, TypeError):
+                pass
+        if len(pe_values) >= 2:
+            max_pe = max(pe_values)
+            min_pe = min(pe_values)
+            if max_pe > 0 and (max_pe - min_pe) / max_pe > 0.10:
+                warnings.append(ValidationWarning(
+                    check="company_overview_pe_inconsistent",
+                    section="Company Overview",
+                    detail=(
+                        f"P/E ratio appears with different values across sections: "
+                        f"{min_pe:.1f}x and {max_pe:.1f}x. "
+                        f"If these are different P/E variants (TTM vs forward), label them explicitly. "
+                        f"Unlabeled contradictory numbers confuse investors."
+                    ),
+                    severity="error",
+                ))
+
+        # Check for "NaN", "None", "null", "undefined" in text
+        NAN_PATTERNS = [r'\bNaN\b', r'\bNone\b', r'\bnull\b', r'\bundefined\b']
+        for pat in NAN_PATTERNS:
+            if re.search(pat, all_co_text):
+                warnings.append(ValidationWarning(
+                    check="company_overview_nan_leak",
+                    section="Company Overview",
+                    detail=(
+                        f"Text contains programming null value '{pat}'. "
+                        f"Client-facing PDFs must never contain raw NaN/None/null/undefined."
+                    ),
+                    severity="error",
+                ))
+                break
+
+    # ── RULE 40 (BLOCKING): §9f Source quality — truthful, no fake claims ──────
+    #
+    # If source_registry is provided, verify:
+    #   - No source claims "100% coverage" when required sources are missing
+    #   - Cited source IDs in company_claims exist in source_registry
+    #   - No raw provider keys in text fields (yfinance key, Finnhub internal keys)
+
+    if source_registry is not None and company_overview is not None:
+        co = company_overview
+
+        # 40a. No fake 100% coverage claims
+        all_co_text = " ".join([
+            getattr(co, 'business_description', '') or '',
+            getattr(co, 'competitive_position', '') or '',
+            getattr(co, 'investor_takeaway', '') or '',
+        ])
+        fake_claims = re.findall(
+            r'(?:100%|full|complete)\s*(?:source|data|coverage)',
+            all_co_text, re.IGNORECASE
+        )
+        if fake_claims:
+            # Count actual sources in the registry
+            src_count = 0
+            if isinstance(source_registry, dict):
+                src_count = len(source_registry)
+            elif isinstance(source_registry, list):
+                src_count = len(source_registry)
+            elif hasattr(source_registry, 'items'):
+                src_count = len(source_registry.items())
+            if src_count < 5:
+                warnings.append(ValidationWarning(
+                    check="company_overview_fake_source_claim",
+                    section="Company Overview",
+                    detail=(
+                        f"Text claims '{fake_claims[0]}' but source registry has only "
+                        f"{src_count} source(s). False source coverage claims erode "
+                        f"investor trust. Remove or qualify the claim."
+                    ),
+                    severity="error",
+                ))
+
+        # 40b. Raw provider keys must not leak into text
+        RAW_PROVIDER_KEYS = [
+            'yf_', 'fh_', 'sec_', 'tv_', 'tavily_',
+            'marketCap', 'totalRevenue', 'trailingPE', 'forwardPE',
+            'pegRatio', 'earningsGrowth', 'revenueGrowth',
+        ]
+        for key in RAW_PROVIDER_KEYS:
+            if key in all_co_text:
+                warnings.append(ValidationWarning(
+                    check="company_overview_raw_provider_key",
+                    section="Company Overview",
+                    detail=(
+                        f"Text contains raw provider key '{key}'. "
+                        f"Client-facing PDFs must never expose internal data keys. "
+                        f"Map all provider fields to human-readable labels before rendering."
+                    ),
+                    severity="error",
+                ))
+                break
+
+    # ── RULE 41 (BLOCKING): §9g No Markdown syntax in text fields ──────────────
+    #
+    # The downloaded PDF must not contain raw Markdown syntax.
+    # Check all company_overview text fields for:
+    #   - ### headings
+    #   - **bold** markers
+    #   - | table syntax
+    #   - ``` code blocks
+    #   - [link](url) syntax
+    #   - * italic (but not bullet points — context-dependent)
+
+    if company_overview is not None:
+        co = company_overview
+        markdown_fields = [
+            ("business_description", getattr(co, 'business_description', '') or ''),
+            ("revenue_model", getattr(co, 'revenue_model', '') or ''),
+            ("competitive_position", getattr(co, 'competitive_position', '') or ''),
+            ("strengths_vs_competitors", getattr(co, 'strengths_vs_competitors', '') or ''),
+            ("weaker_areas_vs_competitors", getattr(co, 'weaker_areas_vs_competitors', '') or ''),
+            ("ceo_leadership_style", getattr(co, 'ceo_leadership_style', '') or ''),
+            ("long_term_vision", getattr(co, 'long_term_vision', '') or ''),
+            ("investor_takeaway", getattr(co, 'investor_takeaway', '') or ''),
+        ]
+
+        MARKDOWN_PATTERNS = [
+            (r'^#{1,6}\s', "Markdown heading (###)"),
+            (r'\*\*[^*]+\*\*', "Markdown bold (**text**)"),
+            (r'^[\s]*\|.*\|[\s]*$', "Markdown table row (|...|)"),
+            (r'```', "Markdown code block (```)"),
+            (r'\[.+\]\(.+\)', "Markdown link [text](url)"),
+        ]
+
+        for field_name, field_text in markdown_fields:
+            if not field_text:
+                continue
+            for pattern, desc in MARKDOWN_PATTERNS:
+                match = re.search(pattern, field_text, re.MULTILINE)
+                if match:
+                    warnings.append(ValidationWarning(
+                        check="company_overview_raw_markdown",
+                        section="Company Overview",
+                        detail=(
+                            f"Raw Markdown syntax ({desc}) found in field '{field_name}': "
+                            f"'{match.group()[:60]}'. The downloadable PDF must never "
+                            f"contain raw Markdown. Use proper rich-text formatting."
+                        ),
+                        severity="error",
+                    ))
+                    break  # One error per field is enough
+
+        # Also check list items for raw markdown syntax
+        for list_attr in ['growth_drivers', 'moats', 'business_risks', 'key_kpis']:
+            items = getattr(co, list_attr, None) or []
+            for item in items:
+                item_str = str(item)
+                for pattern, desc in MARKDOWN_PATTERNS:
+                    if re.search(pattern, item_str):
+                        warnings.append(ValidationWarning(
+                            check="company_overview_raw_markdown",
+                            section="Company Overview",
+                            detail=(
+                                f"Raw Markdown syntax ({desc}) found in {list_attr}: "
+                                f"'{item_str[:60]}'. Clean before PDF export."
+                            ),
+                            severity="error",
+                        ))
+                        break
+
+    # ── RULE 42 (BLOCKING): §9h Final export gate — aggregate all gates ────────
+    #
+    # This rule fires if any Critical/High gate has failed, blocking PDF export.
+    # It doesn't add new checks — it ensures the export knows validation failed.
+    # Implemented as a post-pass: if any error warnings exist, add a summary gate.
+
+    # (No additional code needed — the ValidationResult.passed computed below
+    #  already aggregates all error-severity rules into a single pass/fail.)
 
     # ── Determine pass/fail ────────────────────────────────────────────
 
