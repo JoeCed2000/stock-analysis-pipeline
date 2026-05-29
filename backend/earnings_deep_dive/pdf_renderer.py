@@ -758,7 +758,7 @@ def _shorten_source(label: str) -> str:
 
 def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> list:
     """Build a ReportLab Table with proper word-wrapping via Paragraph cells."""
-    MAX_CELL_CHARS = 80  # aggressive truncation — prevents cell overflow crashes
+    BASE_MAX_CELL_CHARS = 160  # keep rich context while still guarding pathological overflows
     
     # Build cell style — compact font, tight leading, force word wrap
     cell_style = ParagraphStyle(
@@ -816,10 +816,16 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> lis
             s = str(cell).strip()
             if s.upper() == "N/A":
                 s = "Not available"
-            if len(s) > MAX_CELL_CHARS:
-                s = s[:MAX_CELL_CHARS - 1] + "…"
+            column_lower = column.lower()
+            cell_limit = BASE_MAX_CELL_CHARS
+            if "source" in column_lower:
+                cell_limit = 96
+            elif any(token in column_lower for token in ("comparison", "advantage", "analysis", "commentary", "note")):
+                cell_limit = 240
+            if len(s) > cell_limit:
+                s = s[:cell_limit - 1] + "…"
             # Shorten source labels for compact table rendering
-            if "source" in column.lower():
+            if "source" in column_lower:
                 s = _shorten_source(s)
             safe = _glyph_safe(s, font_name=fonts.regular)
             truncated.append(Paragraph(escape(safe), _indicator_style(column, s)))
@@ -1126,7 +1132,8 @@ def _generate_metrics_chart(chart_data, ticker: str) -> RLImage | None:
     eps_estimate = chart_data.eps_estimate
     eps_vs = chart_data.eps_vs_pct
 
-    if eps_actual is not None and eps_estimate is not None:
+    eps_has_data = eps_actual is not None and eps_estimate is not None
+    if eps_has_data:
         bars = ax1.bar(["Estimate", "Actual"], [eps_estimate, eps_actual],
                         color=[est_color, actual_color], width=0.55, edgecolor="white", linewidth=0.5)
         ax1.set_title(f"EPS (${eps_actual:.2f})", fontsize=9, fontweight="bold", color="#111111", pad=8)
@@ -1143,19 +1150,23 @@ def _generate_metrics_chart(chart_data, ticker: str) -> RLImage | None:
                      ha="center", fontsize=8, fontweight="bold", color=color,
                      bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor=color, alpha=0.9))
     else:
-        ax1.text(0.5, 0.5, "EPS data\nnot available", transform=ax1.transAxes,
+        ax1.axis("off")
+        ax1.text(0.5, 0.5, "EPS data not available", transform=ax1.transAxes,
                  ha="center", va="center", fontsize=8, color="#999999")
-        ax1.set_title("EPS", fontsize=9, fontweight="bold", color="#111111")
 
     # ── Right panel: Revenue ──
     rev_actual = chart_data.revenue_actual
     rev_estimate = chart_data.revenue_estimate
     rev_vs = chart_data.revenue_vs_pct
 
-    if rev_actual is not None and rev_estimate is not None:
+    rev_has_data = rev_actual is not None and rev_estimate is not None
+    if rev_has_data:
+        assert rev_actual is not None and rev_estimate is not None
         # Format in billions
-        rev_ab = rev_actual / 1e9
-        rev_eb = rev_estimate / 1e9
+        rev_actual_val = float(rev_actual)
+        rev_estimate_val = float(rev_estimate)
+        rev_ab = rev_actual_val / 1e9
+        rev_eb = rev_estimate_val / 1e9
         bars = ax2.bar(["Estimate", "Actual"], [rev_eb, rev_ab],
                         color=[est_color, actual_color], width=0.55, edgecolor="white", linewidth=0.5)
         ax2.set_title(f"Revenue (${rev_ab:.1f}B)", fontsize=9, fontweight="bold", color="#111111", pad=8)
@@ -1170,12 +1181,13 @@ def _generate_metrics_chart(chart_data, ticker: str) -> RLImage | None:
                      ha="center", fontsize=8, fontweight="bold", color=color,
                      bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor=color, alpha=0.9))
     else:
-        ax2.text(0.5, 0.5, "Revenue data\nnot available", transform=ax2.transAxes,
+        ax2.axis("off")
+        ax2.text(0.5, 0.5, "Revenue data not available", transform=ax2.transAxes,
                  ha="center", va="center", fontsize=8, color="#999999")
-        ax2.set_title("Revenue", fontsize=9, fontweight="bold", color="#111111")
 
-    # Style both axes
-    for ax in (ax1, ax2):
+    for ax, has_data in ((ax1, eps_has_data), (ax2, rev_has_data)):
+        if not has_data:
+            continue
         ax.set_facecolor("#FAFAFA")
         ax.tick_params(labelsize=7, colors="#666666", length=0)
         ax.spines["top"].set_visible(False)

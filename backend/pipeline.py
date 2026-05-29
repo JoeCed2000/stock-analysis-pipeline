@@ -33,17 +33,56 @@ def md_to_pdf(md_path: str, pdf_path: str, title: str = "") -> str:
 
 
 def _best_transcript_source(sources: List[Dict[str, Any]]) -> tuple[str, Dict[str, Any]]:
-    """Return the longest usable transcript text and its source metadata."""
-    best_text = ""
-    best_source: Dict[str, Any] = {}
+    """Return the preferred usable transcript text and its source metadata.
+
+    Selection policy:
+    1) Prefer higher-quality transcript providers when multiple usable transcripts exist
+       (Seeking Alpha first, then StockAnalysis, then other providers).
+    2) Within the same provider priority, choose the longest usable transcript.
+    3) If no usable transcript exists, fall back to the longest non-empty text.
+    """
+
+    def _priority(source: Dict[str, Any]) -> int:
+        src = str(source.get("source") or "").lower()
+        url = str(source.get("url") or source.get("link") or source.get("source_url") or "").lower()
+        haystack = f"{src} {url}"
+        if "seeking alpha" in haystack or "seekingalpha.com" in haystack:
+            return 400
+        if "stockanalysis.com" in haystack:
+            return 300
+        if "alpha vantage" in haystack:
+            return 200
+        if "motley fool" in haystack or "fool.com" in haystack:
+            return 150
+        return 100
+
+    usable_candidates: list[tuple[int, int, str, Dict[str, Any]]] = []
+    fallback_text = ""
+    fallback_source: Dict[str, Any] = {}
+
     for source in sources:
         text = source.get("text") or source.get("content") or source.get("transcript") or ""
         if isinstance(text, list):
             text = "\n".join(str(item) for item in text)
-        if isinstance(text, str) and len(text.strip()) > len(best_text):
-            best_text = text.strip()
-            best_source = source
-    return best_text, best_source
+        if not isinstance(text, str):
+            continue
+
+        cleaned = text.strip()
+        if not cleaned:
+            continue
+
+        if len(cleaned) > len(fallback_text):
+            fallback_text = cleaned
+            fallback_source = source
+
+        if len(cleaned) >= 2000:
+            usable_candidates.append((_priority(source), len(cleaned), cleaned, source))
+
+    if usable_candidates:
+        best = max(usable_candidates, key=lambda item: (item[0], item[1]))
+        return best[2], best[3]
+
+    return fallback_text, fallback_source
 
 
 def _transcript_url(source: Dict[str, Any], ticker: str | None = None) -> Optional[str]:

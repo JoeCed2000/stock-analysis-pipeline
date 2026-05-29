@@ -209,3 +209,27 @@ def test_pdf_replaces_na_placeholders_with_not_available(tmp_path):
     assert re.search(r"(?m)^\s*N/A\s*$", text) is None
     assert "Not available" in text
 
+
+def test_pdf_table_preserves_advantage_sentence_without_hard_truncation(tmp_path):
+    report = _report()
+    eps_section = next(section for section in report.sections if section.key == "EPS & Revenue")
+    row_type = type(eps_section.table.rows[0])
+    eps_section.table.rows.append(
+        row_type(
+            label="Competitive context",
+            cells=[
+                "NVIDIA offers a more integrated AI compute and networking platform rather than peers.",
+                "Not available",
+                "Not available",
+                "Not available",
+                "S1",
+            ],
+        )
+    )
+
+    doc = _rendered_pdf(tmp_path, report)
+    text = "\n".join(page.get_text() for page in doc)
+
+    assert "rather than peers" in text
+    assert "rather than p\n" not in text
+

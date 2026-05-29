@@ -1624,6 +1624,14 @@ def _default_section_analysis(
     pe = _multiple(getattr(metrics, "pe_forward", None))
     backlog = _money(getattr(metrics, "backlog", None))
     guidance = _metric_text(metrics, "guidance") or NOT_DISCLOSED_EN
+    backlog_status = backlog
+    if isinstance(backlog_status, str) and backlog_status.strip().lower() in {
+        "not available",
+        "not disclosed",
+        "n/a",
+        "-",
+    }:
+        backlog_status = "not disclosed / not applicable"
 
     if language == "jp":
         text = {
@@ -1646,7 +1654,7 @@ def _default_section_analysis(
         "Capital Efficiency": f"🧠 Capital efficiency uses ROE of {roe} and ROIC of {roic} to judge whether growth creates value. High returns are strongest when they come from operating profit rather than leverage, buybacks, or asset shrinkage. 👉 The investor read is to compare returns with reinvestment needs and cash generation before treating growth as value-accretive.",
         "Segments": f"🧠 Segment commentary identifies which business lines are carrying {ticker}'s quarter. The table should be read by revenue size, YoY direction, and stated driver rather than by one headline segment. 👉 A healthier quarter has multiple segments contributing; concentration in one segment raises execution risk for the next quarter.",
         "Forward P/E": f"🧠 The forward P/E is {pe}. Valuation is not a verdict by itself; it has to be tested against revenue growth of {revenue_yoy}, operating margin of {operating_margin}, and free cash flow of {fcf}. 👉 A premium multiple is acceptable only when forward guidance and cash conversion support the implied growth path.",
-        "Backlog": f"🧠 Backlog is {backlog}. For companies where backlog is economically relevant, it is a visibility indicator for future revenue; for companies that do not disclose it, the correct treatment is not applicable or not disclosed. 👉 Do not infer backlog strength from revenue growth unless the company explicitly reports orders or remaining performance obligations.",
+        "Backlog": f"🧠 Backlog status is {backlog_status}. For companies where backlog is economically relevant, it is a visibility indicator for future revenue; when companies do not disclose backlog, the correct treatment is not applicable or not disclosed. 👉 Do not infer backlog strength from revenue growth unless the company explicitly reports orders or remaining performance obligations.",
         "Guidance": f"🧠 Guidance reads as: {guidance}. This section resets expectations after the reported quarter by linking management's forward comments to revenue, margins, and EPS. 👉 Strong trailing results deserve a lower valuation weight if the next-quarter guide implies slowing demand or margin pressure.",
         "Verdict": f"🎯 The verdict combines revenue of {revenue}, EPS of {eps}, free cash flow of {fcf}, operating margin of {operating_margin}, and forward P/E of {pe}. The investment call should not rest on one metric. 👉 The risk/reward improves when growth, cash conversion, and valuation are aligned; it weakens when any one of those pillars breaks.",
     }
@@ -2183,15 +2191,15 @@ def build_earnings_deep_dive_report(
             pass
     company_website_url = _metric_url(metrics, "company_website", "website", "weburl", "official_website")
     transcript_source = _metric_text(metrics, "transcript_source", "transcript_provider") or "Transcript"
-    # Normalize: if source is a search engine, discovery tool, or the generic default, extract the real domain from URL
+    # Normalize source label from URL only when the source label is generic.
     if transcript_url and transcript_source == "Transcript":
         from urllib.parse import urlparse
         try:
             domain = urlparse(transcript_url).netloc.replace("www.", "")
-            # Map common domains to human-readable names
             DOMAIN_NAMES = {
                 "fool.com": "Motley Fool",
                 "seekingalpha.com": "Seeking Alpha",
+                "stockanalysis.com": "StockAnalysis.com",
                 "finance.yahoo.com": "Yahoo Finance",
                 "reuters.com": "Reuters",
                 "bloomberg.com": "Bloomberg",
@@ -2212,9 +2220,10 @@ def build_earnings_deep_dive_report(
     if transcript_url or transcript_source not in ("Transcript", ""):
         transcript_label = f"Transcript - {transcript_source}"
         transcript_display_url = transcript_url or ""
+        transcript_source_type = "seeking_alpha" if "seeking alpha" in transcript_source.lower() else "transcript"
         sources.append(SourceRef(
             source_id=_next_sid(),
-            source_type="seeking_alpha",
+            source_type=transcript_source_type,
             label=transcript_label,
             url=transcript_display_url,
             note="Primary earnings transcript source" if transcript_display_url else MISSING,
