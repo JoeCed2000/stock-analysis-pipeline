@@ -790,8 +790,8 @@ def _language_rules(language: str) -> str:
         "Use English ONLY for the entire answer — no Japanese characters, no CJK. "
         "Use English labels only: 'For Nami-san:', 'Caution:', 'Essential insight:', "
         "and '> One-line summary:'. "
-        "Every table cell must contain either a sourced value or 'Not retrieved'. "
-        "Compute a metric only when all formula inputs are supplied; if inputs are missing, use 'Not retrieved'. "
+        "Every table cell must contain either a sourced value or '—'. "
+        "Compute a metric only when all formula inputs are supplied; if inputs are missing, use '—'. "
         "Never leave a cell empty and never invent missing values."
     )
 
@@ -843,7 +843,7 @@ def _base_prompt(
         else (
             "No transcript available. Use ONLY the financial_metrics data below. "
             "Do NOT invent qualitative commentary. Mark transcript-dependent commentary as "
-            "'Not retrieved from transcript'."
+            "'Unavailable from reviewed sources'."
         )
     )
 
@@ -864,13 +864,13 @@ Transcript excerpt: {transcript_context}
 The Metrics above are the SINGLE SOURCE OF TRUTH extracted from yfinance and SEC filings.
 The PDF renderer will validate your table against these exact values and replace
 any hallucinated numbers with data-driven corrections.
-- Every number in your table MUST come from Metrics. If a metric is missing → write Not retrieved.
+- Every number in your table MUST come from Metrics. If a metric is missing → write "—" and skip prose.
 - Every number in your PROSE must match the table. Do not write "$4.91 EPS" if the table says "$1.76".
 - Never convert, annualize, or TTM-adjust the Metrics values. Use them as-is.
-- If you need a number that is not in Metrics, write Not retrieved in the table and
-  "Not retrieved" in prose. Never guess.
+- If you need a number that is not in Metrics, write "—" in the table and
+  "Unavailable from reviewed sources" in prose. Never guess.
 🔴 CROSS-SECTION CONSISTENCY — ALL sections MUST agree on these facts:
-- If any CRITICAL OVERRIDE in this prompt states EPS/Revenue BEAT or MISSED,
+- If any PRECISION INJECTION in this prompt states EPS/Revenue BEAT or MISSED,
   you MUST use that exact direction. Do not contradict it.
 - The EPS & Revenue section is the single source of truth for beat/miss status.
   All other sections (Highlights, Verdict) must echo the SAME direction.
@@ -890,8 +890,8 @@ Section output contract:
 - Under each ①②③ item, use ● for data bullets and 👉 for investor implications.
 - Include {nami_label} where specified.
 - Use direct transcript or supplied-metric evidence. Never invent financial data.
-- If the transcript excerpt says no transcript is available, use only Metrics and mark qualitative call evidence as Not retrieved from transcript.
-- Every table cell must contain a sourced value or Not retrieved. Never leave cells empty and never invent missing values.
+- If the transcript excerpt says no transcript is available, use only Metrics and mark qualitative call evidence as Unavailable from reviewed sources.
+- Every table cell must contain a sourced value or —. Never leave cells empty and never invent missing values.
 - CRITICAL Source column format: Every source cell MUST identify the real data origin with specificity. Use exact provenance — SEC 10-Q page and line number, yfinance key name, transcript quote with timestamp, or calculation formula with inputs. Generic labels like \"Company filing\" or \"Calculated\" are INSUFFICIENT.
 - CRITICAL: Never write \"Section unavailable\" or similar placeholder text. If specific data is missing, use — in table cells and provide qualitative analysis based on the company's known business model, sector position, and total revenue/growth trends from Metrics.
 🔴 CLAIM SOURCE GROUNDING — Every analytical claim in your prose MUST fall into one of these categories:
@@ -911,7 +911,7 @@ PDF-aligned section skeleton:
 
 
 def eps_revenue_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    # 🔴 CRITICAL OVERRIDE: inject exact EPS & Revenue values so the LLM
+    # 🔴 PRECISION INJECTION: inject exact EPS & Revenue values so the LLM
     # cannot invent conflicting numbers. This section is the single source
     # of truth that all other sections cross-reference against.
     eps_actual = metrics.get("eps_actual")
@@ -934,7 +934,7 @@ def eps_revenue_prompt(language: str, ticker: str, company: str, quarter: str, m
         direction = "BEAT" if pct > 0 else "MISSED"
         try: eps_actual_f = float(eps_actual); eps_est_f = float(eps_est)
         except (TypeError, ValueError): eps_actual_f = eps_actual; eps_est_f = eps_est
-        extra += f"\n\n🔴 CRITICAL OVERRIDE — EPS: {direction} consensus by {abs(pct):.1f}% (actual=${eps_actual_f:.2f}, estimate=${eps_est_f:.2f}). USE THESE EXACT VALUES in the EPS row of the table. State '{direction}' in prose."
+        extra += f"\n\n🔴 PRECISION INJECTION — EPS: {direction} consensus by {abs(pct):.1f}% (actual=${eps_actual_f:.2f}, estimate=${eps_est_f:.2f}). USE THESE EXACT VALUES in the EPS row of the table. State '{direction}' in prose."
     elif eps_actual is not None:
         try: extra += f"\n⚠️  EPS actual = ${float(eps_actual):.2f}. Use in table. Estimate unavailable — mark vs Estimate as —."
         except (TypeError, ValueError): pass
@@ -949,7 +949,7 @@ def eps_revenue_prompt(language: str, ticker: str, company: str, quarter: str, m
         direction = "BEAT" if pct > 0 else "MISSED"
         try: rev_f = float(rev_actual) / 1e9; rev_est_f = float(rev_est) / 1e9
         except (TypeError, ValueError): rev_f = rev_actual; rev_est_f = rev_est
-        extra += f"\n🔴 CRITICAL OVERRIDE — Revenue: {direction} consensus by {abs(pct):.1f}% (actual=${rev_f:.2f}B, estimate=${rev_est_f:.2f}B). USE THESE EXACT VALUES in the Revenue row. State '{direction}' in prose."
+        extra += f"\n🔴 PRECISION INJECTION — Revenue: {direction} consensus by {abs(pct):.1f}% (actual=${rev_f:.2f}B, estimate=${rev_est_f:.2f}B). USE THESE EXACT VALUES in the Revenue row. State '{direction}' in prose."
     # Use revenue_quarterly if revenue_actual is missing
     if rev_actual is None and rev_q is not None:
         try: extra += f"\n⚠️  Revenue (quarterly) = ${float(rev_q)/1e9:.2f}B. Use in Revenue row."
@@ -976,7 +976,7 @@ def eps_revenue_prompt(language: str, ticker: str, company: str, quarter: str, m
 
 
 def highlights_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    # CRITICAL OVERRIDE: the LLM must know whether EPS/Revenue beat or missed
+    # PRECISION INJECTION: the LLM must know whether EPS/Revenue beat or missed
     # before classifying highlights. Without this it will hallucinate "Revenue beat"
     # when the EPS & Revenue table shows a miss.
     eps_actual = metrics.get("eps_actual")
@@ -996,7 +996,7 @@ def highlights_prompt(language: str, ticker: str, company: str, quarter: str, me
         direction = "BEAT" if pct > 0 else "MISSED"
         try: eps_actual_f = float(eps_actual); eps_est_f = float(eps_est)
         except (TypeError, ValueError): eps_actual_f = eps_actual; eps_est_f = eps_est
-        extra += f"\n\n🔴 CRITICAL OVERRIDE: EPS {direction} consensus estimates by {abs(pct):.1f}% (actual=${eps_actual_f:.2f}, estimate=${eps_est_f:.2f}). Frame highlights consistent with this result."
+        extra += f"\n\n🔴 PRECISION INJECTION: EPS {direction} consensus estimates by {abs(pct):.1f}% (actual=${eps_actual_f:.2f}, estimate=${eps_est_f:.2f}). Frame highlights consistent with this result."
     rev_vs = _vs(rev_actual, rev_est) if rev_actual is not None and rev_est is not None else None
     if rev_vs is not None:
         pct = rev_vs * 100
@@ -1019,7 +1019,7 @@ def highlights_prompt(language: str, ticker: str, company: str, quarter: str, me
 
 
 def operating_metrics_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    # CRITICAL OVERRIDE: the LLM frequently hallucinates the revenue value
+    # PRECISION INJECTION: the LLM frequently hallucinates the revenue value
     # (e.g. writing $2,025,000,000 instead of $111.18B). Surface the real
     # numbers explicitly to prevent this.
     rev_q = metrics.get("revenue_quarterly")
@@ -1033,7 +1033,7 @@ def operating_metrics_prompt(language: str, ticker: str, company: str, quarter: 
     if rev_q is not None:
         try:
             rev_b = float(rev_q) / 1e9
-            extra += f"\n\n🔴 CRITICAL OVERRIDE: Revenue (current quarter) = ${rev_b:.2f}B. USE THIS EXACT VALUE in the Revenue row of the table. Do NOT invent a different revenue number."
+            extra += f"\n\n🔴 PRECISION INJECTION: Revenue (current quarter) = ${rev_b:.2f}B. USE THIS EXACT VALUE in the Revenue row of the table. Do NOT invent a different revenue number."
         except (TypeError, ValueError):
             pass
     if rev_prior is not None:
@@ -1083,13 +1083,13 @@ def operating_metrics_prompt(language: str, ticker: str, company: str, quarter: 
 
 
 def cash_flow_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    # 🔴 CRITICAL OVERRIDE: surface exact cash flow numbers to prevent hallucination.
+    # 🔴 PRECISION INJECTION: surface exact cash flow numbers to prevent hallucination.
     ocf = metrics.get("operating_cash_flow")
     capex = metrics.get("capex")
     fcf = metrics.get("free_cash_flow")
     extra = ""
     if ocf is not None:
-        try: extra += f"\n\n🔴 CRITICAL OVERRIDE: Operating Cash Flow = ${float(ocf)/1e9:.2f}B. USE THIS EXACT VALUE in the OCF row of the table."
+        try: extra += f"\n\n🔴 PRECISION INJECTION: Operating Cash Flow = ${float(ocf)/1e9:.2f}B. USE THIS EXACT VALUE in the OCF row of the table."
         except (TypeError, ValueError): pass
     if capex is not None:
         try: extra += f"\n⚠️  CapEx = ${float(capex)/1e9:.2f}B. Use in CapEx row."
@@ -1117,7 +1117,7 @@ def cash_flow_prompt(language: str, ticker: str, company: str, quarter: str, met
 
 
 def capital_efficiency_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    # 🔴 CRITICAL OVERRIDE: surface exact capital efficiency ratios to prevent hallucination.
+    # 🔴 PRECISION INJECTION: surface exact capital efficiency ratios to prevent hallucination.
     roe = metrics.get("roe")
     roa = metrics.get("roa")
     roic = metrics.get("roic")
@@ -1125,7 +1125,7 @@ def capital_efficiency_prompt(language: str, ticker: str, company: str, quarter:
     net_income = metrics.get("net_income") or metrics.get("net_income_quarterly")
     extra = ""
     if roe is not None:
-        try: extra += f"\n\n🔴 CRITICAL OVERRIDE: ROE = {float(roe):.1f}%. USE THIS EXACT VALUE in the ROE row of the table."
+        try: extra += f"\n\n🔴 PRECISION INJECTION: ROE = {float(roe):.1f}%. USE THIS EXACT VALUE in the ROE row of the table."
         except (TypeError, ValueError): pass
     if rotce is not None:
         try: extra += f"\n⚠️  ROTCE/ROTE = {float(rotce):.1f}%. Use in ROTCE/ROTE row."
@@ -1189,7 +1189,7 @@ def forward_pe_prompt(language: str, ticker: str, company: str, quarter: str, me
         except (TypeError, ValueError):
             pe_str = str(pe_val)
         extra += (
-            f"\n\n🔴 CRITICAL OVERRIDE: The forward P/E ratio IS {pe_str} "
+            f"\n\n🔴 PRECISION INJECTION: The forward P/E ratio IS {pe_str} "
             f"(from yfinance, key=pe_forward). This value EXISTS in the Metrics line above. "
             f"Your FIRST sentence MUST state: \"The forward P/E is {pe_str}.\" "
             f"Do NOT claim it is missing, not provided, not disclosed, or unavailable — "
@@ -1290,7 +1290,7 @@ def guidance_prompt(language: str, ticker: str, company: str, quarter: str, metr
 
 
 def verdict_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    # CRITICAL OVERRIDE: the Verdict MUST be consistent with EPS & Revenue results.
+    # PRECISION INJECTION: the Verdict MUST be consistent with EPS & Revenue results.
     # Without this the LLM will contradict its own earlier sections (e.g. "EPS beat"
     # in Highlights then "EPS did not beat consensus" in Verdict).
     eps_actual = metrics.get("eps_actual")
