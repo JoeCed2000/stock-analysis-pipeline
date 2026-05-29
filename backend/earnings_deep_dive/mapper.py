@@ -1999,6 +1999,66 @@ def _build_earnings_documents_checklist(
     )
 
 
+def _build_source_registry(
+    *,
+    sources: list | None = None,
+    claim_sources: list | None = None,
+    generated_at: str | None = None,
+) -> "SourceRegistry":
+    """Build a source usage registry — §5 corrections.txt.
+
+    Maps every bibliography source and every claim source into a usage-tracking
+    registry that distinguishes 'used' from 'candidate' sources.
+    """
+    from backend.earnings_deep_dive.report_model import SourceRegistry, SourceRegistryEntry
+
+    sources_list = sources or []
+    claims_list = claim_sources or []
+
+    cited_ids: set[str] = set()
+    for cs in claims_list:
+        sid = cs.get("source_id", "") if isinstance(cs, dict) else getattr(cs, "source_id", "")
+        if sid:
+            cited_ids.add(sid)
+
+    entries: list[SourceRegistryEntry] = []
+
+    for s in sources_list:
+        if isinstance(s, dict):
+            sid = s.get("source_id", "") or ""
+            label = s.get("label", "") or ""
+            stype = s.get("source_type", "") or ""
+            url = s.get("url", "") or ""
+            retrieved = s.get("retrieved_at", "") or ""
+        else:
+            sid = getattr(s, "source_id", "") or ""
+            label = getattr(s, "label", "") or ""
+            stype = getattr(s, "source_type", "") or ""
+            url = getattr(s, "url", "") or ""
+            retrieved = getattr(s, "retrieved_at", "") or ""
+
+        if not sid:
+            continue
+
+        status = "used" if sid in cited_ids else "candidate"
+        provider = stype if stype else None
+        public_label = label
+        if not public_label or public_label == sid:
+            public_label = stype.replace("_", " ").title() if stype else label
+
+        entries.append(SourceRegistryEntry(
+            source_id=sid, human_label=label, provider=provider,
+            source_type=stype if stype else None,
+            url=url if url else None, period_matched=True,
+            status=status, fields_used=[],
+            retrieved_at=retrieved if retrieved else None,
+            confidence=None, failure_reason_internal_only=None,
+            public_display_label=public_label,
+        ))
+
+    return SourceRegistry(entries=entries, generated_at=generated_at)
+
+
 def _section_runtime_columns(section_key: str, base_columns: list[str], resolved_quarter: str) -> list[str]:
     """Adjust runtime column labels to match quarter/TTM naming conventions."""
     if not base_columns:
@@ -2543,6 +2603,13 @@ def build_earnings_deep_dive_report(
         generated_at=generated_at or datetime.now(timezone.utc).isoformat(),
     )
 
+    # ── §5 source registry ──
+    source_registry = _build_source_registry(
+        sources=[s.model_dump() if hasattr(s, 'model_dump') else s for s in sources],
+        claim_sources=[cs.model_dump() if hasattr(cs, 'model_dump') else cs for cs in claim_sources],
+        generated_at=generated_at or datetime.now(timezone.utc).isoformat(),
+    )
+
     return EarningsDeepDiveReport(
         ticker=ticker_clean,
         company=company_name,
@@ -2568,6 +2635,8 @@ def build_earnings_deep_dive_report(
         period_context=period_context,
         # §6 earnings documents checklist
         earnings_documents=earnings_docs,
+        # §5 source registry
+        source_registry=source_registry,
     )
 
 

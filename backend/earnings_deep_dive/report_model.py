@@ -477,6 +477,66 @@ class EarningsDocumentsChecklist(BaseModel):
         return self.press_release_status == "retrieved"
 
 
+class SourceRegistryEntry(BaseModel):
+    """Per-source usage tracking entry — §5 corrections.txt.
+
+    Tracks whether a source was actually used as evidence (not just available).
+    Maps source IDs to human-readable labels and prevents raw provider key leaks.
+    """
+    source_id: str
+    human_label: str
+    provider: str | None = None               # yfinance, finnhub, sec_edgar, seeking_alpha
+    source_type: str | None = None             # transcript, press_release, SEC_filing, market_data, consensus
+    url: str | None = None
+    period_matched: bool = False               # Does the source period match the report period?
+    status: str = "candidate"                  # used | candidate | available_not_used | failed | fallback_used
+    fields_used: list[str] = Field(default_factory=list)  # e.g. ["eps_actual", "revenue_estimate"]
+    retrieved_at: str | None = None
+    confidence: str | None = None              # high | medium | low
+    failure_reason_internal_only: str | None = None
+    public_display_label: str | None = None    # Client-ready label, never raw provider key
+
+
+class SourceRegistry(BaseModel):
+    """Source usage registry — §5 corrections.txt.
+
+    Maps every source to its usage status. Ensures:
+    - No source cited as evidence unless status = "used"
+    - No raw provider keys in public-facing labels
+    - Every S1/S2/etc. has a readable mapping
+    - Data Quality reflects actual source usage
+    """
+    entries: list[SourceRegistryEntry] = Field(default_factory=list)
+    generated_at: str | None = None
+
+    @property
+    def used_sources(self) -> list[SourceRegistryEntry]:
+        return [e for e in self.entries if e.status == "used"]
+
+    @property
+    def used_count(self) -> int:
+        return len(self.used_sources)
+
+    @property
+    def has_transcript(self) -> bool:
+        return any(e.source_type == "transcript" and e.status == "used" for e in self.entries)
+
+    @property
+    def has_sec_filing(self) -> bool:
+        return any(e.source_type == "SEC_filing" and e.status == "used" for e in self.entries)
+
+    @property
+    def has_consensus(self) -> bool:
+        return any(e.source_type == "consensus" and e.status == "used" for e in self.entries)
+
+    def get_label(self, source_id: str) -> str | None:
+        """Get human-readable label for a source ID. Returns None if not found."""
+        for e in self.entries:
+            if e.source_id == source_id:
+                return e.public_display_label or e.human_label
+        return None
+
+
 class ReportPeriodContext(BaseModel):
     """Single source of truth for report period — §3 corrections.txt.
 
@@ -530,3 +590,5 @@ class EarningsDeepDiveReport(BaseModel):
     period_context: ReportPeriodContext | None = None
     # ── §6 earnings documents checklist ──
     earnings_documents: EarningsDocumentsChecklist | None = None
+    # ── §5 source registry ──
+    source_registry: SourceRegistry | None = None

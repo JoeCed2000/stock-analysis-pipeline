@@ -285,6 +285,7 @@ def validate_pre_render(
     *,
     period_context: Optional[Any] = None,  # ReportPeriodContext — §3
     earnings_documents: Optional[Any] = None,  # EarningsDocumentsChecklist — §6
+    source_registry: Optional[Any] = None,  # SourceRegistry — §5
 ) -> ValidationResult:
     """Validate deep-dive content before PDF rendering.
 
@@ -1667,6 +1668,90 @@ def validate_pre_render(
                         severity="error",
                     ))
                     break  # One warning is enough
+
+    # ── RULE 26 (BLOCKING): §5 Source Registry Integrity ────────────────────
+    #
+    # - No raw provider keys in report text (yfinance key, raw field names)
+    # - Source IDs like S1 must have readable mappings
+    # - Sources cited as evidence must have status="used"
+
+    if source_registry is not None:
+        sr = source_registry
+        # Build mapping of known source IDs for quick lookup
+        registry_entries = getattr(sr, 'entries', [])
+        registry_ids = {getattr(e, 'source_id', '') for e in registry_entries}
+        used_source_ids = {
+            getattr(e, 'source_id', '') for e in registry_entries
+            if getattr(e, 'status', '') == "used"
+        }
+
+        # 26a. Raw provider key leaks
+        raw_key_patterns = [
+            (r'yfinance\s+key\s*[:=]', 'yfinance key:'),
+            (r'finnhub\s+key\s*[:=]', 'finnhub key:'),
+            (r'provider\s*[:=]\s*["\']?\w+["\']?', 'provider:'),
+            (r'raw_field\s*[:=]', 'raw_field:'),
+        ]
+        for section_name, text in _sec.items():
+            if not isinstance(text, str):
+                continue
+            for pattern, label in raw_key_patterns:
+                if re.search(pattern, text, re.IGNORECASE):
+                    warnings.append(ValidationWarning(
+                        check="source_registry_raw_provider_key_leak",
+                        section=section_name,
+                        detail=(
+                            f"Raw provider key detected ('{label}'). "
+                            f"Use client-ready public labels from the source registry. "
+                            f"Never expose internal provider field names in the PDF."
+                        ),
+                        severity="error",
+                    ))
+                    break  # One per section is enough
+
+        # 26b. Source IDs like S1/S2 without readable mapping in the report
+        bare_source_refs = re.findall(r'\b(S\d{1,2})\b', "\n".join(
+            t for t in _sec.values() if isinstance(t, str)
+        ))
+        if bare_source_refs:
+            # Check if the registry has labels for these
+            unmapped = set()
+            for ref in bare_source_refs:
+                if ref not in registry_ids:
+                    unmapped.add(ref)
+                elif ref not in used_source_ids:
+                    pass  # It's in registry but marked as candidate — flag
+            if unmapped:
+                warnings.append(ValidationWarning(
+                    check="source_registry_unmapped_source_refs",
+                    section="(multiple)",
+                    detail=(
+                        f"Source references found without registry entries: "
+                        f"{', '.join(sorted(unmapped)[:5])}. "
+                        f"Every S1/S2/etc. must have a readable mapping in the source registry."
+                    ),
+                    severity="error",
+                ))
+
+        # 26c. Sources cited as evidence must be "used"
+        for section_name, text in _sec.items():
+            if not isinstance(text, str):
+                continue
+            # Check for explicit source citations
+            for entry in registry_entries:
+                sid = getattr(entry, 'source_id', '')
+                status = getattr(entry, 'status', '')
+                if status != "used" and sid and sid in text:
+                    warnings.append(ValidationWarning(
+                        check="source_registry_candidate_cited_as_evidence",
+                        section=section_name,
+                        detail=(
+                            f"Source '{sid}' is cited in '{section_name}' but has "
+                            f"status='{status}', not 'used'. A source must have "
+                            f"status='used' to be cited as evidence."
+                        ),
+                        severity="error",
+                    ))
 
     # ── Determine pass/fail ────────────────────────────────────────────
 
