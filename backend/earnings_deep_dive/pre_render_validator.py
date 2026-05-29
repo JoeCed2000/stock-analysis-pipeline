@@ -34,6 +34,13 @@ FORBIDDEN_MARKERS = [
     "DATA NOT AVAILABLE",
     "DONNÉE NON DISPONIBLE",
     "DONNÃ‰E NON DISPONIBLE",
+    "CRITICAL OVERRIDE",
+    "PRECISION INJECTION",
+    "Not retrieved",
+    "Section unavailable",
+    "primary returned no content",
+    "fallback failed",
+    "provider returned empty",
 ]
 
 # ── Negative sentiment keywords for contradiction detection ────────────────
