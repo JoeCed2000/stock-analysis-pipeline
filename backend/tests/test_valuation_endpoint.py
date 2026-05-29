@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from backend.models import ValuationV2Response
 
-# -- V2.3 contract: 27 required fields --------------------------------
+# -- V2.3+ contract: 28 required fields -------------------------------
 REQUIRED_FIELDS = [
     "ticker", "exchange", "quote_currency", "display_currency",
     "price", "price_eur", "market_cap", "market_cap_eur",
@@ -27,7 +27,7 @@ REQUIRED_FIELDS = [
     "eps_growth", "revenue_growth",
     "quote_timestamp", "fundamentals_timestamp",
     "fx_rate_eur", "fx_timestamp", "fx_status",
-    "source", "served_from", "status",
+    "source", "served_from", "missing_field_reasons", "status",
 ]
 
 
@@ -81,10 +81,10 @@ def mock_yf_info():
 
 class TestSchemaValidation:
 
-    def test_model_has_all_27_fields(self):
+    def test_model_has_all_28_fields(self):
         """ValuationV2Response must expose the full V2.3+ contract."""
         fields = list(ValuationV2Response.model_fields.keys())
-        assert len(fields) == 27, f"Expected 27 fields, got {len(fields)}: {fields}"
+        assert len(fields) == 28, f"Expected 28 fields, got {len(fields)}: {fields}"
         for field in REQUIRED_FIELDS:
             assert field in fields, f"Missing required field: {field}"
 
@@ -97,6 +97,7 @@ class TestSchemaValidation:
         assert resp.source == "unknown"
         assert resp.status == "unavailable"   # V2.3 default: explicit unavailable
         assert resp.fx_status == "unavailable"  # V2.3: no live FX
+        assert resp.missing_field_reasons == {}
         assert resp.price is None
         assert resp.exchange is None
 
@@ -460,6 +461,136 @@ class TestAlternativeProviderBackfill:
         assert out["eps_growth"] == 0.06
         assert out["revenue_growth"] == 0.04
         assert out["total_debt"] == 9000000000.0
+
+
+class TestMissingFieldReasonLedger:
+
+    def test_provider_missing_reason_when_no_fallback_keys(self):
+        """Missing valuation fields use provider_missing when no fallback API key is configured."""
+        from backend.valuation import get_valuation
+
+        stock_data = {
+            "ticker": "INTC",
+            "price": 42.0,
+            "market_cap": 170000000000.0,
+            "currency": "USD",
+            "financials": {
+                "eps_yoy": 0.11,
+                "revenue_yoy_growth": 0.05,
+            },
+            "_source": "cache",
+        }
+
+        with patch.dict("os.environ", {
+            "ALPHA_VANTAGE_API_KEY": "",
+            "FMP_API_KEY": "",
+            "EODHD_API_KEY": "",
+        }, clear=False):
+            with patch("backend.valuation.get_stock_data", return_value=stock_data):
+                with patch("backend.valuation._yf_ticker_safe", side_effect=RuntimeError("no yfinance")):
+                    with patch(
+                        "backend.valuation._backfill_from_external_providers",
+                        return_value=(
+                            {
+                                "pe_current": None,
+                                "pe_forward": None,
+                                "peg_ratio": None,
+                                "eps_growth": 0.11,
+                                "revenue_growth": 0.05,
+                                "total_debt": None,
+                            },
+                            None,
+                        ),
+                    ):
+                        resp = get_valuation("INTC")
+
+        assert resp.missing_field_reasons["pe_current"] == "provider_missing"
+        assert resp.missing_field_reasons["pe_forward"] == "provider_missing"
+        assert resp.missing_field_reasons["peg_ratio"] == "provider_missing"
+        assert resp.missing_field_reasons["total_debt"] == "provider_missing"
+
+    def test_not_reported_yet_reason_for_growth_without_historical_signals(self):
+        """Missing growth fields are coded as not_reported_yet when no historical growth signal exists."""
+        from backend.valuation import get_valuation
+
+        stock_data = {
+            "ticker": "RIVN",
+            "price": 12.0,
+            "market_cap": 14000000000.0,
+            "currency": "USD",
+            "financials": {},
+            "_source": "cache",
+        }
+
+        with patch.dict("os.environ", {
+            "ALPHA_VANTAGE_API_KEY": "demo-key",
+            "FMP_API_KEY": "",
+            "EODHD_API_KEY": "",
+        }, clear=False):
+            with patch("backend.valuation.get_stock_data", return_value=stock_data):
+                with patch("backend.valuation._yf_ticker_safe", side_effect=RuntimeError("no yfinance")):
+                    with patch(
+                        "backend.valuation._backfill_from_external_providers",
+                        return_value=(
+                            {
+                                "pe_current": None,
+                                "pe_forward": None,
+                                "peg_ratio": None,
+                                "eps_growth": None,
+                                "revenue_growth": None,
+                                "total_debt": None,
+                            },
+                            None,
+                        ),
+                    ):
+                        resp = get_valuation("RIVN")
+
+        assert resp.missing_field_reasons["eps_growth"] == "not_reported_yet"
+        assert resp.missing_field_reasons["revenue_growth"] == "not_reported_yet"
+
+    def test_fallback_exhausted_reason_when_keys_exist_but_values_missing(self):
+        """Missing fields are coded fallback_exhausted when fallback providers are configured but return no values."""
+        from backend.valuation import get_valuation
+
+        stock_data = {
+            "ticker": "SNAP",
+            "price": 14.0,
+            "market_cap": 20000000000.0,
+            "currency": "USD",
+            "financials": {
+                "eps_yoy": 0.02,
+                "revenue_yoy_growth": 0.03,
+            },
+            "_source": "cache",
+        }
+
+        with patch.dict("os.environ", {
+            "ALPHA_VANTAGE_API_KEY": "",
+            "FMP_API_KEY": "demo-key",
+            "EODHD_API_KEY": "",
+        }, clear=False):
+            with patch("backend.valuation.get_stock_data", return_value=stock_data):
+                with patch("backend.valuation._yf_ticker_safe", side_effect=RuntimeError("no yfinance")):
+                    with patch(
+                        "backend.valuation._backfill_from_external_providers",
+                        return_value=(
+                            {
+                                "pe_current": None,
+                                "pe_forward": None,
+                                "peg_ratio": None,
+                                "eps_growth": 0.02,
+                                "revenue_growth": 0.03,
+                                "total_debt": None,
+                            },
+                            None,
+                        ),
+                    ):
+                        resp = get_valuation("SNAP")
+
+        assert resp.missing_field_reasons["pe_current"] == "fallback_exhausted"
+        assert resp.missing_field_reasons["pe_forward"] == "fallback_exhausted"
+        assert resp.missing_field_reasons["peg_ratio"] == "fallback_exhausted"
+        assert resp.missing_field_reasons["total_debt"] == "fallback_exhausted"
 
 
 # =====================================================================

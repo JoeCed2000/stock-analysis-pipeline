@@ -16,6 +16,76 @@ from backend.models import ValuationV2Response
 
 logger = logging.getLogger(__name__)
 
+_MISSING_REASON_PROVIDER_MISSING = "provider_missing"
+_MISSING_REASON_NOT_REPORTED_YET = "not_reported_yet"
+_MISSING_REASON_FALLBACK_EXHAUSTED = "fallback_exhausted"
+
+
+def _fallback_provider_availability() -> Dict[str, bool]:
+    """Return whether each fallback provider is configured via API key."""
+    return {
+        "alpha_vantage": bool(os.getenv("ALPHA_VANTAGE_API_KEY", "").strip()),
+        "fmp": bool(os.getenv("FMP_API_KEY", "").strip()),
+        "eodhd": bool(os.getenv("EODHD_API_KEY", "").strip()),
+    }
+
+
+def _has_any_numeric(data: Dict[str, Any], keys: tuple[str, ...]) -> bool:
+    """True if any key resolves to a numeric value."""
+    for key in keys:
+        if _safe_float_loose(data.get(key)) is not None:
+            return True
+    return False
+
+
+def _classify_missing_field_reasons(
+    field_values: Dict[str, Optional[float]],
+    financials: Dict[str, Any],
+    provider_availability: Dict[str, bool],
+) -> Dict[str, str]:
+    """Classify missing valuation fields with explicit, coded reasons.
+
+    Codes:
+      - provider_missing: no fallback providers configured
+      - not_reported_yet: growth metric has no historical signal yet
+      - fallback_exhausted: providers configured but none returned usable data
+    """
+    reasons: Dict[str, str] = {}
+    fallback_enabled = any(provider_availability.values())
+
+    eps_signals = (
+        "eps_yoy",
+        "eps_growth",
+        "earnings_growth",
+        "earningsGrowth",
+    )
+    revenue_signals = (
+        "revenue_yoy_growth",
+        "revenue_annual_growth",
+        "revenue_growth",
+        "revenueGrowth",
+    )
+
+    for field, value in field_values.items():
+        if value is not None:
+            continue
+
+        if field == "eps_growth" and not _has_any_numeric(financials, eps_signals):
+            reasons[field] = _MISSING_REASON_NOT_REPORTED_YET
+            continue
+
+        if field == "revenue_growth" and not _has_any_numeric(financials, revenue_signals):
+            reasons[field] = _MISSING_REASON_NOT_REPORTED_YET
+            continue
+
+        reasons[field] = (
+            _MISSING_REASON_FALLBACK_EXHAUSTED
+            if fallback_enabled
+            else _MISSING_REASON_PROVIDER_MISSING
+        )
+
+    return reasons
+
 
 def _safe_float_loose(val) -> Optional[float]:
     """Safe float parsing for provider strings (commas, %, N/A tokens)."""
@@ -536,6 +606,20 @@ def get_valuation(ticker: str) -> ValuationV2Response:
     else:
         status = "unavailable"
 
+    tracked_fields = {
+        "pe_current": pe_current,
+        "pe_forward": pe_forward,
+        "peg_ratio": peg_ratio,
+        "eps_growth": eps_growth,
+        "revenue_growth": revenue_growth,
+        "total_debt": total_debt,
+    }
+    missing_field_reasons = _classify_missing_field_reasons(
+        field_values=tracked_fields,
+        financials=financials if isinstance(financials, dict) else {},
+        provider_availability=_fallback_provider_availability(),
+    )
+
     # -- 5. Build response (EUR disabled) -----------------------------
     return ValuationV2Response(
         ticker=ticker,
@@ -564,6 +648,7 @@ def get_valuation(ticker: str) -> ValuationV2Response:
         fx_status="unavailable",  # V2.3: no live FX source yet
         source=source,
         served_from=served_from,
+        missing_field_reasons=missing_field_reasons,
         status=status,
     )
 

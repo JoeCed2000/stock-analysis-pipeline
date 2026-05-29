@@ -260,6 +260,7 @@ class ValuationV2Response(BaseModel):
     fx_status: str = "unavailable"  # "available" | "unavailable"
     source: str = "unknown"  # finnhub / yfinance / twelvedata / eodhd
     served_from: str = "unknown"  # "live" | "cache" | "fallback"
+    missing_field_reasons: dict = Field(default_factory=dict)  # field -> provider_missing | not_reported_yet | fallback_exhausted
     status: str = "unavailable"  # fresh | cached | stale | unavailable
 
 
