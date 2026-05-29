@@ -287,6 +287,8 @@ def validate_pre_render(
     earnings_documents: Optional[Any] = None,  # EarningsDocumentsChecklist — §6
     source_registry: Optional[Any] = None,  # SourceRegistry — §5
     metrics_ledger: Optional[Any] = None,  # MetricsLedger — §4
+    management_analysis: Optional[Any] = None,  # ManagementAnalysis — §18
+    competitive_positioning: Optional[Any] = None,  # CompetitivePositioning — §17
 ) -> ValidationResult:
     """Validate deep-dive content before PDF rendering.
 
@@ -1862,6 +1864,154 @@ def validate_pre_render(
                     ),
                     severity="error",
                 ))
+    # ── RULE 28 (BLOCKING): §18 Management Analysis ─────────────────────────
+    #
+    # - No psychological speculation about management
+    # - No unsupported claims in management analysis
+    # - Founder-led status discussed only as governance/execution factor
+
+    if management_analysis is not None:
+        ma = management_analysis
+        strengths = getattr(ma, 'management_strengths', []) or []
+        weaknesses = getattr(ma, 'management_weaknesses_or_risks', []) or []
+        evidence = getattr(ma, 'evidence', []) or []
+
+        # 28a. Management claims must have evidence
+        total_claims = len(strengths) + len(weaknesses)
+        if total_claims > 0 and len(evidence) == 0:
+            warnings.append(ValidationWarning(
+                check="management_analysis_no_evidence",
+                section="Management",
+                detail=(
+                    f"{total_claims} management claim(s) found but no evidence provided. "
+                    f"Every management strength/weakness must reference public evidence "
+                    f"(execution record, capital allocation, guidance credibility, etc.)."
+                ),
+                severity="error",
+            ))
+
+        # 28b. No psychological speculation keywords
+        psych_keywords = [
+            "narcissist", "psychopath", "megalomaniac", "delusional",
+            "personality disorder", "mentally unstable", "emotional",
+            "charismatic but", "egomaniac",
+        ]
+        all_text = " ".join(strengths + weaknesses)
+        found_psych = [kw for kw in psych_keywords if kw.lower() in all_text.lower()]
+        if found_psych:
+            warnings.append(ValidationWarning(
+                check="management_analysis_psychological_speculation",
+                section="Management",
+                detail=(
+                    f"Psychological speculation detected: {', '.join(found_psych)}. "
+                    f"Management analysis must be based on public evidence "
+                    f"(execution record, capital allocation, governance), not personality traits."
+                ),
+                severity="error",
+            ))
+
+        # Also check section text for "Management & Tone" psychological speculation
+        mgmt_sec = _sec.get("Management & Tone", "")
+        if isinstance(mgmt_sec, str):
+            found_in_text = [kw for kw in psych_keywords if kw.lower() in mgmt_sec.lower()]
+            if found_in_text:
+                warnings.append(ValidationWarning(
+                    check="management_analysis_psychological_speculation_in_text",
+                    section="Management & Tone",
+                    detail=(
+                        f"Psychological speculation in Management section: "
+                        f"{', '.join(found_in_text)}. "
+                        f"Discuss management through execution record, capital allocation, "
+                        f"guidance credibility, governance, and public track record."
+                    ),
+                    severity="error",
+                ))
+
+    # ── RULE 29 (BLOCKING): §17 Competitive Positioning ──────────────────────
+    #
+    # - No mixing of operating competitors with valuation peers without explanation
+    # - No truncated competitor entries (every entry must have competitor name + type)
+    # - Every source_id must be mappable
+
+    if competitive_positioning is not None:
+        cp = competitive_positioning
+        entries = getattr(cp, 'entries', []) or []
+
+        # 29a. Mixed types without labels
+        types_present: set[str] = set()
+        for e in entries:
+            t = getattr(e, 'type', None)
+            if t:
+                types_present.add(t)
+        if "direct" in types_present and "valuation_peer" in types_present:
+            # Both types present — check that at least one entry has an explicit label
+            has_label = any(
+                getattr(e, 'type', None) in ("direct", "valuation_peer")
+                for e in entries
+            )
+            if has_label:
+                # Types are explicitly labeled — OK, as long as there's separation note
+                # Check in section text for explanation
+                comp_text = _sec.get("Competitors", "")
+                if isinstance(comp_text, str) and comp_text.strip():
+                    has_separator = any(phrase in comp_text.lower() for phrase in [
+                        "valuation peer", "peer group", "peer benchmark",
+                        "operating competitor", "direct competitor",
+                        "separately", "distinct from",
+                    ])
+                    if not has_separator:
+                        warnings.append(ValidationWarning(
+                            check="competitive_positioning_mixed_types_no_separator",
+                            section="Competitors",
+                            detail=(
+                                f"Both direct competitors and valuation peers are listed "
+                                f"but the Competitors section lacks an explicit separation note. "
+                                f"Add language like 'Valuation peers (separately from operating "
+                                f"competitors)...' to distinguish the groups."
+                            ),
+                            severity="error",
+                        ))
+
+        # 29b. Truncated entries — check for competitor name with missing type or source
+        incomplete = []
+        for e in entries:
+            name = getattr(e, 'competitor', '')
+            comp_type = getattr(e, 'type', None)
+            source = getattr(e, 'source_id', None)
+            if name and (not comp_type or not source):
+                incomplete.append(name)
+        if incomplete:
+            warnings.append(ValidationWarning(
+                check="competitive_positioning_incomplete_entries",
+                section="Competitors",
+                detail=(
+                    f"Incomplete competitor entries: {', '.join(incomplete[:3])}. "
+                    f"Each competitor must have a type and source_id. "
+                    f"Without source_id, references like 'S1' become unmapped."
+                ),
+                severity="error",
+            ))
+
+        # 29c. Generic comparison check — no source or specific advantage
+        generic_indicators = [
+            "similar to", "comparable to", "like other companies",
+            "industry standard", "typical for the sector",
+        ]
+        comp_text = _sec.get("Competitors", "")
+        if isinstance(comp_text, str):
+            found_generic = [gi for gi in generic_indicators if gi.lower() in comp_text.lower()]
+            if found_generic and len(entries) == 0:
+                warnings.append(ValidationWarning(
+                    check="competitive_positioning_generic_no_data",
+                    section="Competitors",
+                    detail=(
+                        f"Generic competitor language detected ({', '.join(found_generic[:2])}) "
+                        f"but no structured competitor entries exist. "
+                        f"Either provide specific competitor data or use precise language."
+                    ),
+                    severity="error",
+                ))
+
     # ── Determine pass/fail ────────────────────────────────────────────
 
     errors = [w for w in warnings if w.severity == "error"]

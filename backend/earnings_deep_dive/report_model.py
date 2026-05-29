@@ -608,6 +608,68 @@ class MetricsLedger(BaseModel):
         return len([e for e in self.entries if e.validation_status == "verified"])
 
 
+class CompetitivePositioningEntry(BaseModel):
+    """Single competitor entry — §17 corrections.txt.
+
+    Distinct from CompetitorRef (which is bilingual, per-language).
+    This is the structured competitive analysis data model.
+    """
+    competitor: str
+    type: str | None = None  # direct | indirect | valuation_peer | supplier | customer_internal_alternative | ecosystem_competitor
+    area_of_competition: str | None = None
+    competitor_strength: str | None = None
+    target_company_advantage: str | None = None
+    target_company_weakness: str | None = None
+    risk_to_target_company: str | None = None
+    source_id: str | None = None
+    investor_implication: str | None = None
+
+
+class CompetitivePositioning(BaseModel):
+    """Competitive positioning analysis — §17 corrections.txt.
+
+    Rules:
+    - Separate operating competitors from valuation peers.
+    - Never mix peer valuation group with direct competitors without explanation.
+    - No truncated text, no generic comparison, no unmapped S1/S2.
+    """
+    entries: list[CompetitivePositioningEntry] = Field(default_factory=list)
+    generated_at: str | None = None
+
+    @property
+    def direct_competitors(self) -> list[CompetitivePositioningEntry]:
+        return [e for e in self.entries if e.type == "direct"]
+
+    @property
+    def valuation_peers(self) -> list[CompetitivePositioningEntry]:
+        return [e for e in self.entries if e.type == "valuation_peer"]
+
+    @property
+    def has_separated_types(self) -> bool:
+        """True if operating competitors and valuation peers are both present but labeled."""
+        types_present = {e.type for e in self.entries if e.type}
+        if "direct" in types_present and "valuation_peer" in types_present:
+            return True
+        return len(types_present) <= 1  # Only one type = no mixing issue
+
+
+class ManagementAnalysis(BaseModel):
+    """Management strengths and weaknesses analysis — §18 corrections.txt.
+
+    Client-requested: management assessment based on public evidence.
+    No psychological speculation, no unsupported claims.
+    """
+    management_strengths: list[str] = Field(default_factory=list)
+    management_weaknesses_or_risks: list[str] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
+    source_id: str | None = None
+    investor_implication: str | None = None
+    what_to_monitor: str | None = None
+
+    # ── Metadata ──
+    generated_at: str | None = None
+
+
 class ReportPeriodContext(BaseModel):
     """Single source of truth for report period — §3 corrections.txt.
 
@@ -665,3 +727,7 @@ class EarningsDeepDiveReport(BaseModel):
     source_registry: SourceRegistry | None = None
     # ── §4 metrics ledger ──
     metrics_ledger: MetricsLedger | None = None
+    # ── §18 management analysis ──
+    management_analysis: ManagementAnalysis | None = None
+    # ── §17 competitive positioning ──
+    competitive_positioning: CompetitivePositioning | None = None
