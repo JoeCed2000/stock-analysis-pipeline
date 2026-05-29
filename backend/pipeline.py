@@ -2487,10 +2487,17 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
             company_overview=company_overview,
         )
         if profile_path and os.path.exists(profile_path):
-            from backend.pdf_generator import md_to_pdf
+            from backend.company_overview_pdf import generate_company_overview_pdf
             today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             profile_pdf = os.path.join(os.path.dirname(profile_path), f"{ticker}_company_overview_investor_profile_{today_str}.pdf")
-            md_to_pdf(profile_path, profile_pdf, title=f"{company_name} ({ticker}) — Company Overview — Investor Profile")
+            generate_company_overview_pdf(
+                output_path=profile_pdf,
+                ticker=ticker,
+                company_name=company_name,
+                overview=company_overview or {},
+                yf_data=yf_data,
+                language=language,
+            )
     except Exception as e:
         logger.warning(f"[{ticker}] Company profile failed: {e}")
     
