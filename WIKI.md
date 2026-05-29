@@ -3,6 +3,12 @@
 ## Architecture
 - **Backend**: Python 3.11+ FastAPI (port 8780), yfinance + finnhub-python
 - **Frontend**: React + Vite (port 5173 dev, bundled to dist/)
+
+## Recent Changes
+
+| Date | Task | Summary | Status |
+|---|---|---|---|
+| 2026-05-29 | Company Overview quality gates (RULE 34-41) | Added 8 blocking validation rules for downloadable Company Overview PDF via `pre_render_validator.py`: RULE 34 (content completeness — all 10 required sections must be answered), RULE 35 (growth drivers quality: ≥3 specific, ≥40 chars, non-generic), RULE 36 (moat quality: ≥2 evidenced, non-single-word), RULE 37 (business risks quality: ≥3 substantive operational risks, not market-only), RULE 38 (CEO leadership: named + specific + long-term vision ≥30 chars), RULE 39 (numerical consistency: market cap/PE contradictions, NaN/null leaks), RULE 40 (source quality: no fake 100% coverage claims, no raw provider keys like trailingPE), RULE 41 (no Markdown syntax: ###, **bold**, |tables|, ```code```, [links]()). Also fixed `_parse_money()` to handle word suffixes (trillion/billion/million) and T suffix. 90 spec tests added. Commit: `3d8efc6`. | ✅ DONE |
 - **Deploy**: Cloudflare Tunnel → sa.cedlabusa.net
 - **Tests**: pytest 153/153 (backend), node 68/68 (frontend chartUtils)
 
