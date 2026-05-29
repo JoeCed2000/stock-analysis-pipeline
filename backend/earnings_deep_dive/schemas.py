@@ -64,6 +64,7 @@ class DeepDiveRequest(BaseModel):
     company: Optional[str] = None
     quarter: str = "latest quarter"
     language: Language = "en"
+    audience_mode: str = "nami_personal"  # nami_personal, client_report, developer_review, internal_debug
     output_dir: str = Field(..., min_length=1)
     metrics: FinancialMetrics = Field(default_factory=FinancialMetrics)
 
@@ -116,6 +117,7 @@ class DeepDiveResponse(BaseModel):
     company: str
     quarter: str
     language: Language
+    audience_mode: str = "nami_personal"
     transcript_url: Optional[str] = None
     markdown_path: str
     meta_path: str

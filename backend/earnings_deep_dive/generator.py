@@ -141,6 +141,7 @@ def generate_deep_dive(request: DeepDiveRequest) -> DeepDiveResponse:
             company=en_response.company,
             quarter=en_response.quarter,
             language="bilingual",
+            audience_mode=request.audience_mode,
             transcript_url=request.transcript_url or en_response.transcript_url or jp_response.transcript_url,
             markdown_path=en_response.markdown_path,
             meta_path=en_response.meta_path,
@@ -227,7 +228,7 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
                     if not output:
                         raise KimiFailureError(f"{provider_name} returned no content")
                     
-                    cleaned = _clean_section_output(output, request.max_section_chars)
+                    cleaned = _clean_section_output(output, request.max_section_chars, request.audience_mode)
                     _validate_section(
                         cleaned, section, request.language,
                         request.max_section_chars, require_table=has_tx,
@@ -283,6 +284,8 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
         company_website,
         transcript_source=transcript_source,
     )
+    # Final pass: sanitize assembled report for audience mode
+    report_markdown = _sanitize_for_audience(report_markdown, request.audience_mode)
     markdown_path, meta_path = _save_outputs(
         output_dir=output_dir,
         request=request,
@@ -301,6 +304,7 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
         company=company,
         quarter=request.quarter,
         language=request.language,
+        audience_mode=request.audience_mode,
         transcript_url=transcript_url,
         markdown_path=markdown_path,
         meta_path=meta_path,
@@ -348,7 +352,7 @@ def _generate_section(
             output = primary_chat(prompt, system=sys_prompt, max_tokens=MAX_CODEX_TOKENS)
             if not output:
                 raise KimiFailureError("LLM returned no content")
-            cleaned = _clean_section_output(output, request.max_section_chars)
+            cleaned = _clean_section_output(output, request.max_section_chars, request.audience_mode)
             _validate_section(
                 cleaned,
                 section,
@@ -542,15 +546,58 @@ def _validate_section(
         raise ValidationError(f"Section exceeds {max_chars} characters")
 
 
-def _clean_section_output(output: str, max_chars: int) -> str:
+def _clean_section_output(output: str, max_chars: int, audience_mode: str = "nami_personal") -> str:
     cleaned = output.strip().rstrip("!").rstrip()
-    # Fix line breaks before Nami-san (LLM puts "For" at end of line, "Nami-san" at next)
+    # Fix unicode linebreak in "For\nNami-san"
     cleaned = cleaned.replace("For\nNami-san", "For Nami-san")
-    # Remove Unicode replacement characters (empty squares □)
+    # Strip replacement character
     cleaned = cleaned.replace("\ufffd", "")
+    # Audience mode sanitization
+    cleaned = _sanitize_for_audience(cleaned, audience_mode)
     if len(cleaned) <= max_chars:
         return cleaned
     return _truncate_clean(cleaned, max_chars)
+
+
+AUDIENCE_NAMI_PATTERNS: list[tuple[str, str]] = [
+    # (pattern to match, replacement for non-nami modes)
+    ("For Nami-san:", "For investors:"),
+    ("For Nami-san", "For investors"),
+    ("Essential insight for Nami-san:", "Essential insight for investors:"),
+    ("Essential insight for Nami-san", "Essential insight for investors"),
+    ("🧠 Namiさん向けの本質理解:", "🧠 投資家向けの本質理解:"),
+    ("🧠 Namiさん向け解釈:", "🧠 投資家向け解釈:"),
+    ("Nami-san takeaway", "Investor takeaway"),
+    ("Nami insight", "Investor insight"),
+    ("Nami takeaway", "Investor takeaway"),
+    ("For Nami-san, this is a", "For investors, this is a"),
+    ("For Nami-san:", "For investors:"),
+    ("\ud83c\udfc6 Overall assessment for Nami-san", "\ud83c\udfc6 Overall assessment"),
+    ("Namiさん向け", "投資家向け"),
+    ("Nami-san", ""),  # standalone Nami-san → remove (catch-all, last)
+]
+MISSING_DATA_REPLACEMENTS: list[tuple[str, str]] = [
+    ("Not retrieved", "Not disclosed"),
+    ("not retrieved", "not disclosed"),
+    ("Not retrieved from transcript", "Not verified from reviewed sources"),
+    ("not retrieved from transcript", "not verified from reviewed sources"),
+]
+
+
+def _sanitize_for_audience(text: str, audience_mode: str) -> str:
+    """Post-generation sanitizer: strip Nami language for non-nami modes,
+    and normalize missing-data language."""
+    
+    # Missing-data normalization (all modes)
+    for pattern, replacement in MISSING_DATA_REPLACEMENTS:
+        text = text.replace(pattern, replacement)
+    
+    # Audience mode: strip Nami language for non-nami modes
+    if audience_mode != "nami_personal":
+        for pattern, replacement in AUDIENCE_NAMI_PATTERNS:
+            text = text.replace(pattern, replacement)
+    
+    return text
 
 
 def _truncate_clean(text: str, max_chars: int) -> str:
