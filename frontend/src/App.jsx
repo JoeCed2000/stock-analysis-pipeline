@@ -70,6 +70,14 @@ export default function App() {
     return 'en';
   });
 
+  const [audienceMode, setAudienceMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('audienceMode');
+      if (saved) return saved;
+    }
+    return 'nami_personal';
+  });
+
   const handleLanguageChange = (newLang) => {
     setLang(newLang);
     if (typeof window !== 'undefined') {
@@ -111,10 +119,11 @@ export default function App() {
   };
 
   const handleViewReport = async (result, quarter) => {
-    // Open the deep-dive PDF in a new tab with current language and quarter
+    // Open the deep-dive PDF in a new tab with current language, quarter, and audience mode
     const params = new URLSearchParams();
     if (quarter) params.set('quarter', quarter);
     if (lang === 'jp') params.set('lang', 'jp');
+    if (audienceMode !== 'nami_personal') params.set('audience_mode', audienceMode);
     const qs = params.toString();
     const pdfUrl = `${API_BASE}/report/${result.ticker}/pdf${qs ? '?' + qs : ''}`;
     
@@ -402,6 +411,22 @@ export default function App() {
                   : 'SA: unknown'}
           </span>
           <LanguageSelector lang={lang} onLanguageChange={handleLanguageChange} />
+          <select
+            value={audienceMode}
+            onChange={(e) => {
+              setAudienceMode(e.target.value);
+              localStorage.setItem('audienceMode', e.target.value);
+            }}
+            style={{
+              marginLeft: 8, padding: '4px 8px', fontSize: 12,
+              background: '#161b22', color: '#c9d1d9', border: '1px solid #30363d',
+              borderRadius: 6, cursor: 'pointer',
+            }}
+            title={audienceMode === 'client_report' ? 'Client-ready PDF (no Nami language)' : 'Personal notes for Nami'}
+          >
+            <option value="nami_personal">🧠 Nami</option>
+            <option value="client_report">📋 Client</option>
+          </select>
         </div>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: '#e1e4e8', marginBottom: 4 }}>
           {t('siteTitle')}
