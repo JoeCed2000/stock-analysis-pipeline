@@ -417,6 +417,33 @@ class DataQualitySection(BaseModel):
     generated_at: str | None = None
 
 
+class ReportPeriodContext(BaseModel):
+    """Single source of truth for report period — §3 corrections.txt.
+
+    Every displayed period in the PDF must derive from this context.
+    No section may independently compute or assume a period.
+    """
+    ticker: str
+    company_name: str
+    fiscal_year: int | None = None
+    fiscal_quarter: int | None = None           # 1-4
+    calendar_period: str | None = None           # "2026-03-31"
+    earnings_release_date: str | None = None     # ISO date
+    transcript_period: str | None = None         # period label from transcript
+    press_release_period: str | None = None      # period label from press release
+    filing_period: str | None = None             # "FY2026 Q1" from SEC 10-Q
+    guidance_period: str | None = None            # "FY2027 Q1" or "FY2027"
+    comparison_prior_year_period: str | None = None  # "FY2025 Q1"
+    report_title_period_label: str | None = None   # "Q1 FY2026"
+    display_period_label: str | None = None        # "FY2026 Q1 (Filed 2026-05-15)"
+    generated_at: str | None = None
+
+    # Quick validity check
+    @property
+    def is_valid(self) -> bool:
+        return bool(self.fiscal_year and self.fiscal_quarter and self.report_title_period_label)
+
+
 class EarningsDeepDiveReport(BaseModel):
     ticker: str
     company: str
@@ -439,3 +466,5 @@ class EarningsDeepDiveReport(BaseModel):
     valuation_context: ValuationContextSection | None = None
     peer_benchmark: PeerBenchmarkSection | None = None
     data_quality: DataQualitySection | None = None
+    # ── §3 report period context ──
+    period_context: ReportPeriodContext | None = None

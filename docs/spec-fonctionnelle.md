@@ -563,3 +563,39 @@ Le mapper (`backend/earnings_deep_dive/mapper.py`) peuple les modèles V2.7 :
 - PDF GOOG régénéré : `analyses/2026-05-28_230657_GOOG_Alphabet_Inc./07_final_report/earnings_deep_dive.pdf`
   - occurrences `null/undefined/NaN/N/A` : **0** ;
   - fallback restant : `Not available` explicite (cas réellement indisponibles).
+
+## 19. §3 Report Period Consistency — 2026-05-29
+
+### 19.1 ReportPeriodContext model
+- Nouveau modèle Pydantic `ReportPeriodContext` dans `report_model.py` — source unique de vérité pour toutes les périodes du rapport.
+- Champs : `ticker`, `company_name`, `fiscal_year`, `fiscal_quarter`, `calendar_period`, `earnings_release_date`, `transcript_period`, `press_release_period`, `filing_period`, `guidance_period`, `comparison_prior_year_period`, `report_title_period_label`, `display_period_label`, `generated_at`.
+- Propriété `is_valid` : True ssi `fiscal_year`, `fiscal_quarter` et `report_title_period_label` sont renseignés.
+- Ajouté comme champ optionnel `period_context` dans `EarningsDeepDiveReport`.
+
+### 19.2 Builder et parsing
+- `_build_report_period_context()` dans `mapper.py` : construit le contexte à partir du `resolved_quarter` et des métriques.
+- `_parse_fiscal_quarter()` : parse `"FY2026 Q1"`, `"2026Q1"`, `"Q1 2026"` → `(fiscal_year, fiscal_quarter)`.
+- Intégré dans `build_earnings_deep_dive_report()` — le contexte est transmis au modèle de rapport.
+
+### 19.3 SA_REPORT_PERIOD_CONSISTENCY_GATE (RULE 11)
+- Ajouté dans `pre_render_validator.py` — règle bloquante (error severity).
+- 5 sous-règles :
+  - **11a** : Titre doit matcher la période de filing SEC.
+  - **11b** : Guidance doit être forward-looking (strictement après la période courante).
+  - **11c** : Transcript doit matcher la période de filing.
+  - **11d** : Press release doit matcher la période de filing.
+  - **11e** : Période de comparaison prior-year = même quarter, année fiscale - 1.
+- `_try_parse_quarter()` : parse tolérant aux formats, retourne `(None, None)` sur entrée non parseable.
+- `period_context=None` → gate no-op (rétrocompatibilité).
+
+### 19.4 Pipeline wiring
+- Le pipeline (`pipeline.py`) construit un `_LightPeriodContext` minimal pour le validateur à partir du `transcript_quarter`.
+- Le contexte complet (`ReportPeriodContext`) est construit dans le mapper.
+
+### 19.5 Tests
+- `tests/spec_v27_period_consistency.py` — **31 tests** :
+  - 4 tests modèle (création, validation, intégration report)
+  - 8 tests parsing (7 formats valides, 6 formats invalides, cross-check)
+  - 3 tests builder (résolution, quarter différent, métriques enrichies)
+  - 8 tests gate (all-matching, 5 mismatch rules, no-context skip, unparseable)
+- Non-régression : `pytest tests/spec_v27_*.py tests/test_v27_*.py` → **195 passed**.

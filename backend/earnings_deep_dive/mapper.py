@@ -1807,6 +1807,94 @@ def _quarter_labels_from_resolved(resolved_quarter: str) -> tuple[str, str, str,
     return current, prior, f"TTM Ending {current}", f"TTM Ending {prior}"
 
 
+def _build_report_period_context(
+    *,
+    ticker: str,
+    company_name: str,
+    resolved_quarter: str,
+    metrics: 'FinancialMetrics',
+    transcript_url: str | None = None,
+    generated_at: str | None = None,
+) -> 'ReportPeriodContext':
+    """Build unified report period context — §3 corrections.txt.
+
+    Single source of truth for all period references in the PDF.
+    Every section's period labels must derive from this context.
+    """
+    from backend.earnings_deep_dive.report_model import ReportPeriodContext
+
+    # Parse fiscal year/quarter from resolved quarter string
+    fy, fq = _parse_fiscal_quarter(resolved_quarter)
+    current_q, prior_q, current_ttm, prior_ttm = _quarter_labels_from_resolved(resolved_quarter)
+
+    # Extract calendar period from metrics
+    calendar_period = _metric_text(metrics, "period_end_date", "filing_date", "latest_filing_date")
+
+    # Earnings release date
+    earnings_release_date = _metric_text(
+        metrics, "earnings_release_date", "earnings_date",
+        "report_date", "filing_date",
+    )
+
+    # Transcript period
+    transcript_period = _metric_text(metrics, "transcript_quarter", "transcript_period")
+
+    # Press release period — same as filing period unless explicitly different
+    press_release_period = _metric_text(metrics, "press_release_period") or resolved_quarter
+
+    # Filing period from SEC
+    filing_period = _metric_text(metrics, "sec_filing_period", "filing_period") or resolved_quarter
+
+    # Guidance period — explicitly forward-looking, only if available
+    guidance_period = _metric_text(metrics, "guidance_period", "guidance_fiscal_period")
+
+    # Comparison prior year period
+    comparison_prior = prior_q
+
+    # Title and display labels
+    report_title = f"{current_q}"
+    display_label = resolved_quarter
+    if calendar_period:
+        display_label = f"{resolved_quarter} (Period ended {calendar_period[:10]})"
+
+    return ReportPeriodContext(
+        ticker=ticker,
+        company_name=company_name,
+        fiscal_year=fy,
+        fiscal_quarter=fq,
+        calendar_period=calendar_period,
+        earnings_release_date=earnings_release_date,
+        transcript_period=transcript_period,
+        press_release_period=press_release_period,
+        filing_period=filing_period,
+        guidance_period=guidance_period if guidance_period else None,
+        comparison_prior_year_period=comparison_prior,
+        report_title_period_label=report_title,
+        display_period_label=display_label,
+        generated_at=generated_at,
+    )
+
+
+def _parse_fiscal_quarter(resolved_quarter: str) -> tuple[int | None, int | None]:
+    """Parse 'FY2026 Q1' or '2026Q1' or 'Q1 2026' → (fiscal_year, fiscal_quarter)."""
+    text = (resolved_quarter or "").strip()
+    patterns = (
+        r"(?i)^\s*(?:FY\s*)?(\d{4})\s*Q([1-4])\s*$",
+        r"(?i)^\s*Q([1-4])\s*(\d{4})\s*$",
+        r"(?i)^\s*(\d{4})Q([1-4])\s*$",
+    )
+    for pattern in patterns:
+        match = re.match(pattern, text)
+        if not match:
+            continue
+        a, b = match.groups()
+        if pattern.startswith("(?i)^\\s*Q"):
+            return int(b), int(a)
+        else:
+            return int(a), int(b)
+    return None, None
+
+
 def _section_runtime_columns(section_key: str, base_columns: list[str], resolved_quarter: str) -> list[str]:
     """Adjust runtime column labels to match quarter/TTM naming conventions."""
     if not base_columns:
@@ -2332,6 +2420,16 @@ def build_earnings_deep_dive_report(
             logging.getLogger(__name__).warning(f"CompanyOverview model conversion failed for {ticker_clean}: {exc}")
             co_model = None
 
+    # ── §3 report period context — single source of truth for all period labels ──
+    period_context = _build_report_period_context(
+        ticker=ticker_clean,
+        company_name=company_name,
+        resolved_quarter=resolved_quarter,
+        metrics=metrics,
+        transcript_url=transcript_url,
+        generated_at=generated_at or datetime.now(timezone.utc).isoformat(),
+    )
+
     return EarningsDeepDiveReport(
         ticker=ticker_clean,
         company=company_name,
@@ -2353,6 +2451,8 @@ def build_earnings_deep_dive_report(
         valuation_context=v27["valuation_context"],
         peer_benchmark=v27["peer_benchmark"],
         data_quality=v27["data_quality"],
+        # §3 report period context
+        period_context=period_context,
     )
 
 

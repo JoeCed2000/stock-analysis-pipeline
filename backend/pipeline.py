@@ -1534,13 +1534,44 @@ def _add_earnings_deep_dive_if_transcript(
             validate_pre_render,
             annotate_sections_with_warnings,
             format_validation_error,
+            _try_parse_quarter,
         )
         from backend.earnings_deep_dive.errors import ValidationError
+
+        # ── §3: Build lightweight period context for validation ──
+        _pc_kwargs = dict(
+            ticker=ticker,
+            company_name=company_name,
+            filing_period=transcript_quarter,
+            report_title_period_label=transcript_quarter,
+            guidance_period=None,  # Not available at this stage
+            transcript_period=transcript_quarter,
+            press_release_period=transcript_quarter,
+            comparison_prior_year_period=None,
+        )
+        fy, fq = _try_parse_quarter(transcript_quarter)
+        if fy and fq:
+            _pc_kwargs.update(fiscal_year=fy, fiscal_quarter=fq,
+                              comparison_prior_year_period=f"Q{fq} {fy - 1}")
+
+        class _LightPeriodContext:
+            """Minimal period context for pre-render validation.
+
+            The full ReportPeriodContext is built later in the mapper — we only
+            need enough here to run the §3 period consistency gate.
+            """
+            def __init__(self, **kwargs):
+                for k, v in kwargs.items():
+                    setattr(self, k, v)
+
+        _period_ctx = _LightPeriodContext(**_pc_kwargs)
+
         en_validation = validate_pre_render(
             ticker=ticker,
             quarter=transcript_quarter,
             metrics=deep_dive_metrics,
             section_analysis=en_response.sections,
+            period_context=_period_ctx,
         )
         if en_validation.errors:
             error_msg = format_validation_error(en_validation, ticker)

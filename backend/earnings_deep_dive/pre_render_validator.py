@@ -254,11 +254,36 @@ def _is_annual_context(metrics: Any) -> bool:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+def _try_parse_quarter(label: str) -> tuple[int | None, int | None]:
+    """Parse period label like 'FY2026 Q1' or 'Q1 2026' → (fiscal_year, fiscal_quarter).
+
+    Returns (None, None) on unparseable input — safe for gate comparisons.
+    """
+    text = (label or "").strip()
+    patterns = (
+        (r"(?i)^\s*(?:FY\s*)?(\d{4})\s*Q([1-4])\s*$", False),
+        (r"(?i)^\s*Q([1-4])\s*(\d{4})\s*$", True),
+        (r"(?i)^\s*(\d{4})Q([1-4])\s*$", False),
+    )
+    for pattern, q_first in patterns:
+        match = re.match(pattern, text)
+        if not match:
+            continue
+        a, b = match.groups()
+        if q_first:
+            return int(b), int(a)
+        else:
+            return int(a), int(b)
+    return None, None
+
+
 def validate_pre_render(
     ticker: str,
     quarter: Optional[str],
     metrics: Any,
     section_analysis: Optional[Dict[str, str]],
+    *,
+    period_context: Optional[Any] = None,  # ReportPeriodContext — §3
 ) -> ValidationResult:
     """Validate deep-dive content before PDF rendering.
 
@@ -266,6 +291,7 @@ def validate_pre_render(
     1. Segment coherence: individual segment > total quarterly revenue
     2. FY label: annual data in quarterly section without FY label
     3. Cross-section contradiction: EPS/Revenue direction flips
+    11. §3 Report period consistency: title, transcript, filing, guidance alignment
 
     SOFT RULES (warning → ⚠️ flag, build continues):
     4. Quarter missing
@@ -630,6 +656,108 @@ def validate_pre_render(
                     "external predictions, guidance is company-issued forward outlook."
                 ),
             ))
+
+    # ── RULE 11 (BLOCKING): §3 Report period consistency ──────────────────
+    #
+    # Enforce a single report_period_context — corrections.txt §3.
+    # Blocking because period-confused reports damage client trust.
+
+    if period_context is not None:
+        try:
+            pc = period_context  # ReportPeriodContext
+            # 11a. Title period must match primary filing/transcript period
+            if pc.filing_period and pc.report_title_period_label:
+                # Check that the report title label doesn't conflict with filing
+                # e.g., "FY2026 Q1" in filing but "Q2 2026" in title
+                fy_ctx, fq_ctx = _try_parse_quarter(pc.report_title_period_label)
+                fy_filing, fq_filing = _try_parse_quarter(pc.filing_period)
+                if (fy_ctx and fq_ctx and fy_filing and fq_filing
+                        and (fy_ctx, fq_ctx) != (fy_filing, fq_filing)):
+                    warnings.append(ValidationWarning(
+                        check="period_title_filing_mismatch",
+                        section="(report title)",
+                        detail=(
+                            f"FATAL: Report title period '{pc.report_title_period_label}' "
+                            f"differs from SEC filing period '{pc.filing_period}'. "
+                            f"Title period MUST match the primary earnings period."
+                        ),
+                        severity="error",
+                    ))
+
+            # 11b. Guidance period must be forward-looking (strictly after current period)
+            if pc.guidance_period and pc.filing_period:
+                fy_g, fq_g = _try_parse_quarter(pc.guidance_period)
+                fy_f, fq_f = _try_parse_quarter(pc.filing_period)
+                if fy_g and fq_g and fy_f and fq_f:
+                    guidance_key = (fy_g, fq_g)
+                    current_key = (fy_f, fq_f)
+                    if guidance_key <= current_key:
+                        warnings.append(ValidationWarning(
+                            check="guidance_not_forward_looking",
+                            section="Guidance",
+                            detail=(
+                                f"FATAL: Guidance period '{pc.guidance_period}' is not forward-looking "
+                                f"vs current period '{pc.filing_period}'. "
+                                f"Guidance must reference a future period — never mix with current actuals."
+                            ),
+                            severity="error",
+                        ))
+
+            # 11c. Transcript period must match filing period
+            if pc.transcript_period and pc.filing_period:
+                fy_tx, fq_tx = _try_parse_quarter(pc.transcript_period)
+                fy_f, fq_f = _try_parse_quarter(pc.filing_period)
+                if (fy_tx and fq_tx and fy_f and fq_f
+                        and (fy_tx, fq_tx) != (fy_f, fq_f)):
+                    warnings.append(ValidationWarning(
+                        check="period_transcript_filing_mismatch",
+                        section="Sources",
+                        detail=(
+                            f"FATAL: Transcript period '{pc.transcript_period}' "
+                            f"differs from SEC filing period '{pc.filing_period}'. "
+                            f"Transcript must match the report period or be explicitly labeled."
+                        ),
+                        severity="error",
+                    ))
+
+            # 11d. Press release period must match filing period
+            if pc.press_release_period and pc.filing_period:
+                fy_pr, fq_pr = _try_parse_quarter(pc.press_release_period)
+                fy_f, fq_f = _try_parse_quarter(pc.filing_period)
+                if (fy_pr and fq_pr and fy_f and fq_f
+                        and (fy_pr, fq_pr) != (fy_f, fq_f)):
+                    warnings.append(ValidationWarning(
+                        check="period_press_release_filing_mismatch",
+                        section="Sources",
+                        detail=(
+                            f"FATAL: Press release period '{pc.press_release_period}' "
+                            f"differs from SEC filing period '{pc.filing_period}'. "
+                            f"Press release from a different quarter cannot be primary evidence."
+                        ),
+                        severity="error",
+                    ))
+
+            # 11e. Comparison prior year must be correct (same quarter, prior fiscal year)
+            if pc.comparison_prior_year_period and pc.fiscal_year and pc.fiscal_quarter:
+                fy_comp, fq_comp = _try_parse_quarter(pc.comparison_prior_year_period)
+                if fy_comp is not None and fq_comp is not None:
+                    expected_fy = pc.fiscal_year - 1
+                    expected_fq = pc.fiscal_quarter
+                    if fy_comp != expected_fy or fq_comp != expected_fq:
+                        warnings.append(ValidationWarning(
+                            check="period_prior_year_mismatch",
+                            section="(tables)",
+                            detail=(
+                                f"FATAL: Prior-year comparison period '{pc.comparison_prior_year_period}' "
+                                f"is not the correct comparable period. "
+                                f"Expected: FY{expected_fy} Q{expected_fq} (same quarter, prior fiscal year)."
+                            ),
+                            severity="error",
+                        ))
+
+        except Exception as exc:
+            # Never crash the validator — log and continue
+            logger.warning(f"[{ticker}] Period consistency gate error (non-fatal): {exc}")
 
     # ── Determine pass/fail ────────────────────────────────────────────
 
