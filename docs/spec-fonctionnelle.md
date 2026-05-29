@@ -616,4 +616,37 @@ Le mapper (`backend/earnings_deep_dive/mapper.py`) peuple les modèles V2.7 :
 ### 20.3 Tests
 - `tests/spec_v27_highlights_quality.py` — **17 tests** :
   - 4 empty bullets, 4 duplicates, 3 red-flags paradox, 4 unsubstantiated, 2 integration
-- Non-régression : `pytest tests/spec_v27_*.py tests/test_v27_*.py` → **212 passed**.
+- Non-régression : `pytest tests/spec_v27_*.py tests/test_v27_*.py` → **356 passed**.
+
+## 21. §§4-6, §§17-18 — Modèles structurels — 2026-05-29
+
+### §6 — Earnings Documents Checklist (6f491f8)
+- Modèle `EarningsDocumentsChecklist` : suivi transcript/présentation/press release/SEC/consensus
+- Gate RULE 25 : 4 sous-règles (25a-25d) — pas de claims depuis sources manquantes
+- 18 tests
+
+### §5 — Source Registry (bdb0e68)
+- Modèles `SourceRegistry` / `SourceRegistryEntry` : tracking used vs candidate
+- Gate RULE 26 : 3 sous-règles — raw provider keys, unmapped S1/S2, candidate cited
+- 18 tests
+
+### §4 — Metrics Ledger (23fbba7)
+- Modèles `MetricsLedger` / `MetricsLedgerEntry` : source unique pour tous les chiffres
+- Gate RULE 27 : 3 sous-règles — not-retrieved contradiction, sanity bounds, SEC/consensus
+- 15 tests
+
+### §18 — Management Analysis (c13c9d5)
+- Modèle `ManagementAnalysis` : strengths/weaknesses/evidence
+- Gate RULE 28 : 2 sous-règles — no evidence, no psychological speculation
+- 9 tests
+
+### §17 — Competitive Positioning (c13c9d5)
+- Modèles `CompetitivePositioning` / `CompetitivePositioningEntry` : 9 champs par entrée
+- Gate RULE 29 : 3 sous-règles — mixed types, incomplete entries, generic comparison
+- 11 tests
+
+### État global
+- **RULES 1-29** actives, toutes `severity="error"`
+- **356 tests** V2.x passants
+- **4 commits** cette session (6f491f8, bdb0e68, 23fbba7, c13c9d5)
+- Couverture corrections.txt : 16 sections / ~29
