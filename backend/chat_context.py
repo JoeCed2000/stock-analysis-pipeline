@@ -13,6 +13,36 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _detect_visitor_name(session_id: str) -> str:
+    """Detect visitor display name from session fingerprint (IP + device).
+
+    Used for personalized AI greetings during the fingerprint→visitor_id transition.
+    Once CHAT-HARDEN (t_8e1f1cdd) ships, visitor_id replaces this heuristic.
+    """
+    from . import chat_store
+    import json
+
+    try:
+        session = chat_store.get_session(session_id)
+        if not session or not session.metadata_json:
+            return "Nami"
+        meta = json.loads(session.metadata_json)
+        device = meta.get("device", "")
+        client_ip = meta.get("client_ip", "")
+
+        # Ced: France IP + Linux Chrome
+        if device == "linux-chrome":
+            return "Cédric"
+
+        # Nami: US IP + Mac Safari
+        if device == "apple-mac-safari":
+            return "Nami"
+
+        return "Nami"
+    except Exception:
+        return "Nami"
+
+
 async def build_chat_context(
     session_id: str,
     user_message: str,
@@ -81,6 +111,7 @@ async def build_chat_context(
         "history": history_dicts,
         "current_url": current_url,
         "route": route,
+        "visitor_display_name": _detect_visitor_name(session_id),
         "recent_tickers": _get_recent_tickers(session_id=session_id, limit=5, exclude_ticker=ticker),
         "feedback_context": _get_feedback_context(),
         "previous_chats": _get_previous_chat_summaries(session_id),

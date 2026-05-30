@@ -149,6 +149,7 @@ def build_prompt(
     recent_tickers: Optional[list[dict]] = None,
     feedback_context: Optional[list[dict]] = None,
     previous_chats: Optional[list[dict]] = None,
+    visitor_name: str = "Nami",
 ) -> str:
     """Build the full prompt sent to the AI, including context."""
 
@@ -213,7 +214,7 @@ def build_prompt(
         has_useful_context = True
 
     if not has_useful_context:
-        ctx_lines.append("- Nami is browsing the platform. No specific ticker or PDF is open.")
+        ctx_lines.append(f"- {visitor_name} is browsing the platform. No specific ticker or PDF is open.")
         ctx_lines.append("- Offer to help with: understanding reports, explaining metrics, or taking feedback.")
 
     parts.append("\n".join(ctx_lines))
@@ -239,12 +240,12 @@ def build_prompt(
     if history and len(history) > 0:
         hist_lines = ["## Recent Conversation"]
         for msg in history[-10:]:
-            role_label = "Nami" if msg["role"] == "user" else "Assistant"
+            role_label = visitor_name if msg["role"] == "user" else "Assistant"
             hist_lines.append(f"{role_label}: {msg['content']}")
         parts.append("\n".join(hist_lines))
 
     # User message
-    parts.append(f"## Nami's Message\n{user_message}")
+    parts.append(f"## {visitor_name}'s Message\n{user_message}")
 
     return "\n\n".join(parts)
 
@@ -332,6 +333,7 @@ async def stream_ai_response(
     recent_tickers: Optional[list[dict]] = None,
     feedback_context: Optional[list[dict]] = None,
     previous_chats: Optional[list[dict]] = None,
+    visitor_name: str = "Nami",
 ) -> AsyncGenerator[str, None]:
     """Build prompt, stream AI response. Main entry point."""
     prompt = build_prompt(
@@ -349,6 +351,7 @@ async def stream_ai_response(
         recent_tickers=recent_tickers,
         feedback_context=feedback_context,
         previous_chats=previous_chats,
+        visitor_name=visitor_name,
     )
     async for token in stream_deepseek(SYSTEM_PROMPT, prompt):
         yield token

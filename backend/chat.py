@@ -376,6 +376,7 @@ async def _generate_and_stream(
             recent_tickers=ctx.get("recent_tickers"),
             feedback_context=ctx.get("feedback_context"),
             previous_chats=ctx.get("previous_chats"),
+            visitor_name=ctx.get("visitor_display_name", "Nami"),
         ):
             full_response += token
             if ws:
