@@ -45,4 +45,8 @@ Tracked automatically:
 
 ## History
 
+| Date | Source | Description | Category | Root Cause | Fix | Validator |
+|------|--------|-------------|----------|------------|-----|-----------|
+| 2026-05-30 | Live Chat (Nami) | NVIDIA PEG = 0.66 is incorrect | `calculation_error` | PEG used yfinance `pegRatio` (forward-looking, 5yr expected growth = ~25%). This was inconsistent with trailing data displayed alongside (trailing PE 32.38, trailing EPS growth 214.5%). `pegRatio * implied_growth = 32.38/0.66 = 49%`, but actual trailing growth is 214.5%. | Changed all 3 code paths to compute trailing PEG = trailing PE / (earningsGrowth × 100) = 32.38/214.5 = 0.15. Fixed `mapper.py:_build_valuation_section`, `mapper.py:_build_valuation_context`, `company_overview_pdf.py:_render_kpis`. | Added `test_peg_ttm_nvda_like` regression test in `test_valuation_context.py`. |
+
 <!-- Entries appended automatically by _learn_from_fix() in feedback_pipeline.py -->

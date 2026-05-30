@@ -256,6 +256,18 @@ def _yoy_pts(current: Any, prior: Any) -> str:
     return f"{sign}{diff:.1f} pts"
 
 
+def _yoy_pts_val(value: Any) -> str:
+    """Format a pre-computed margin change value in percentage points (e.g., 1.4 → '+1.4 pts')."""
+    if not _has(value):
+        return MISSING
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    sign = "+" if number > 0 else ""
+    return f"{sign}{number:.1f} pts"
+
+
 def _yoy_comment(value: Any) -> str:
     if not _has(value):
         return MISSING
@@ -586,7 +598,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                     row_labels[base_idx + 1],
                     _pct(metrics.gross_margin),
                     _pct(getattr(metrics, "gross_margin_prior_year", None)),
-                    _yoy_pct(getattr(metrics, "gross_margin_yoy", None)),
+                    _yoy_pts_val(getattr(metrics, "gross_margin_yoy", None)),
                     metrics.gross_margin,
                 ),
                 (
@@ -607,7 +619,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                     row_labels[base_idx + 4],
                     _pct(metrics.operating_margin),
                     _pct(getattr(metrics, "operating_margin_prior_year", None)),
-                    _yoy_pct(getattr(metrics, "operating_margin_yoy", None)),
+                    _yoy_pts_val(getattr(metrics, "operating_margin_yoy", None)),
                     metrics.operating_margin,
                 ),
                 (
@@ -2851,11 +2863,30 @@ def _build_v27_models(
     pe_fwd = _mf("pe_forward")
     pe_ttm = _mf("pe_trailing")
 
+    # Populate PEG ratio — compute from trailing P/E + trailing EPS growth
+    # for internal consistency with displayed trailing data.
+    # Uses trailing P/E from metrics + yfinance earningsGrowth (TTM EPS growth).
+    # Previously used yfinance pegRatio (forward-looking, 5yr expected growth)
+    # which was inconsistent with trailing data shown alongside.
+    peg_val = None
+    peg_display = None
+    if yf_info is not None and pe_ttm is not None:
+        try:
+            eg = yf_info.get("earningsGrowth")
+            if eg is not None and float(eg) > 0:
+                peg_val = pe_ttm / (float(eg) * 100)
+        except (TypeError, ValueError):
+            pass
+    if peg_val is not None:
+        peg_display = f"{peg_val:.2f}x"
+
     vs = ValuationSection(
         pe_trailing=pe_ttm,
         pe_trailing_display=f"{pe_ttm:.1f}x" if pe_ttm is not None else None,
         pe_forward=pe_fwd,
         pe_forward_display=f"{pe_fwd:.1f}x" if pe_fwd is not None else None,
+        peg_ratio=peg_val,
+        peg_ratio_display=peg_display,
         generated_at=generated_at,
     )
 
@@ -3081,23 +3112,47 @@ def _build_valuation_context(
         return "Negative FCF"
 
     # ── 1. PEG Signal ────────────────────────────────────────────────
-    # Compute PEG from actual P/E and growth for consistency —
-    # yfinance pegRatio uses a different (forward-looking) growth rate
-    # that would not match the growth displayed in the detail string.
+    # Strategy:
+    #   (1) Compute from trailing P/E + trailing earnings growth (trailing PEG)
+    #   (2) Fallback: compute from forward P/E + trailing earnings growth
+    #   (3) Last resort: compute from trailing P/E + revenue growth
+    #
+    # Previously used yfinance pegRatio (forward-looking, 5yr expected growth)
+    # which was inconsistent with trailing data shown alongside.
     pe_ttm = _f("trailingPE")
-    growth = _f("earningsGrowth") or _f("revenueGrowth")
-    if pe_ttm and growth and growth > 0:
-        peg = pe_ttm / (growth * 100)
+    pe_fwd = _f("forwardPE")
+
+    # Helper: safe growth fetch — returns None if truly absent (not 0.0)
+    def _safe_growth(key: str) -> float | None:
+        v = yf_info.get(key) if yf_info else None
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    # Compute from trailing P/E + trailing earnings growth (trailing PEG)
+    earnings_growth = _safe_growth("earningsGrowth")
+    if earnings_growth is not None and earnings_growth > 0 and pe_ttm is not None:
+        peg = pe_ttm / (earnings_growth * 100)
         vc.peg_signal = peg
         vc.peg_signal_label = _label_peg(peg)
-        vc.peg_signal_detail = f"P/E {pe_ttm:.1f}x / growth {growth*100:.0f}%"
-    elif pe_ttm:
-        # Fallback: use yfinance pegRatio if growth data unavailable
-        peg_yf = _f("pegRatio")
-        if peg_yf is not None:
-            vc.peg_signal = peg_yf
-            vc.peg_signal_label = _label_peg(peg_yf)
-            vc.peg_signal_detail = f"P/E {pe_ttm:.1f}x"
+        vc.peg_signal_detail = f"P/E {pe_ttm:.1f}x / EPS growth {earnings_growth*100:.0f}%"
+    # Fallback: compute from forward P/E + earnings growth
+    elif earnings_growth is not None and earnings_growth > 0 and pe_fwd is not None:
+        peg = pe_fwd / (earnings_growth * 100)
+        vc.peg_signal = peg
+        vc.peg_signal_label = _label_peg(peg)
+        vc.peg_signal_detail = f"Fwd P/E {pe_fwd:.1f}x / EPS growth {earnings_growth*100:.0f}%"
+    # Last resort: trailing P/E + revenue growth only
+    elif pe_ttm is not None:
+        rev_growth = _safe_growth("revenueGrowth")
+        if rev_growth is not None and rev_growth > 0:
+            peg = pe_ttm / (rev_growth * 100)
+            vc.peg_signal = peg
+            vc.peg_signal_label = _label_peg(peg)
+            vc.peg_signal_detail = f"P/E {pe_ttm:.1f}x / rev growth {rev_growth*100:.0f}%"
 
     # ── 2. P/S vs Growth ─────────────────────────────────────────────
     ps = _f("priceToSalesTrailing12Months")

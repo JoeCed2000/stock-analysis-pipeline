@@ -78,6 +78,18 @@ class TestPegTtm:
         assert calculate_peg_ttm(20.0, None)["level"] == "n/a"
         assert calculate_peg_ttm(None, None)["level"] == "n/a"
 
+    def test_peg_ttm_nvda_like(self):
+        """NVDA-like: PE=32.38, EPS growth=214.5% → PEG = 32.38/214.5 = 0.15 → below_1.
+        
+        Regression test for Nami's correction: PEG was showing 0.66 (Yahoo Finance
+        forward-looking pegRatio using 5yr expected growth). The correct trailing
+        PEG uses trailing P/E and trailing EPS growth for internal consistency.
+        """
+        result = calculate_peg_ttm(pe_ttm=32.38, eps_growth=2.145)
+        assert result["peg_ratio"] == pytest.approx(0.15, abs=0.01)
+        assert result["level"] == "below_1"
+        assert "growth supports" in result["label"].lower()
+
 
 # ═══════════════════════════════════════════════════════════════
 #  2. P/S vs Revenue Growth

@@ -659,8 +659,18 @@ def _render_kpis(story, styles, overview, yf_data, metrics_ledger, is_jp):
     pe_f = fin.get('pe_forward') or yf_data.get('forwardPE')
     _add_metric("P/E (Forward)", _fmt(pe_f, '.1f'), "Market data", "Yahoo Finance")
 
-    peg = fin.get('peg_ratio') or yf_data.get('pegRatio')
-    _add_metric("PEG Ratio", _fmt(peg, '.2f'), "Market data", "Yahoo Finance")
+    # PEG Ratio — compute from trailing P/E + trailing EPS growth
+    # for internal consistency. Previously used yfinance pegRatio
+    # (forward-looking, 5yr expected growth) which was inconsistent.
+    pe_t = fin.get('pe_ratio') or yf_data.get('trailingPE')
+    eg = fin.get('earnings_growth') or yf_data.get('earningsGrowth')
+    if pe_t is not None and eg is not None and eg > 0:
+        peg = pe_t / (eg * 100)
+        _add_metric("PEG Ratio", _fmt(peg, '.2f'), "Market data", "Yahoo Finance")
+    else:
+        # Fallback to yfinance's own pegRatio if compute data unavailable
+        peg = fin.get('peg_ratio') or yf_data.get('pegRatio')
+        _add_metric("PEG Ratio", _fmt(peg, '.2f'), "Market data", "Yahoo Finance")
 
     beta = yf_data.get('beta')
     _add_metric("Beta", _fmt(beta, '.2f'), "Market data", "Yahoo Finance")
