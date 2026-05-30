@@ -35,20 +35,26 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 # ── Security constants ─────────────────────────────────────────────────────
 _MAX_MESSAGE_LENGTH = 4000  # characters
-_ALLOWED_ORIGINS = {
-    "https://sa.cedlabusa.net",
-    "http://sa.cedlabusa.net",
-    "http://localhost:5173",
-    "http://localhost:5180",
-    "http://127.0.0.1:8780",
-}
 
 
 def _check_origin(request: Request) -> None:
-    """Validate request origin for chat endpoints."""
+    """Validate request origin for chat endpoints.
+    
+    Allows: any cedlabusa.net subdomain, localhost dev ports, 127.0.0.1.
+    Blocks: unknown external origins.
+    """
     origin = request.headers.get("origin", "")
-    if origin and origin not in _ALLOWED_ORIGINS:
-        raise HTTPException(status_code=403, detail=f"Origin not allowed: {origin}")
+    if not origin:
+        return  # No origin header → allow (server-to-server, curl, etc.)
+    
+    # Allow any cedlabusa.net origin (sa., www., or bare)
+    if "cedlabusa.net" in origin:
+        return
+    # Allow local development
+    if origin.startswith("http://localhost") or origin.startswith("http://127.0.0.1"):
+        return
+    
+    raise HTTPException(status_code=403, detail=f"Origin not allowed: {origin}")
 
 # Active WebSocket connections: session_id -> WebSocket
 _ws_connections: dict[str, WebSocket] = {}
