@@ -38,7 +38,7 @@ CODEX_RETRY_BACKOFF = [2.0, 4.0]  # seconds between retries (jittered ±50%)
 _codex_launch_lock = __import__("threading").Lock()
 
 
-def _codex_chat(prompt: str, system: str = "", max_tokens: int = 1000, model: Optional[str] = None) -> Optional[str]:
+def _codex_chat(prompt: str, system: str = "", max_tokens: int = 1000, model: Optional[str] = "gpt-5.3-codex-spark") -> Optional[str]:
     """Send a prompt to Codex CLI via PTY and return the response text.
     
     Retries up to CODEX_MAX_RETRIES times with exponential backoff on timeout/failure.

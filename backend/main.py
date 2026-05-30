@@ -1676,9 +1676,8 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                 # ── Company Overview (wired into async PDF path) ──
                 company_overview = None
                 try:
-                    import asyncio
                     from backend.company_overview import get_company_overview
-                    company_overview = asyncio.run(get_company_overview(ticker, language=lang))
+                    company_overview = await get_company_overview(ticker, language=lang)
                     logger.info(f"[{ticker}/{lang}] Company overview generated for deep-dive PDF")
                 except Exception as e:
                     logger.warning(f"[{ticker}/{lang}] Company overview skipped: {e}")
