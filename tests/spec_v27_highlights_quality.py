@@ -269,3 +269,117 @@ class TestRule12Integration:
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
         contradict_errors = _errors_for(result, "eps_direction_contradiction")
         assert len(contradict_errors) >= 1, "RULE 3 should still fire"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 12e — Unsubstantiated superlatives
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestUnsubstantiatedSuperlatives:
+    """RULE 12e: superlative claims need evidence in context."""
+
+    def test_far_from_peaking_without_evidence_warns(self):
+        text = (
+            "🌟 Highlights\n\n"
+            "• The AI cycle is far from peaking, with demand continuing to accelerate.\n\n"
+        )
+        sections = _make_sections(text)
+        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
+        wrns = _warnings_for(result, "highlights_unsubstantiated_superlative")
+        assert len(wrns) >= 1
+
+    def test_far_from_peaking_with_number_passes(self):
+        text = (
+            "🌟 Highlights\n\n"
+            "• The AI cycle is far from peaking — data center revenue grew 427% YoY "
+            "to $22.6B, with management guiding for sequential growth through FY2027.\n\n"
+        )
+        sections = _make_sections(text)
+        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
+        wrns = _warnings_for(result, "highlights_unsubstantiated_superlative")
+        assert len(wrns) == 0
+
+    def test_extraordinary_claim_with_source_passes(self):
+        text = (
+            "🌟 Highlights\n\n"
+            "• Customer enthusiasm for iPhone has been extraordinary "
+            "(Transcript, CEO remarks), driving 22% YoY revenue growth.\n\n"
+        )
+        sections = _make_sections(text)
+        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
+        wrns = _warnings_for(result, "highlights_unsubstantiated_superlative")
+        assert len(wrns) == 0
+
+    def test_game_changing_without_evidence_warns(self):
+        text = (
+            "🌟 Highlights\n\n"
+            "• This is a game-changing quarter for the company.\n\n"
+        )
+        sections = _make_sections(text)
+        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
+        wrns = _warnings_for(result, "highlights_unsubstantiated_superlative")
+        assert len(wrns) >= 1
+
+    def test_clean_highlights_no_superlatives_passes(self):
+        text = (
+            "🌟 Highlights\n\n"
+            "• Revenue grew 18% YoY to $22.1B, beating consensus by 3.2%.\n\n"
+            "• Operating margin expanded 220bps to 64.8%.\n\n"
+        )
+        sections = _make_sections(text)
+        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
+        wrns = _warnings_for(result, "highlights_unsubstantiated_superlative")
+        assert len(wrns) == 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 12f — Raw source strings in Highlights prose
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestRawSourceStringsInHighlights:
+    """RULE 12f: no raw provider keys in Highlights prose."""
+
+    def test_yfinance_raw_source_warns(self):
+        text = (
+            "🌟 Highlights\n\n"
+            "• Revenue reached $111.18B, +16.6% YoY "
+            "(source: yfinance, revenue_yoy).\n\n"
+        )
+        sections = _make_sections(text)
+        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
+        wrns = _warnings_for(result, "highlights_raw_source_strings")
+        assert len(wrns) >= 1
+
+    def test_finnhub_raw_source_warns(self):
+        text = (
+            "🌟 Highlights\n\n"
+            "• Market cap data (source: finnhub, market_cap) confirms $3.2T.\n\n"
+        )
+        sections = _make_sections(text)
+        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
+        wrns = _warnings_for(result, "highlights_raw_source_strings")
+        assert len(wrns) >= 1
+
+    def test_human_readable_source_passes(self):
+        text = (
+            "🌟 Highlights\n\n"
+            "• Revenue reached $111.18B, +16.6% YoY "
+            "(Company-reported, 10-Q filing).\n\n"
+            "• EPS beat consensus by 3.5% (Consensus estimate, Yahoo Finance).\n\n"
+        )
+        sections = _make_sections(text)
+        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
+        wrns = _warnings_for(result, "highlights_raw_source_strings")
+        assert len(wrns) == 0
+
+    def test_no_source_refs_passes(self):
+        text = (
+            "🌟 Highlights\n\n"
+            "• The quarter showed strong execution across all segments.\n\n"
+        )
+        sections = _make_sections(text)
+        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
+        wrns = _warnings_for(result, "highlights_raw_source_strings")
+        assert len(wrns) == 0

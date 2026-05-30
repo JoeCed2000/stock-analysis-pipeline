@@ -912,6 +912,73 @@ def validate_pre_render(
                 severity="error",
             ))
 
+        # 12e. "Far from peaking" / unsubstantiated superlatives
+        # ---------------------------------------------------------------
+        # Claims like "far from peaking", "no signs of slowing",
+        # "extraordinary demand", "unprecedented growth" must be backed
+        # by a number or source in the same bullet/block.
+        superlative_patterns = [
+            (r'far\s+from\s+peaking', 'far from peaking'),
+            (r'no\s+signs?\s+of\s+slowing', 'no signs of slowing'),
+            (r'(?:truly\s+)?extraordinary', 'extraordinary'),
+            (r'unprecedented', 'unprecedented'),
+            (r'dominant\s+position\s+(?:continues|remains)', 'dominant position'),
+            (r'firing\s+on\s+all\s+cylinders', 'firing on all cylinders'),
+            (r'(?:structural|paradigm)\s+shift', 'structural/paradigm shift'),
+            (r'game[-\s]changing', 'game-changing'),
+        ]
+        for pattern, label in superlative_patterns:
+            for match in re.finditer(pattern, hl, re.IGNORECASE):
+                # Check if the containing block has a number or source
+                block_start = max(0, match.start() - 300)
+                block_end = min(len(hl), match.end() + 100)
+                block = hl[block_start:block_end]
+                has_number = bool(re.search(
+                    r'\$?\d+[\.\d]*\s*[BMK%]|[\d\.]+\s*%|[\d\.]+x|YoY|QoQ',
+                    block
+                ))
+                has_source = bool(re.search(
+                    r'(?:transcript|source|filing|press\s*release|10-[KQ]|SEC|'
+                    r'management\s+said|CEO|CFO|according\s+to|reported\s+by)',
+                    block, re.IGNORECASE
+                ))
+                if not has_number and not has_source:
+                    warnings.append(ValidationWarning(
+                        check="highlights_unsubstantiated_superlative",
+                        section="Highlights",
+                        detail=(
+                            f"Superlative claim '{label}' lacks numerical evidence "
+                            f"or source attribution in the surrounding context. "
+                            f"Every strong claim requires a metric or source reference."
+                        ),
+                        severity="warning",
+                    ))
+                    break  # One per pattern type is enough
+
+        # 12f. Raw source strings in Highlights prose
+        # ---------------------------------------------------------------
+        # The Highlights section is prose (not a structured table).
+        # Raw provider keys like "source: yfinance, revenue_yoy" or
+        # "source: yfinance, eps_estimate" must not appear in prose.
+        raw_source_patterns = [
+            r'source:\s*yfinance\s*,?\s*\w+',
+            r'source:\s*finnhub\s*,?\s*\w+',
+            r'source:\s*alpha.vantage\s*,?\s*\w+',
+        ]
+        for pattern in raw_source_patterns:
+            for match in re.finditer(pattern, hl, re.IGNORECASE):
+                warnings.append(ValidationWarning(
+                    check="highlights_raw_source_strings",
+                    section="Highlights",
+                    detail=(
+                        f"Raw source string '{match.group()[:80]}' found in Highlights. "
+                        f"Use human-readable source labels in prose: "
+                        f"'Company-reported', 'Consensus estimate', 'Transcript (CEO remarks)'."
+                    ),
+                    severity="warning",
+                ))
+                break  # One catch is enough
+
     # ── RULE 13 (BLOCKING): §9 EPS & Revenue reconciliation ───────────────
     #
     # Enforce corrections.txt §9: source accuracy, no false "Not available",
