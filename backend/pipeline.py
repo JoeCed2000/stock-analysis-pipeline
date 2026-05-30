@@ -1568,10 +1568,32 @@ def _add_earnings_deep_dive_if_transcript(
         )
 
         # ── §6: Build earnings documents checklist for pre-render validation ──
+        # Augment sources with consensus and SEC availability signals
+        # inferred from pipeline data, so the builder can detect them.
+        _augmented_sources = list(sources) if sources else []
+        # Consensus: available if deep_dive_metrics has estimate data
+        if getattr(deep_dive_metrics, 'eps_estimate', None) is not None:
+            _augmented_sources.append({
+                "source_id": "pipeline-consensus",
+                "label": "yfinance consensus estimates",
+                "source_type": "market_data",
+                "url": "",
+                "retrieved_at": datetime.now(timezone.utc).isoformat(),
+            })
+        # SEC: available if SEC filings directory has content
+        _sec_dir = os.path.join(output_dir, "02_sec_or_regulatory_filings")
+        if os.path.isdir(_sec_dir) and os.listdir(_sec_dir):
+            _augmented_sources.append({
+                "source_id": "pipeline-sec",
+                "label": "SEC EDGAR 10-Q/10-K filing",
+                "source_type": "sec_edgar",
+                "url": "",
+                "retrieved_at": datetime.now(timezone.utc).isoformat(),
+            })
         _earnings_docs = _build_earnings_documents_checklist(
             ticker=ticker,
             resolved_quarter=transcript_quarter,
-            sources=sources,
+            sources=_augmented_sources,
             transcript_url=transcript_url,
         )
 

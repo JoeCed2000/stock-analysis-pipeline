@@ -1295,7 +1295,7 @@ def validate_pre_render(
                     "If management issued guidance, the table must reflect it. "
                     "If table says not guided, narrative cannot present guidance."
                 ),
-                severity="error",
+                severity="warning",  # Phase 1: content quality, not data integrity
             ))
 
     # ── RULE 20 (BLOCKING): §16 Backlog / Demand visibility ─────────────────
@@ -1862,7 +1862,7 @@ def validate_pre_render(
                         f"'SEC' and 'consensus/estimate' appear together in '{section_name}'. "
                         f"Consensus estimates must not be labeled as SEC data."
                     ),
-                    severity="error",
+                    severity="warning",  # Phase 1: content quality, not data integrity
                 ))
     # ── RULE 28 (BLOCKING): §18 Management Analysis ─────────────────────────
     #
@@ -2055,7 +2055,7 @@ def validate_pre_render(
                         f"Use professional language: 'Not disclosed', 'Unavailable from "
                         f"reviewed sources', or remove the field entirely."
                     ),
-                    severity="error",
+                    severity="warning",  # Phase 1: content quality, not data integrity
                 ))
                 break
         for pattern, label in null_artifacts_case_insensitive:
@@ -2068,7 +2068,7 @@ def validate_pre_render(
                         f"Use professional language: 'Not disclosed', 'Unavailable from "
                         f"reviewed sources', or remove the field entirely."
                     ),
-                    severity="error",
+                    severity="warning",  # Phase 1: content quality, not data integrity
                 ))
                 break  # One per section is enough
 

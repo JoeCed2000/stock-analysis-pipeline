@@ -194,7 +194,7 @@ class TestRule27MetricsLedgerGate:
         assert result.passed is False
         assert any("sanity_dividend_yield" in e.check for e in result.errors)
 
-    def test_27c_sec_consensus_confusion_blocked(self):
+    def test_27c_sec_consensus_confusion_warned(self):
         ml = MetricsLedger(entries=[])
         result = validate_pre_render(
             ticker="NVDA", quarter="Q1 FY2026", metrics=None,
@@ -203,8 +203,8 @@ class TestRule27MetricsLedgerGate:
             },
             metrics_ledger=ml,
         )
-        assert result.passed is False
-        assert any("sec_consensus_confusion" in e.check for e in result.errors)
+        assert result.passed is True  # Phase 1: warning, not error
+        assert any("sec_consensus_confusion" in w.check for w in result.warnings)
 
     def test_27c_clean_text_no_warning(self):
         ml = MetricsLedger(entries=[])

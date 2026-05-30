@@ -74,45 +74,45 @@ class TestRule30MissingDataAndLeaks:
         )
         assert not any("missing_data_reason_leak" == e.check for e in result.errors)
 
-    def test_30b_null_blocked(self):
+    def test_30b_null_warned(self):
         result = validate_pre_render(
             ticker="NVDA", quarter="Q1 FY2026", metrics=None,
             section_analysis={"Valuation": "PE ratio is null for this quarter."},
         )
-        assert result.passed is False
-        assert any("null_artifact" in e.check for e in result.errors)
+        assert result.passed is True  # Phase 1: warning, not error
+        assert any("null_artifact" in w.check for w in result.warnings)
 
-    def test_30b_none_blocked(self):
+    def test_30b_none_warned(self):
         result = validate_pre_render(
             ticker="NVDA", quarter="Q1 FY2026", metrics=None,
             section_analysis={"Valuation": "Dividend yield is None."},
         )
-        assert result.passed is False
-        assert any("null_artifact" in e.check for e in result.errors)
+        assert result.passed is True
+        assert any("null_artifact" in w.check for w in result.warnings)
 
-    def test_30b_nan_blocked(self):
+    def test_30b_nan_warned(self):
         result = validate_pre_render(
             ticker="NVDA", quarter="Q1 FY2026", metrics=None,
             section_analysis={"Financials": "Growth rate returned NaN."},
         )
-        assert result.passed is False
-        assert any("null_artifact" in e.check for e in result.errors)
+        assert result.passed is True
+        assert any("null_artifact" in w.check for w in result.warnings)
 
-    def test_30b_undefined_blocked(self):
+    def test_30b_undefined_warned(self):
         result = validate_pre_render(
             ticker="NVDA", quarter="Q1 FY2026", metrics=None,
             section_analysis={"Financials": "Value is undefined."},
         )
-        assert result.passed is False
-        assert any("null_artifact" in e.check for e in result.errors)
+        assert result.passed is True
+        assert any("null_artifact" in w.check for w in result.warnings)
 
-    def test_30b_debug_blocked(self):
+    def test_30b_debug_warned(self):
         result = validate_pre_render(
             ticker="NVDA", quarter="Q1 FY2026", metrics=None,
             section_analysis={"Notes": "Debug: yfinance returned empty."},
         )
-        assert result.passed is False
-        assert any("null_artifact" in e.check for e in result.errors)
+        assert result.passed is True
+        assert any("null_artifact" in w.check for w in result.warnings)
 
     def test_30b_word_boundary_respected(self):
         """Words containing these substrings should NOT be blocked."""

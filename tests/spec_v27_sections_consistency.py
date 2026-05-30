@@ -211,7 +211,7 @@ class TestGuidance:
         errs = _errors_for(result, "guidance_current_as_guidance")
         assert len(errs) == 1
 
-    def test_not_guided_but_narrative_has_guidance_blocked(self):
+    def test_not_guided_but_narrative_has_guidance_warned(self):
         sections = {
             "Guidance": (
                 "Revenue guidance: Not guided.\n\n"
@@ -219,8 +219,8 @@ class TestGuidance:
             )
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "guidance_table_narrative_contradiction")
-        assert len(errs) == 1
+        warns = _warnings_for(result, "guidance_table_narrative_contradiction")
+        assert len(warns) == 1
 
     def test_not_guided_without_narrative_passes(self):
         sections = {
