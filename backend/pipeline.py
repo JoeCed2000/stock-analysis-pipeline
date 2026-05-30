@@ -1775,7 +1775,7 @@ def _assess_risks(yf_data: Dict, fh_data: Dict, ticker: str) -> List[RiskItem]:
 def _margin_of_safety_text(pe: Any, fpe: Any) -> str:
     pe_val = fpe if fpe else pe
     if pe_val is None:
-        return "DATA NOT AVAILABLE"
+        return "—"
     if pe_val < 15:
         return "Comfortable margin of safety (PE < 15)"
     if pe_val < 25:
@@ -1986,7 +1986,7 @@ def _generate_report(result: AnalysisResult, yf_data: Dict, sources: List[Source
 
     def fmt(val: Any, unit: str = "") -> str:
         if val is None:
-            return "DATA NOT AVAILABLE"
+            return "—"
         if isinstance(val, float):
             if abs(val) > 1e9:
                 return f"{val/1e9:.1f}B{unit}"
@@ -2111,7 +2111,7 @@ def _generate_report(result: AnalysisResult, yf_data: Dict, sources: List[Source
         # Fallback: thin yfinance description
         lines.append(f"## 3. Business")
         lines.append(f"")
-        lines.append(f"{yf_data.get('description', 'DATA NOT AVAILABLE')[:800]}")
+        lines.append(f"{yf_data.get('description', '—')[:800]}")
         lines.append(f"")
 
     # 4. Management
@@ -2137,7 +2137,7 @@ def _generate_report(result: AnalysisResult, yf_data: Dict, sources: List[Source
     lines.append(f"- **P/E (current):** {fmt(val.pe_current)}")
     lines.append(f"- **Forward P/E:** {fmt(val.pe_forward)}")
     lines.append(f"- **PEG ratio:** {fmt(val.peg_ratio)}")
-    lines.append(f"- **Expected Growth:** {fmt(val.expected_growth, '%') if val.expected_growth else 'DATA NOT AVAILABLE'}")
+    lines.append(f"- **Expected Growth:** {fmt(val.expected_growth, '%') if val.expected_growth else '—'}")
     lines.append(f"- **Margin of Safety:** {val.margin_of_safety}")
     lines.append(f"")
 
@@ -2310,7 +2310,7 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
         primary_segment=yf_data.get("industry") or yf_data.get("sector"),
         revenue_share_pct=None,
         segment_growth=None,
-        excessive_dependency="DATA NOT AVAILABLE"
+        excessive_dependency="—"
     )
     
     # ── Management discourse + Risk extraction (Codex — single call) ──
