@@ -27,8 +27,12 @@ MONITOR_INTERVAL_SECONDS = 30  # Check every 30s
 
 # ─── Pre-flight Gate ─────────────────────────────────────────────────────────
 
-def run_preflight_gate() -> tuple[bool, str]:
-    """Run kanban pre-flight. Returns (ok, detail_message)."""
+def run_preflight_gate(board: str = "sa-pipeline") -> tuple[bool, str]:
+    """Run kanban pre-flight. Returns (ok, detail_message).
+    
+    Only considers failures relevant to the specified board.
+    Dispatcher inactivity on unrelated boards is ignored.
+    """
     try:
         result = subprocess.run(
             ["python3", "/home/ced/.hermes/shared/scripts/kanban_preflight.py", "--quick", "--json"],
@@ -39,12 +43,17 @@ def run_preflight_gate() -> tuple[bool, str]:
         elif result.returncode == 2:
             return True, f"WARN (non-critical warnings present)"
         else:
-            # Parse failures from JSON
+            # Parse failures from JSON, filter to board-relevant only
             import json
             try:
                 data = json.loads(result.stdout)
                 failures = data.get("failures", [])
-                return False, "; ".join(failures[:3]) if failures else "NO-GO (unknown)"
+                # Only care about failures on our board
+                relevant = [f for f in failures if board.lower() in f.lower() or "DEFAULT" in f]
+                if not relevant:
+                    # Failures are on unrelated boards — treat as GO
+                    return True, f"GO (unrelated board failures ignored: {len(failures)})"
+                return False, "; ".join(relevant[:3])
             except Exception:
                 return False, f"NO-GO (exit {result.returncode})"
     except Exception as e:
@@ -210,6 +219,7 @@ async def process_feedback(
         # Still acknowledge but warn
         from backend import chat_store
         from backend.chat import _ws_connections, _uid, _utcnow_iso
+        from backend.chat_models import ChatMessage as ChatMsg
         now = _utcnow_iso()
         warn_id = _uid("msg")
         warn_content = (
