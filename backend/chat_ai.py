@@ -104,6 +104,8 @@ def build_prompt(
     pdf_title: Optional[str] = None,
     pdf_chunks: Optional[list[dict]] = None,
     pdf_summary: Optional[str] = None,
+    pdf_page: Optional[int] = None,
+    selected_section: Optional[str] = None,
     history: Optional[list[dict]] = None,
     current_url: Optional[str] = None,
     route: Optional[str] = None,
@@ -130,6 +132,10 @@ def build_prompt(
         ctx_lines.append(f"- Route: {route}")
     if pdf_title:
         ctx_lines.append(f"- Open PDF: {pdf_title}")
+    if pdf_page:
+        ctx_lines.append(f"- Current PDF page: {pdf_page}")
+    if selected_section:
+        ctx_lines.append(f"- Selected section: {selected_section}")
     if not ticker and not pdf_title:
         ctx_lines.append("- No specific ticker or PDF is currently open.")
     parts.append("\n".join(ctx_lines))
@@ -240,6 +246,8 @@ async def stream_ai_response(
     pdf_title: Optional[str] = None,
     pdf_chunks: Optional[list[dict]] = None,
     pdf_summary: Optional[str] = None,
+    pdf_page: Optional[int] = None,
+    selected_section: Optional[str] = None,
     history: Optional[list[dict]] = None,
     current_url: Optional[str] = None,
     route: Optional[str] = None,
@@ -252,6 +260,8 @@ async def stream_ai_response(
         pdf_title=pdf_title,
         pdf_chunks=pdf_chunks,
         pdf_summary=pdf_summary,
+        pdf_page=pdf_page,
+        selected_section=selected_section,
         history=history,
         current_url=current_url,
         route=route,

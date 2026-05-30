@@ -13,7 +13,7 @@ import asyncio
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import JSONResponse
 
 from .chat_models import (
@@ -32,6 +32,23 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+# ── Security constants ─────────────────────────────────────────────────────
+_MAX_MESSAGE_LENGTH = 4000  # characters
+_ALLOWED_ORIGINS = {
+    "https://sa.cedlabusa.net",
+    "http://sa.cedlabusa.net",
+    "http://localhost:5173",
+    "http://localhost:5180",
+    "http://127.0.0.1:8780",
+}
+
+
+def _check_origin(request: Request) -> None:
+    """Validate request origin for chat endpoints."""
+    origin = request.headers.get("origin", "")
+    if origin and origin not in _ALLOWED_ORIGINS:
+        raise HTTPException(status_code=403, detail=f"Origin not allowed: {origin}")
 
 # Active WebSocket connections: session_id -> WebSocket
 _ws_connections: dict[str, WebSocket] = {}
@@ -88,7 +105,7 @@ async def get_history(session_id: str = Query(...)):
 
 
 @router.post("/message", response_model=ChatSendResponse)
-async def send_message(req: ChatMessageRequest):
+async def send_message(req: ChatMessageRequest, request: Request):
     """Send a user message and trigger AI response.
 
     The AI response is streamed via WebSocket. This endpoint returns immediately
@@ -96,6 +113,16 @@ async def send_message(req: ChatMessageRequest):
     via the WebSocket at /api/chat/ws.
     """
     now = _utcnow_iso()
+
+    # Security: origin check
+    _check_origin(request)
+
+    # Security: max message size
+    if len(req.message) > _MAX_MESSAGE_LENGTH:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Message too long ({len(req.message)} chars, max {_MAX_MESSAGE_LENGTH})",
+        )
 
     # Validate session
     session = chat_store.get_session(req.session_id)
@@ -174,6 +201,8 @@ async def send_message(req: ChatMessageRequest):
         ticker=ctx.ticker,
         pdf_id=ctx.pdf_id,
         pdf_title=ctx.pdf_title,
+        pdf_page=ctx.pdf_page,
+        selected_section=ctx.selected_section,
         current_url=ctx.current_url,
         route=ctx.route,
     ))
@@ -229,6 +258,8 @@ async def _generate_and_stream(
     ticker: Optional[str] = None,
     pdf_id: Optional[str] = None,
     pdf_title: Optional[str] = None,
+    pdf_page: Optional[int] = None,
+    selected_section: Optional[str] = None,
     current_url: Optional[str] = None,
     route: Optional[str] = None,
 ) -> None:
@@ -242,6 +273,8 @@ async def _generate_and_stream(
         ticker=ticker,
         pdf_id=pdf_id,
         pdf_title=pdf_title,
+        pdf_page=pdf_page,
+        selected_section=selected_section,
         current_url=current_url,
         route=route,
         language=language,
@@ -268,6 +301,8 @@ async def _generate_and_stream(
             pdf_title=ctx["pdf_title"],
             pdf_chunks=ctx["pdf_chunks"],
             pdf_summary=ctx["pdf_summary"],
+            pdf_page=ctx.get("pdf_page"),
+            selected_section=ctx.get("selected_section"),
             history=ctx["history"],
             current_url=ctx["current_url"],
             route=ctx["route"],

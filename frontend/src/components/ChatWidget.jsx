@@ -210,7 +210,25 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
     sendMessage(msg.content);
   }, [sendMessage]);
 
-  // ── Focus input on open ─────────────────────────────────────────────
+  // ── Copy message ──────────────────────────────────────────────────
+  const [copiedId, setCopiedId] = useState(null);
+  const copyMessage = useCallback(async (msg) => {
+    try {
+      await navigator.clipboard.writeText(msg.content);
+      setCopiedId(msg.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      // Fallback for older browsers
+      const ta = document.createElement('textarea');
+      ta.value = msg.content;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopiedId(msg.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    }
+  }, []);
   useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 100);
@@ -290,6 +308,15 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
               {msg.status === 'failed' && (
                 <button onClick={() => retryMessage(msg)} style={retryButtonStyle}>
                   🔄 再試行
+                </button>
+              )}
+              {msg.role === 'assistant' && msg.content && msg.status === 'completed' && (
+                <button
+                  onClick={() => copyMessage(msg)}
+                  style={copyButtonStyle}
+                  title="コピー"
+                >
+                  {copiedId === msg.id ? '✅ コピー済' : '📋 コピー'}
                 </button>
               )}
             </div>
@@ -485,6 +512,18 @@ const typingStyle = {
   fontSize: 11,
   color: '#8b949e',
   fontStyle: 'italic',
+};
+
+const copyButtonStyle = {
+  display: 'inline-block',
+  marginTop: 6,
+  padding: '3px 8px',
+  fontSize: 11,
+  background: 'transparent',
+  color: '#8b949e',
+  border: '1px solid #30363d',
+  borderRadius: 4,
+  cursor: 'pointer',
 };
 
 const typingIndicatorStyle = {

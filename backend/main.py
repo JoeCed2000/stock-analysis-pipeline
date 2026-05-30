@@ -101,10 +101,10 @@ _RATE_LIMIT_DEFAULT = 120  # read-only + lightweight parse endpoints — 120/min
 _RATE_MAX_ENTRIES = 5000  # Prune oldest entries when exceeded
 
 # Expensive endpoints (LLM calls, batch processing, PDF generation)
-_HEAVY_PATHS = {"/api/analyze", "/api/analyze/async", "/api/earnings/deep-dive", "/api/batch/analyze"}
+_HEAVY_PATHS = {"/api/analyze", "/api/analyze/async", "/api/earnings/deep-dive", "/api/batch/analyze", "/api/chat/message"}
 # Write/modify endpoints (moderate cost). /api/batch/upload is used by the UI
 # debounce parser while typing, so it intentionally stays in the default tier.
-_MODERATE_PATHS = {"/api/feedback", "/api/cache/financials", "/api/dossier"}
+_MODERATE_PATHS = {"/api/feedback", "/api/cache/financials", "/api/dossier", "/api/chat"}
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
@@ -2248,3 +2248,19 @@ if _frontend_dist.exists():
     logger.info("Frontend mounted from %s", str(_frontend_dist))
 else:
     logger.warning("Frontend dist/ not found at %s — API-only mode", str(_frontend_dist))
+
+
+@app.on_event("startup")
+async def _startup_chat_pdf_ingestion():
+    """Ingest existing analysis PDFs into the chat retrieval system on startup."""
+    try:
+        from backend.chat_store import initialize as _init_chat
+        _init_chat()
+        from backend.chat_retrieval import ingest_analyses_pdfs
+        count = ingest_analyses_pdfs()
+        if count > 0:
+            logger.info("Chat: ingested %d PDFs for retrieval", count)
+        else:
+            logger.info("Chat: no PDFs to ingest (analyses/ may be empty)")
+    except Exception as e:
+        logger.warning("Chat PDF ingestion failed (non-fatal): %s", e)
