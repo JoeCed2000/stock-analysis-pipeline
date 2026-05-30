@@ -823,9 +823,10 @@ def _base_prompt(
         if transcript_excerpt
         else (
             "No transcript available. Use ONLY the financial_metrics data below. "
-            "Do NOT invent qualitative commentary. Use Not retrieved from transcript "
-            "for management commentary, business drivers, and other call discussion that "
-            "requires transcript evidence."
+            "Do NOT invent qualitative commentary. For management commentary, "
+            "business drivers, and other call discussions that require transcript "
+            "evidence, state 'Not discussed in the available transcript' — "
+            "do NOT write 'Not available' or 'DATA NOT AVAILABLE'."
         )
     )
 
@@ -850,7 +851,9 @@ any hallucinated numbers with data-driven corrections.
 - Every number in your PROSE must match the table. Do not write "$4.91 EPS" if the table says "$1.76".
 - Never convert, annualize, or TTM-adjust the Metrics values. Use them as-is.
 - If you need a number that is not in Metrics, write — in the table and
-  "Data not available" in prose. Never guess.
+  "Not disclosed in this filing" in prose for that SPECIFIC metric only.
+  NEVER write "Not available", "Not retrieved", or "DATA NOT AVAILABLE"
+  across an entire section. Each missing datum must be identified individually.
 🔴 CROSS-SECTION CONSISTENCY — ALL sections MUST agree on these facts:
 - If any CRITICAL OVERRIDE in this prompt states EPS/Revenue BEAT or MISSED,
   you MUST use that exact direction. Do not contradict it.
@@ -872,7 +875,7 @@ Section output contract:
 - Under each ①②③ item, use ● for data bullets and 👉 for investor implications.
 - Include {nami_label} where specified.
 - Use direct transcript or supplied-metric evidence. Never invent financial data.
-- If the transcript excerpt says no transcript is available, use only Metrics and mark qualitative call evidence as Not retrieved.
+- If the transcript excerpt says no transcript is available, use only Metrics and mark qualitative call evidence as "Not discussed in available transcript." Do NOT write "Not available" or "Not retrieved."
 - Every table cell must contain a sourced value or a dash. Never leave cells empty and never invent missing values.
 - CRITICAL Source column format: Every source cell MUST identify the real data origin with specificity. Use exact provenance — SEC 10-Q page and line number, yfinance key name, transcript quote with timestamp, or calculation formula with inputs. Generic labels like \"Company filing\" or \"Calculated\" are INSUFFICIENT.
 - CRITICAL: Never write \"Section unavailable\" or similar placeholder text. If specific data is missing, use — in table cells and provide qualitative analysis based on the company's known business model, sector position, and total revenue/growth trends from Metrics.
@@ -885,6 +888,7 @@ Section output contract:
   - Consensus estimates presented as company guidance
   - LLM output presented as source data (e.g. \"source: LLM analysis\")
   - Price targets, investment recommendations, or forward-looking predictions not explicitly requested
+  - "Not available", "Not retrieved", or "DATA NOT AVAILABLE" applied to an entire section. If individual metrics are missing, mark only those specific cells with — and use "Not disclosed in this filing" for each.
 - End with exactly one final blockquote line: {summary_label}
 
 PDF-aligned section skeleton:
