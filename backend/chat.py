@@ -481,6 +481,20 @@ async def _generate_and_stream(
             except Exception as e:
                 logger.warning(f"Failed to save auto-detected feedback: {e}")
 
+            # 🔴 Autonomous pipeline: pre-flight → Kanban → acknowledge → monitor → respond
+            try:
+                from backend.feedback_pipeline import process_feedback
+                asyncio.create_task(process_feedback(
+                    session_id=session_id,
+                    user_message=user_message,
+                    feedback_type=fb_type,
+                    language=language,
+                    ticker=ticker,
+                ))
+                logger.info(f"Launched autonomous feedback pipeline for {fb_type}")
+            except Exception as e:
+                logger.error(f"Failed to launch feedback pipeline: {e}")
+
     except Exception as e:
         logger.error(f"AI generation failed for {assistant_message_id}: {e}")
         now = _utcnow_iso()
