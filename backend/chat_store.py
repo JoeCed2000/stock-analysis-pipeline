@@ -263,33 +263,59 @@ def track_session_ticker(session_id: str, ticker: str) -> None:
 
 
 def get_session_tickers(session_id: str, max_age_hours: int = 2) -> list[str]:
-    """Get tickers this session has viewed in the last N hours, most recent last."""
+    """Get tickers this visitor has viewed across ALL their sessions in N hours."""
     conn = get_conn()
+    # First get the visitor_name for this session
     row = conn.execute(
-        "SELECT metadata_json FROM chat_sessions WHERE id=?", (session_id,)
+        "SELECT visitor_name FROM chat_sessions WHERE id=?", (session_id,)
     ).fetchone()
-    if not row or not row[0]:
+    if not row:
         return []
+    visitor_name = row[0]
 
+    return get_visitor_tickers(visitor_name, max_age_hours=max_age_hours)
+
+
+def get_visitor_tickers(visitor_name: str, max_age_hours: int = 2) -> list[str]:
+    """Get tickers a visitor has viewed across ALL their sessions in N hours."""
+    conn = get_conn()
     from datetime import datetime, timezone, timedelta
     cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
 
-    meta = json.loads(row[0]) if row[0] else {}
-    viewed = meta.get("viewed_tickers", [])
-    recent = []
-    for v in viewed:
-        at_str = v.get("at", "")
-        try:
-            at = datetime.fromisoformat(at_str)
-            if at >= cutoff:
-                recent.append(v["ticker"])
-        except (ValueError, KeyError):
-            # Old format (plain string) — include
-            if isinstance(v, str):
-                recent.append(v)
-            continue
+    rows = conn.execute(
+        "SELECT metadata_json FROM chat_sessions WHERE visitor_name=? AND metadata_json IS NOT NULL",
+        (visitor_name,),
+    ).fetchall()
 
-    return recent
+    all_tickers: list[tuple[str, datetime]] = []
+    for (meta_json,) in rows:
+        try:
+            meta = json.loads(meta_json)
+        except json.JSONDecodeError:
+            continue
+        viewed = meta.get("viewed_tickers", [])
+        for v in viewed:
+            ticker = v.get("ticker") if isinstance(v, dict) else str(v)
+            if not ticker:
+                continue
+            at_str = v.get("at", "") if isinstance(v, dict) else ""
+            try:
+                at = datetime.fromisoformat(at_str)
+            except (ValueError, TypeError):
+                at = datetime.now(timezone.utc)  # unknown time, assume recent
+            if at >= cutoff:
+                all_tickers.append((ticker, at))
+
+    # Sort by time, most recent first, deduplicate keeping first occurrence
+    all_tickers.sort(key=lambda x: x[1], reverse=True)
+    seen = set()
+    result = []
+    for ticker, _ in all_tickers:
+        if ticker not in seen:
+            seen.add(ticker)
+            result.append(ticker)
+
+    return result
 
 
 # ── Message Operations ───────────────────────────────────────────────────────
