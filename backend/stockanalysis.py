@@ -127,5 +127,5 @@ def fetch_transcript(url: str) -> Optional[Dict]:
         "content": content,
         "date": date,
         "url": url,
-        "source": "StockAnalysis.com",
+        "source": "Seeking Alpha",  # Canonical source — StockAnalysis republishes SA transcripts verbatim
     }
