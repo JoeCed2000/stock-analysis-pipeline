@@ -39,6 +39,45 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 _MAX_MESSAGE_LENGTH = 4000  # characters
 
 
+def _fingerprint_device(user_agent: str) -> str:
+    """Extract device fingerprint from User-Agent for session grouping.
+
+    Returns a short string like 'apple-mac-safari-us' or 'android-samsung-unknown'.
+    """
+    ua = user_agent.lower()
+    parts = []
+
+    # OS
+    if "mac os" in ua or "macintosh" in ua:
+        parts.append("apple-mac")
+    elif "iphone" in ua:
+        parts.append("apple-iphone")
+    elif "ipad" in ua:
+        parts.append("apple-ipad")
+    elif "android" in ua:
+        parts.append("android")
+    elif "windows" in ua:
+        parts.append("windows")
+    elif "linux" in ua:
+        parts.append("linux")
+    else:
+        parts.append("unknown-os")
+
+    # Browser
+    if "safari" in ua and "chrome" not in ua:
+        parts.append("safari")
+    elif "chrome" in ua:
+        parts.append("chrome")
+    elif "firefox" in ua:
+        parts.append("firefox")
+    elif "edg" in ua:
+        parts.append("edge")
+    else:
+        parts.append("unknown-browser")
+
+    return "-".join(parts)
+
+
 def _check_origin(request: Request) -> None:
     """Validate request origin for chat endpoints.
     
@@ -74,14 +113,30 @@ def _utcnow_iso() -> str:
 # ── REST Endpoints ───────────────────────────────────────────────────────────
 
 @router.post("/session", response_model=ChatSessionResponse)
-async def create_session(req: ChatSessionRequest):
+async def create_session(req: ChatSessionRequest, request: Request):
     """Create or return an existing session."""
+    # Capture client IP and device fingerprint
+    client_ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("User-Agent", "")
+    device_info = _fingerprint_device(user_agent)
+
+    meta = req.metadata or {}
+    meta.update({
+        "client_ip": client_ip,
+        "user_agent": user_agent[:200],
+        "device": device_info,
+    })
+
     session = chat_store.create_session(
         visitor_name=req.visitor_name,
         language=req.language,
-        metadata=req.metadata,
+        metadata=meta,
     )
-    chat_store.log_event(session.id, "session_created", {"language": req.language})
+    chat_store.log_event(session.id, "session_created", {
+        "language": req.language,
+        "ip": client_ip,
+        "device": device_info,
+    })
     return ChatSessionResponse(
         session_id=session.id,
         language=session.language,
@@ -320,6 +375,7 @@ async def _generate_and_stream(
             route=ctx["route"],
             recent_tickers=ctx.get("recent_tickers"),
             feedback_context=ctx.get("feedback_context"),
+            previous_chats=ctx.get("previous_chats"),
         ):
             full_response += token
             if ws:

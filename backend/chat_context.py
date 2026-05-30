@@ -83,7 +83,17 @@ async def build_chat_context(
         "route": route,
         "recent_tickers": _get_recent_tickers(session_id=session_id, limit=5, exclude_ticker=ticker),
         "feedback_context": _get_feedback_context(),
+        "previous_chats": _get_previous_chat_summaries(session_id),
     }
+
+
+def _get_previous_chat_summaries(session_id: str) -> list[dict]:
+    """Get summaries of previous chat sessions from the same user (IP+device)."""
+    from . import chat_store
+    try:
+        return chat_store.get_recent_chat_summaries(session_id, max_sessions=3, max_age_hours=24)
+    except Exception:
+        return []
 
 
 def _get_feedback_context() -> list[dict]:

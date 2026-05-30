@@ -263,17 +263,50 @@ def track_session_ticker(session_id: str, ticker: str) -> None:
 
 
 def get_session_tickers(session_id: str, max_age_hours: int = 2) -> list[str]:
-    """Get tickers this visitor has viewed across ALL their sessions in N hours."""
+    """Get tickers this user (IP+device) has viewed across ALL their sessions."""
     conn = get_conn()
-    # First get the visitor_name for this session
-    row = conn.execute(
-        "SELECT visitor_name FROM chat_sessions WHERE id=?", (session_id,)
-    ).fetchone()
-    if not row:
-        return []
-    visitor_name = row[0]
+    from datetime import datetime, timezone, timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
 
-    return get_visitor_tickers(visitor_name, max_age_hours=max_age_hours)
+    # Get all sessions with same IP+device fingerprint
+    sibling_ids = get_sessions_by_fingerprint(session_id, max_age_hours=max_age_hours)
+    if not sibling_ids:
+        sibling_ids = [session_id]
+
+    placeholders = ",".join("?" for _ in sibling_ids)
+    rows = conn.execute(
+        f"SELECT metadata_json FROM chat_sessions WHERE id IN ({placeholders}) AND metadata_json IS NOT NULL",
+        sibling_ids,
+    ).fetchall()
+
+    all_tickers: list[tuple[str, datetime]] = []
+    for (meta_json,) in rows:
+        try:
+            meta = json.loads(meta_json)
+        except json.JSONDecodeError:
+            continue
+        viewed = meta.get("viewed_tickers", [])
+        for v in viewed:
+            ticker = v.get("ticker") if isinstance(v, dict) else str(v)
+            if not ticker:
+                continue
+            at_str = v.get("at", "") if isinstance(v, dict) else ""
+            try:
+                at = datetime.fromisoformat(at_str)
+            except (ValueError, TypeError):
+                at = datetime.now(timezone.utc)
+            if at >= cutoff:
+                all_tickers.append((ticker, at))
+
+    all_tickers.sort(key=lambda x: x[1], reverse=True)
+    seen = set()
+    result = []
+    for ticker, _ in all_tickers:
+        if ticker not in seen:
+            seen.add(ticker)
+            result.append(ticker)
+
+    return result
 
 
 def get_visitor_tickers(visitor_name: str, max_age_hours: int = 2) -> list[str]:
@@ -316,6 +349,111 @@ def get_visitor_tickers(visitor_name: str, max_age_hours: int = 2) -> list[str]:
             result.append(ticker)
 
     return result
+
+
+def get_sessions_by_fingerprint(
+    session_id: str,
+    max_age_hours: int = 24,
+) -> list[str]:
+    """Find all session IDs from the same IP + device as the given session.
+
+    Uses client_ip + device fingerprint from metadata_json.
+    Falls back to visitor_name if no IP data.
+    """
+    conn = get_conn()
+
+    # Get this session's fingerprint
+    row = conn.execute(
+        "SELECT metadata_json, visitor_name FROM chat_sessions WHERE id=?",
+        (session_id,),
+    ).fetchone()
+    if not row:
+        return [session_id]
+
+    meta = json.loads(row[0]) if row[0] else {}
+    client_ip = meta.get("client_ip", "")
+    device = meta.get("device", "")
+    visitor_name = row[1]
+
+    if client_ip and device:
+        # Find all sessions with same IP + device fingerprint
+        from datetime import datetime, timezone, timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+
+        rows = conn.execute(
+            """SELECT id, metadata_json, created_at FROM chat_sessions
+               WHERE metadata_json IS NOT NULL
+               ORDER BY created_at DESC""",
+        ).fetchall()
+
+        matches = []
+        for (sid, meta_json, created_at) in rows:
+            try:
+                m = json.loads(meta_json)
+            except json.JSONDecodeError:
+                continue
+            if m.get("client_ip") == client_ip and m.get("device") == device:
+                # Check time window
+                try:
+                    at = datetime.fromisoformat(created_at)
+                    if at >= cutoff:
+                        matches.append(sid)
+                except (ValueError, TypeError):
+                    matches.append(sid)
+
+        if matches:
+            return matches
+
+    # Fallback: all sessions for same visitor_name
+    rows = conn.execute(
+        "SELECT id FROM chat_sessions WHERE visitor_name=? ORDER BY created_at DESC LIMIT 10",
+        (visitor_name,),
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+def get_recent_chat_summaries(
+    session_id: str,
+    max_sessions: int = 3,
+    max_age_hours: int = 24,
+) -> list[dict]:
+    """Get recent conversation summaries from the same user (IP+device).
+
+    Returns list of {date, ticker, topics, message_count} for context.
+    """
+    sibling_sessions = get_sessions_by_fingerprint(session_id, max_age_hours=max_age_hours)
+    # Exclude current session
+    sibling_sessions = [s for s in sibling_sessions if s != session_id]
+
+    conn = get_conn()
+    summaries = []
+    for sid in sibling_sessions[:max_sessions]:
+        # Get session info
+        sess = conn.execute(
+            "SELECT created_at, current_ticker FROM chat_sessions WHERE id=?",
+            (sid,),
+        ).fetchone()
+        if not sess:
+            continue
+
+        # Get message count and first few user messages
+        msgs = conn.execute(
+            "SELECT role, content FROM chat_messages WHERE session_id=? AND role='user' ORDER BY created_at ASC LIMIT 3",
+            (sid,),
+        ).fetchall()
+
+        if not msgs:
+            continue
+
+        topics = [m[1][:100] for m in msgs]
+        summaries.append({
+            "date": (sess[0] or "")[:10],
+            "ticker": sess[1],
+            "topics": topics,
+            "message_count": len(msgs),
+        })
+
+    return summaries
 
 
 # ── Message Operations ───────────────────────────────────────────────────────

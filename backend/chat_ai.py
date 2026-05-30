@@ -148,6 +148,7 @@ def build_prompt(
     route: Optional[str] = None,
     recent_tickers: Optional[list[dict]] = None,
     feedback_context: Optional[list[dict]] = None,
+    previous_chats: Optional[list[dict]] = None,
 ) -> str:
     """Build the full prompt sent to the AI, including context."""
 
@@ -200,6 +201,15 @@ def build_prompt(
             status_icon = {"open": "🔴", "pending": "🟡", "resolved": "🟢", "taken_into_account": "🟢"}.get(fb.get("status", ""), "⚪")
             fb_lines.append(f"  {status_icon} [{fb.get('type','?')}] {fb['content'][:120]}")
         ctx_lines.append("\n".join(fb_lines))
+        has_useful_context = True
+
+    # Previous chat sessions (same user)
+    if previous_chats:
+        chat_lines = ["- Previous conversations (same user):"]
+        for pc in previous_chats[:3]:
+            topics_str = " | ".join(pc.get("topics", [])[:2])
+            chat_lines.append(f"  • {pc.get('date','?')} [{pc.get('ticker','no ticker')}]: {topics_str[:120]}")
+        ctx_lines.append("\n".join(chat_lines))
         has_useful_context = True
 
     if not has_useful_context:
@@ -321,6 +331,7 @@ async def stream_ai_response(
     route: Optional[str] = None,
     recent_tickers: Optional[list[dict]] = None,
     feedback_context: Optional[list[dict]] = None,
+    previous_chats: Optional[list[dict]] = None,
 ) -> AsyncGenerator[str, None]:
     """Build prompt, stream AI response. Main entry point."""
     prompt = build_prompt(
@@ -337,6 +348,7 @@ async def stream_ai_response(
         route=route,
         recent_tickers=recent_tickers,
         feedback_context=feedback_context,
+        previous_chats=previous_chats,
     )
     async for token in stream_deepseek(SYSTEM_PROMPT, prompt):
         yield token
