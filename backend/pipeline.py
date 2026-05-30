@@ -1033,6 +1033,26 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
                 if forward_eps:
                     result["eps_estimate"] = forward_eps / 4.0
 
+            # Populate revenue_estimate from yfinance info (consensus estimate)
+            if not result.get("revenue_estimate"):
+                rev_est = info.get("revenueEstimate")
+                if rev_est:
+                    result["revenue_estimate"] = float(rev_est)
+                else:
+                    # Fallback: compute a rough quarterly estimate from annual data
+                    # Some tickers have revenueQuarterlyGrowth; use prior year quarter
+                    rev_q = result.get("revenue_quarterly")
+                    rev_prior = result.get("revenue_quarterly_prior_year")
+                    if rev_q is not None and rev_prior is not None and rev_prior > 0:
+                        # Use current quarter revenue / (1 + growth) to get last year same quarter
+                        # Then apply expected growth to estimate current consensus
+                        expected_growth = info.get("expectedGrowth", info.get("earningsGrowth"))
+                        if expected_growth:
+                            expected_growth = float(expected_growth)
+                            # Rough estimate: prior year same quarter × (1 + expected growth)
+                            rev_estimate = rev_prior * (1 + abs(expected_growth))
+                            result["revenue_estimate"] = rev_estimate
+
         current_values = {
             "roe": _ratio(efficiency_current_net_income, balance_value(("Stockholders Equity", "Common Stock Equity"), 0)),
             "rotce": _ratio(efficiency_current_net_income, balance_value(("Tangible Book Value",), 0)),
@@ -1089,6 +1109,15 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
             result[f"{metric}_yoy"] = _yoy_change(current, prior)
             if metric == "net_income_quarterly":
                 result["net_income_yoy"] = result[f"{metric}_yoy"]
+
+        # Margins: YoY change must be in percentage points (difference), not
+        # percentage change.  E.g. GM 68.6% → 70.0% = +1.4 pts, NOT +2.0%.
+        for margin_key in ("gross_margin", "operating_margin"):
+            cur = current_values.get(margin_key)
+            pri = prior_values.get(margin_key)
+            if cur is not None and pri is not None:
+                result[f"{margin_key}_yoy"] = cur - pri
+
         return result
     except Exception as exc:
         logger.warning("Failed to extract quarterly comparison for %s: %s", ticker, exc)
@@ -1504,6 +1533,10 @@ def _add_earnings_deep_dive_if_transcript(
                 deep_dive_metrics = deep_dive_metrics.model_copy(update={"segments": segments})
                 logger.info(f"[{ticker}] Marked segments as annual context (no transcript)")
 
+        # ── Set dossier phase → PDF_GENERATING so frontend shows progress ──
+        from backend.async_dossier import set_dossier_phase, DossierPhase
+        set_dossier_phase(ticker, DossierPhase.PDF_GENERATING)
+        
         from backend.earnings_deep_dive.generator import generate_deep_dive
         from backend.earnings_deep_dive.mapper import (
             build_earnings_deep_dive_report,
@@ -1597,6 +1630,9 @@ def _add_earnings_deep_dive_if_transcript(
             transcript_url=transcript_url,
         )
 
+        # ── Pre-render validation phase ──
+        set_dossier_phase(ticker, DossierPhase.PDF_VALIDATING)
+
         en_validation = validate_pre_render(
             ticker=ticker,
             quarter=transcript_quarter,
@@ -1610,6 +1646,7 @@ def _add_earnings_deep_dive_if_transcript(
         if en_validation.errors:
             error_msg = format_validation_error(en_validation, ticker)
             logger.error(error_msg)
+            set_dossier_phase(ticker, DossierPhase.PDF_BLOCKED, error=error_msg[:200])
             raise ValidationError(
                 ticker=ticker,
                 errors=en_validation.errors,
@@ -1702,6 +1739,8 @@ def _add_earnings_deep_dive_if_transcript(
             from backend.earnings_deep_dive.report_model import SourceRef
             en_report_model.sources.append(SourceRef(label="Official Website", url=website))
         render_earnings_deep_dive_pdf(en_report_model, en_pdf_path)
+        logger.info(f"[{ticker}] Earnings deep-dive PDF built successfully")
+        set_dossier_phase(ticker, DossierPhase.COMPLETE)
 
         # Render JP PDF (best-effort)
         if generate_jp and jp_response is not None:
@@ -1748,6 +1787,9 @@ def _add_earnings_deep_dive_if_transcript(
         return True
     except Exception as e:
         logger.warning(f"[{ticker}] Earnings deep-dive skipped: {e}")
+        # Note: ValidationError already sets PDF_BLOCKED before raising
+        if not isinstance(e, ValidationError):
+            set_dossier_phase(ticker, DossierPhase.FAILED, error=str(e)[:200])
         return False
 
 
