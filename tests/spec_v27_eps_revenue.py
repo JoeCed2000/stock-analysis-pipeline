@@ -235,3 +235,115 @@ class TestRule13Integration:
         # RULE 3 should fire (contradiction)
         errs_3 = _errors_for(result, "eps_direction_contradiction")
         assert len(errs_3) >= 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 13e — Estimate-Actual proximity suspicion
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestEstimateActualProximity:
+    """RULE 13e: flag when estimate and actual are suspiciously close."""
+
+    def test_revenue_estimate_near_actual_warns(self):
+        from backend.earnings_deep_dive.schemas import FinancialMetrics
+        metrics = FinancialMetrics(
+            revenue_actual=111.2e9,
+            revenue_estimate=111.18e9,  # 0.02% difference
+        )
+        sections = {
+            "EPS & Revenue": (
+                "| Revenue | $111.18B | $111.2B | +0.02% | +16.6% | yfinance |\n"
+            )
+        }
+        result = validate_pre_render("AAPL", "FY2026 Q1", metrics, sections)
+        wrns = _warnings_for(result, "eps_revenue_estimate_actual_proximity")
+        assert len(wrns) >= 1, "Estimate within 1% of actual should trigger proximity warning"
+
+    def test_revenue_estimate_clearly_different_passes(self):
+        from backend.earnings_deep_dive.schemas import FinancialMetrics
+        metrics = FinancialMetrics(
+            revenue_actual=22.1e9,
+            revenue_estimate=20.8e9,  # ~6% difference
+        )
+        sections = {
+            "EPS & Revenue": (
+                "| Revenue | $20.8B | $22.1B | +6.3% | +15% | Company reported |\n"
+            )
+        }
+        result = validate_pre_render("NVDA", "FY2026 Q1", metrics, sections)
+        wrns = _warnings_for(result, "eps_revenue_estimate_actual_proximity")
+        assert len(wrns) == 0
+
+    def test_no_estimate_skips_proximity_check(self):
+        from backend.earnings_deep_dive.schemas import FinancialMetrics
+        metrics = FinancialMetrics(revenue_actual=22.1e9)  # No estimate
+        sections = {
+            "EPS & Revenue": "| Revenue | — | $22.1B | — | +15% | Company |\n"
+        }
+        result = validate_pre_render("NVDA", "FY2026 Q1", metrics, sections)
+        wrns = _warnings_for(result, "eps_revenue_estimate_actual_proximity")
+        assert len(wrns) == 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 13f — YoY without prior-year data
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestYoYWithoutPriorData:
+    """RULE 13f: YoY comparison when prior-year metric is missing."""
+
+    def test_yoy_mentioned_but_no_prior_data_blocked(self):
+        from backend.earnings_deep_dive.schemas import FinancialMetrics
+        metrics = FinancialMetrics(revenue_actual=111.2e9)  # No revenue_yoy!
+        sections = {
+            "EPS & Revenue": (
+                "Revenue grew 16.6% YoY to $111.2B, a March quarter record.\n"
+            )
+        }
+        result = validate_pre_render("AAPL", "FY2026 Q1", metrics, sections)
+        errs = _errors_for(result, "eps_revenue_yoy_without_prior_data")
+        assert len(errs) >= 1
+
+    def test_yoy_mentioned_with_revenue_yoy_passes(self):
+        from backend.earnings_deep_dive.schemas import FinancialMetrics
+        metrics = FinancialMetrics(revenue_actual=22.1e9, revenue_yoy=0.15)
+        sections = {
+            "EPS & Revenue": "Revenue grew 15% YoY to $22.1B.\n"
+        }
+        result = validate_pre_render("NVDA", "FY2026 Q1", metrics, sections)
+        errs = _errors_for(result, "eps_revenue_yoy_without_prior_data")
+        assert len(errs) == 0
+
+    def test_yoy_mentioned_with_eps_yoy_passes(self):
+        from backend.earnings_deep_dive.schemas import FinancialMetrics
+        metrics = FinancialMetrics(eps_actual=6.50, eps_yoy=0.18)
+        sections = {
+            "EPS & Revenue": "EPS grew 18% YoY to $6.50.\n"
+        }
+        result = validate_pre_render("NVDA", "FY2026 Q1", metrics, sections)
+        errs = _errors_for(result, "eps_revenue_yoy_without_prior_data")
+        assert len(errs) == 0
+
+    def test_no_yoy_mentioned_passes(self):
+        sections = {
+            "EPS & Revenue": "EPS was $6.50 this quarter. Revenue reached $22.1B.\n"
+        }
+        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
+        errs = _errors_for(result, "eps_revenue_yoy_without_prior_data")
+        assert len(errs) == 0
+
+    def test_yoy_with_revenue_yoy_passes(self):
+        """If revenue_yoy exists in metrics, YoY is verifiable."""
+        from backend.earnings_deep_dive.schemas import FinancialMetrics
+        metrics = FinancialMetrics(
+            revenue_actual=22.1e9,
+            revenue_yoy=0.15,
+        )
+        sections = {
+            "EPS & Revenue": "Revenue grew 15% YoY to $22.1B.\n"
+        }
+        result = validate_pre_render("NVDA", "FY2026 Q1", metrics, sections)
+        errs = _errors_for(result, "eps_revenue_yoy_without_prior_data")
+        assert len(errs) == 0

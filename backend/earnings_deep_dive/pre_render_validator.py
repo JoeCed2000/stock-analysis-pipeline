@@ -1080,6 +1080,62 @@ def validate_pre_render(
                 severity="error",
             ))
 
+        # 13e. Estimate-Actual proximity suspicion (data quality)
+        # ---------------------------------------------------------------
+        # When revenue estimate and actual are suspiciously close
+        # (within 1%), it's likely the estimate came from the same source
+        # as the actual, or the LLM hallucinated an estimate.
+        rev_actual = metric_map.get("revenue_actual")
+        rev_estimate = metric_map.get("revenue_estimate")
+        if (rev_actual is not None and rev_estimate is not None
+                and rev_actual != 0 and rev_estimate != 0):
+            proximity = abs(rev_actual - rev_estimate) / rev_actual
+            if proximity < 0.01:  # <1% difference
+                warnings.append(ValidationWarning(
+                    check="eps_revenue_estimate_actual_proximity",
+                    section="EPS & Revenue",
+                    detail=(
+                        f"Revenue estimate (${rev_estimate:,.0f}) and actual "
+                        f"(${rev_actual:,.0f}) differ by only {proximity:.2%}. "
+                        f"This suggests the estimate may be derived from the "
+                        f"actual rather than an independent consensus source. "
+                        f"Verify estimate source independence."
+                    ),
+                    severity="warning",
+                ))
+
+        # 13f. YoY claimed but prior-year metric missing from ledger
+        # ---------------------------------------------------------------
+        # If the EPS & Revenue text presents a YoY change but the
+        # corresponding yoy field is absent from the metrics ledger,
+        # flag it as unverifiable.
+        yoy_mentioned = bool(re.search(
+            r'YoY|year.over.year|vs\.?\s*prior|compared\s+to\s+(?:the\s+)?(?:prior|previous|last)\s+(?:year|quarter)',
+            er, re.IGNORECASE
+        ))
+        if yoy_mentioned:
+            eps_yoy_val = metric_map.get("eps_yoy")
+            rev_yoy_val = metric_map.get("revenue_yoy")
+            eps_actual_v = metric_map.get("eps_actual")
+            rev_actual_v = metric_map.get("revenue_actual")
+            yoy_missing = []
+            if eps_yoy_val is None and eps_actual_v is not None:
+                yoy_missing.append("EPS")
+            if rev_yoy_val is None and rev_actual_v is not None:
+                yoy_missing.append("Revenue")
+            if yoy_missing:
+                warnings.append(ValidationWarning(
+                    check="eps_revenue_yoy_without_prior_data",
+                    section="EPS & Revenue",
+                    detail=(
+                        f"YoY comparison mentioned for {', '.join(yoy_missing)} "
+                        f"but no prior-year metric exists in the metrics ledger. "
+                        f"Provide eps_yoy/revenue_yoy from data, or mark as "
+                        f"'Not calculable from reviewed sources'."
+                    ),
+                    severity="error",
+                ))
+
     # ── RULE 15 (BLOCKING): §25 Chart data consistency ─────────────────────
     #
     # Chart must not contradict text/table, and must use real data.
