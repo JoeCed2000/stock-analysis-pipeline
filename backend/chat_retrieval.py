@@ -32,11 +32,26 @@ def _hash_file(path: str) -> str:
     return h.hexdigest()
 
 
-def _extract_text(pdf_path: str) -> str:
-    """Extract text from a PDF file. Uses pymupdf if available, otherwise pdftotext."""
+def _extract_text(file_path: str) -> str:
+    """Extract text from a PDF or text file. Uses pymupdf for PDFs, direct read for .txt."""
+    path = Path(file_path)
+
+    # Plain text files — read directly
+    if path.suffix.lower() in (".txt", ".md", ".text"):
+        try:
+            return path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            try:
+                return path.read_text(encoding="latin-1")
+            except Exception:
+                return ""
+        except Exception:
+            return ""
+
+    # PDFs — use pymupdf or pdftotext
     try:
         import fitz  # pymupdf
-        doc = fitz.open(pdf_path)
+        doc = fitz.open(file_path)
         text_parts = []
         for page in doc:
             text_parts.append(page.get_text())
@@ -210,20 +225,23 @@ def ingest_analyses_pdfs(ticker: Optional[str] = None, max_pdfs: int = 20) -> in
     if not analyses_dir.exists():
         return 0
 
-    # Only ingest these PDF types (most recent first)
+    # Only ingest these content types (most recent first)
     priority_patterns = [
         "07_final_report/earnings_deep_dive.pdf",
         "07_final_report/company_overview",
         "04_transcripts_and_management/earnings_news",
+        "04_transcripts_and_management/transcript_",  # Seeking Alpha transcript .txt
     ]
 
     candidates = []
-    for pdf_file in analyses_dir.rglob("*.pdf"):
-        path_str = str(pdf_file)
-        for pat in priority_patterns:
-            if pat in path_str:
-                candidates.append(pdf_file)
-                break
+    # Scan both PDFs and transcript text files
+    for ext in (".pdf", ".txt"):
+        for f in analyses_dir.rglob(f"*{ext}"):
+            path_str = str(f)
+            for pat in priority_patterns:
+                if pat in path_str:
+                    candidates.append(f)
+                    break
 
     # Sort by modification time (newest first), limit
     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)

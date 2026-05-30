@@ -14,15 +14,7 @@ logger = logging.getLogger(__name__)
 
 MIN_TRANSCRIPT_CHARS = 500
 TRUSTED_TRANSCRIPT_HOSTS = (
-    "microsoft.com",
-    "investor.",
-    "ir.",
-    "stockanalysis.com",
-    "fool.com",
     "seekingalpha.com",
-    "earningscall.ai",
-    "tickertrends.io",
-    "fintool.com",
 )
 
 
@@ -51,9 +43,9 @@ def search_transcript_pages(ticker: str, company: str | None = None, limit: int 
     ticker_clean = ticker.strip().upper()
     company_part = f" {company.strip()}" if isinstance(company, str) and company.strip() else ""
     queries = [
-        f"{ticker_clean}{company_part} earnings call transcript official investor relations",
-        f"{ticker_clean}{company_part} fiscal quarter earnings transcript EPS revenue",
-        f"{ticker_clean} earnings call transcript stockanalysis",
+        f'{ticker_clean}{company_part} earnings call transcript site:seekingalpha.com',
+        f'{ticker_clean}{company_part} \"earnings call transcript\" seekingalpha',
+        f'{ticker_clean} seeking alpha earnings transcript quarter',
     ]
 
     candidates: list[dict[str, str]] = []
@@ -73,17 +65,15 @@ def search_transcript_pages(ticker: str, company: str | None = None, limit: int 
     transcripts: List[Dict[str, str]] = []
     for candidate in candidates:
         url = candidate["url"]
-        # Resolve stockanalysis.com listing pages to specific transcript links
-        resolved_url = _resolve_stockanalysis_url(url, ticker_clean)
-        text = _fetch_page_text(resolved_url)
+        text = _fetch_page_text(url)
         if not _looks_like_transcript(text, ticker_clean):
             continue
         transcripts.append(
             {
-                "source": "Google Search Transcript",
+                "source": "Seeking Alpha",
                 "type": "earnings_transcript",
                 "title": candidate.get("title", "") or f"{ticker_clean} earnings transcript",
-                "url": resolved_url,
+                "url": url,
                 "text": text,
                 "text_length": len(text),
                 "quarter": _extract_quarter(candidate.get("title", "") + " " + text[:1000]),

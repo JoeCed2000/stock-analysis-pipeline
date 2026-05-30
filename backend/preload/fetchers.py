@@ -134,66 +134,30 @@ def fetch_financials(ticker: str) -> Dict[str, Any]:
 
 # ── Transcripts ──────────────────────────────────────────────────────────
 def fetch_transcripts(ticker: str, company: str = "") -> List[Dict[str, Any]]:
-    """Search for earnings call transcripts from all available free sources."""
+    """Search for earnings call transcripts — Seeking Alpha ONLY.
+
+    Other sources (RapidAPI, Fool, DDG, stockanalysis.com) are disabled.
+    Seeking Alpha is the sole authorized transcript source per Ced's directive.
+    """
     results = []
-    
-    # 0. Try transcript_finder first (RapidAPI, AlphaVantage, Fool, DDG)
+
+    # Google Custom Search → Seeking Alpha only (transcript_web_search.py)
     try:
-        _rate_limit("rapidapi")
-        from backend.transcript_finder import find_transcripts
-        tf_result = find_transcripts(ticker, company=company or ticker)
-        for src in tf_result.get("sources", []):
-            if src.get("text") and len(src.get("text", "")) >= 2000:
+        from backend.transcript_web_search import search_transcript_pages
+        sa_results = search_transcript_pages(ticker, company=company)
+        for r in sa_results:
+            if r.get("text") and len(r.get("text", "")) >= 2000:
                 results.append({
-                    "source": src.get("source", "Unknown"),
-                    "url": src.get("url", ""),
-                    "text": src["text"],
-                    "quarter": src.get("quarter", ""),
-                    "date": src.get("date", ""),
-                    "chars": len(src["text"]),
+                    "source": r.get("source", "Seeking Alpha"),
+                    "url": r.get("url", ""),
+                    "text": r["text"],
+                    "quarter": r.get("quarter", ""),
+                    "date": r.get("date", ""),
+                    "chars": len(r["text"]),
                 })
-                break  # One good transcript per run is enough
     except Exception as e:
-        logger.warning(f"[{ticker}] transcript_finder failed: {e}")
-    
-    # 1. Fool.com direct search fallback
-    if not results:
-        try:
-            _rate_limit("fool")
-            from backend.sources.motleyfool import get_transcript as get_fool
-            fool = get_fool(ticker)
-            if fool and fool.get("text") and len(fool.get("text", "")) >= 2000:
-                results.append({
-                    "source": "The Motley Fool",
-                    "url": fool.get("url", ""),
-                    "text": fool["text"],
-                    "quarter": "",
-                    "date": fool.get("date", ""),
-                    "chars": len(fool["text"]),
-                })
-        except Exception as e:
-            logger.warning(f"[{ticker}] Fool.com failed: {e}")
-    
-    # 2. DuckDuckGo transcript search
-    if not results:
-        try:
-            _rate_limit("duckduckgo")
-            from backend.ddg_transcript_search import search_transcripts_ddg
-            ddg_results = search_transcripts_ddg(ticker, company=company)
-            for r in ddg_results:
-                if r.get("text") and len(r.get("text", "")) >= 2000:
-                    results.append({
-                        "source": r.get("source", "DuckDuckGo"),
-                        "url": r.get("url", ""),
-                        "text": r["text"],
-                        "quarter": r.get("quarter", ""),
-                        "date": r.get("date", ""),
-                        "chars": len(r["text"]),
-                    })
-                    break
-        except Exception as e:
-            logger.warning(f"[{ticker}] DDG transcript search failed: {e}")
-    
+        logger.warning(f"[{ticker}] Seeking Alpha transcript search failed: {e}")
+
     return results
 
 
