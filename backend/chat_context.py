@@ -135,25 +135,37 @@ async def build_chat_context(
         "route": route,
         "visitor_display_name": _detect_visitor_name(session_id),
         "recent_tickers": _get_recent_tickers(session_id=session_id, limit=5, exclude_ticker=ticker),
-        "feedback_context": _get_feedback_context(),
-        "previous_chats": _get_previous_chat_summaries(session_id),
+        "feedback_context": _get_feedback_context(session_id=session_id),
+        "previous_chats": _get_previous_chat_summaries(session_id=session_id),
     }
 
 
 def _get_previous_chat_summaries(session_id: str) -> list[dict]:
-    """Get summaries of previous chat sessions from the same user (IP+device)."""
+    """Get summaries of previous chat sessions from the same visitor."""
     from . import chat_store
+    from . import chat_store as _cs
     try:
-        return chat_store.get_recent_chat_summaries(session_id, max_sessions=3, max_age_hours=24)
+        session = _cs.get_session(session_id)
+        if not session or not session.visitor_id:
+            return []
+        return chat_store.get_recent_chat_summaries(
+            session.visitor_id, max_sessions=3, max_age_hours=24,
+            exclude_session_id=session_id,
+        )
     except Exception:
         return []
 
 
-def _get_feedback_context() -> list[dict]:
-    """Get recent feedback for the chat AI context."""
+def _get_feedback_context(session_id: str) -> list[dict]:
+    """Get recent feedback for the chat AI context, scoped by visitor."""
     from . import chat_store
     try:
-        return chat_store.get_recent_feedback_for_context(limit=8)
+        session = chat_store.get_session(session_id)
+        if not session or not session.visitor_id:
+            return []
+        return chat_store.get_recent_feedback_for_context(
+            visitor_id=session.visitor_id, limit=8,
+        )
     except Exception:
         return []
 
@@ -163,18 +175,19 @@ def _get_recent_tickers(
     limit: int = 5,
     exclude_ticker: Optional[str] = None,
 ) -> list[dict]:
-    """Get tickers this session has viewed, with their available PDFs.
+    """Get tickers this visitor has viewed, with their available PDFs.
 
-    Uses the session's ticker history (NOT the global analyses/ directory)
-    so Nami only sees her own tickers, not Ced's.
+    Uses the visitor's ticker history (NOT the global analyses/ directory).
     """
     from pathlib import Path
 
-    # Get tickers from session history
+    # Get tickers from visitor history
     tickers: list[str] = []
     if session_id:
         from . import chat_store
-        tickers = chat_store.get_session_tickers(session_id, max_age_hours=2)
+        session = chat_store.get_session(session_id)
+        if session and session.visitor_id:
+            tickers = chat_store.get_session_tickers(session.visitor_id, max_age_hours=2)
 
     if not tickers:
         return []
@@ -245,11 +258,13 @@ def _get_uploaded_feedback_pdfs(session_id: Optional[str], limit: int = 3) -> li
     if not analyses_dir.exists():
         return []
 
-    # Get tickers for this session
+    # Get tickers for this visitor
     tickers = set()
     if session_id:
         from . import chat_store
-        tickers = set(chat_store.get_session_tickers(session_id, max_age_hours=24))
+        session = chat_store.get_session(session_id)
+        if session and session.visitor_id:
+            tickers = set(chat_store.get_session_tickers(session.visitor_id, max_age_hours=24))
 
     results = []
     for fb_dir in sorted(analyses_dir.glob("feedback_*"), key=lambda d: d.stat().st_mtime, reverse=True):

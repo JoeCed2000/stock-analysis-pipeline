@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 # ── Request Models ──────────────────────────────────────────────────────────
 
 class ChatSessionRequest(BaseModel):
+    visitor_id: Optional[str] = None
     visitor_name: str = "Nami"
     language: str = "ja"
     metadata: dict = Field(default_factory=dict)
@@ -40,6 +41,7 @@ class ChatMessageRequest(BaseModel):
 
 class ChatSessionResponse(BaseModel):
     session_id: str
+    visitor_id: str
     language: str
     visitor_name: str
 
@@ -94,6 +96,7 @@ class ChatSession:
     def __init__(
         self,
         id: str,
+        visitor_id: str = "",
         visitor_name: str = "Nami",
         language: str = "ja",
         status: str = "active",
@@ -105,6 +108,7 @@ class ChatSession:
         metadata_json: Optional[str] = None,
     ):
         self.id = id
+        self.visitor_id = visitor_id
         self.visitor_name = visitor_name
         self.language = language
         self.status = status

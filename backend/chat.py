@@ -38,6 +38,52 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 # ── Security constants ─────────────────────────────────────────────────────
 _MAX_MESSAGE_LENGTH = 4000  # characters
 
+# Trusted proxy IPs for X-Forwarded-For header validation
+_TRUSTED_PROXY_IPS = {
+    "127.0.0.1",
+    "::1",
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "100.64.0.0/10",     # Cloudflare WARP / carrier-grade NAT
+    # Add any known reverse proxy IPs here (e.g. Cloudflare, Nginx on known infra)
+}
+
+
+def _is_trusted_proxy(ip: str) -> bool:
+    """Check if an IP address belongs to a trusted proxy.
+
+    Validates against _TRUSTED_PROXY_IPS using direct match and CIDR.
+    """
+    if not ip:
+        return False
+    if ip in _TRUSTED_PROXY_IPS:
+        return True
+    # CIDR check (simplified — just check IP starts with known prefixes)
+    for trusted in _TRUSTED_PROXY_IPS:
+        if "/" in trusted:
+            prefix = trusted.split("/")[0]
+            if ip.startswith(prefix.rstrip(".")):
+                return True
+    return False
+
+
+def _get_real_client_ip(request: Request) -> str:
+    """Extract the real client IP, validating the X-Forwarded-For chain.
+
+    Only trusts X-Forwarded-For if the immediate connection is from a known proxy.
+    Otherwise uses the direct TCP connection IP.
+    """
+    direct_ip = request.client.host if request.client else "unknown"
+
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded and _is_trusted_proxy(direct_ip):
+        # X-Forwarded-For is a comma-separated list: client, proxy1, proxy2
+        # Take the first (original client) IP
+        return forwarded.split(",")[0].strip()
+
+    return direct_ip
+
 
 def _fingerprint_device(user_agent: str) -> str:
     """Extract device fingerprint from User-Agent for session grouping.
@@ -115,30 +161,37 @@ def _utcnow_iso() -> str:
 @router.post("/session", response_model=ChatSessionResponse)
 async def create_session(req: ChatSessionRequest, request: Request):
     """Create or return an existing session."""
-    # Capture client IP and device fingerprint
-    client_ip = request.client.host if request.client else "unknown"
+    # Capture client IP (with trusted proxy chain validation) and device fingerprint
+    client_ip = _get_real_client_ip(request)
     user_agent = request.headers.get("User-Agent", "")
     device_info = _fingerprint_device(user_agent)
+
+    # Generate UUID4 visitor_id if not provided
+    visitor_id = req.visitor_id or uuid.uuid4().hex
 
     meta = req.metadata or {}
     meta.update({
         "client_ip": client_ip,
         "user_agent": user_agent[:200],
         "device": device_info,
+        "visitor_id": visitor_id,
     })
 
     session = chat_store.create_session(
+        visitor_id=visitor_id,
         visitor_name=req.visitor_name,
         language=req.language,
         metadata=meta,
     )
     chat_store.log_event(session.id, "session_created", {
         "language": req.language,
+        "visitor_id": visitor_id,
         "ip": client_ip,
         "device": device_info,
     })
     return ChatSessionResponse(
         session_id=session.id,
+        visitor_id=visitor_id,
         language=session.language,
         visitor_name=session.visitor_name,
     )

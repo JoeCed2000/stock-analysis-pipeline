@@ -46,6 +46,7 @@ def _init_tables(conn: sqlite3.Connection) -> None:
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS chat_sessions (
             id              TEXT PRIMARY KEY,
+            visitor_id      TEXT NOT NULL DEFAULT '',
             visitor_name    TEXT NOT NULL DEFAULT 'Nami',
             language        TEXT NOT NULL DEFAULT 'ja',
             status          TEXT NOT NULL DEFAULT 'active',
@@ -131,6 +132,8 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             ON chat_messages(status, created_at);
         CREATE INDEX IF NOT EXISTS idx_sessions_updated
             ON chat_sessions(updated_at);
+        CREATE INDEX IF NOT EXISTS idx_sessions_visitor
+            ON chat_sessions(visitor_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_pdf_ticker
             ON pdf_documents(ticker);
         CREATE INDEX IF NOT EXISTS idx_chunks_pdf
@@ -172,6 +175,7 @@ def _init_tables(conn: sqlite3.Connection) -> None:
 # ── Session Operations ───────────────────────────────────────────────────────
 
 def create_session(
+    visitor_id: str = "",
     visitor_name: str = "Nami",
     language: str = "ja",
     metadata: Optional[dict] = None,
@@ -181,13 +185,13 @@ def create_session(
     now = _utcnow_iso()
     meta_json = json.dumps(metadata) if metadata else None
     conn.execute(
-        """INSERT INTO chat_sessions (id, visitor_name, language, created_at, updated_at, last_seen_at, metadata_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (sid, visitor_name, language, now, now, now, meta_json),
+        """INSERT INTO chat_sessions (id, visitor_id, visitor_name, language, created_at, updated_at, last_seen_at, metadata_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (sid, visitor_id or "", visitor_name, language, now, now, now, meta_json),
     )
     conn.commit()
     return ChatSession(
-        id=sid, visitor_name=visitor_name, language=language,
+        id=sid, visitor_id=visitor_id or "", visitor_name=visitor_name, language=language,
         created_at=now, updated_at=now, last_seen_at=now,
         metadata_json=meta_json,
     )
@@ -262,16 +266,16 @@ def track_session_ticker(session_id: str, ticker: str) -> None:
     conn.commit()
 
 
-def get_session_tickers(session_id: str, max_age_hours: int = 2) -> list[str]:
-    """Get tickers this user (IP+device) has viewed across ALL their sessions."""
+def get_session_tickers(visitor_id: str, max_age_hours: int = 2) -> list[str]:
+    """Get tickers this visitor has viewed across ALL their sessions."""
     conn = get_conn()
     from datetime import datetime, timezone, timedelta
     cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
 
-    # Get all sessions with same IP+device fingerprint
-    sibling_ids = get_sessions_by_fingerprint(session_id, max_age_hours=max_age_hours)
+    # Get all sessions for this visitor
+    sibling_ids = get_sessions_by_visitor(visitor_id, max_age_hours=max_age_hours)
     if not sibling_ids:
-        sibling_ids = [session_id]
+        return []
 
     placeholders = ",".join("?" for _ in sibling_ids)
     rows = conn.execute(
@@ -351,79 +355,42 @@ def get_visitor_tickers(visitor_name: str, max_age_hours: int = 2) -> list[str]:
     return result
 
 
-def get_sessions_by_fingerprint(
-    session_id: str,
+def get_sessions_by_visitor(
+    visitor_id: str,
     max_age_hours: int = 24,
 ) -> list[str]:
-    """Find all session IDs from the same IP + device as the given session.
+    """Find all session IDs belonging to the same visitor_id within the time window.
 
-    Uses client_ip + device fingerprint from metadata_json.
-    Falls back to visitor_name if no IP data.
+    Fail-closed: empty/corrupted visitor_id returns empty list.
     """
+    if not visitor_id:
+        return []
+
     conn = get_conn()
+    from datetime import datetime, timezone, timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
 
-    # Get this session's fingerprint
-    row = conn.execute(
-        "SELECT metadata_json, visitor_name FROM chat_sessions WHERE id=?",
-        (session_id,),
-    ).fetchone()
-    if not row:
-        return [session_id]
-
-    meta = json.loads(row[0]) if row[0] else {}
-    client_ip = meta.get("client_ip", "")
-    device = meta.get("device", "")
-    visitor_name = row[1]
-
-    if client_ip and device:
-        # Find all sessions with same IP + device fingerprint
-        from datetime import datetime, timezone, timedelta
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
-
-        rows = conn.execute(
-            """SELECT id, metadata_json, created_at FROM chat_sessions
-               WHERE metadata_json IS NOT NULL
-               ORDER BY created_at DESC""",
-        ).fetchall()
-
-        matches = []
-        for (sid, meta_json, created_at) in rows:
-            try:
-                m = json.loads(meta_json)
-            except json.JSONDecodeError:
-                continue
-            if m.get("client_ip") == client_ip and m.get("device") == device:
-                # Check time window
-                try:
-                    at = datetime.fromisoformat(created_at)
-                    if at >= cutoff:
-                        matches.append(sid)
-                except (ValueError, TypeError):
-                    matches.append(sid)
-
-        if matches:
-            return matches
-
-    # Fallback: all sessions for same visitor_name
     rows = conn.execute(
-        "SELECT id FROM chat_sessions WHERE visitor_name=? ORDER BY created_at DESC LIMIT 10",
-        (visitor_name,),
+        "SELECT id FROM chat_sessions WHERE visitor_id=? AND created_at >= ? ORDER BY created_at DESC",
+        (visitor_id, cutoff.isoformat()),
     ).fetchall()
     return [r[0] for r in rows]
 
 
 def get_recent_chat_summaries(
-    session_id: str,
+    visitor_id: str,
     max_sessions: int = 3,
     max_age_hours: int = 24,
+    exclude_session_id: str = "",
 ) -> list[dict]:
-    """Get recent conversation summaries from the same user (IP+device).
+    """Get recent conversation summaries from the same visitor.
 
     Returns list of {date, ticker, topics, message_count} for context.
     """
-    sibling_sessions = get_sessions_by_fingerprint(session_id, max_age_hours=max_age_hours)
-    # Exclude current session
-    sibling_sessions = [s for s in sibling_sessions if s != session_id]
+    sibling_sessions = get_sessions_by_visitor(visitor_id, max_age_hours=max_age_hours)
+    # Exclude current session if specified
+    if exclude_session_id:
+        sibling_sessions = [s for s in sibling_sessions if s != exclude_session_id]
 
     conn = get_conn()
     summaries = []
@@ -747,25 +714,29 @@ def close_session(session_id: str) -> bool:
     return conn.total_changes > 0
 
 
-def get_recent_feedback_for_context(visitor_name: str = "Nami", limit: int = 10) -> list[dict]:
-    """Get recent feedback items for chat context.
+def get_recent_feedback_for_context(visitor_id: str = "", limit: int = 10) -> list[dict]:
+    """Get recent feedback items for chat context, scoped by visitor_id.
 
+    Fail-closed: empty visitor_id returns empty list.
     Pulls from both chat_feedback (auto-detected) and the JSON feedback_store.
     Returns a list of {type, content, status, date, ticker} for the AI prompt.
     """
+    if not visitor_id:
+        return []
+
     conn = get_conn()
     items = []
 
-    # 1. Chat feedback (auto-detected)
+    # 1. Chat feedback (auto-detected) — scoped by visitor_id
     rows = conn.execute(
         """SELECT cf.feedback_type, cf.content, cf.status, cf.created_at,
                   cs.current_ticker
            FROM chat_feedback cf
            JOIN chat_sessions cs ON cf.session_id = cs.id
-           WHERE cs.visitor_name = ?
+           WHERE cs.visitor_id = ?
            ORDER BY cf.created_at DESC
            LIMIT ?""",
-        (visitor_name, limit),
+        (visitor_id, limit),
     ).fetchall()
 
     for r in rows:

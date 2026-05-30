@@ -7,6 +7,17 @@ const WS_BASE = (() => {
   return url.replace(/^http/, 'ws');
 })();
 
+const VISITOR_ID_KEY = 'chat_visitor_id';
+
+function getOrCreateVisitorId() {
+  let vid = localStorage.getItem(VISITOR_ID_KEY);
+  if (!vid) {
+    vid = crypto.randomUUID();
+    localStorage.setItem(VISITOR_ID_KEY, vid);
+  }
+  return vid;
+}
+
 function uid() {
   return 'ik_' + Math.random().toString(36).slice(2, 10);
 }
@@ -42,14 +53,19 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
     let cancelled = false;
     async function init() {
       try {
+        const visitorId = getOrCreateVisitorId();
         const res = await fetch(`${API_BASE}/chat/session`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ visitor_name: 'Nami', language: 'ja' }),
+          body: JSON.stringify({ visitor_name: 'Nami', language: 'ja', visitor_id: visitorId }),
         });
         if (res.ok && !cancelled) {
           const data = await res.json();
           setSessionId(data.session_id);
+          // Persist server-side visitor_id (in case backend generated one)
+          if (data.visitor_id) {
+            localStorage.setItem(VISITOR_ID_KEY, data.visitor_id);
+          }
           // Load history
           const histRes = await fetch(`${API_BASE}/chat/history?session_id=${data.session_id}`);
           if (histRes.ok) {
