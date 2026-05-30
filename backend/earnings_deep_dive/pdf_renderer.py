@@ -446,6 +446,14 @@ def _format_markdown(text: str) -> str:
     # LLM artifacts: backslash-escaped percent, ampersand, hash
     for ch in ('%', '&', '#', '_'):
         text = text.replace(f'\\{ch}', ch)
+    # ── Strip markdown table syntax that leaks into prose ──
+    # Kill separator rows: |---|...| (any combination of hyphens, colons, spaces)
+    text = re.sub(r'^\s*\|[\s\-:]+\|\s*$', '', text, flags=re.MULTILINE)
+    # Kill pipe-delimited table rows that leak (e.g. "| cell | cell |")
+    # Only strip if line starts with | and has at least 2 | separators
+    text = re.sub(r'^\s*\|.+\|.+\|\s*$', '', text, flags=re.MULTILINE)
+    # Remove double blank lines created by stripping
+    text = re.sub(r'\n{3,}', '\n\n', text)
     return text
 
 

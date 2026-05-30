@@ -44,6 +44,18 @@ FORBIDDEN_MARKERS = [
     "Model example",
     # §23 — debug/template/internal leaks
     "Model example company figures",
+    # Provider/internal tool names must never reach client output
+    "LLM fallback",
+    "LLM analysis",
+    "Codex CLI",
+    "DeepSeek",
+    "Spark provider",
+    "Kimi translator",
+    "pre_render_validator",
+    "Pre-render validation",
+    "pipeline.py",
+    "transcript validation",
+    "RapidAPI Seeking Alpha",
     # NOTE: "For Nami-san:" / "Namiさん向け" are INTENTIONAL client-facing labels
     # for audience_mode="nami_personal". Generator handles sanitization for
     # non-nami modes. Do NOT add them back to FORBIDDEN_MARKERS.
@@ -2770,7 +2782,66 @@ def validate_pre_render(
             f"build proceeds with ⚠️ flags"
         )
 
+    # ── CROSS-SECTION RECONCILIATION (post-loop) ──────────────────────────
+    # These gates require comparing values ACROSS sections after all
+    # per-section rules have run. They live here to avoid ordering dependencies.
+
+    # CROSS-1: Revenue consistency (EPS & Revenue vs Operating Metrics)
+    _cross_check_revenue_consistency(_sec, metric_map, warnings)
+
+    # CROSS-2: EPS direction consistency (EPS section vs Highlights/Verdict)
+
     return ValidationResult(passed=passed, warnings=warnings)
+
+
+def _cross_check_revenue_consistency(
+    _sec: Dict[str, str],
+    metric_map: Dict[str, Any],
+    warnings: List[ValidationWarning],
+) -> None:
+    """Flag when Revenue differs across sections (different data sources)."""
+    eps_text = _sec.get("EPS & Revenue", "")
+    opm_text = _sec.get("Operating Metrics", "")
+    if not eps_text or not opm_text:
+        return
+
+    # Extract revenue figures: look for "Revenue | $XX.XB |" patterns
+    def _extract_rev_table_value(text: str, section_label: str) -> Optional[float]:
+        m = re.search(
+            r'Revenue\s*\|\s*\$?([\d,.]+)\s*([BMKT])',
+            text, re.IGNORECASE
+        )
+        if not m:
+            return None
+        num = float(m.group(1).replace(",", ""))
+        unit = m.group(2).upper()
+        if unit == "B":
+            return num
+        elif unit == "M":
+            return num / 1000
+        elif unit == "T":
+            return num * 1000
+        return num
+
+    eps_rev = _extract_rev_table_value(eps_text, "EPS & Revenue")
+    opm_rev = _extract_rev_table_value(opm_text, "Operating Metrics")
+
+    if eps_rev is not None and opm_rev is not None and eps_rev > 0:
+        diff_pct = abs(eps_rev - opm_rev) / min(eps_rev, opm_rev)
+        if diff_pct > 0.005:  # >0.5% difference
+            warnings.append(ValidationWarning(
+                check="cross_section_revenue_mismatch",
+                section="(cross-section)",
+                detail=(
+                    f"Revenue differs across sections: "
+                    f"EPS & Revenue section = ${eps_rev:.2f}B, "
+                    f"Operating Metrics section = ${opm_rev:.2f}B "
+                    f"(difference: {diff_pct*100:.1f}%). "
+                    f"This typically means yfinance and SEC XBRL sources disagree. "
+                    f"All sections MUST use the same source for the same number."
+                ),
+                severity="error",
+            ))
 
 
 def annotate_sections_with_warnings(
