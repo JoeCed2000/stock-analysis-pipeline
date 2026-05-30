@@ -26,6 +26,7 @@ class DossierPhase(str, Enum):
     """State machine phases for dossier generation.
     
     Flow: queued → scoring → scored → pdf_generating → pdf_validating → complete
+                                                              └→ pdf_blocked (validator blocked, needs fix)
                                                               └→ failed
     """
     QUEUED = "queued"              # Analysis submitted, not yet started
@@ -33,6 +34,7 @@ class DossierPhase(str, Enum):
     SCORED = "scored"              # Report ready (report.md + Excel), deep-dive pending
     PDF_GENERATING = "pdf_generating"  # Deep-dive PDF being generated (Codex + render)
     PDF_VALIDATING = "pdf_validating"  # PDF generated, running validation
+    PDF_BLOCKED = "pdf_blocked"    # Pre-render validator blocked PDF (data contract violation)
     COMPLETE = "complete"          # All deliverables ready, validated
     FAILED = "failed"              # Terminal failure
 
@@ -245,9 +247,11 @@ def get_dossier_status(ticker: str) -> dict:
         reg_entry = _dossier_registry.get(ticker_clean, {})
     reg_phase = reg_entry.get("phase")
     
-    if reg_phase in (DossierPhase.PDF_GENERATING, DossierPhase.PDF_VALIDATING):
-        # Background thread is actively running — registry is authoritative
+    if reg_phase in (DossierPhase.PDF_GENERATING, DossierPhase.PDF_VALIDATING, DossierPhase.PDF_BLOCKED):
+        # Background thread state is authoritative for transient phases
         status["phase"] = reg_phase
+        if reg_phase == DossierPhase.PDF_BLOCKED:
+            status["error"] = reg_entry.get("error") or "PDF blocked — pre-render validation failed"
     elif status.get("deep_dive_validated") is True and status.get("ready"):
         status["phase"] = DossierPhase.COMPLETE
     elif status.get("deep_dive_validated") is False:

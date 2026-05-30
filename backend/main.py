@@ -1,5 +1,19 @@
 """FastAPI application for Stock Analysis Pipeline."""
 import os
+import resource
+
+# Raise file descriptor limit BEFORE any connections are opened (P0 fix 2026-05-30).
+# Default soft limit is 1024. Running 2+ parallel analyses with Codex PTYs and
+# http_client pools was exhausting FDs → "Too many open files" cascade.
+try:
+    _soft, _hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    resource.setrlimit(resource.RLIMIT_NOFILE, (max(_soft, 4096), _hard))
+    _new_soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+    if _new_soft >= 4096:
+        print(f"[main] ulimit NOFILE raised: {_soft} → {_new_soft}")
+except Exception:
+    pass
+
 # ── Load .env BEFORE anything else ──
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
@@ -1185,7 +1199,7 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
                 logger.info(f"[{ticker}] Deep-dive PDF rendered + validated (passed={passed})")
                 set_dossier_phase(ticker, DossierPhase.COMPLETE)
         except ValidationError as ve:
-            set_dossier_phase(ticker, DossierPhase.FAILED, error=str(ve))
+            set_dossier_phase(ticker, DossierPhase.PDF_BLOCKED, error=str(ve))
             logger.error(f"[{ticker}] Data contract violation: {ve}")
             raise HTTPException(
                 status_code=422,
@@ -1737,7 +1751,7 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                 render_earnings_deep_dive_pdf(report_model, str(dd_path))
                 set_dossier_phase(ticker, DossierPhase.COMPLETE)
             except ValidationError as ve:
-                set_dossier_phase(ticker, DossierPhase.FAILED, error=str(ve))
+                set_dossier_phase(ticker, DossierPhase.PDF_BLOCKED, error=str(ve))
                 import logging
                 logging.getLogger("uvicorn.error").error(
                     f"Data contract violation for {ticker}: {ve}"

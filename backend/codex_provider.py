@@ -68,6 +68,7 @@ def _codex_chat(prompt: str, system: str = "", max_tokens: int = 1000, model: Op
         os.close(fd)
         full_prompt = f"{system}\n\n{prompt}\n\nReturn ONLY the requested output. No explanations."
 
+        master_fd = None
         try:
             # Serialize launches to avoid Cloudflare rate-limit on parallel EN+JP
             with _codex_launch_lock:
@@ -137,9 +138,15 @@ def _codex_chat(prompt: str, system: str = "", max_tokens: int = 1000, model: Op
                 last_error = f"no_output(rc={proc.returncode})"
 
         except FileNotFoundError:
+            if master_fd is not None:
+                try: os.close(master_fd)
+                except OSError: pass
             logger.warning("Codex binary not found at %s", CODEX_BIN)
             return None
         except Exception as e:
+            if master_fd is not None:
+                try: os.close(master_fd)
+                except OSError: pass
             logger.warning("Codex CLI exception (attempt %d): %s", attempt + 1, e)
             last_error = str(e)
         finally:
