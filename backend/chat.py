@@ -10,6 +10,7 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from typing import Optional
 
@@ -465,7 +466,7 @@ async def _generate_and_stream(
             "response_length": len(full_response),
         })
 
-        # Auto-detect feedback in user message
+        # 🔴 Stage 1: Detect if user message contains a potential correction
         fb_type = _detect_feedback(user_message)
         if fb_type:
             try:
@@ -481,19 +482,50 @@ async def _generate_and_stream(
             except Exception as e:
                 logger.warning(f"Failed to save auto-detected feedback: {e}")
 
-            # 🔴 Autonomous pipeline: pre-flight → Kanban → acknowledge → monitor → respond
-            try:
-                from backend.feedback_pipeline import process_feedback
-                asyncio.create_task(process_feedback(
-                    session_id=session_id,
-                    user_message=user_message,
-                    feedback_type=fb_type,
-                    language=language,
-                    ticker=ticker,
-                ))
-                logger.info(f"Launched autonomous feedback pipeline for {fb_type}")
-            except Exception as e:
-                logger.error(f"Failed to launch feedback pipeline: {e}")
+            # 🔴 Stage 2: Check if user explicitly asked for a fix (skip confirmation)
+            if _is_direct_fix_request(user_message):
+                logger.info(f"Direct fix request — launching pipeline immediately")
+                try:
+                    from backend.feedback_pipeline import process_feedback
+                    asyncio.create_task(process_feedback(
+                        session_id=session_id,
+                        user_message=user_message,
+                        feedback_type=fb_type,
+                        language=language,
+                        ticker=ticker,
+                    ))
+                    logger.info(f"Launched feedback pipeline for direct fix: {fb_type}")
+                except Exception as e:
+                    logger.error(f"Failed to launch feedback pipeline: {e}")
+            else:
+                # Store pending fix — wait for explicit confirmation from AI conversation
+                _pending_fixes[session_id] = {
+                    "feedback_type": fb_type,
+                    "user_message": user_message,
+                    "ticker": ticker,
+                    "language": language,
+                    "timestamp": time.time(),
+                }
+                logger.info(f"Stored pending fix for session {session_id} ({fb_type}) — awaiting confirmation")
+        else:
+            # 🔴 Stage 3: Check if this message is a confirmation to a pending fix
+            pending = _pending_fixes.pop(session_id, None)
+            if pending and _is_fix_confirmation(user_message):
+                logger.info(f"User confirmed fix for session {session_id}")
+                try:
+                    from backend.feedback_pipeline import process_feedback
+                    asyncio.create_task(process_feedback(
+                        session_id=session_id,
+                        user_message=pending["user_message"],  # original bug report
+                        feedback_type=pending["feedback_type"],
+                        language=pending["language"],
+                        ticker=pending.get("ticker"),
+                    ))
+                    logger.info(f"Launched feedback pipeline for confirmed fix: {pending['feedback_type']}")
+                except Exception as e:
+                    logger.error(f"Failed to launch feedback pipeline: {e}")
+            elif pending:
+                logger.info(f"User declined fix for session {session_id} — pending fix discarded")
 
     except Exception as e:
         logger.error(f"AI generation failed for {assistant_message_id}: {e}")
@@ -561,6 +593,100 @@ def _detect_feedback(text: str) -> Optional[str]:
             if pattern in text_lower:
                 return fb_type
     return None
+
+
+# ─── Pending Fix Confirmation ────────────────────────────────────────────────
+
+# In-memory store: session_id → pending fix metadata
+# Cleared on confirmation, denial, or session expiry (TTL: 30 min)
+_pending_fixes: dict[str, dict] = {}
+
+# Patterns that indicate user confirms they want a fix
+_CONFIRMATION_PATTERNS = [
+    # Explicit yes
+    "yes", "yeah", "yep", "sure", "okay", "ok", "please do", "go ahead",
+    "do it", "please fix", "create the ticket", "create a ticket",
+    # French
+    "oui", "ouais", "vas-y", "allez-y", "corrige", "corrigez",
+    "crée le ticket", "créer le ticket", "fais-le",
+    # Japanese
+    "はい", "お願い", "おねがい", "よろしく", "やって", "修正して",
+    "チケット作成", "お願いします", "いいです", "いいよ",
+    "作成して", "対応して",
+]
+
+# Patterns that indicate user declines
+_DECLINE_PATTERNS = [
+    "no", "nope", "not now", "never mind", "don't", "skip",
+    "non", "pas maintenant", "laisse tomber",
+    "いいえ", "結構", "けっこう", "大丈夫", "だいじょうぶ",
+    "今はいい", "やめとく",
+]
+
+# Patterns that indicate the user explicitly wants a fix NOW (skip confirmation)
+_DIRECT_FIX_PATTERNS = [
+    "please fix", "fix this", "fix it", "correct this", "correct it",
+    "corrige ça", "corrige le", "corrige la", "corrigez",
+    "修正して", "直して", "すぐに修正", "修正お願い",
+    "create a ticket", "crée un ticket",
+]
+
+
+def _is_fix_confirmation(text: str) -> bool:
+    """Check if a message is a confirmation to create a fix ticket.
+    
+    Uses word-boundary-aware matching to avoid false positives:
+    - "ok" matches "ok" but NOT "broken"
+    - "yes" matches "yes please" but NOT "yes but also add..."
+    - Multi-word patterns use substring matching (e.g., "please fix" matches anywhere)
+    """
+    import re
+    
+    text_lower = text.lower().strip()
+    
+    # Must be a short confirmation message (not a new bug report)
+    if len(text_lower) > 60:
+        return False
+    
+    # Reject if the message also looks like a new bug report
+    if _detect_feedback(text_lower):
+        return False
+    
+    # Short patterns that need word boundaries (to avoid substring false matches)
+    _short_patterns = {"yes", "yeah", "yep", "sure", "ok", "okay",
+                       "oui", "ouais", "non",
+                       "はい", "いいよ", "いいです"}
+    
+    for pattern in _CONFIRMATION_PATTERNS:
+        if pattern in _short_patterns:
+            # Word-boundary match: start/space before, end/space/punctuation after
+            if re.search(rf'(?<!\w){re.escape(pattern)}(?!\w)', text_lower):
+                # Make sure it's not a negation mixed in
+                for decline in _DECLINE_PATTERNS:
+                    if decline in _short_patterns:
+                        if re.search(rf'(?<!\w){re.escape(decline)}(?!\w)', text_lower):
+                            return False
+                    elif decline in text_lower:
+                        return False
+                return True
+        else:
+            # Multi-word patterns: substring match is fine
+            if pattern in text_lower:
+                for decline in _DECLINE_PATTERNS:
+                    if decline in text_lower:
+                        return False
+                return True
+    
+    return False
+
+
+def _is_direct_fix_request(text: str) -> bool:
+    """Check if the user explicitly demands a fix NOW (skip confirmation step)."""
+    text_lower = text.lower()
+    for pattern in _DIRECT_FIX_PATTERNS:
+        if pattern in text_lower:
+            return True
+    return False
 
 
 @router.post("/feedback", response_model=ChatFeedbackResponse)
