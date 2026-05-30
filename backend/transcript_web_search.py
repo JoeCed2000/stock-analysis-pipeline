@@ -1,6 +1,8 @@
-"""Generic web transcript discovery through Google Custom Search."""
+"""Generic web transcript discovery through Google Custom Search + Tavily fallback."""
 import html
+import json
 import logging
+import os
 import re
 from html.parser import HTMLParser
 from typing import Dict, List
@@ -9,6 +11,7 @@ import httpx
 
 from backend.google_search import search_google
 from backend.http_client import http
+from backend.seeking_alpha_access import build_request_headers
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +42,133 @@ class _TextExtractor(HTMLParser):
             self.parts.append(data)
 
 
+def _search_sa_direct(ticker: str, company: str | None = None, limit: int = 5) -> List[Dict[str, str]]:
+    """Search Seeking Alpha directly using stored cookies — no external search API needed."""
+    ticker_clean = ticker.strip().upper()
+    headers = build_request_headers()
+    
+    if "Cookie" not in headers:
+        logger.info(f"[{ticker_clean}] No SA cookies configured, skipping direct SA search")
+        return []
+    
+    # Step 1: Fetch the transcript listing page
+    list_url = f"https://seekingalpha.com/symbol/{ticker_clean}/earnings/transcripts"
+    try:
+        resp = http.get(list_url, headers=headers, timeout=20, follow_redirects=True)
+        if resp.status_code != 200:
+            logger.warning(f"[{ticker_clean}] SA listing returned {resp.status_code}")
+            return []
+    except Exception as e:
+        logger.warning(f"[{ticker_clean}] SA listing fetch failed: {e}")
+        return []
+    
+    # Step 2: Extract article IDs from the listing page
+    article_ids = re.findall(r'/(\d{5,8})-[\w-]+', resp.text)
+    if not article_ids:
+        article_ids = re.findall(r'/article/(\d{5,8})', resp.text)
+    
+    if not article_ids:
+        logger.info(f"[{ticker_clean}] No article IDs found on SA listing page")
+        return []
+    
+    # Take unique IDs, sorted (newest = highest ID typically)
+    unique_ids = list(dict.fromkeys(article_ids))[:limit]
+    logger.info(f"[{ticker_clean}] Found {len(unique_ids)} SA article IDs: {unique_ids[:3]}...")
+    
+    results = []
+    for aid in unique_ids:
+        article_url = f"https://seekingalpha.com/article/{aid}"
+        text = _fetch_page_text_sa(article_url, headers)
+        if not text or not _looks_like_transcript(text, ticker_clean):
+            continue
+        
+        # Extract title and metadata from the page
+        title_match = re.search(r'<title>(.*?)</title>', resp.text if hasattr(resp, 'text') else '', re.I)
+        title = title_match.group(1) if title_match else f"{ticker_clean} Earnings Call Transcript"
+        title = html.unescape(title.replace(" | Seeking Alpha", "").strip())
+        
+        results.append({
+            "source": "Seeking Alpha",
+            "type": "earnings_transcript",
+            "title": title,
+            "url": article_url,
+            "text": text,
+            "text_length": len(text),
+            "quarter": _extract_quarter(title + " " + text[:1000]),
+            "date": _extract_date(title + " " + text[:1000]),
+            "id": aid,
+        })
+        break  # Just the first (most recent) transcript
+    
+    return results
+
+
+def _fetch_page_text_sa(url: str, headers: dict = None) -> str:
+    """Fetch and extract text from an SA page using cookie auth."""
+    try:
+        h = headers or build_request_headers()
+        response = http.get(url, headers=h, timeout=20, follow_redirects=True)
+    except Exception as exc:
+        logger.warning(f"SA page fetch failed for {url}: {exc}")
+        return ""
+    if response.status_code != 200:
+        return ""
+    
+    extractor = _TextExtractor()
+    extractor.feed(response.text)
+    text = html.unescape(" ".join(extractor.parts))
+    text = re.sub(r"[ \t\r\f\v]+", " ", text)
+    text = re.sub(r"\n\s+", "\n", text)
+    return text.strip()
+
+
+def _search_tavily(ticker: str, company: str | None = None, limit: int = 5) -> List[Dict[str, str]]:
+    """Search Seeking Alpha transcripts via Tavily API."""
+    import urllib.request
+    import urllib.error
+    
+    tavily_key = os.getenv("TAVILY_API_KEY", "").strip()
+    if not tavily_key:
+        logger.warning("TAVILY_API_KEY not set, cannot search transcripts via Tavily")
+        return []
+    
+    company_part = f" {company.strip()}" if isinstance(company, str) and company.strip() else ""
+    query = f"{ticker}{company_part} earnings call transcript site:seekingalpha.com"
+    
+    try:
+        data = json.dumps({
+            "api_key": tavily_key,
+            "query": query,
+            "max_results": limit,
+            "include_domains": ["seekingalpha.com"],
+        }).encode()
+        req = urllib.request.Request(
+            "https://api.tavily.com/search",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        resp = urllib.request.urlopen(req, timeout=20)
+        body = json.loads(resp.read())
+        results = []
+        for r in body.get("results", []):
+            url = r.get("url", "")
+            if not url:
+                continue
+            results.append({
+                "url": url,
+                "title": r.get("title", ""),
+            })
+        logger.info(f"[{ticker}] Tavily transcript search: {len(results)} results")
+        return results
+    except urllib.error.HTTPError as e:
+        logger.warning(f"[{ticker}] Tavily transcript search HTTP {e.code}: {e.reason}")
+        return []
+    except Exception as e:
+        logger.warning(f"[{ticker}] Tavily transcript search failed: {e}")
+        return []
+
+
 def search_transcript_pages(ticker: str, company: str | None = None, limit: int = 5) -> List[Dict[str, str]]:
     ticker_clean = ticker.strip().upper()
     company_part = f" {company.strip()}" if isinstance(company, str) and company.strip() else ""
@@ -50,6 +180,14 @@ def search_transcript_pages(ticker: str, company: str | None = None, limit: int 
 
     candidates: list[dict[str, str]] = []
     seen_urls: set[str] = set()
+    
+    # ── PRIORITY 1: Direct SA access with cookies (no search API needed) ──
+    sa_direct = _search_sa_direct(ticker_clean, company, limit)
+    if sa_direct:
+        logger.info(f"[{ticker_clean}] SA direct access succeeded ({len(sa_direct)} transcripts)")
+        return sa_direct
+    
+    # ── PRIORITY 2: Google Custom Search ──
     for query in queries:
         for result in search_google(query, limit=limit):
             url = result.get("url", "")
@@ -61,6 +199,18 @@ def search_transcript_pages(ticker: str, company: str | None = None, limit: int 
                 break
         if len(candidates) >= limit:
             break
+    
+    # Fallback: Tavily search if Google returned nothing
+    if not candidates:
+        logger.info(f"[{ticker_clean}] Google Search returned 0 results, trying Tavily fallback...")
+        tavily_results = _search_tavily(ticker_clean, company, limit)
+        for r in tavily_results:
+            url = r.get("url", "")
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                candidates.append(r)
+                if len(candidates) >= limit:
+                    break
 
     transcripts: List[Dict[str, str]] = []
     for candidate in candidates:

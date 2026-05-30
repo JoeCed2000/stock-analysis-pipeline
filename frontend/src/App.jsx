@@ -10,7 +10,7 @@ import AdminPage from './components/AdminPage.jsx';
 import FeedbackPage from './components/FeedbackPage.jsx';
 import ChatWidget from './components/ChatWidget.jsx';
 import NotFound from './components/NotFound.jsx';
-import { analyzeTickersAsync, getJobStatus, getDossierStatus, countDossierSections, getSeekingAlphaAccessStatus } from './api.js';
+import { analyzeTickersAsync, getJobStatus, getDossierStatus, countDossierSections, getSeekingAlphaAccessStatus, testSeekingAlphaAccess } from './api.js';
 import translations from './i18n.js';
 import SearchMonitor from './components/SearchMonitor.jsx';
 // BUILD: v3 — explicit loading state machine, no fake timer progress
@@ -91,12 +91,20 @@ export default function App() {
 
     const refreshSeekingAlphaStatus = async () => {
       try {
-        const data = await getSeekingAlphaAccessStatus();
+        // Use the TEST endpoint for real connectivity check, not just cookie presence
+        const data = await testSeekingAlphaAccess();
         if (!alive) return;
-        setSaAccess({ loading: false, configured: !!data?.configured, error: null });
+        setSaAccess({
+          loading: false,
+          configured: !!data?.configured,
+          authenticated: !!data?.authenticated,
+          ok: !!data?.ok,
+          statusCode: data?.status_code,
+          error: null,
+        });
       } catch (err) {
         if (!alive) return;
-        setSaAccess({ loading: false, configured: null, error: err?.message || 'status_error' });
+        setSaAccess({ loading: false, configured: null, authenticated: false, ok: false, error: err?.message || 'status_error' });
       }
     };
 
@@ -405,11 +413,13 @@ export default function App() {
           >
             {saAccess.loading
               ? 'SA: checking…'
-              : saAccess.configured === true
-                ? 'SA: available'
-                : saAccess.configured === false
-                  ? 'SA: unavailable'
-                  : 'SA: unknown'}
+              : saAccess.ok && saAccess.authenticated
+                ? 'SA: connected ✅'
+                : saAccess.configured === true
+                  ? 'SA: expired ⚠️'
+                  : saAccess.configured === false
+                    ? 'SA: no cookies'
+                    : 'SA: unknown'}
           </span>
           <LanguageSelector lang={lang} onLanguageChange={handleLanguageChange} />
           <select
