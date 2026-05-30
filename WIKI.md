@@ -7,6 +7,34 @@
 - **Feedback Pipeline**: Autonomous correction loop (chat → Kanban → fix → respond), see `backend/feedback_pipeline.py`
 - **Learning Loop**: `_learn_from_fix()` → `docs/corrections_log.md` — chaque correction alimente la mémoire préventive
 
+
+## 2026-05-30 — FD leak fix + state machine visibility
+
+**Commit:** `38446d0` (kanban/spec-fonctionnelle-sa)
+**Session:** DeepSeek-first profile, Telegram
+
+### Root cause
+NVDA download failed. Investigation revealed 1023/1024 FDs on uvicorn causing
+"Too many open files" cascade (Codex CLI, Bing, Tavily, SEC EDGAR).
+Pre-render validator blocked the PDF 5+ times. State machine showed "complete"
+but no PDF was produced.
+
+### Fixes applied
+1. **codex_provider.py** — PTY master_fd leak: closed in except/finally blocks
+2. **http_client.py** — Pool reduced: 20→5 keepalive, 50→20 max connections
+3. **main.py** — ulimit raised: `resource.setrlimit(NOFILE, 4096)` at startup
+4. **async_dossier.py** — New `PDF_BLOCKED` state machine phase (was FAILED)
+
+### State machine now
+`QUEUED → SCORING → SCORED → PDF_GENERATING → PDF_VALIDATING → COMPLETE`
+`                                                              → PDF_BLOCKED`
+`                                                              → FAILED`
+
+### Pending
+- Frontend needs to display `pdf_blocked` phase distinctly
+- Add max retry limit for validator blocks (currently unlimited retries)
+- ulimit raise will take effect on next backend restart
+
 ## Recent Changes
 
 | Date | Task | Summary | Status |
