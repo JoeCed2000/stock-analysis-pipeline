@@ -412,18 +412,30 @@ Return ONLY the JSON object. No markdown fences, no explanations."""
 
     system = "You are a senior equity research analyst synthesizing company overviews. You write in English. You return ONLY valid JSON with no markdown fences."
 
-    # ── Primary: Codex default model (ChatGPT Plus) ────────────
+    # ── Primary: Codex Spark (fast, included in Pro) ─────────
     response = _codex_chat(prompt, system=system, max_tokens=2500)
 
     if response:
         parsed = _parse_llm_response(response, ticker, yf_info)
         if parsed is not None:
             return parsed
-        logger.warning(f"[{ticker}] LLM response failed to parse, using fallback...")
+        logger.warning(f"[{ticker}] Codex response failed to parse, trying DeepSeek fallback...")
     else:
-        logger.warning(f"[{ticker}] LLM unavailable (quota/auth), using fallback...")
+        logger.warning(f"[{ticker}] Codex unavailable (quota/auth/hung), trying DeepSeek fallback...")
 
-    # ── Fallback: Deterministic (yfinance + regex) ──────────────
+    # ── Fallback 1: DeepSeek V3 (cheap, reliable) ────────────
+    try:
+        from backend.kimi_provider import _deepseek_chat
+        ds_response = _deepseek_chat(prompt, system=system, max_tokens=2500, temperature=0.0)
+        if ds_response:
+            parsed = _parse_llm_response(ds_response, ticker, yf_info)
+            if parsed is not None:
+                logger.info(f"[{ticker}] DeepSeek fallback succeeded")
+                return parsed
+    except Exception as ds_e:
+        logger.warning(f"[{ticker}] DeepSeek fallback failed: {ds_e}")
+
+    # ── Fallback 2: Deterministic (yfinance + regex) ─────────
     return _fallback_overview(ticker, yf_info)
 
 
