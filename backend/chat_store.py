@@ -230,6 +230,42 @@ def update_session(
     conn.commit()
 
 
+def track_session_ticker(session_id: str, ticker: str) -> None:
+    """Record that this session viewed/analyzed a ticker. Stored in metadata_json."""
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT metadata_json FROM chat_sessions WHERE id=?", (session_id,)
+    ).fetchone()
+    if not row:
+        return
+
+    meta = json.loads(row[0]) if row[0] else {}
+    viewed = meta.get("viewed_tickers", [])
+    if ticker not in viewed:
+        viewed.append(ticker)
+        # Keep last 10
+        if len(viewed) > 10:
+            viewed = viewed[-10:]
+        meta["viewed_tickers"] = viewed
+        conn.execute(
+            "UPDATE chat_sessions SET metadata_json=?, updated_at=? WHERE id=?",
+            (json.dumps(meta), _utcnow_iso(), session_id),
+        )
+        conn.commit()
+
+
+def get_session_tickers(session_id: str) -> list[str]:
+    """Get tickers this session has viewed, most recent last."""
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT metadata_json FROM chat_sessions WHERE id=?", (session_id,)
+    ).fetchone()
+    if not row or not row[0]:
+        return []
+    meta = json.loads(row[0]) if row[0] else {}
+    return meta.get("viewed_tickers", [])
+
+
 # ── Message Operations ───────────────────────────────────────────────────────
 
 def save_message(msg: ChatMessage) -> ChatMessage:

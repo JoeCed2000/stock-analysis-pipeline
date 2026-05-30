@@ -161,6 +161,10 @@ async def send_message(req: ChatMessageRequest, request: Request):
         last_seen_at=now,
     )
 
+    # Track ticker for this session (RAG context)
+    if ctx.ticker:
+        chat_store.track_session_ticker(req.session_id, ctx.ticker.upper())
+
     # Save user message
     user_msg = ChatMsg(
         id=_uid("msg"),

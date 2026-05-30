@@ -81,60 +81,82 @@ async def build_chat_context(
         "history": history_dicts,
         "current_url": current_url,
         "route": route,
-        "recent_tickers": _get_recent_tickers(limit=5, exclude_ticker=ticker),
+        "recent_tickers": _get_recent_tickers(session_id=session_id, limit=5, exclude_ticker=ticker),
     }
 
 
-def _get_recent_tickers(limit: int = 5, exclude_ticker: Optional[str] = None) -> list[dict]:
-    """Get recently analyzed tickers with their available PDFs for RAG context.
+def _get_recent_tickers(
+    session_id: Optional[str] = None,
+    limit: int = 5,
+    exclude_ticker: Optional[str] = None,
+) -> list[dict]:
+    """Get tickers this session has viewed, with their available PDFs.
 
-    Scans the analyses/ directory for the most recently modified ticker directories
-    and returns basic info about each.
+    Uses the session's ticker history (NOT the global analyses/ directory)
+    so Nami only sees her own tickers, not Ced's.
     """
     from pathlib import Path
 
-    analyses_dir = Path(__file__).resolve().parent.parent / "analyses"
-    if not analyses_dir.exists():
+    # Get tickers from session history
+    tickers: list[str] = []
+    if session_id:
+        from . import chat_store
+        tickers = chat_store.get_session_tickers(session_id)
+
+    if not tickers:
         return []
 
-    # Collect ticker dirs with their latest modification time
-    ticker_dirs: dict[str, dict] = {}
-    for entry in analyses_dir.iterdir():
-        if not entry.is_dir():
+    # Reverse to get most recent first, filter, deduplicate
+    seen = set()
+    result = []
+    for t in reversed(tickers):
+        t = t.upper()
+        if t == (exclude_ticker or "").upper():
             continue
-        # Extract ticker from directory name: "<date>_<TICKER>_<name>"
-        parts = entry.name.split("_")
-        ticker = None
-        for token in parts:
-            token = token.strip()
-            if token.isupper() and 2 <= len(token) <= 5 and token.isalpha():
-                if token in ("PDF", "API", "HTTP", "NEW", "OLD", "CORP", "INC", "LTD", "THE"):
+        if t in seen or t in _TICKER_BLACKLIST:
+            continue
+        seen.add(t)
+
+        # Find PDFs for this ticker in analyses/
+        analyses_dir = Path(__file__).resolve().parent.parent / "analyses"
+        pdfs = []
+        if analyses_dir.exists():
+            for entry in sorted(analyses_dir.iterdir(), key=lambda e: e.stat().st_mtime, reverse=True):
+                if not entry.is_dir():
                     continue
-                ticker = token
-                break
-        if not ticker or ticker == exclude_ticker or ticker in _TICKER_BLACKLIST:
-            continue
+                # Check if this directory is for the ticker
+                dir_ticker = None
+                for token in entry.name.split("_"):
+                    token = token.strip()
+                    if token.upper() == t:
+                        dir_ticker = token.upper()
+                        break
+                if dir_ticker != t:
+                    continue
+                # Found matching directory — list its PDFs
+                from datetime import datetime
+                mtime = entry.stat().st_mtime
+                for pdf_file in sorted(entry.rglob("*.pdf")):
+                    pdfs.append(pdf_file.name)
+                result.append({
+                    "ticker": t,
+                    "date": datetime.fromtimestamp(mtime).strftime("%Y-%m-%d"),
+                    "pdfs": pdfs[:4],
+                })
+                break  # found the most recent dir for this ticker
 
-        # Get latest modification time and available PDFs
-        mtime = entry.stat().st_mtime
-        if ticker not in ticker_dirs or mtime > ticker_dirs[ticker].get("_mtime", 0):
-            # List PDFs
-            pdfs = []
-            for pdf_file in sorted(entry.rglob("*.pdf")):
-                pdfs.append(pdf_file.name)
-            from datetime import datetime
-            ticker_dirs[ticker] = {
-                "ticker": ticker,
-                "date": datetime.fromtimestamp(mtime).strftime("%Y-%m-%d"),
-                "pdfs": pdfs[:3],  # top 3
-                "_mtime": mtime,
-            }
+        # If no directory found, still include the ticker
+        if not result or result[-1]["ticker"] != t:
+            result.append({
+                "ticker": t,
+                "date": "?",
+                "pdfs": [],
+            })
 
-    # Sort by recency, return top N
-    result = sorted(ticker_dirs.values(), key=lambda x: x["_mtime"], reverse=True)[:limit]
-    for r in result:
-        r.pop("_mtime", None)
-    return result
+        if len(result) >= limit:
+            break
+
+    return result[:limit]
 
 
 _TICKER_BLACKLIST = {"ZZZZ", "FAIL", "TEST", "NVDQ", "NBUS", "NBIS", "EEM", "MC", "SNDK"}
