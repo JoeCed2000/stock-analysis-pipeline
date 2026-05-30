@@ -410,9 +410,27 @@ Return ONLY the JSON object. No markdown fences, no explanations."""
 
     if response:
         parsed = _parse_llm_response(response, ticker, yf_info)
-        return parsed if parsed is not None else _fallback_overview(ticker, yf_info)
+        if parsed is not None:
+            return parsed
+        logger.warning(f"[{ticker}] Primary LLM response failed to parse, trying Spark fallback...")
     else:
-        return _fallback_overview(ticker, yf_info)
+        logger.warning(f"[{ticker}] Primary LLM returned no response, trying Spark fallback...")
+
+    # ── Fallback 1: Codex 5.3 Spark (cheap, fast) ─────────────────
+    try:
+        logger.info(f"[{ticker}] Attempting company overview with Codex 5.3 Spark...")
+        spark_response = _codex_chat(prompt, system=system, max_tokens=2500, model="gpt-5.3-spark")
+        if spark_response:
+            parsed = _parse_llm_response(spark_response, ticker, yf_info)
+            if parsed is not None:
+                logger.info(f"[{ticker}] Spark fallback succeeded")
+                return parsed
+    except Exception as e:
+        logger.warning(f"[{ticker}] Spark fallback failed: {e}")
+
+    # ── Fallback 2: Deterministic (yfinance + regex) ──────────────
+    logger.warning(f"[{ticker}] All LLM attempts failed — using deterministic fallback")
+    return _fallback_overview(ticker, yf_info)
 
 
 def _translate_overview_to_jp(en_overview: Dict[str, Any], ticker: str) -> Dict[str, Any]:

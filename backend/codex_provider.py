@@ -3,6 +3,7 @@ Uses os.openpty() for PTY (required by Codex CLI).
 """
 import os
 import json
+from typing import Optional
 import logging
 import pwd
 import shutil
@@ -37,12 +38,16 @@ CODEX_RETRY_BACKOFF = [2.0, 4.0]  # seconds between retries (jittered ±50%)
 _codex_launch_lock = __import__("threading").Lock()
 
 
-def _codex_chat(prompt: str, system: str = "", max_tokens: int = 1000) -> Optional[str]:
+def _codex_chat(prompt: str, system: str = "", max_tokens: int = 1000, model: Optional[str] = None) -> Optional[str]:
     """Send a prompt to Codex CLI via PTY and return the response text.
     
     Retries up to CODEX_MAX_RETRIES times with exponential backoff on timeout/failure.
     Serializes subprocess launches via a global lock to avoid Cloudflare rate-limiting
     when EN and JP deep-dive generations run in parallel.
+    
+    Args:
+        model: Optional model override (e.g. 'gpt-5.3-spark' for cheap fallback).
+               When None, uses the default Codex model.
     """
     if not os.path.exists(CODEX_BIN):
         logger.warning("Codex CLI not found at %s", CODEX_BIN)
@@ -67,14 +72,18 @@ def _codex_chat(prompt: str, system: str = "", max_tokens: int = 1000) -> Option
             with _codex_launch_lock:
                 master_fd, slave_fd = os.openpty()
                 
+                args = [CODEX_BIN, "exec",
+                        "--ephemeral",
+                        "--skip-git-repo-check",
+                        "--json"]
+                if model:
+                    args.extend(["-m", model])
+                args.extend(["-c", "model_reasoning_effort=low",
+                             "-o", output_file,
+                             full_prompt])
+                
                 proc = subprocess.Popen(
-                    [CODEX_BIN, "exec",
-                     "--ephemeral",
-                     "--skip-git-repo-check",
-                     "--json",
-                     "-c", "model_reasoning_effort=low",
-                     "-o", output_file,
-                     full_prompt],
+                    args,
                     stdin=slave_fd,
                     stdout=slave_fd,
                     stderr=slave_fd,

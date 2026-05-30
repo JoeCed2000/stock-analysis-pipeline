@@ -2487,17 +2487,79 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
             company_overview=company_overview,
         )
         if profile_path and os.path.exists(profile_path):
+            # ── RUN COMPANY OVERVIEW VALIDATION GATES ─────────────────
             from backend.company_overview_pdf import generate_company_overview_pdf
-            today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            profile_pdf = os.path.join(os.path.dirname(profile_path), f"{ticker}_company_overview_investor_profile_{today_str}.pdf")
-            generate_company_overview_pdf(
-                output_path=profile_pdf,
-                ticker=ticker,
-                company_name=company_name,
-                overview=company_overview or {},
-                yf_data=yf_data,
-                language=language,
+            from backend.earnings_deep_dive.pre_render_validator import validate_pre_render
+            from backend.earnings_deep_dive.report_model import CompanyOverview, CompanyProfile, CompetitorRef, CompanyClaim
+
+            # Build CompanyOverview from dict for validation
+            co_dict = company_overview or {}
+            cp_data = co_dict.get("company_profile", {})
+            co_model = CompanyOverview(
+                company_profile=CompanyProfile(
+                    name=cp_data.get("name", company_name),
+                    ticker=cp_data.get("ticker", ticker),
+                    sector=cp_data.get("sector"),
+                    industry=cp_data.get("industry"),
+                    country=cp_data.get("country"),
+                    website=cp_data.get("website"),
+                    employees=cp_data.get("employees"),
+                    headquarters=cp_data.get("headquarters"),
+                ),
+                business_description=co_dict.get("business_description", ""),
+                revenue_model=co_dict.get("revenue_model", ""),
+                business_segments=co_dict.get("business_segments", []),
+                growth_drivers=co_dict.get("growth_drivers", []),
+                moats=co_dict.get("moats", []),
+                key_kpis=co_dict.get("key_kpis", []),
+                business_risks=co_dict.get("business_risks", []),
+                competitive_position=co_dict.get("competitive_position", ""),
+                strengths_vs_competitors=co_dict.get("strengths_vs_competitors", ""),
+                weaker_areas_vs_competitors=co_dict.get("weaker_areas_vs_competitors", ""),
+                ceo_leadership_style=co_dict.get("ceo_leadership_style", ""),
+                long_term_vision=co_dict.get("long_term_vision", ""),
+                investor_takeaway=co_dict.get("investor_takeaway", ""),
+                competitors=[CompetitorRef(**c) if isinstance(c, dict) else c for c in co_dict.get("competitors", [])],
+                company_claims=[CompanyClaim(**c) if isinstance(c, dict) else c for c in co_dict.get("company_claims", [])],
             )
+
+            validation = validate_pre_render(
+                ticker=ticker,
+                quarter=None,
+                metrics=None,
+                section_analysis={},
+                company_overview=co_model,
+            )
+
+            if not validation.passed:
+                error_list = "\n  ".join(e.detail for e in validation.errors)
+                logger.error(
+                    f"[{ticker}] COMPANY OVERVIEW VALIDATION FAILED — {validation.error_count} gate(s) blocked PDF export:\n"
+                    f"  {error_list}"
+                )
+                # Write validation report next to the overview JSON
+                val_path = os.path.join(
+                    os.path.dirname(profile_path),
+                    f"company_overview_validation_{ticker}.txt"
+                )
+                with open(val_path, "w") as vf:
+                    vf.write(f"COMPANY OVERVIEW VALIDATION FAILED — {validation.error_count} gate(s)\n\n")
+                    for i, err in enumerate(validation.errors, 1):
+                        vf.write(f"{i}. [{err.check}] {err.detail}\n")
+                logger.info(f"[{ticker}] Validation report written to {val_path} — PDF export blocked")
+            else:
+                logger.info(f"[{ticker}] Company overview validation passed ({len(validation.warnings)} warnings)")
+
+                today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                profile_pdf = os.path.join(os.path.dirname(profile_path), f"{ticker}_company_overview_investor_profile_{today_str}.pdf")
+                generate_company_overview_pdf(
+                    output_path=profile_pdf,
+                    ticker=ticker,
+                    company_name=company_name,
+                    overview=company_overview or {},
+                    yf_data=yf_data,
+                    language=language,
+                )
     except Exception as e:
         logger.warning(f"[{ticker}] Company profile failed: {e}")
     
