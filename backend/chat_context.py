@@ -14,27 +14,49 @@ logger = logging.getLogger(__name__)
 
 
 def _detect_visitor_name(session_id: str) -> str:
-    """Detect visitor display name from session fingerprint (IP + device).
+    """Detect visitor display name for personalized AI greeting.
 
-    Used for personalized AI greetings during the fingerprint→visitor_id transition.
-    Once CHAT-HARDEN (t_8e1f1cdd) ships, visitor_id replaces this heuristic.
+    Priority:
+    1. visitor_id (once CHAT-HARDEN t_8e1f1cdd ships) → resolved via metadata
+    2. Device fingerprint (current heuristic, pre-visitor_id)
+    3. Default: "Nami"
     """
     from . import chat_store
     import json
 
     try:
         session = chat_store.get_session(session_id)
-        if not session or not session.metadata_json:
+        if not session:
             return "Nami"
-        meta = json.loads(session.metadata_json)
-        device = meta.get("device", "")
-        client_ip = meta.get("client_ip", "")
 
-        # Ced: France IP + Linux Chrome
+        meta = {}
+        if session.metadata_json:
+            try:
+                meta = json.loads(session.metadata_json)
+            except json.JSONDecodeError:
+                pass
+
+        # Phase 2 (CHAT-HARDEN): visitor_id-based identity
+        visitor_id = None
+        try:
+            visitor_id = getattr(session, "visitor_id", None)
+        except Exception:
+            pass
+        if not visitor_id:
+            visitor_id = meta.get("visitor_id")
+
+        if visitor_id:
+            # Check metadata for stored display_name
+            name = meta.get("display_name")
+            if name:
+                return name
+            # Fallback: visitor_id → name mapping (expand as needed)
+            return "Nami"
+
+        # Phase 1 (current): device fingerprint heuristic
+        device = meta.get("device", "")
         if device == "linux-chrome":
             return "Cédric"
-
-        # Nami: US IP + Mac Safari
         if device == "apple-mac-safari":
             return "Nami"
 
