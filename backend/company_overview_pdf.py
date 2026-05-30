@@ -647,7 +647,7 @@ def _render_kpis(story, styles, overview, yf_data, metrics_ledger, is_jp):
     om = fin.get('operating_margin') or yf_data.get('operatingMargins')
     _add_metric("Operating Margin", _fmt_pct(om), "TTM", "Yahoo Finance")
 
-    ni = fin.get('net_income') or yf_data.get('netIncomeToCommon')
+    ni = fin.get('net_income') or yf_data.get('_raw_info', {}).get('netIncomeToCommon')
     _add_metric("Net Income", _fmt_currency(ni), "Annual/TTM", "Yahoo Finance")
 
     fcf = fin.get('free_cash_flow') or yf_data.get('freeCashflow')

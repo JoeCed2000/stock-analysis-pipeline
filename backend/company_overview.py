@@ -203,6 +203,7 @@ def _build_yahoo_info_dict(ticker: str, info: Dict[str, Any]) -> Dict[str, Any]:
         "revenue_growth": info.get("revenueGrowth"),
         "earnings_growth": info.get("earningsGrowth"),
         "total_revenue": info.get("totalRevenue"),
+        "net_income": info.get("netIncomeToCommon"),  # Net Income to Common Stockholders
         "currency": info.get("currency", "USD"),
         "exchange": info.get("exchange"),
         # Key financial ratios (often missing from yfinance but included when available)
@@ -423,7 +424,7 @@ Return ONLY the JSON object. No markdown fences, no explanations."""
     # ── Primary: DeepSeek V3 (fast, cheap, reliable) ──────────
     try:
         from backend.kimi_provider import _deepseek_chat
-        ds_response = _deepseek_chat(prompt, system=system, max_tokens=4000, temperature=0.0)
+        ds_response = _deepseek_chat(prompt, system=system, max_tokens=6000, temperature=0.0)
         if ds_response:
             parsed = _parse_llm_response(ds_response, ticker, yf_info)
             if parsed is not None:
@@ -433,7 +434,7 @@ Return ONLY the JSON object. No markdown fences, no explanations."""
         logger.warning(f"[{ticker}] DeepSeek primary failed: {ds_e}")
 
     # ── Fallback 1: Codex Spark (slower, higher quality) ──────
-    response = _codex_chat(prompt, system=system, max_tokens=4000)
+    response = _codex_chat(prompt, system=system, max_tokens=6000)
 
     if response:
         parsed = _parse_llm_response(response, ticker, yf_info)
