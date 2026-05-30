@@ -651,7 +651,7 @@ def _earnings_documents_story(
             transcript_url = source.url
             break
     if not transcript_label:
-        transcript_label = "Earnings Transcript — StockAnalysis"
+        transcript_label = "Earnings Transcript — Seeking Alpha"  # StockAnalysis republishes SA
         transcript_url = f"https://stockanalysis.com/stocks/{report.ticker.lower()}/transcripts/"
 
     ir_value = _source_note(report, "investor relations")
@@ -1176,32 +1176,43 @@ def _generate_metrics_chart(chart_data, ticker: str) -> RLImage | None:
     rev_estimate = chart_data.revenue_estimate
     rev_vs = chart_data.revenue_vs_pct
 
-    rev_has_data = rev_actual is not None and rev_estimate is not None
-    if rev_has_data:
-        assert rev_actual is not None and rev_estimate is not None
-        # Format in billions
+    rev_has_actual = rev_actual is not None
+    rev_has_estimate = rev_estimate is not None
+    if rev_has_actual:
         rev_actual_val = float(rev_actual)
-        rev_estimate_val = float(rev_estimate)
         rev_ab = rev_actual_val / 1e9
-        rev_eb = rev_estimate_val / 1e9
-        bars = ax2.bar(["Estimate", "Actual"], [rev_eb, rev_ab],
-                        color=[est_color, actual_color], width=0.55, edgecolor="white", linewidth=0.5)
-        ax2.set_title(f"Revenue (${rev_ab:.1f}B)", fontsize=9, fontweight="bold", color="#111111", pad=8)
-        for bar, val in zip(bars, [rev_eb, rev_ab]):
-            ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.02,
-                     f"${val:.1f}B", ha="center", va="bottom", fontsize=8, color="#111111")
-        if rev_vs is not None:
-            pct = abs(rev_vs) * 100
-            direction = "▲ Beat" if rev_vs > 0 else "▼ Miss"
-            color = beat_color if rev_vs > 0 else miss_color
-            ax2.text(0.5, 0.90, f"{direction} {pct:.1f}%", transform=ax2.transAxes,
-                     ha="center", fontsize=8, fontweight="bold", color=color,
-                     bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor=color, alpha=0.9))
+        if rev_has_estimate:
+            rev_estimate_val = float(rev_estimate)
+            rev_eb = rev_estimate_val / 1e9
+            bars = ax2.bar(["Estimate", "Actual"], [rev_eb, rev_ab],
+                            color=[est_color, actual_color], width=0.55, edgecolor="white", linewidth=0.5)
+            ax2.set_title(f"Revenue (${rev_ab:.1f}B)", fontsize=9, fontweight="bold", color="#111111", pad=8)
+            for bar, val in zip(bars, [rev_eb, rev_ab]):
+                ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.02,
+                         f"${val:.1f}B", ha="center", va="bottom", fontsize=8, color="#111111")
+            if rev_vs is not None:
+                pct = abs(rev_vs) * 100
+                direction = "▲ Beat" if rev_vs > 0 else "▼ Miss"
+                color = beat_color if rev_vs > 0 else miss_color
+                ax2.text(0.5, 0.90, f"{direction} {pct:.1f}%", transform=ax2.transAxes,
+                         ha="center", fontsize=8, fontweight="bold", color=color,
+                         bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor=color, alpha=0.9))
+        else:
+            # Estimate not available — show only the actual revenue bar
+            bars = ax2.bar(["Actual"], [rev_ab],
+                            color=[actual_color], width=0.55, edgecolor="white", linewidth=0.5)
+            ax2.set_title(f"Revenue (${rev_ab:.1f}B)", fontsize=9, fontweight="bold", color="#111111", pad=8)
+            for bar, val in zip(bars, [rev_ab]):
+                ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.02,
+                         f"${val:.1f}B", ha="center", va="bottom", fontsize=8, color="#111111")
+            ax2.text(0.5, 0.88, "No estimate available", transform=ax2.transAxes,
+                     ha="center", fontsize=7, color="#8B8B8B",
+                     style="italic")
     else:
         # §25 — no placeholder: skip panel, don't show "data not available"
         ax2.axis("off")
 
-    for ax, has_data in ((ax1, eps_has_data), (ax2, rev_has_data)):
+    for ax, has_data in ((ax1, eps_has_data), (ax2, rev_has_actual)):
         if not has_data:
             continue
         ax.set_facecolor("#FAFAFA")

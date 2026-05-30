@@ -2523,7 +2523,7 @@ def build_earnings_deep_dive_report(
             DOMAIN_NAMES = {
                 "fool.com": "Motley Fool",
                 "seekingalpha.com": "Seeking Alpha",
-                "stockanalysis.com": "StockAnalysis.com",
+                "stockanalysis.com": "Seeking Alpha",  # Canonical source — StockAnalysis republishes SA transcripts
                 "finance.yahoo.com": "Yahoo Finance",
                 "reuters.com": "Reuters",
                 "bloomberg.com": "Bloomberg",
