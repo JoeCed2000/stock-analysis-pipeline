@@ -50,8 +50,8 @@ def _detect_visitor_name(session_id: str) -> str:
             name = meta.get("display_name")
             if name:
                 return name
-            # Fallback: visitor_id → name mapping (expand as needed)
-            return "Nami"
+            # No display_name yet → fall through to device fingerprint
+            # (do NOT return "Nami" here — that skips Phase 1)
 
         # Phase 1 (current): device fingerprint heuristic
         device = meta.get("device", "")

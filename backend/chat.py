@@ -125,6 +125,24 @@ def _fingerprint_device(user_agent: str) -> str:
     return "-".join(parts)
 
 
+def _resolve_visitor_name(client_visitor_name: str, device_info: str) -> str:
+    """Resolve visitor name from device fingerprint, not client selector.
+
+    Priority:
+    1. Device fingerprint match → canonical identity
+    2. Unknown device → default
+    """
+    device = device_info.lower()
+    if device.startswith("linux") and "chrome" in device:
+        return "Cédric"
+    if device.startswith("apple-mac") and "safari" in device:
+        return "Nami"
+    if device.startswith("windows") and "chrome" in device:
+        return "Cédric"
+    # Unknown device → use fingerprint as name, not client-provided value
+    return client_visitor_name or "Visitor"
+
+
 def _check_origin(request: Request) -> None:
     """Validate request origin for chat endpoints.
     
@@ -180,7 +198,7 @@ async def create_session(req: ChatSessionRequest, request: Request):
 
     session = chat_store.create_session(
         visitor_id=visitor_id,
-        visitor_name=req.visitor_name,
+        visitor_name=_resolve_visitor_name(req.visitor_name, device_info),
         language=req.language,
         metadata=meta,
     )

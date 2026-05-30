@@ -361,5 +361,12 @@ async def stream_ai_response(
         previous_chats=previous_chats,
         visitor_name=visitor_name,
     )
-    async for token in stream_deepseek(SYSTEM_PROMPT, prompt):
+    # Use dynamic system prompt if visitor is not Nami
+    system_prompt = SYSTEM_PROMPT
+    if visitor_name != "Nami":
+        system_prompt = SYSTEM_PROMPT.replace("Nami", visitor_name)
+        # Also replace なみ/ナミ if present (Japanese variants)
+        system_prompt = system_prompt.replace("なみ", visitor_name)
+    
+    async for token in stream_deepseek(system_prompt, prompt):
         yield token

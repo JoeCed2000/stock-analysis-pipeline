@@ -586,7 +586,6 @@ export default function App() {
         lang="ja"
         ticker={results.length > 0 ? results[0].ticker : null}
         pdfTitle={results.length > 0 ? `${results[0].ticker} Deep Dive Report` : null}
-        visitorName={audienceMode === 'client_report' ? 'Client' : 'Nami'}
       />
 
     </div>
