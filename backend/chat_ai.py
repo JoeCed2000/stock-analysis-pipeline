@@ -38,6 +38,12 @@ assumptions, financial metrics, product UX, bugs, and confusing parts of the pla
 - Helpful and calm.
 - Never passive, never dismissive, never cold, never arrogant.
 
+## Voice & Pronouns
+- Always speak in first-person singular: **「私は」/ "I"** — NEVER use 「私たち」/ "we".
+  This is a 1-on-1 conversation. 「私たち」makes it sound like you're a corporation.
+  ❌ "We can help you with…"  →  ✅ "I can help you with…"
+  ❌ 「私たちのプラットフォームでは…」  →  ✅ 「このプラットフォームでは…」
+
 ## Conversation Behavior
 - Do NOT merely say "OK", "thanks", or "noted" — always add value.
 - If the request is CLEAR → answer directly, then offer a useful next step.
@@ -132,6 +138,7 @@ def build_prompt(
     history: Optional[list[dict]] = None,
     current_url: Optional[str] = None,
     route: Optional[str] = None,
+    recent_tickers: Optional[list[dict]] = None,
 ) -> str:
     """Build the full prompt sent to the AI, including context."""
 
@@ -145,22 +152,42 @@ def build_prompt(
     else:
         parts.append("## 指示\n日本語で回答してください。")
 
-    # Current context
+    # Current context — only include what helps the AI, not generic page info
     ctx_lines = ["## Current Context"]
+    has_useful_context = False
+
     if ticker:
         ctx_lines.append(f"- Ticker: {ticker}")
-    if current_url:
-        ctx_lines.append(f"- Page URL: {current_url}")
-    if route:
-        ctx_lines.append(f"- Route: {route}")
+        has_useful_context = True
     if pdf_title:
         ctx_lines.append(f"- Open PDF: {pdf_title}")
+        has_useful_context = True
     if pdf_page:
         ctx_lines.append(f"- Current PDF page: {pdf_page}")
+        has_useful_context = True
     if selected_section:
         ctx_lines.append(f"- Selected section: {selected_section}")
-    if not ticker and not pdf_title:
-        ctx_lines.append("- No specific ticker or PDF is currently open.")
+        has_useful_context = True
+
+    # Only include route if it's a stock-specific page
+    _USEFUL_ROUTES = ("/stock-analysis/", "/company-overview/", "/deep-dive/", "/transcript/")
+    if route and any(r in route for r in _USEFUL_ROUTES):
+        ctx_lines.append(f"- Page: {route}")
+        has_useful_context = True
+
+    # Recent tickers (RAG)
+    if recent_tickers:
+        ticker_lines = ["- Recently analyzed tickers:"]
+        for rt in recent_tickers[:5]:
+            pdfs = ", ".join(rt.get("pdfs", [])[:2]) or "no PDF"
+            ticker_lines.append(f"  • {rt['ticker']} (analyzed {rt.get('date','?')}, PDFs: {pdfs})")
+        ctx_lines.append("\n".join(ticker_lines))
+        has_useful_context = True
+
+    if not has_useful_context:
+        ctx_lines.append("- Nami is browsing the platform. No specific ticker or PDF is open.")
+        ctx_lines.append("- Offer to help with: understanding reports, explaining metrics, or taking feedback.")
+
     parts.append("\n".join(ctx_lines))
 
     # PDF context
@@ -274,6 +301,7 @@ async def stream_ai_response(
     history: Optional[list[dict]] = None,
     current_url: Optional[str] = None,
     route: Optional[str] = None,
+    recent_tickers: Optional[list[dict]] = None,
 ) -> AsyncGenerator[str, None]:
     """Build prompt, stream AI response. Main entry point."""
     prompt = build_prompt(
@@ -288,6 +316,7 @@ async def stream_ai_response(
         history=history,
         current_url=current_url,
         route=route,
+        recent_tickers=recent_tickers,
     )
     async for token in stream_deepseek(SYSTEM_PROMPT, prompt):
         yield token

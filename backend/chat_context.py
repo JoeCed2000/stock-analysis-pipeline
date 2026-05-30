@@ -81,4 +81,60 @@ async def build_chat_context(
         "history": history_dicts,
         "current_url": current_url,
         "route": route,
+        "recent_tickers": _get_recent_tickers(limit=5, exclude_ticker=ticker),
     }
+
+
+def _get_recent_tickers(limit: int = 5, exclude_ticker: Optional[str] = None) -> list[dict]:
+    """Get recently analyzed tickers with their available PDFs for RAG context.
+
+    Scans the analyses/ directory for the most recently modified ticker directories
+    and returns basic info about each.
+    """
+    from pathlib import Path
+
+    analyses_dir = Path(__file__).resolve().parent.parent / "analyses"
+    if not analyses_dir.exists():
+        return []
+
+    # Collect ticker dirs with their latest modification time
+    ticker_dirs: dict[str, dict] = {}
+    for entry in analyses_dir.iterdir():
+        if not entry.is_dir():
+            continue
+        # Extract ticker from directory name: "<date>_<TICKER>_<name>"
+        parts = entry.name.split("_")
+        ticker = None
+        for token in parts:
+            token = token.strip()
+            if token.isupper() and 2 <= len(token) <= 5 and token.isalpha():
+                if token in ("PDF", "API", "HTTP", "NEW", "OLD", "CORP", "INC", "LTD", "THE"):
+                    continue
+                ticker = token
+                break
+        if not ticker or ticker == exclude_ticker or ticker in _TICKER_BLACKLIST:
+            continue
+
+        # Get latest modification time and available PDFs
+        mtime = entry.stat().st_mtime
+        if ticker not in ticker_dirs or mtime > ticker_dirs[ticker].get("_mtime", 0):
+            # List PDFs
+            pdfs = []
+            for pdf_file in sorted(entry.rglob("*.pdf")):
+                pdfs.append(pdf_file.name)
+            from datetime import datetime
+            ticker_dirs[ticker] = {
+                "ticker": ticker,
+                "date": datetime.fromtimestamp(mtime).strftime("%Y-%m-%d"),
+                "pdfs": pdfs[:3],  # top 3
+                "_mtime": mtime,
+            }
+
+    # Sort by recency, return top N
+    result = sorted(ticker_dirs.values(), key=lambda x: x["_mtime"], reverse=True)[:limit]
+    for r in result:
+        r.pop("_mtime", None)
+    return result
+
+
+_TICKER_BLACKLIST = {"ZZZZ", "FAIL", "TEST", "NVDQ", "NBUS", "NBIS", "EEM", "MC", "SNDK"}
