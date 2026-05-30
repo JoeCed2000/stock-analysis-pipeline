@@ -670,7 +670,12 @@ def system_prompt(language: str, sector: str = "", industry: str = "") -> str:
         "DATA RULES:\n"
         "- Every number must be sourced: (Transcript, CEO remarks) or (yfinance, quarterly data)\n"
         "- Never invent data. When a number is unavailable, explain WHY.\n"
-        "- Do NOT use 'Not available' or 'Supplied metrics' as filler sources.\n"
+        "- Do NOT use 'Not available', 'Not retrieved', 'N/A' or 'Supplied metrics' as filler sources.\n"
+        "  Instead: 'Not disclosed in quarterly filing', 'Not reported', or '—'.\n"
+        "- FORBIDDEN in output: tool/provider names ('Codex CLI', 'DeepSeek', 'Spark',\n"
+        "  'LLM analysis', 'pipeline', 'pre_render', 'RapidAPI'), internal markers\n"
+        "  ('DATA NOT AVAILABLE', 'DONNÉE NON DISPONIBLE', 'CRITICAL OVERRIDE'),\n"
+        "  and placeholder text ('Section unavailable', 'primary returned no content').\n"
         "- Write in ENGLISH only. No Japanese characters, no CJK."
     )
 
@@ -686,7 +691,12 @@ def system_prompt(language: str, sector: str = "", industry: str = "") -> str:
         "- QoQトレンドをYoYと併せて示し、単なるスナップショットではなく変化を論じてください。\n\n"
         "構造：## セクション名, ①②③, Namiさん向け解釈, ⚠️ リスク, > 一言まとめ\n\n"
         "データルール：すべての数字に出所を明記。数値が入手できない場合は理由を説明。\n"
-        "埋め草（Not available/Supplied metrics）を使用しない。日本語で記述。"
+        "埋め草（Not available / Not retrieved / N/A / Supplied metrics）を使用しない。\n"
+        "  代わりに「四半期報告書で非開示」「報告されず」「—」を使用。\n"
+        "禁止出力：ツール名（Codex CLI、DeepSeek、Spark、LLM分析、pipeline、pre_render、RapidAPI）、\n"
+        "  内部マーカー（DATA NOT AVAILABLE、DONNÉE NON DISPONIBLE、CRITICAL OVERRIDE）、\n"
+        "  プレースホルダー（Section unavailable、primary returned no content）。\n"
+        "日本語で記述。"
     )
 
     if language == "en":
@@ -826,7 +836,7 @@ def _base_prompt(
             "Do NOT invent qualitative commentary. For management commentary, "
             "business drivers, and other call discussions that require transcript "
             "evidence, state 'Not discussed in the available transcript' — "
-            "do NOT write 'Not available' or 'DATA NOT AVAILABLE'."
+            "do NOT write 'Not available', 'Not retrieved', 'N/A' or 'DATA NOT AVAILABLE'."
         )
     )
 
