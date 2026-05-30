@@ -285,14 +285,20 @@ async def process_feedback(
         logger.warning(f"Dispatch returned no spawn for {task_id} — may be queued")
 
     # Gate 5: Monitor in background and respond when done
-    asyncio.create_task(_monitor_and_respond(task_id, session_id, language))
+    asyncio.create_task(_monitor_and_respond(
+        task_id, session_id, language,
+        feedback_type=feedback_type, user_message=user_message, ticker=ticker or "",
+    ))
 
     return task_id
 
 
 # ─── Background Monitor ──────────────────────────────────────────────────────
 
-async def _monitor_and_respond(task_id: str, session_id: str, language: str):
+async def _monitor_and_respond(
+    task_id: str, session_id: str, language: str,
+    feedback_type: str = "", user_message: str = "", ticker: str = "",
+):
     """Monitor Kanban task until completion, then respond in chat."""
     start = time.time()
 
@@ -308,7 +314,10 @@ async def _monitor_and_respond(task_id: str, session_id: str, language: str):
 
         if task_status == "done":
             result_text = status.get("result", "")[:500]
-            await _send_completion_response(session_id, task_id, result_text, language)
+            await _send_completion_response(
+                session_id, task_id, result_text, language,
+                feedback_type=feedback_type, user_message=user_message, ticker=ticker,
+            )
             return
         elif task_status == "blocked":
             block_reason = status.get("result", "unknown")[:300]
@@ -322,8 +331,18 @@ async def _monitor_and_respond(task_id: str, session_id: str, language: str):
     await _send_timeout_response(session_id, task_id, language)
 
 
-async def _send_completion_response(session_id: str, task_id: str, result: str, language: str):
-    """Notify chat that the fix is deployed."""
+async def _send_completion_response(
+    session_id: str, task_id: str, result: str, language: str,
+    feedback_type: str = "", user_message: str = "", ticker: str = "",
+):
+    """Notify chat that the fix is deployed AND trigger the learning loop."""
+    # 🔴 Learning loop: log the correction pattern for future prevention
+    if feedback_type and user_message:
+        try:
+            _learn_from_fix(task_id, feedback_type, user_message, ticker, result)
+        except Exception as e:
+            logger.error(f"Learning loop failed (non-blocking): {e}")
+
     try:
         from backend import chat_store
         from backend.chat import _uid, _utcnow_iso, _ws_connections
@@ -460,3 +479,125 @@ async def _send_timeout_response(session_id: str, task_id: str, language: str):
                 pass
     except Exception as e:
         logger.error(f"Failed to send timeout response: {e}")
+
+
+# ─── Learning Loop ────────────────────────────────────────────────────────────
+
+# Bug category taxonomy
+_CATEGORY_PATTERNS = {
+    "data_source": ["yfinance", "finnhub", "api", "data source", "provider", "missing data",
+                    "PEG", "EPS", "PE ratio", "growth rate", "fcf", "trailing",
+                    "データ", "取得", "表示されない", "数値が違う", "違う"],
+    "prompt_quality": ["prompt", "explanation", "wording", "phrasing", "text", "description",
+                       "説明", "文章", "書き方", "表現"],
+    "renderer_logic": ["pdf", "render bug", "layout broken", "formatting", "page break", "table cut",
+                       "PDF", "レイアウト", "表示", "グラフ", "表"],
+    "calculation_error": ["calculation error", "math error", "formula wrong", "computation",
+                          "二重カウント", "計算ミス", "算出"],
+    "i18n_missing": ["japanese", "translation missing", "日本語", "翻訳漏れ", "英語だけ"],
+    "frontend_display": ["button", "click", "ui issue", "interface", "hover", "responsive",
+                         "ボタン", "クリック", "画面"],
+    "validator_gap": ["validator", "validation", "rule", "gate", "should have caught",
+                      "pre_render", "バリデーター"],
+}
+
+
+def _categorize_bug(feedback_type: str, user_message: str) -> str:
+    """Categorize a bug based on feedback type and message content."""
+    text_lower = user_message.lower()
+    for category, patterns in _CATEGORY_PATTERNS.items():
+        for pattern in patterns:
+            if pattern.lower() in text_lower:
+                return category
+    # Default: use feedback_type as fallback category
+    type_to_category = {
+        "correction": "data_source",
+        "bug": "renderer_logic",
+        "ux": "frontend_display",
+        "feature_request": "frontend_display",
+    }
+    return type_to_category.get(feedback_type, "data_source")
+
+
+def _categorize_root_cause(feedback_type: str, user_message: str, fix_result: str) -> str:
+    """Identify the root cause from the fix result."""
+    result_lower = fix_result.lower()
+    cause_map = [
+        ("stale_cache", ["cache", "stale", "flush", "cached"]),
+        ("missing_field", ["missing", "whitelist", "not in", "add key", "add_field"]),
+        ("validator_absent", ["validator", "pre_render", "rule added", "gate", "should have"]),
+        ("renderer_bug", ["render", "pdf_renderer", "fpdf", "layout"]),
+        ("prompt_instruction", ["prompt", "instruction", "system prompt", "llm"]),
+        ("mapper_gap", ["mapper", "mapping", "transform", "normalize"]),
+        ("api_config", ["api", "endpoint", "route", "config"]),
+        ("frontend_state", ["react", "state", "component", "jsx", "unmount"]),
+    ]
+    for cause, keywords in cause_map:
+        for kw in keywords:
+            if kw in result_lower:
+                return cause
+    return "unknown"
+
+
+def _suggest_validator_rule(category: str, user_message: str, fix_result: str) -> str:
+    """Suggest a validator rule that could have caught this bug."""
+    suggestions = {
+        "data_source": "RULE <N>: Verify all yfinance fields used in display are in the whitelist",
+        "prompt_quality": "RULE <N>: Scan generated prose for forbidden patterns or missing context",
+        "renderer_logic": "RULE <N>: Validate PDF output for layout, truncation, or missing sections",
+        "calculation_error": "RULE <N>: Cross-validate computed metrics against source data",
+        "i18n_missing": "RULE <N>: Verify JP labels exist for all user-facing strings",
+        "frontend_display": "RULE <N>: Browser recette — verify component visibility and state",
+        "validator_gap": "RULE <N>: Add pre-render check for this specific failure mode",
+    }
+    return suggestions.get(category, "RULE <N>: Add check for this pattern")
+
+
+def _learn_from_fix(
+    task_id: str,
+    feedback_type: str,
+    user_message: str,
+    ticker: str,
+    fix_result: str,
+) -> None:
+    """Post-fix learning: log the correction pattern to prevent recurrence.
+
+    Writes to docs/corrections_log.md with:
+    - Bug category and root cause
+    - Suggested validator rule
+    - Cross-reference to task/commit
+
+    The corrections log becomes a reference for workers — when processing
+    similar tasks, they can consult past corrections to avoid repeating mistakes.
+    """
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    corrections_log = Path(__file__).resolve().parent.parent / "docs" / "corrections_log.md"
+
+    category = _categorize_bug(feedback_type, user_message)
+    root_cause = _categorize_root_cause(feedback_type, user_message, fix_result)
+    validator_rule = _suggest_validator_rule(category, user_message, fix_result)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    entry = (
+        f"\n---\n"
+        f"## {now} — {task_id}\n\n"
+        f"| Field | Value |\n"
+        f"|---|---|\n"
+        f"| **Task** | `{task_id}` |\n"
+        f"| **Ticker** | {ticker or 'N/A'} |\n"
+        f"| **Feedback type** | `{feedback_type}` |\n"
+        f"| **Category** | `{category}` |\n"
+        f"| **Root cause** | `{root_cause}` |\n"
+        f"| **Suggested validator** | {validator_rule} |\n\n"
+        f"**User message:**\n> {user_message[:300]}\n\n"
+        f"**Fix summary:**\n{fix_result[:500] or '(no fix summary available)'}\n"
+    )
+
+    try:
+        with open(corrections_log, "a", encoding="utf-8") as f:
+            f.write(entry)
+        logger.info(f"Learning loop: logged correction {task_id} → {corrections_log}")
+    except Exception as e:
+        logger.error(f"Failed to write corrections log: {e}")

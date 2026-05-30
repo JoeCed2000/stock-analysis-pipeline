@@ -4,11 +4,14 @@
 - **Backend**: Python 3.11+ FastAPI (port 8780), yfinance + finnhub-python
 - **Frontend**: React + Vite (port 5173 dev, bundled to dist/)
 - **Chat**: Live AI chatbot widget (floating bubble on Feedback page), DeepSeek V3 streaming via WebSocket
+- **Feedback Pipeline**: Autonomous correction loop (chat → Kanban → fix → respond), see `backend/feedback_pipeline.py`
+- **Learning Loop**: `_learn_from_fix()` → `docs/corrections_log.md` — chaque correction alimente la mémoire préventive
 
 ## Recent Changes
 
 | Date | Task | Summary | Status |
 |---|---|---|---|
+| 2026-05-30 | **Feedback Pipeline + Learning Loop** | Autonomous correction pipeline: chat feedback → Kanban → fix → deploy → respond. Pre-flight gate (`tb preflight -q`) mandatory before task creation. Learning loop: `_learn_from_fix()` analyzes root cause, categorizes bugs (data_source/prompt/renderer/calculation/i18n/frontend/validator_gap), suggests validator rules, logs to `docs/corrections_log.md` for cumulative prevention. See `backend/feedback_pipeline.py`. | ✅ DONE |
 | 2026-05-30 | **CHAT-HARDEN** | Replace IP+device fingerprint isolation with cryptographically strong visitor_id model. Schema: add visitor_id column to chat_sessions. Replace get_sessions_by_fingerprint() with get_sessions_by_visitor(). Remove visitor_name fallback. IP/device = audit metadata only. Frontend: visitor_id in localStorage. Tests: 8+ isolation tests covering same-IP collision, spoofed headers, missing ID, legacy sessions. See Kanban task CHAT-HARDEN. | 🔴 PENDING |
 | 2026-05-30 | **Live AI Chatbot Widget** | Full-stack live chat for feedback page. Event-driven (not cron-first): message → immediate AI response via WebSocket streaming. DeepSeek V3, Japanese default. 6 backend files (chat_models/store/ai/retrieval/context/router), ChatWidget.jsx, SQLite with FTS5 for PDF retrieval. Floating bubble on FeedbackPage.jsx. Commit: `060f196`. | ✅ DONE |
 | 2026-05-30 | Company Overview: paragraph enrichment + DeepSeek primary + net income fix | Enriched all 10 text fields from 2-3 sentences to 5-8 sentence paragraphs (~1000-1200 chars each). Increased max_tokens 2500→4000→6000 to prevent JSON truncation. Switched LLM order: DeepSeek V3 primary, Codex Spark fallback. Fixed double-period bug in investor summary bullets. Truncated investor_takeaway to 3 sentences for exec summary. Added `netIncomeToCommon` to Yahoo whitelist (was missing → always "—"). Fixed renderer fallback to use `_raw_info` for net income. NVDA PDF now shows $159.6B net income. Commits: `6ad6fc3` + `da10b3c`. | ✅ DONE |
