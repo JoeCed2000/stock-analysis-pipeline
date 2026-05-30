@@ -43,6 +43,7 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
   const [streamingMsgId, setStreamingMsgId] = useState(null);
   const [error, setError] = useState('');
   const [wsStatus, setWsStatus] = useState('disconnected'); // connected | disconnected | reconnecting
+  const timersRef = useRef([]);
   const wsRef = useRef(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
@@ -120,6 +121,8 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
     return () => {
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       if (wsRef.current) wsRef.current.close();
+      timersRef.current.forEach(t => clearTimeout(t));
+      timersRef.current = [];
     };
   }, [sessionId, connectWs]);
 
@@ -209,9 +212,45 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || `HTTP ${res.status}`);
       }
-      // Loading will be reset by WebSocket event (assistant_completed/assistant_error)
-      // Safety timeout: reset after 30s if WebSocket doesn't respond
-      setTimeout(() => setLoading(false), 30000);
+      // REST fallback: if WebSocket doesn't respond within 5s, poll history
+      const restTimeout = setTimeout(async () => {
+        if (!sessionId) return;
+        try {
+          const histRes = await fetch(`${API_BASE}/chat/history?session_id=${sessionId}`);
+          if (histRes.ok) {
+            const histData = await histRes.json();
+            const msgs = histData.messages || [];
+            // Find assistant messages not yet in our list
+            const newMsgs = msgs.filter(m => !messages.find(existing => existing.id === m.id));
+            if (newMsgs.length > 0) {
+              setMessages(prev => {
+                const merged = [...prev];
+                for (const nm of newMsgs) {
+                  if (!merged.find(m => m.id === nm.id)) {
+                    merged.push(nm);
+                  }
+                }
+                return merged;
+              });
+            }
+            // Check if any message is still processing
+            const hasProcessing = msgs.some(m => m.status === 'processing' && m.role === 'assistant');
+            if (!hasProcessing) {
+              setLoading(false);
+              setStreaming(false);
+            }
+          }
+        } catch {}
+      }, 5000);
+
+      // Safety timeout: force-reset loading after 15s
+      const safetyTimeout = setTimeout(() => {
+        setLoading(false);
+        setStreaming(false);
+      }, 15000);
+
+      // Store for cleanup
+      timersRef.current.push(restTimeout, safetyTimeout);
     } catch (e) {
       setError(e.message || 'Failed to send message');
       setLoading(false);
@@ -366,6 +405,16 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
         </div>
       )}
 
+      {/* Thinking indicator */}
+      {loading && !streaming && (
+        <div style={thinkingStyle}>
+          <span className="chat-typing-dot">●</span>
+          <span className="chat-typing-dot">●</span>
+          <span className="chat-typing-dot">●</span>
+          <span style={{ marginLeft: 8, fontSize: 12, color: '#8b949e' }}>考え中...</span>
+        </div>
+      )}
+
       {/* Input */}
       <div style={inputContainerStyle}>
         <textarea
@@ -376,7 +425,7 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
           placeholder="この分析について質問してください…"
           rows={2}
           style={chatInputStyle}
-          disabled={loading && !streaming}
+          disabled={false}
         />
         <button
           onClick={() => sendMessage(input)}
@@ -615,6 +664,16 @@ const chatErrorStyle = {
   fontSize: 12,
   display: 'flex',
   justifyContent: 'space-between',
+  alignItems: 'center',
+  flexShrink: 0,
+};
+
+const thinkingStyle = {
+  padding: '6px 14px',
+  background: '#161b22',
+  borderTop: '1px solid #30363d',
+  fontSize: 12,
+  display: 'flex',
   alignItems: 'center',
   flexShrink: 0,
 };
