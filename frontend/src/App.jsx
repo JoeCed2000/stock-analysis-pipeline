@@ -570,6 +570,14 @@ export default function App() {
         }
       `}</style>
       </>)}
+
+      {/* Live Chat Widget — global, always visible */}
+      <ChatWidget
+        lang="ja"
+        ticker={results.length > 0 ? results[0].ticker : null}
+        pdfTitle={results.length > 0 ? `${results[0].ticker} Deep Dive Report` : null}
+      />
+
     </div>
   );
 }
