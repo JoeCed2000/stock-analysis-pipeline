@@ -72,11 +72,11 @@ export default function App() {
   });
 
   const [audienceMode, setAudienceMode] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('audienceMode');
-      if (saved) return saved;
-    }
     // Auto-detect from device fingerprint (no manual selector)
+    // Migrate old localStorage key to prevent stale values from removed selector
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('audienceMode');
+    }
     const ua = (typeof navigator !== 'undefined' && navigator.userAgent || '').toLowerCase();
     const isNamiDevice = ua.includes('mac os') && ua.includes('safari') && !ua.includes('chrome');
     if (isNamiDevice) return 'nami_personal';
