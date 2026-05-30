@@ -341,8 +341,8 @@ Return ONLY a valid JSON object (no markdown, no explanation) with EXACTLY this 
     "founded": null,
     "headquarters": "City, State, Country"
   }},
-  "business_description": "2-3 sentences describing what the company does.",
-  "revenue_model": "2-3 sentences explaining how the company makes money (major revenue engines).",
+  "business_description": "A comprehensive 5-8 sentence paragraph (~10 lines) describing what the company does, its products, markets, and scale. Be specific and detailed.",
+  "revenue_model": "A comprehensive 5-8 sentence paragraph (~10 lines) explaining how the company makes money — major revenue engines, monetization approach, key customer segments. Be specific and detailed.",
   "business_segments": ["segment 1", "segment 2"],
   "growth_drivers": ["driver 1", "driver 2", "driver 3"],
   "moats": ["moat 1", "moat 2"],
@@ -369,19 +369,19 @@ Return ONLY a valid JSON object (no markdown, no explanation) with EXACTLY this 
   "recent_developments": [
     {{
       "title": "descriptive title",
-      "summary": "1-2 sentence summary in English",
+      "summary": "2-3 sentence summary in English — be informative, not telegraphic",
       "date": "YYYY-MM-DD if known, else omit",
       "sentiment": "positive|neutral|negative"
     }}
   ],
-  "competitive_position": "2-3 sentences analyzing market position, advantages, and threats.",
-  "strengths_vs_competitors": "2-3 sentences on strengths relative to direct peers.",
-  "weaker_areas_vs_competitors": "2-3 sentences on weaker areas vs peers.",
-  "client_types": "2-3 sentences describing main customer types and end markets.",
-  "management_weaknesses": "2-3 sentences on management team weaknesses, turnover, or governance risks.",
-  "investor_takeaway": "2-3 sentence bottom-line investment takeaway summarizing the bull/bear case balance.",
-  "ceo_leadership_style": "2-3 sentences on leadership style based on public signals.",
-  "long_term_vision": "2-3 sentences on long-term strategy and vision.",
+  "competitive_position": "A comprehensive 5-8 sentence paragraph (~10 lines) analyzing market position, competitive advantages, threats, and market share dynamics. Be specific and analytical.",
+  "strengths_vs_competitors": "A comprehensive 5-8 sentence paragraph (~10 lines) on concrete strengths relative to direct peers — specific advantages, not generic platitudes.",
+  "weaker_areas_vs_competitors": "A comprehensive 5-8 sentence paragraph (~10 lines) on concrete weaker areas vs peers — be honest and specific, not vague.",
+  "client_types": "A comprehensive 5-8 sentence paragraph (~10 lines) describing main customer types, end markets, customer concentration, and go-to-market approach.",
+  "management_weaknesses": "A comprehensive 5-8 sentence paragraph (~10 lines) on management team weaknesses, turnover history, governance risks, or succession concerns.",
+  "investor_takeaway": "A comprehensive 5-8 sentence paragraph (~10 lines) bottom-line investment takeaway — balanced bull/bear case, key catalysts, risks, and what to watch.",
+  "ceo_leadership_style": "A comprehensive 5-8 sentence paragraph (~10 lines) on leadership style, track record, public perception, and strategic decision-making pattern.",
+  "long_term_vision": "A comprehensive 5-8 sentence paragraph (~10 lines) on long-term strategy, vision, expansion plans, and how the company positions for the future.",
   "competitors": [
     {{
       "competitor_name": "competitor ticker/name",
@@ -405,8 +405,8 @@ Return ONLY a valid JSON object (no markdown, no explanation) with EXACTLY this 
 
 RULES:
 - Use actual numbers from Yahoo Finance when available. If a field is missing, use null (not "N/A" or 0) for numbers.
+- PARAGRAPH DEPTH: All text fields (business_description, revenue_model, competitive_position, strengths/weaker_areas, client_types, management_weaknesses, investor_takeaway, ceo_leadership_style, long_term_vision) MUST be substantial 5-8 sentence paragraphs, not 2-3 sentence summaries. Aim for ~10 lines each. This is client-facing professional analysis.
 - For list fields, always return arrays (possibly empty), never strings.
-- Keep each bullet concise and investor-facing; avoid marketing language.
 - business_segments: list SPECIFIC segment NAMES (e.g. "Google Cloud", "Compute & Networking"). Never use numbers ("two") or generic labels. Extract from the long description or web results.
 - The CEO MUST be identified by name (e.g. "CEO Sundar Pichai"). If unknown, use null for the name field but state uncertainty in ceo_leadership_style.
 - competitors: list at least 5-6 named competitors with ticker symbols. More is better — aim for a comprehensive competitive landscape.
@@ -420,28 +420,28 @@ Return ONLY the JSON object. No markdown fences, no explanations."""
 
     system = "You are a senior equity research analyst synthesizing company overviews. You write in English. You return ONLY valid JSON with no markdown fences."
 
-    # ── Primary: Codex Spark (fast, included in Pro) ─────────
-    response = _codex_chat(prompt, system=system, max_tokens=2500)
+    # ── Primary: DeepSeek V3 (fast, cheap, reliable) ──────────
+    try:
+        from backend.kimi_provider import _deepseek_chat
+        ds_response = _deepseek_chat(prompt, system=system, max_tokens=4000, temperature=0.0)
+        if ds_response:
+            parsed = _parse_llm_response(ds_response, ticker, yf_info)
+            if parsed is not None:
+                logger.info(f"[{ticker}] DeepSeek synthesis succeeded")
+                return parsed
+    except Exception as ds_e:
+        logger.warning(f"[{ticker}] DeepSeek primary failed: {ds_e}")
+
+    # ── Fallback 1: Codex Spark (slower, higher quality) ──────
+    response = _codex_chat(prompt, system=system, max_tokens=4000)
 
     if response:
         parsed = _parse_llm_response(response, ticker, yf_info)
         if parsed is not None:
             return parsed
-        logger.warning(f"[{ticker}] Codex response failed to parse, trying DeepSeek fallback...")
+        logger.warning(f"[{ticker}] Codex response failed to parse, using deterministic fallback...")
     else:
-        logger.warning(f"[{ticker}] Codex unavailable (quota/auth/hung), trying DeepSeek fallback...")
-
-    # ── Fallback 1: DeepSeek V3 (cheap, reliable) ────────────
-    try:
-        from backend.kimi_provider import _deepseek_chat
-        ds_response = _deepseek_chat(prompt, system=system, max_tokens=2500, temperature=0.0)
-        if ds_response:
-            parsed = _parse_llm_response(ds_response, ticker, yf_info)
-            if parsed is not None:
-                logger.info(f"[{ticker}] DeepSeek fallback succeeded")
-                return parsed
-    except Exception as ds_e:
-        logger.warning(f"[{ticker}] DeepSeek fallback failed: {ds_e}")
+        logger.warning(f"[{ticker}] Codex unavailable (quota/auth/hung), using deterministic fallback...")
 
     # ── Fallback 2: Deterministic (yfinance + regex) ─────────
     return _fallback_overview(ticker, yf_info)

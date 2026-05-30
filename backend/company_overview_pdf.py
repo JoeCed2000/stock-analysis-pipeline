@@ -489,7 +489,7 @@ def _get_investor_summary(overview, yf_data, is_jp) -> list:
         import re as _re
         sents = _re.split(r'(?<=[.!?])\s+', bp.replace('\n', ' '))
         sents = [s.strip() for s in sents if s.strip() and len(s.strip()) > 3]
-        bullets.append('. '.join(sents[:2]) + '.' if len(sents) >= 2 else sents[0] if sents else '')
+        bullets.append(' '.join(sents[:2]))
     fin = overview.get('key_financials', {}) or {}
     rev = fin.get('revenue') or yf_data.get('totalRevenue')
     rev_g = fin.get('revenue_growth') or yf_data.get('revenueGrowth')
@@ -500,7 +500,12 @@ def _get_investor_summary(overview, yf_data, is_jp) -> list:
         bullets.append(f"Market capitalization of {_fmt_currency(mc)}.")
     inv_takeaway = overview.get('investor_takeaway', '')
     if inv_takeaway:
-        bullets.append(_clean_text(inv_takeaway))
+        # Truncate to first 2-3 sentences for executive summary (detailed version on page 2+)
+        import re as _re
+        takeaway_sents = _re.split(r'(?<=[.!?])\s+', inv_takeaway.replace('\n', ' '))
+        takeaway_sents = [s.strip() for s in takeaway_sents if s.strip() and len(s.strip()) > 10]
+        short_takeaway = ' '.join(takeaway_sents[:3])
+        bullets.append(short_takeaway)
     return bullets
 
 
