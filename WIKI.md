@@ -3,10 +3,13 @@
 ## Architecture
 - **Backend**: Python 3.11+ FastAPI (port 8780), yfinance + finnhub-python
 - **Frontend**: React + Vite (port 5173 dev, bundled to dist/)
+- **Chat**: Live AI chatbot widget (floating bubble on Feedback page), DeepSeek V3 streaming via WebSocket
 
 ## Recent Changes
 
 | Date | Task | Summary | Status |
+|---|---|---|---|
+| 2026-05-30 | **Live AI Chatbot Widget** | Full-stack live chat for feedback page. Event-driven (not cron-first): message → immediate AI response via WebSocket streaming. DeepSeek V3, Japanese default. 6 backend files (chat_models/store/ai/retrieval/context/router), ChatWidget.jsx, SQLite with FTS5 for PDF retrieval. Floating bubble on FeedbackPage.jsx. Commit: `060f196`. | ✅ DONE |
 |---|---|---|---|
 | 2026-05-30 | Company Overview: paragraph enrichment + DeepSeek primary + net income fix | Enriched all 10 text fields from 2-3 sentences to 5-8 sentence paragraphs (~1000-1200 chars each). Increased max_tokens 2500→4000→6000 to prevent JSON truncation. Switched LLM order: DeepSeek V3 primary, Codex Spark fallback. Fixed double-period bug in investor summary bullets. Truncated investor_takeaway to 3 sentences for exec summary. Added `netIncomeToCommon` to Yahoo whitelist (was missing → always "—"). Fixed renderer fallback to use `_raw_info` for net income. NVDA PDF now shows $159.6B net income. Commits: `6ad6fc3` + `da10b3c`. | ✅ DONE |
 | 2026-05-30 | §5+§6 Source registry + earnings docs gate wiring (Phase 1) | Wired `_build_source_registry()` and `_build_earnings_documents_checklist()` into `validate_pre_render()` for both EN and JP. Previously RULE 26 (source integrity) and RULE 25 (earnings source checklist) were no-ops. Uses `sources` from transcript_results available at pipeline stage. All 4 structured models now flow through pre-render validation: §3 period_context + §4 metrics_ledger + §5 source_registry + §6 earnings_documents. Tests: 361/363 pass. Commit: `b3c90af`. | ✅ DONE |
