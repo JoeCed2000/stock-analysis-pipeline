@@ -31,6 +31,7 @@ for _c in _CODEX_CANDIDATES:
 if CODEX_BIN is None:
     CODEX_BIN = _CODEX_CANDIDATES[0]  # keep for clearer error message
 CODEX_TIMEOUT = 600  # seconds per attempt (agents need time to finish — 10 min)
+CODEX_TIMEOUT_FIRST = 120  # first attempt: kill sooner if Spark is hung
 CODEX_MAX_RETRIES = 2  # total attempts = 1 + MAX_RETRIES = 3
 CODEX_RETRY_BACKOFF = [2.0, 4.0]  # seconds between retries (jittered ±50%)
 
@@ -97,13 +98,15 @@ def _codex_chat(prompt: str, system: str = "", max_tokens: int = 1000, model: Op
                 
                 os.close(slave_fd)
             
-            # Wait with timeout
+            # Wait with timeout — first attempt shorter (Spark often hangs), retries generous
+            timeout = CODEX_TIMEOUT_FIRST if attempt == 0 else CODEX_TIMEOUT
             start = time.time()
             while proc.poll() is None:
-                if time.time() - start > CODEX_TIMEOUT:
+                elapsed = time.time() - start
+                if elapsed > timeout:
                     proc.kill()
                     logger.warning("Codex CLI timeout after %ds (attempt %d/%d)",
-                                   CODEX_TIMEOUT, attempt + 1, CODEX_MAX_RETRIES + 1)
+                                   int(elapsed), attempt + 1, CODEX_MAX_RETRIES + 1)
                     os.close(master_fd)
                     last_error = "timeout"
                     break  # will retry
