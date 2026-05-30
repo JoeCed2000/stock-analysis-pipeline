@@ -283,7 +283,7 @@ class TestValuationSupport:
         assert result["dominant"] == "supportive"
 
     def test_mixed_signals(self):
-        """Mix of support and concern → dominant mixed (tie between extremes)."""
+        """Mix of support and concern → dominant mixed (both exist)."""
         result = calculate_valuation_support(
             peg_signal={"level": "above_2"},
             ps_vs_growth={"level": "strong"},
@@ -295,7 +295,8 @@ class TestValuationSupport:
         assert result["support"] == 2
         assert result["neutral"] == 0
         assert result["concern"] == 3
-        assert result["dominant"] == "concerning"
+        # Both support and concern present → mixed (not "concerning" — there IS support)
+        assert result["dominant"] == "mixed"
 
     def test_dead_heat_mixed(self):
         """Tie between support and concern (2 each, 0 neutral) → mixed."""
