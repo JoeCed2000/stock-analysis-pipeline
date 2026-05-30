@@ -401,11 +401,20 @@ def _render_executive_snapshot(story, styles, ticker, company_name, overview, yf
     industry = profile.get('industry') or yf_data.get('industry', '—')
     hq = profile.get('headquarters') or yf_data.get('headquarters', '—')
     ceo_name = ""
-    officers = yf_data.get('companyOfficers', []) or []
-    for o in officers:
-        if o and isinstance(o, dict) and 'chief executive' in (o.get('title') or '').lower():
-            ceo_name = o.get('name', '')
-            break
+    # 1) Try to extract CEO from Spark overview (most reliable)
+    ceo_style = overview.get('ceo_leadership_style', '') or ''
+    if ceo_style and ceo_style != 'N/A':
+        import re as _re
+        m = _re.search(r'CEO\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)', ceo_style)
+        if m:
+            ceo_name = m.group(1)
+    # 2) Fall back to yfinance companyOfficers
+    if not ceo_name:
+        officers = yf_data.get('companyOfficers', []) or []
+        for o in officers:
+            if o and isinstance(o, dict) and 'chief executive' in (o.get('title') or '').lower():
+                ceo_name = o.get('name', '')
+                break
     exchange = yf_data.get('exchange', '—')
     country = profile.get('country') or yf_data.get('country', '—')
 
@@ -423,7 +432,7 @@ def _render_executive_snapshot(story, styles, ticker, company_name, overview, yf
         ("Market Cap", _fmt_currency(fin.get('market_cap') or yf_data.get('marketCap')), "Market data"),
         ("Revenue (TTM)", _fmt_currency(fin.get('revenue') or yf_data.get('totalRevenue')), "Annual/TTM"),
         ("P/E (Trailing)", _fmt(fin.get('pe_ratio'), '.1f', '—'), "Market data"),
-        ("52W Range", f"{_fmt(yf_data.get('fiftyTwoWeekLow'), '.2f')} — {_fmt(yf_data.get('fiftyTwoWeekHigh'), '.2f')}", "Market data"),
+        ("52W Range", f"{_fmt(fin.get('52w_low') or yf_data.get('fiftyTwoWeekLow'), '.2f')} — {_fmt(fin.get('52w_high') or yf_data.get('fiftyTwoWeekHigh'), '.2f')}", "Market data"),
         ("Employees", _fmt(profile.get('employees') or yf_data.get('fullTimeEmployees'), ',') , "Profile"),
         ("Website", profile.get('website') or yf_data.get('website', '—'), "Profile"),
         ("Data as of", data_date, "Retrieved"),
@@ -620,19 +629,19 @@ def _render_kpis(story, styles, overview, yf_data, metrics_ledger, is_jp):
     rev = fin.get('revenue') or yf_data.get('totalRevenue')
     _add_metric("Revenue", _fmt_currency(rev), "Annual/TTM", "SEC Filings / Yahoo Finance")
 
-    rev_g = yf_data.get('revenueGrowth')
+    rev_g = fin.get('revenue_growth') or yf_data.get('revenueGrowth')
     _add_metric("Revenue Growth (YoY)", _fmt_pct(rev_g), "YoY Quarterly", "Yahoo Finance")
 
-    gm = yf_data.get('grossMargins')
+    gm = fin.get('gross_margin') or yf_data.get('grossMargins')
     _add_metric("Gross Margin", _fmt_pct(gm), "TTM", "Yahoo Finance")
 
-    om = yf_data.get('operatingMargins')
+    om = fin.get('operating_margin') or yf_data.get('operatingMargins')
     _add_metric("Operating Margin", _fmt_pct(om), "TTM", "Yahoo Finance")
 
-    ni = yf_data.get('netIncomeToCommon')
+    ni = fin.get('net_income') or yf_data.get('netIncomeToCommon')
     _add_metric("Net Income", _fmt_currency(ni), "Annual/TTM", "Yahoo Finance")
 
-    fcf = yf_data.get('freeCashflow')
+    fcf = fin.get('free_cash_flow') or yf_data.get('freeCashflow')
     _add_metric("Free Cash Flow", _fmt_currency(fcf), "Annual/TTM", "Yahoo Finance")
 
     pe_t = fin.get('pe_ratio') or yf_data.get('trailingPE')
@@ -641,7 +650,7 @@ def _render_kpis(story, styles, overview, yf_data, metrics_ledger, is_jp):
     pe_f = fin.get('pe_forward') or yf_data.get('forwardPE')
     _add_metric("P/E (Forward)", _fmt(pe_f, '.1f'), "Market data", "Yahoo Finance")
 
-    peg = yf_data.get('pegRatio')
+    peg = fin.get('peg_ratio') or yf_data.get('pegRatio')
     _add_metric("PEG Ratio", _fmt(peg, '.2f'), "Market data", "Yahoo Finance")
 
     beta = yf_data.get('beta')
