@@ -709,9 +709,11 @@ def _build_fallback_competitors(ticker: str, yf_info: Dict[str, Any]) -> list[Di
 
 def _fallback_overview(ticker: str, yf_info: Dict[str, Any]) -> Dict[str, Any]:
     """Build a deterministic investor-oriented overview when LLM is unavailable."""
-    mc = yf_info.get("market_cap")
-    rev = yf_info.get("total_revenue")
-    desc = (yf_info.get("description") or "").strip()
+    # yf_info is raw Yahoo Ticker.info — camelCase keys
+    mc = yf_info.get("marketCap")
+    rev = yf_info.get("totalRevenue")
+    desc = (yf_info.get("longBusinessSummary") or yf_info.get("description") or "").strip()
+    beta = yf_info.get("beta")
 
     def _first_sentences(text: str, max_sentences: int = 2) -> str:
         if not text:
@@ -969,12 +971,12 @@ def _fallback_overview(ticker: str, yf_info: Dict[str, Any]) -> Dict[str, Any]:
             "market_cap_display": _format_currency(mc),
             "revenue": rev,
             "revenue_display": _format_currency(rev),
-            "pe_ratio": yf_info.get("pe_trailing"),
-            "pe_forward": yf_info.get("pe_forward"),
-            "dividend_yield": yf_info.get("dividend_yield"),
+            "pe_ratio": yf_info.get("trailingPE"),
+            "pe_forward": yf_info.get("forwardPE"),
+            "dividend_yield": yf_info.get("dividendYield"),
             "beta": beta,
-            "52w_high": yf_info.get("52w_high"),
-            "52w_low": yf_info.get("52w_low"),
+            "52w_high": yf_info.get("fiftyTwoWeekHigh"),
+            "52w_low": yf_info.get("fiftyTwoWeekLow"),
         },
         "recent_developments": [],
         "competitive_position": f"Market position for {ticker} estimated from available sector ({sector or 'N/A'}) and industry ({industry or 'N/A'}) data. Refer to the company's 10-K for detailed competitive analysis.",
