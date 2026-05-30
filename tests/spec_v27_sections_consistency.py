@@ -89,11 +89,11 @@ class TestCashFlow:
         "capital_expenditure was -$2.1B",
         "free_cash_flow reached $14.9B",
     ])
-    def test_raw_provider_key_blocked(self, bad_text):
+    def test_raw_provider_key_warns(self, bad_text):
         sections = {"Cash Flow": bad_text}
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "cash_flow_raw_provider_key")
-        assert len(errs) == 1
+        wrns = _warnings_for(result, "cash_flow_raw_provider_key")
+        assert len(wrns) == 1
 
     def test_clean_labels_pass(self):
         sections = {

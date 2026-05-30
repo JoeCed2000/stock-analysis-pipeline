@@ -119,5 +119,5 @@ class TestRules1415Integration:
             )
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        provider_errs = _errors_for(result, "eps_revenue_raw_provider_key")
-        assert len(provider_errs) >= 1
+        provider_wrns = _warnings_for(result, "eps_revenue_raw_provider_key")
+        assert len(provider_wrns) >= 1

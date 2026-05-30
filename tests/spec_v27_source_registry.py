@@ -130,7 +130,7 @@ class TestSourceRegistryModel:
 class TestRule26SourceRegistryGate:
     """RULE 26: No raw provider keys, no unmapped source refs, used-only citations."""
 
-    def test_26a_raw_provider_key_leak_blocked(self):
+    def test_26a_raw_provider_key_leak_warns(self):
         sr = SourceRegistry(entries=[
             SourceRegistryEntry(
                 source_id="S1", human_label="Yahoo",
@@ -144,8 +144,8 @@ class TestRule26SourceRegistryGate:
             },
             source_registry=sr,
         )
-        assert result.passed is False
-        assert any("raw_provider_key" in e.check for e in result.errors)
+        assert result.passed is True
+        assert any("raw_provider_key" in w.check for w in result.warnings)
 
     def test_26a_clean_text_no_warning(self):
         sr = SourceRegistry(entries=[

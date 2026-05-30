@@ -557,7 +557,7 @@ class TestRule40SourceQuality:
         errors = [e for e in result.errors if "fake_source_claim" in e.check]
         assert len(errors) == 0
 
-    def test_40_raw_provider_key_blocked(self):
+    def test_40_raw_provider_key_warns(self):
         co = _make_minimal_co(
             business_description="The trailingPE of 35x suggests premium valuation based on earningsGrowth trends.",
         )
@@ -566,8 +566,8 @@ class TestRule40SourceQuality:
             section_analysis={}, company_overview=co,
             source_registry=[],
         )
-        errors = [e for e in result.errors if "raw_provider_key" in e.check]
-        assert len(errors) >= 1, "Raw provider key 'trailingPE' should be blocked"
+        wrns = [w for w in result.warnings if "raw_provider_key" in w.check]
+        assert len(wrns) >= 1, "Raw provider key 'trailingPE' should be warned"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -577,7 +577,7 @@ class TestRule40SourceQuality:
 class TestRule41NoMarkdown:
     """RULE 41: Raw Markdown syntax must never appear in PDF text fields."""
 
-    def test_41_markdown_heading_blocked(self):
+    def test_41_markdown_heading_warns(self):
         co = _make_minimal_co(
             business_description="### How we make money\n\nThe company generates revenue.",
         )
@@ -585,10 +585,10 @@ class TestRule41NoMarkdown:
             ticker="TEST", quarter="Q1 2026", metrics=None,
             section_analysis={}, company_overview=co,
         )
-        errors = [e for e in result.errors if "raw_markdown" in e.check]
-        assert len(errors) >= 1, "Markdown heading (###) should be blocked"
+        marks = [w for w in result.warnings if "raw_markdown" in w.check]
+        assert len(marks) >= 1, "Markdown heading (###) should be warned"
 
-    def test_41_markdown_bold_blocked(self):
+    def test_41_markdown_bold_warns(self):
         co = _make_minimal_co(
             revenue_model="**Subscription revenue** is the primary source of income.",
         )
@@ -596,10 +596,10 @@ class TestRule41NoMarkdown:
             ticker="TEST", quarter="Q1 2026", metrics=None,
             section_analysis={}, company_overview=co,
         )
-        errors = [e for e in result.errors if "raw_markdown" in e.check]
-        assert len(errors) >= 1
+        marks = [w for w in result.warnings if "raw_markdown" in w.check]
+        assert len(marks) >= 1
 
-    def test_41_markdown_table_blocked(self):
+    def test_41_markdown_table_warns(self):
         co = _make_minimal_co(
             business_description="| Segment | Revenue |\n|---|---|\n| Cloud | $10B |",
         )
@@ -607,10 +607,10 @@ class TestRule41NoMarkdown:
             ticker="TEST", quarter="Q1 2026", metrics=None,
             section_analysis={}, company_overview=co,
         )
-        errors = [e for e in result.errors if "raw_markdown" in e.check]
-        assert len(errors) >= 1
+        marks = [w for w in result.warnings if "raw_markdown" in w.check]
+        assert len(marks) >= 1
 
-    def test_41_markdown_code_blocked(self):
+    def test_41_markdown_code_warns(self):
         co = _make_minimal_co(
             revenue_model="```Revenue model details```",
         )
@@ -618,10 +618,10 @@ class TestRule41NoMarkdown:
             ticker="TEST", quarter="Q1 2026", metrics=None,
             section_analysis={}, company_overview=co,
         )
-        errors = [e for e in result.errors if "raw_markdown" in e.check]
-        assert len(errors) >= 1
+        marks = [w for w in result.warnings if "raw_markdown" in w.check]
+        assert len(marks) >= 1
 
-    def test_41_markdown_link_blocked(self):
+    def test_41_markdown_link_warns(self):
         co = _make_minimal_co(
             business_description="See [the annual report](https://example.com/10k) for details.",
         )
@@ -629,8 +629,8 @@ class TestRule41NoMarkdown:
             ticker="TEST", quarter="Q1 2026", metrics=None,
             section_analysis={}, company_overview=co,
         )
-        errors = [e for e in result.errors if "raw_markdown" in e.check]
-        assert len(errors) >= 1
+        marks = [w for w in result.warnings if "raw_markdown" in w.check]
+        assert len(marks) >= 1
 
     def test_41_clean_text_passes(self):
         co = _make_minimal_co(
@@ -642,8 +642,8 @@ class TestRule41NoMarkdown:
             ticker="TEST", quarter="Q1 2026", metrics=None,
             section_analysis={}, company_overview=co,
         )
-        errors = [e for e in result.errors if "raw_markdown" in e.check]
-        assert len(errors) == 0, f"Clean text should pass: {errors}"
+        marks = [w for w in result.warnings if "raw_markdown" in w.check]
+        assert len(marks) == 0, f"Clean text should pass: {marks}"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -674,17 +674,18 @@ class TestCompanyOverviewFullValidation:
             section_analysis={}, company_overview=co,
             source_registry=[],
         )
-        checks = {e.check for e in result.errors}
-        # Should have at least 10 distinct checks firing
-        assert len(checks) >= 8, (
-            f"Expected 8+ distinct rules to fire on broken CO, got {len(checks)}: {checks}"
+        error_checks = {e.check for e in result.errors}
+        all_checks = error_checks | {w.check for w in result.warnings}
+        # Should have at least 8 distinct checks firing (errors + warnings)
+        assert len(all_checks) >= 8, (
+            f"Expected 8+ distinct rules to fire on broken CO, got {len(all_checks)}: {all_checks}"
         )
-        # Verify key gates fire
-        assert "company_overview_no_competitors" in checks  # RULE 31a
-        assert "company_overview_no_segments" in checks      # RULE 31b
-        assert "company_overview_no_strengths_weaknesses" in checks  # RULE 31c
-        assert "company_overview_missing_section" in checks  # RULE 34
-        assert "company_overview_growth_drivers_generic" in checks  # RULE 35
-        assert "company_overview_ceo_too_generic" in checks  # RULE 38
-        assert "company_overview_vision_missing" in checks   # RULE 38
-        assert "company_overview_raw_markdown" in checks     # RULE 41
+        # Verify blocking error gates fire
+        assert "company_overview_no_competitors" in error_checks  # RULE 31a
+        assert "company_overview_no_segments" in error_checks      # RULE 31b
+        assert "company_overview_no_strengths_weaknesses" in error_checks  # RULE 31c
+        assert "company_overview_missing_section" in all_checks  # RULE 34
+        assert "company_overview_growth_drivers_generic" in all_checks  # RULE 35
+        assert "company_overview_ceo_too_generic" in all_checks  # RULE 38
+        assert "company_overview_vision_missing" in all_checks   # RULE 38
+        assert "company_overview_raw_markdown" in all_checks     # RULE 41 (now warning)

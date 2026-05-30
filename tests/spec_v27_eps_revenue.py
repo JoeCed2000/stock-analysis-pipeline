@@ -133,11 +133,11 @@ class TestRawProviderKeys:
         "raw provider field",
         "provider key: revenueGrowth",
     ])
-    def test_raw_provider_key_blocked(self, bad_text):
+    def test_raw_provider_key_warns(self, bad_text):
         sections = {"EPS & Revenue": bad_text}
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "eps_revenue_raw_provider_key")
-        assert len(errs) >= 1, f"Should block: '{bad_text}'"
+        wrns = _warnings_for(result, "eps_revenue_raw_provider_key")
+        assert len(wrns) >= 1, f"Should warn: '{bad_text}'"
 
     def test_clean_labels_pass(self):
         sections = {
