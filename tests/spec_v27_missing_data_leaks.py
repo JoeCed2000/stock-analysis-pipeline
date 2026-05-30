@@ -40,12 +40,13 @@ class TestRule5ForbiddenMarkersBlocking:
         )
         assert result.passed is False
 
-    def test_nami_san_blocked(self):
+    def test_nami_san_allowed(self):
+        """'For Nami-san:' is legitimate client-facing content, not a forbidden marker."""
         result = validate_pre_render(
             ticker="NVDA", quarter="Q1 FY2026", metrics=None,
             section_analysis={"Notes": "For Nami-san: this is a test."},
         )
-        assert result.passed is False
+        assert not any("forbidden_marker_leak" == e.check for e in result.errors)
 
     def test_clean_text_passes(self):
         result = validate_pre_render(

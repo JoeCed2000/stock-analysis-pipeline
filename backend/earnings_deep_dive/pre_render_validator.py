@@ -44,8 +44,9 @@ FORBIDDEN_MARKERS = [
     "Model example",
     # §23 — debug/template/internal leaks
     "Model example company figures",
-    "For Nami-san:",
-    "Namiさん向け",
+    # NOTE: "For Nami-san:" / "Namiさん向け" are INTENTIONAL client-facing labels
+    # for audience_mode="nami_personal". Generator handles sanitization for
+    # non-nami modes. Do NOT add them back to FORBIDDEN_MARKERS.
 ]
 
 # ── Negative sentiment keywords for contradiction detection ────────────────
