@@ -1509,6 +1509,8 @@ def _add_earnings_deep_dive_if_transcript(
             build_earnings_deep_dive_report,
             _build_report_period_context,
             _build_metrics_ledger,
+            _build_source_registry,
+            _build_earnings_documents_checklist,
         )
         from backend.earnings_deep_dive.pdf_renderer import render_earnings_deep_dive_pdf
 
@@ -1559,6 +1561,20 @@ def _add_earnings_deep_dive_if_transcript(
             metrics=deep_dive_metrics,
         )
 
+        # ── §5: Build source registry for pre-render validation ──
+        _source_registry = _build_source_registry(
+            sources=sources,
+            claim_sources=[],  # extracted later in mapper
+        )
+
+        # ── §6: Build earnings documents checklist for pre-render validation ──
+        _earnings_docs = _build_earnings_documents_checklist(
+            ticker=ticker,
+            resolved_quarter=transcript_quarter,
+            sources=sources,
+            transcript_url=transcript_url,
+        )
+
         en_validation = validate_pre_render(
             ticker=ticker,
             quarter=transcript_quarter,
@@ -1566,6 +1582,8 @@ def _add_earnings_deep_dive_if_transcript(
             section_analysis=en_response.sections,
             period_context=_period_ctx,
             metrics_ledger=_metrics_ledger,
+            source_registry=_source_registry,
+            earnings_documents=_earnings_docs,
         )
         if en_validation.errors:
             error_msg = format_validation_error(en_validation, ticker)
@@ -1614,6 +1632,8 @@ def _add_earnings_deep_dive_if_transcript(
                         section_analysis=jp_response.sections,
                         period_context=_period_ctx,
                         metrics_ledger=_metrics_ledger,
+                        source_registry=_source_registry,
+                        earnings_documents=_earnings_docs,
                     )
                     if jp_validation.errors:
                         error_msg = format_validation_error(jp_validation, ticker)
