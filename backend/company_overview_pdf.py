@@ -484,14 +484,17 @@ def _get_investor_summary(overview, yf_data, is_jp) -> list:
     bullets = []
     bp = overview.get('business_description', '')
     if bp:
-        # Extract first 2 sentences for a quick summary
-        sents = [s.strip() for s in bp.replace('\n', ' ').split('.') if s.strip()]
-        bullets.append('. '.join(sents[:2]) + '.')
-    rev = yf_data.get('totalRevenue')
-    rev_g = yf_data.get('revenueGrowth')
+        # Split on sentence boundaries, preserving abbreviations like U.S. / Inc.
+        import re as _re
+        sents = _re.split(r'(?<=[.!?])\s+', bp.replace('\n', ' '))
+        sents = [s.strip() for s in sents if s.strip() and len(s.strip()) > 3]
+        bullets.append('. '.join(sents[:2]) + '.' if len(sents) >= 2 else sents[0] if sents else '')
+    fin = overview.get('key_financials', {}) or {}
+    rev = fin.get('revenue') or yf_data.get('totalRevenue')
+    rev_g = fin.get('revenue_growth') or yf_data.get('revenueGrowth')
     if rev and rev_g:
         bullets.append(f"Revenue of {_fmt_currency(rev)} with {_fmt_pct(rev_g)} YoY growth.")
-    mc = yf_data.get('marketCap')
+    mc = fin.get('market_cap') or yf_data.get('marketCap')
     if mc:
         bullets.append(f"Market capitalization of {_fmt_currency(mc)}.")
     inv_takeaway = overview.get('investor_takeaway', '')
