@@ -2133,7 +2133,14 @@ async def download_company_overview(ticker: str, format: str = "auto"):
             file_path = candidates[kind]
             if file_path.exists():
                 media_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
-                return FileResponse(file_path, media_type=media_type, filename=file_path.name)
+                # PDF → inline (open in new tab); MD/JSON → attachment (download)
+                disposition = "inline" if media_type == "application/pdf" else "attachment"
+                return FileResponse(
+                    file_path,
+                    media_type=media_type,
+                    filename=file_path.name,
+                    content_disposition_type=disposition,
+                )
 
     raise HTTPException(status_code=404, detail=f"No company overview artifact found for {ticker}")
 
