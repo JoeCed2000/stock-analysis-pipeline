@@ -64,3 +64,4 @@ docs/ai-engineering-standards-kit-v2/
 # CodeGraph
 .codegraph/
 batches/
+chat.db*

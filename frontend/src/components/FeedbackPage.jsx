@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import SeekingAlphaAccessPanel from './SeekingAlphaAccessPanel.jsx';
+import ChatWidget from './ChatWidget.jsx';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -388,6 +389,10 @@ export default function FeedbackPage({ lang = 'en', onClose }) {
           }
         }
       `}</style>
+
+      {/* Live Chat Widget */}
+      <ChatWidget lang="ja" />
+
     </div>
   );
 }

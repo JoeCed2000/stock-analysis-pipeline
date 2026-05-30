@@ -189,6 +189,8 @@ app.add_middleware(
 
 app.include_router(valuation_context_router)
 app.include_router(peer_benchmark_router)
+from backend.chat import router as chat_router
+app.include_router(chat_router)
 
 ANALYSES_DIR = get_analyses_dir()
 logger.info("Canonical analyses dir: %s", ANALYSES_DIR)
