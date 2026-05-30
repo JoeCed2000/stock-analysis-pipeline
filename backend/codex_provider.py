@@ -31,7 +31,7 @@ for _c in _CODEX_CANDIDATES:
 if CODEX_BIN is None:
     CODEX_BIN = _CODEX_CANDIDATES[0]  # keep for clearer error message
 CODEX_TIMEOUT = 600  # seconds per attempt (agents need time to finish — 10 min)
-CODEX_TIMEOUT_FIRST = 120  # first attempt: kill sooner if Spark is hung
+CODEX_TIMEOUT_FIRST = 300  # first attempt: Spark is slow for large prompts (~5KB)
 CODEX_MAX_RETRIES = 2  # total attempts = 1 + MAX_RETRIES = 3
 CODEX_RETRY_BACKOFF = [2.0, 4.0]  # seconds between retries (jittered ±50%)
 
@@ -98,15 +98,24 @@ def _codex_chat(prompt: str, system: str = "", max_tokens: int = 1000, model: Op
                 
                 os.close(slave_fd)
             
-            # Wait with timeout — first attempt shorter (Spark often hangs), retries generous
+            # Wait with timeout — check output file for early progress signal
             timeout = CODEX_TIMEOUT_FIRST if attempt == 0 else CODEX_TIMEOUT
             start = time.time()
             while proc.poll() is None:
                 elapsed = time.time() - start
+                # If output file is still empty after 120s, Spark is truly hung (not slow)
+                output_size = os.path.exists(output_file) and os.path.getsize(output_file) or 0
+                if elapsed > CODEX_TIMEOUT_FIRST and output_size == 0:
+                    proc.kill()
+                    logger.warning("Codex CLI hung — no output after %ds (attempt %d/%d)",
+                                   int(elapsed), attempt + 1, CODEX_MAX_RETRIES + 1)
+                    os.close(master_fd)
+                    last_error = "hung"
+                    break
                 if elapsed > timeout:
                     proc.kill()
-                    logger.warning("Codex CLI timeout after %ds (attempt %d/%d)",
-                                   int(elapsed), attempt + 1, CODEX_MAX_RETRIES + 1)
+                    logger.warning("Codex CLI timeout after %ds (attempt %d/%d, output=%d bytes)",
+                                   int(elapsed), attempt + 1, CODEX_MAX_RETRIES + 1, output_size)
                     os.close(master_fd)
                     last_error = "timeout"
                     break  # will retry
