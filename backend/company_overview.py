@@ -196,6 +196,7 @@ def _build_yahoo_info_dict(ticker: str, info: Dict[str, Any]) -> Dict[str, Any]:
         "pe_trailing": info.get("trailingPE"),
         "pe_forward": info.get("forwardPE"),
         "dividend_yield": info.get("dividendYield"),
+        "dividend_rate": info.get("dividendRate"),
         "beta": info.get("beta"),
         "52w_high": info.get("fiftyTwoWeekHigh"),
         "52w_low": info.get("fiftyTwoWeekLow"),
@@ -204,6 +205,13 @@ def _build_yahoo_info_dict(ticker: str, info: Dict[str, Any]) -> Dict[str, Any]:
         "total_revenue": info.get("totalRevenue"),
         "currency": info.get("currency", "USD"),
         "exchange": info.get("exchange"),
+        # Key financial ratios (often missing from yfinance but included when available)
+        "gross_margins": info.get("grossMargins"),
+        "operating_margins": info.get("operatingMargins"),
+        "free_cashflow": info.get("freeCashflow"),
+        "peg_ratio": info.get("pegRatio"),
+        # Leadership
+        "company_officers": info.get("companyOfficers", []),
         # Location
         "headquarters": _format_headquarters(info),
     }
@@ -650,6 +658,14 @@ def _build_fallback_competitors(ticker: str, yf_info: Dict[str, Any]) -> list[Di
     sector = yf_info.get("sector", "")
     industry = yf_info.get("industry", "")
 
+    # Try Finnhub peer API first (real ticker-level peers)
+    peer_tickers: list[str] = []
+    try:
+        from backend.peer_universe import _get_finnhub_peers
+        peer_tickers = _get_finnhub_peers(ticker)
+    except Exception:
+        pass
+
     # Use sector peers from yfinance if available
     sector_peers = []
     if isinstance(yf_info.get("sectorKey"), str):
@@ -658,11 +674,13 @@ def _build_fallback_competitors(ticker: str, yf_info: Dict[str, Any]) -> list[Di
         sector_peers.append(yf_info["industryKey"])
 
     if sector and industry:
+        peer_names_str = ", ".join(peer_tickers[:8]) if peer_tickers else ""
+        peer_note = f" Direct peers include: {peer_names_str}." if peer_names_str else ""
         competitors.append({
             "competitor_name": f"Peers in {sector} — {industry}",
             "text_en": (
                 f"Key publicly traded competitors operate in the {sector} sector, "
-                f"specifically within {industry}. Refer to the company's 10-K "
+                f"specifically within {industry}.{peer_note} Refer to the company's 10-K "
                 f"(Item 1 — Business, Competition section) for named competitors "
                 f"and its proxy statement for the peer group used in executive compensation benchmarking."
             ),
@@ -884,7 +902,7 @@ def _fallback_overview(ticker: str, yf_info: Dict[str, Any]) -> Dict[str, Any]:
 
     # Try to extract CEO name from yfinance officers data
     ceo_name = ""
-    officers = yf_info.get("companyOfficers", []) or []
+    officers = yf_info.get("company_officers", []) or []
     for officer in officers:
         if isinstance(officer, dict):
             title = (officer.get("title") or "").lower()

@@ -412,7 +412,7 @@ def _render_executive_snapshot(story, styles, ticker, company_name, overview, yf
     if not ceo_name:
         officers = yf_data.get('companyOfficers', []) or []
         for o in officers:
-            if o and isinstance(o, dict) and 'chief executive' in (o.get('title') or '').lower():
+            if o and isinstance(o, dict) and ('chief executive' in (o.get('title') or '').lower() or 'ceo' in (o.get('title') or '').lower()):
                 ceo_name = o.get('name', '')
                 break
     exchange = yf_data.get('exchange', '—')
@@ -659,9 +659,16 @@ def _render_kpis(story, styles, overview, yf_data, metrics_ledger, is_jp):
     beta = yf_data.get('beta')
     _add_metric("Beta", _fmt(beta, '.2f'), "Market data", "Yahoo Finance")
 
-    div_y = fin.get('dividend_yield') or yf_data.get('dividendYield')
-    if div_y:
-        _add_metric("Dividend Yield", _fmt_pct(div_y), "Market data", "Yahoo Finance")
+    # Compute dividend yield from rate/price (avoids yfinance's inconsistent % vs ratio formatting)
+    div_rate = fin.get('dividend_rate') or yf_data.get('dividendRate')
+    div_price = fin.get('current_price') or yf_data.get('currentPrice')
+    if div_rate is not None and div_price is not None and div_price > 0:
+        div_y_computed = (float(div_rate) / float(div_price)) * 100
+        _add_metric("Dividend Yield", f"{div_y_computed:.2f}%", "Market data", "Yahoo Finance")
+    else:
+        div_y = fin.get('dividend_yield') or yf_data.get('dividendYield')
+        if div_y is not None:
+            _add_metric("Dividend Yield", f"{float(div_y):.2f}%", "Market data", "Yahoo Finance")
 
     if rows:
         w_name = AVAILABLE_W * 0.28
