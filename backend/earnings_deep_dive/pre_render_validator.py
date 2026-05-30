@@ -938,12 +938,16 @@ def validate_pre_render(
                 severity="warning",
             ))
 
-        # 13b. "Not available" in text when metrics have the value
+        # 13b. "Not available" / "N/A" in TABLE CELLS when metrics have the value
+        # Only check table rows (lines starting with |), not prose.
         eps_actual_val = metric_map.get("eps_actual")
         rev_actual_val = metric_map.get("revenue_actual")
+        # Extract only table rows (lines that look like markdown table cells)
+        table_lines = [l for l in er.split("\n") if l.strip().startswith("|")]
+        table_text = "\n".join(table_lines)
         has_not_available = bool(re.search(
-            r'Not\s+available|Not\s+retrieved|DATA\s+NOT\s+AVAILABLE|N/A',
-            er, re.IGNORECASE
+            r'Not\s+available|Not\s+retrieved|DATA\s+NOT\s+AVAILABLE|\bN/A\b',
+            table_text, re.IGNORECASE
         ))
         if has_not_available:
             if eps_actual_val is not None and eps_actual_val != 0:
@@ -1065,8 +1069,11 @@ def validate_pre_render(
         om = op_metrics_text
 
         # 16a. Table shows metric but text says "not retrieved/available"
+        # Only check table rows (lines starting with |), not prose.
+        om_table_lines = [l for l in om.split("\n") if l.strip().startswith("|")]
+        om_table = "\n".join(om_table_lines)
         has_not_avail = bool(re.search(
-            r'Not\s+(available|retrieved)|DATA\s+NOT\s+AVAILABLE', om, re.IGNORECASE
+            r'Not\s+(available|retrieved)|DATA\s+NOT\s+AVAILABLE|\bN/A\b', om_table, re.IGNORECASE
         ))
         if has_not_avail:
             gross_margin_m = metric_map.get("gross_margin")
