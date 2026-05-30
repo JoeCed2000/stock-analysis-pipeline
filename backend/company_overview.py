@@ -765,13 +765,33 @@ def _fallback_overview(ticker: str, yf_info: Dict[str, Any]) -> Dict[str, Any]:
     rev_growth = yf_info.get("revenue_growth")
     earn_growth = yf_info.get("earnings_growth")
     if isinstance(rev_growth, (int, float)):
-        growth_drivers.append(f"Revenue growth signal: {rev_growth * 100:+.1f}% YoY.")
+        direction = "strong" if rev_growth > 0.1 else "modest" if rev_growth > 0 else "negative"
+        growth_drivers.append(
+            f"Revenue expansion: {direction} top-line trajectory ({rev_growth * 100:+.1f}% YoY) "
+            f"indicates the company is actively scaling its core business and capturing market demand"
+        )
     if isinstance(earn_growth, (int, float)):
-        growth_drivers.append(f"Earnings growth signal: {earn_growth * 100:+.1f}% YoY.")
-    if yf_info.get("enterprise_value") and yf_info.get("market_cap"):
-        growth_drivers.append("Scale and enterprise footprint support continued reinvestment capacity.")
+        direction = "robust" if earn_growth > 0.1 else "stable" if earn_growth > 0 else "declining"
+        growth_drivers.append(
+            f"Earnings momentum: {direction} bottom-line growth ({earn_growth * 100:+.1f}% YoY) "
+            f"suggests operating leverage and cost discipline are converting revenue into profit"
+        )
+    if yf_info.get("enterprise_value") and mc:
+        growth_drivers.append(
+            "Scale economics: large enterprise footprint provides capital for R&D reinvestment, "
+            "strategic acquisitions, and market expansion that smaller competitors cannot match"
+        )
+    # Add sector/industry based driver for more depth
+    if industry and sector:
+        growth_drivers.append(
+            f"Industry tailwinds: {industry} sector within {sector} benefits from secular trends "
+            f"in digital transformation, creating a multi-year demand runway for established players"
+        )
     if not growth_drivers:
-        growth_drivers.append("Detailed growth drivers are not available from current structured data sources.")
+        growth_drivers.append(
+            "Detailed growth drivers are not available from current structured data sources. "
+            "Refer to the company's investor relations materials for strategic growth initiatives."
+        )
 
     moats: list[str] = []
     if "cloud" in lower_desc:
@@ -804,10 +824,29 @@ def _fallback_overview(ticker: str, yf_info: Dict[str, Any]) -> Dict[str, Any]:
     business_risks: list[str] = []
     beta = yf_info.get("beta")
     if isinstance(beta, (int, float)) and beta > 1.2:
-        business_risks.append(f"Above-market volatility risk (beta {beta:.2f}).")
+        business_risks.append(
+            f"Elevated market sensitivity: with a beta of {beta:.2f}, the stock tends to amplify "
+            f"broader market movements — historically moving {beta:.1f}x the index — which can "
+            f"magnify drawdowns during market corrections and test investor conviction"
+        )
     if isinstance(rev_growth, (int, float)) and rev_growth < 0:
-        business_risks.append("Negative revenue momentum may pressure valuation multiples.")
-    business_risks.append("Qualitative execution risks (competition, regulation, leadership) require further analysis beyond structured data.")
+        business_risks.append(
+            "Revenue contraction risk: declining top-line growth may pressure valuation multiples, "
+            "reduce operating leverage, and signal weakening competitive position or end-market demand"
+        )
+    # Always add at least 2 substantive operational risks
+    if industry and sector:
+        business_risks.append(
+            f"Competitive disruption: the {industry} landscape within {sector} faces rapid "
+            f"technological change and new-entrant pressure — incumbents must continuously "
+            f"innovate to maintain market share and pricing power"
+        )
+    # Add market structure risk
+    business_risks.append(
+        "Execution and governance: strategic missteps, leadership transitions, regulatory changes, "
+        "or supply chain disruptions can materially impact financial performance — monitoring "
+        "management commentary and proxy filings provides early warning signals"
+    )
 
     strengths_parts: list[str] = []
     if mc and mc >= 1e12:
