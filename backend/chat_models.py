@@ -67,6 +67,23 @@ class ChatSendResponse(BaseModel):
     status: str  # "processing"
 
 
+class ChatFeedbackRequest(BaseModel):
+    session_id: str
+    message_id: Optional[str] = None
+    feedback_type: str = Field(..., description="bug|ux|correction|misunderstanding|feature_request|other")
+    content: str
+
+
+class ChatFeedbackResponse(BaseModel):
+    id: str
+    session_id: str
+    message_id: Optional[str] = None
+    feedback_type: str
+    content: str
+    status: str
+    created_at: str
+
+
 # ── DB Row Models (internal) ─────────────────────────────────────────────────
 
 def _utcnow_iso() -> str:

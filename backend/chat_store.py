@@ -456,6 +456,71 @@ def save_chat_feedback(
     return fid
 
 
+def export_session(session_id: str) -> Optional[str]:
+    """Export a chat session as formatted text. Returns the text or None."""
+    conn = get_conn()
+    session = conn.execute(
+        "SELECT visitor_name, language, current_ticker, created_at FROM chat_sessions WHERE id=?",
+        (session_id,),
+    ).fetchone()
+    if not session:
+        return None
+
+    messages = conn.execute(
+        "SELECT role, content, language, ticker, created_at FROM chat_messages "
+        "WHERE session_id=? AND status IN ('completed','processing') ORDER BY created_at ASC",
+        (session_id,),
+    ).fetchall()
+
+    feedbacks = conn.execute(
+        "SELECT feedback_type, content, status, created_at FROM chat_feedback "
+        "WHERE session_id=? ORDER BY created_at ASC",
+        (session_id,),
+    ).fetchall()
+
+    lines = []
+    lines.append("=" * 60)
+    lines.append(f"CHAT SESSION: {session_id}")
+    lines.append(f"Visitor: {session[0]}  |  Language: {session[1]}  |  Ticker: {session[2] or 'N/A'}")
+    lines.append(f"Started: {session[3]}")
+    lines.append(f"Messages: {len(messages)}  |  Feedback items: {len(feedbacks)}")
+    lines.append("=" * 60)
+    lines.append("")
+
+    for msg in messages:
+        role_label = "🧑 Nami" if msg[0] == "user" else "🤖 Assistant"
+        ticker_tag = f" [{msg[3]}]" if msg[3] else ""
+        lines.append(f"{role_label}{ticker_tag} — {msg[4][:19]}")
+        lines.append("-" * 40)
+        lines.append(msg[1])
+        lines.append("")
+
+    if feedbacks:
+        lines.append("=" * 60)
+        lines.append("DETECTED FEEDBACK")
+        lines.append("=" * 60)
+        for fb in feedbacks:
+            lines.append(f"  [{fb[0]}] ({fb[2]}) {fb[1][:200]}")
+        lines.append("")
+
+    lines.append("=" * 60)
+    lines.append("END OF SESSION")
+    lines.append("=" * 60)
+
+    return "\n".join(lines)
+
+
+def close_session(session_id: str) -> bool:
+    """Mark a session as closed."""
+    conn = get_conn()
+    conn.execute(
+        "UPDATE chat_sessions SET status='closed', updated_at=? WHERE id=?",
+        (_utcnow_iso(), session_id),
+    )
+    conn.commit()
+    return conn.total_changes > 0
+
+
 # ── Init ─────────────────────────────────────────────────────────────────────
 
 def initialize() -> None:

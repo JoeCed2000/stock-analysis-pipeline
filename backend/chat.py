@@ -23,6 +23,8 @@ from .chat_models import (
     ChatSendResponse,
     ChatSessionRequest,
     ChatSessionResponse,
+    ChatFeedbackRequest,
+    ChatFeedbackResponse,
 )
 from .chat_models import ChatMessage as ChatMsg
 from . import chat_store, chat_context, chat_ai
@@ -347,6 +349,22 @@ async def _generate_and_stream(
             "response_length": len(full_response),
         })
 
+        # Auto-detect feedback in user message
+        fb_type = _detect_feedback(user_message)
+        if fb_type:
+            try:
+                chat_store.save_chat_feedback(
+                    session_id, fb_type, user_message,
+                    message_id=user_message_id,
+                )
+                chat_store.log_event(session_id, "feedback_auto_detected", {
+                    "feedback_type": fb_type,
+                    "user_message_id": user_message_id,
+                })
+                logger.info(f"Auto-detected {fb_type} feedback in message {user_message_id}")
+            except Exception as e:
+                logger.warning(f"Failed to save auto-detected feedback: {e}")
+
     except Exception as e:
         logger.error(f"AI generation failed for {assistant_message_id}: {e}")
         now = _utcnow_iso()
@@ -380,3 +398,150 @@ async def debug_context(session_id: str = Query(...)):
     if ctx.get("pdf_chunks"):
         ctx["pdf_chunks"] = [{**c, "content": c["content"][:200] + "…"} for c in ctx["pdf_chunks"]]
     return ctx
+
+
+# ── Feedback ─────────────────────────────────────────────────────────────────
+
+# Simple keyword-based feedback detection (no extra LLM call)
+_FEEDBACK_PATTERNS = {
+    "bug": [
+        "bug", "broken", "not working", "doesn't work", "error", "crash",
+        "バグ", "動かない", "エラー", "壊れて", "故障", "不具合",
+    ],
+    "ux": [
+        "confus", "hard to", "difficult to", "unclear", "should be easier",
+        "わかりにくい", "使いにくい", "見にくい", "改善",
+    ],
+    "feature_request": [
+        "can you add", "please add", "it would be nice", "could you add",
+        "追加して", "あればいい", "ほしい", "できるように",
+    ],
+    "correction": [
+        "wrong", "incorrect", "mistake", "typo", "not correct",
+        "間違っている", "誤り", "違う", "正しくない",
+    ],
+}
+
+
+def _detect_feedback(text: str) -> Optional[str]:
+    """Check if a message contains feedback signals. Returns feedback_type or None."""
+    text_lower = text.lower()
+    for fb_type, patterns in _FEEDBACK_PATTERNS.items():
+        for pattern in patterns:
+            if pattern in text_lower:
+                return fb_type
+    return None
+
+
+@router.post("/feedback", response_model=ChatFeedbackResponse)
+async def submit_feedback(req: ChatFeedbackRequest, request: Request):
+    """Submit explicit chat feedback (bug, UX, feature request, etc.)."""
+    _check_origin(request)
+
+    session = chat_store.get_session(req.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    fid = chat_store.save_chat_feedback(
+        req.session_id,
+        req.feedback_type,
+        req.content,
+        message_id=req.message_id,
+    )
+    chat_store.log_event(req.session_id, "feedback_submitted", {
+        "feedback_type": req.feedback_type,
+        "feedback_id": fid,
+    })
+
+    return ChatFeedbackResponse(
+        id=fid,
+        session_id=req.session_id,
+        message_id=req.message_id,
+        feedback_type=req.feedback_type,
+        content=req.content,
+        status="open",
+        created_at=chat_store._utcnow_iso(),
+    )
+
+
+@router.get("/feedback")
+async def list_feedback(session_id: str = Query(...)):
+    """List all feedback for a session."""
+    conn = chat_store.get_conn()
+    rows = conn.execute(
+        "SELECT id, session_id, message_id, feedback_type, content, status, created_at "
+        "FROM chat_feedback WHERE session_id = ? ORDER BY created_at DESC",
+        (session_id,),
+    ).fetchall()
+    return {
+        "feedback": [
+            ChatFeedbackResponse(
+                id=r[0], session_id=r[1], message_id=r[2],
+                feedback_type=r[3], content=r[4], status=r[5], created_at=r[6],
+            )
+            for r in rows
+        ]
+    }
+
+
+# ── Session Close / Export ───────────────────────────────────────────────────
+
+import os
+from pathlib import Path as _Path
+
+_CHAT_EXPORT_DIR = _Path(__file__).resolve().parent.parent / "chat_exports"
+
+
+@router.post("/session/{session_id}/close")
+async def close_chat_session(session_id: str, request: Request):
+    """Close a chat session and export the transcript."""
+    _check_origin(request)
+
+    session = chat_store.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Export the conversation
+    text = chat_store.export_session(session_id)
+    if not text:
+        raise HTTPException(status_code=500, detail="Export failed")
+
+    # Save to file
+    _CHAT_EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    safe_ts = chat_store._utcnow_iso().replace(":", "-")[:19]
+    filename = f"chat_{session.visitor_name or 'nami'}_{safe_ts}_{session_id[:8]}.txt"
+    filepath = _CHAT_EXPORT_DIR / filename
+    filepath.write_text(text, encoding="utf-8")
+
+    # Mark closed
+    chat_store.close_session(session_id)
+    chat_store.log_event(session_id, "session_closed", {
+        "export_file": str(filepath),
+        "message_count": text.count("🧑 Nami") + text.count("🤖 Assistant"),
+    })
+
+    # Write a pending-delivery marker for Hermes to pick up
+    _delivery_dir = _Path(__file__).resolve().parent.parent / "chat_exports" / ".pending_delivery"
+    _delivery_dir.mkdir(parents=True, exist_ok=True)
+    (_delivery_dir / filename).write_text(str(filepath))
+
+    return {
+        "status": "closed",
+        "session_id": session_id,
+        "export_file": str(filepath),
+        "export_size": len(text),
+    }
+
+
+@router.get("/session/{session_id}/export")
+async def export_chat_session(session_id: str):
+    """Export a chat session as plain text (without closing it)."""
+    text = chat_store.export_session(session_id)
+    if not text:
+        raise HTTPException(status_code=404, detail="Session not found or empty")
+
+    return {
+        "session_id": session_id,
+        "text": text,
+        "size": len(text),
+    }

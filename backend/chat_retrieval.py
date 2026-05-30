@@ -195,8 +195,12 @@ def _prepare_fts_query(text: str) -> str:
     return f'"{text[:100]}"'
 
 
-def ingest_analyses_pdfs(ticker: Optional[str] = None) -> int:
-    """Scan analyses/ directory and ingest all PDFs for chat retrieval.
+def ingest_analyses_pdfs(ticker: Optional[str] = None, max_pdfs: int = 20) -> int:
+    """Scan analyses/ directory and ingest key PDFs for chat retrieval.
+
+    Only ingests final report PDFs (earnings_deep_dive, company_overview) and
+    earnings news transcripts — not every PDF in the tree. Limits to max_pdfs
+    to avoid blocking startup.
 
     Returns count of ingested PDFs.
     """
@@ -206,25 +210,63 @@ def ingest_analyses_pdfs(ticker: Optional[str] = None) -> int:
     if not analyses_dir.exists():
         return 0
 
-    count = 0
+    # Only ingest these PDF types (most recent first)
+    priority_patterns = [
+        "07_final_report/earnings_deep_dive.pdf",
+        "07_final_report/company_overview",
+        "04_transcripts_and_management/earnings_news",
+    ]
+
+    candidates = []
     for pdf_file in analyses_dir.rglob("*.pdf"):
-        # Determine ticker from path: analyses/<date>_<TICKER>_.../...
-        parts = pdf_file.parts
-        for part in parts:
-            if "_NVDA_" in part or "_AAPL_" in part or "_MSFT_" in part:
-                # Extract ticker
-                for possible in part.split("_"):
-                    if possible.isupper() and 2 <= len(possible) <= 5:
-                        detected_ticker = possible
-                        if ticker and ticker.upper() != detected_ticker:
-                            continue
-                        title = f"{detected_ticker} — {pdf_file.parent.name} — {pdf_file.stem}"
-                        try:
-                            result = ingest_pdf(str(pdf_file), detected_ticker, title=title)
-                            if result:
-                                count += 1
-                        except Exception as e:
-                            logger.warning(f"Failed to ingest {pdf_file}: {e}")
-                        break
-            break  # only check first matching part
+        path_str = str(pdf_file)
+        for pat in priority_patterns:
+            if pat in path_str:
+                candidates.append(pdf_file)
+                break
+
+    # Sort by modification time (newest first), limit
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    candidates = candidates[:max_pdfs]
+
+    count = 0
+    for pdf_file in candidates:
+        # Determine ticker from path
+        detected_ticker = None
+        for part in pdf_file.parts:
+            for token in part.split("_"):
+                token = token.strip()
+                if token.isupper() and 2 <= len(token) <= 5 and token.isalpha():
+                    if token in ("PDF", "API", "HTTP", "NEW", "OLD", "CORP", "INC", "LTD", "THE"):
+                        continue
+                    detected_ticker = token
+                    if ticker and ticker.upper() != detected_ticker:
+                        continue
+                    break
+            if detected_ticker:
+                break
+
+        if not detected_ticker:
+            stem = pdf_file.stem
+            for token in stem.split("_"):
+                token = token.strip()
+                if token.isupper() and 2 <= len(token) <= 5 and token.isalpha():
+                    if token in ("PDF", "API", "HTTP", "NEW", "OLD", "CORP", "INC", "LTD", "THE"):
+                        continue
+                    detected_ticker = token
+                    if ticker and ticker.upper() != detected_ticker:
+                        continue
+                    break
+
+        if not detected_ticker:
+            continue
+
+        title = f"{detected_ticker} — {pdf_file.parent.name} — {pdf_file.stem}"
+        try:
+            result = ingest_pdf(str(pdf_file), detected_ticker, title=title)
+            if result:
+                count += 1
+        except Exception as e:
+            logger.warning(f"Failed to ingest {pdf_file}: {e}")
+
     return count
