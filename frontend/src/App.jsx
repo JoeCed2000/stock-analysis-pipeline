@@ -76,7 +76,11 @@ export default function App() {
       const saved = localStorage.getItem('audienceMode');
       if (saved) return saved;
     }
-    return 'nami_personal';
+    // Auto-detect from device fingerprint (no manual selector)
+    const ua = (typeof navigator !== 'undefined' && navigator.userAgent || '').toLowerCase();
+    const isNamiDevice = ua.includes('mac os') && ua.includes('safari') && !ua.includes('chrome');
+    if (isNamiDevice) return 'nami_personal';
+    return 'client_report';
   });
 
   const handleLanguageChange = (newLang) => {
@@ -422,22 +426,9 @@ export default function App() {
                     : 'SA: unknown'}
           </span>
           <LanguageSelector lang={lang} onLanguageChange={handleLanguageChange} />
-          <select
-            value={audienceMode}
-            onChange={(e) => {
-              setAudienceMode(e.target.value);
-              localStorage.setItem('audienceMode', e.target.value);
-            }}
-            style={{
-              marginLeft: 8, padding: '4px 8px', fontSize: 12,
-              background: '#161b22', color: '#c9d1d9', border: '1px solid #30363d',
-              borderRadius: 6, cursor: 'pointer',
-            }}
-            title={audienceMode === 'client_report' ? 'Client-ready PDF (no Nami language)' : 'Personal notes for Nami'}
-          >
-            <option value="nami_personal">🧠 Nami</option>
-            <option value="client_report">📋 Client</option>
-          </select>
+          <span style={{ marginLeft: 8, fontSize: 11, color: '#8b949e' }}>
+            {audienceMode === 'nami_personal' ? '🧠 Nami' : '📋 Client'}
+          </span>
         </div>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: '#e1e4e8', marginBottom: 4 }}>
           {t('siteTitle')}
