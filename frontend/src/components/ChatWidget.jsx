@@ -33,7 +33,7 @@ const QUICK_ACTIONS_JA = [
 ];
 
 // ── ChatWidget ──────────────────────────────────────────────────────────
-export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, currentUrl }) {
+export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, currentUrl, visitorName }) {
   const [open, setOpen] = useState(false);
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -58,7 +58,7 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
         const res = await fetch(`${API_BASE}/chat/session`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ visitor_name: 'Nami', language: 'ja', visitor_id: visitorId }),
+          body: JSON.stringify({ visitor_name: visitorName || 'Nami', language: 'ja', visitor_id: visitorId }),
         });
         if (res.ok && !cancelled) {
           const data = await res.json();
