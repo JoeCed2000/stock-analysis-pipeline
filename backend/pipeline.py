@@ -1508,6 +1508,7 @@ def _add_earnings_deep_dive_if_transcript(
         from backend.earnings_deep_dive.mapper import (
             build_earnings_deep_dive_report,
             _build_report_period_context,
+            _build_metrics_ledger,
         )
         from backend.earnings_deep_dive.pdf_renderer import render_earnings_deep_dive_pdf
 
@@ -1553,12 +1554,18 @@ def _add_earnings_deep_dive_if_transcript(
             transcript_url=transcript_url,
         )
 
+        # ── §4: Build metrics ledger for pre-render validation ──
+        _metrics_ledger = _build_metrics_ledger(
+            metrics=deep_dive_metrics,
+        )
+
         en_validation = validate_pre_render(
             ticker=ticker,
             quarter=transcript_quarter,
             metrics=deep_dive_metrics,
             section_analysis=en_response.sections,
             period_context=_period_ctx,
+            metrics_ledger=_metrics_ledger,
         )
         if en_validation.errors:
             error_msg = format_validation_error(en_validation, ticker)
@@ -1605,6 +1612,8 @@ def _add_earnings_deep_dive_if_transcript(
                         quarter=transcript_quarter,
                         metrics=deep_dive_metrics,
                         section_analysis=jp_response.sections,
+                        period_context=_period_ctx,
+                        metrics_ledger=_metrics_ledger,
                     )
                     if jp_validation.errors:
                         error_msg = format_validation_error(jp_validation, ticker)
