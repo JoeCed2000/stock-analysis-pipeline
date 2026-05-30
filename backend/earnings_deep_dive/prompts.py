@@ -852,8 +852,9 @@ any hallucinated numbers with data-driven corrections.
 - Never convert, annualize, or TTM-adjust the Metrics values. Use them as-is.
 - If you need a number that is not in Metrics, write — in the table and
   "Not disclosed in this filing" in prose for that SPECIFIC metric only.
-  NEVER write "Not available", "Not retrieved", or "DATA NOT AVAILABLE"
-  across an entire section. Each missing datum must be identified individually.
+  NEVER write "Not available", "Not retrieved", "N/A", or "DATA NOT AVAILABLE"
+  in ANY cell, prose, or heading. PROHIBITED FORMATS: "Not available", "N/A".
+  Instead: "Not disclosed in quarterly filing" for missing data, "—" in cells.
 🔴 CROSS-SECTION CONSISTENCY — ALL sections MUST agree on these facts:
 - If any CRITICAL OVERRIDE in this prompt states EPS/Revenue BEAT or MISSED,
   you MUST use that exact direction. Do not contradict it.
@@ -1234,9 +1235,12 @@ def backlog_prompt(language: str, ticker: str, company: str, quarter: str, metri
 
 
 def guidance_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    # Surface eps_estimate and revenue_estimate as guidance values.
-    # Without this override, the LLM fills the guidance table with — because
-    # the raw 'guidance' field is just a growth rate (e.g. 0.218).
+    # Surface eps_estimate and revenue_estimate for the guidance section.
+    # CRITICAL: These are ANALYST CONSENSUS estimates, NOT management guidance.
+    # The guidance table must clearly distinguish:
+    #   - Management guidance: what the company explicitly guided (from transcript)
+    #   - Analyst consensus: what analysts estimate (from yfinance)
+    # Never conflate the two. Never present consensus as guidance.
     eps_q = metrics.get("eps_estimate")
     rev = metrics.get("revenue_estimate")
     extra = ""
@@ -1245,10 +1249,12 @@ def guidance_prompt(language: str, ticker: str, company: str, quarter: str, metr
             eps_q_f = float(eps_q)
             eps_annual = eps_q_f * 4.0
             extra += (
-                f"\n\n🔴 GUIDANCE OVERRIDE: EPS estimate (consensus) is ${eps_q_f:.2f}/quarter "
+                f"\n\n🔴 ANALYST CONSENSUS (NOT management guidance): "
+                f"EPS consensus estimate is ${eps_q_f:.2f}/quarter "
                 f"(${eps_annual:.2f} annualized). "
-                f"Use ${eps_q_f:.2f} in the EPS row of the Guidance table. "
-                f"Do NOT leave EPS as —."
+                f"Use in the EPS row of the Guidance table. "
+                f"Label as 'Analyst consensus' — do NOT label as 'Management guidance' "
+                f"unless the company explicitly guided this number."
             )
         except (TypeError, ValueError):
             pass
@@ -1257,12 +1263,23 @@ def guidance_prompt(language: str, ticker: str, company: str, quarter: str, metr
             rev_f = float(rev)
             rev_b = rev_f / 1e9
             extra += (
-                f"\n⚠️  Revenue estimate (consensus) is ${rev_b:.2f}B. "
-                f"Use ${rev_b:.2f}B in the Revenue row of the Guidance table. "
-                f"Do NOT leave Revenue as —."
+                f"\n⚠️  Revenue analyst consensus is ${rev_b:.2f}B. "
+                f"Use in the Revenue row of the Guidance table. "
+                f"Label as 'Analyst consensus' — do NOT label as 'Management guidance' "
+                f"unless the company explicitly guided this number."
             )
         except (TypeError, ValueError):
             pass
+    # Add instruction to separate management guidance and analyst consensus
+    extra += (
+        "\n\n🔴 GUIDANCE TABLE FORMAT: "
+        "The Guidance table MUST have separate rows for:\n"
+        "  | Metric | Management Guidance | Analyst Consensus | Source |\n"
+        "If management did NOT provide guidance for a metric, write "
+        "'Not guided by management' in the Management Guidance column "
+        "and fill the Consensus column with the analyst estimate. "
+        "Never leave the consensus column empty if an estimate exists."
+    )
     base = _base_prompt(
         section="Guidance",
         language=language,
