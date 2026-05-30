@@ -56,7 +56,7 @@ def search_transcripts(ticker: str, limit: int = 5) -> List[Dict]:
             "title": "",  # Will be filled when fetching individual transcript
             "url": urljoin(BASE, href),
             "id": transcript_id,
-            "source": "StockAnalysis.com",
+            "source": "Seeking Alpha",  # Canonical source — StockAnalysis republishes SA transcripts verbatim
         })
         if len(results) >= limit:
             break
