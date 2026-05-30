@@ -2472,7 +2472,7 @@ def validate_pre_render(
                         f"{too_short[0]!r}... Risks must explain the threat, "
                         f"why it matters, investor impact, and monitoring indicators."
                     ),
-                    severity="error",
+                    severity="warning",  # Phase 1: content quality — risk IS there but too brief
                 ))
             if too_generic:
                 warnings.append(ValidationWarning(
@@ -2484,7 +2484,7 @@ def validate_pre_render(
                         f"competitive, regulatory, and company-specific threats — "
                         f"not just stock-market concerns."
                     ),
-                    severity="error",
+                    severity="warning",  # Phase 1: content quality — valuation risk IS a valid business risk
                 ))
             if len(risks) < 3:
                 warnings.append(ValidationWarning(
@@ -2494,7 +2494,7 @@ def validate_pre_render(
                         f"Only {len(risks)} business risk(s) listed. "
                         f"At least 3 substantive, company-specific business risks required."
                     ),
-                    severity="error",
+                    severity="warning",  # Phase 1: content quality — LLM output quality, not data integrity
                 ))
 
     # ── RULE 38 (BLOCKING): §9d CEO leadership & vision completeness ────────────

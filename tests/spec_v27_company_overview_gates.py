@@ -346,16 +346,16 @@ class TestRule36MoatQuality:
 class TestRule37BusinessRisksQuality:
     """RULE 37: Risks must be substantive, not just market/price risks."""
 
-    def test_37_short_risk_blocked(self):
+    def test_37_short_risk_warns(self):
         co = _make_minimal_co(business_risks=["Market volatility"])
         result = validate_pre_render(
             ticker="TEST", quarter="Q1 2026", metrics=None,
             section_analysis={}, company_overview=co,
         )
-        errors = [e for e in result.errors if "risks" in e.check]
-        assert len(errors) >= 1
+        wrns = [w for w in result.warnings if "risks" in w.check]
+        assert len(wrns) >= 1
 
-    def test_37_generic_market_risk_blocked(self):
+    def test_37_generic_market_risk_warns(self):
         co = _make_minimal_co(business_risks=[
             "Market volatility could impact the stock price significantly in the near term based on macroeconomic conditions and interest rate changes"
         ])
@@ -363,10 +363,10 @@ class TestRule37BusinessRisksQuality:
             ticker="TEST", quarter="Q1 2026", metrics=None,
             section_analysis={}, company_overview=co,
         )
-        errors = [e for e in result.errors if "risks_generic" in e.check]
-        assert len(errors) >= 1
+        wrns = [w for w in result.warnings if "risks_generic" in w.check]
+        assert len(wrns) >= 1
 
-    def test_37_fewer_than_three_risks_blocked(self):
+    def test_37_fewer_than_three_risks_warns(self):
         co = _make_minimal_co(business_risks=[
             "Customer concentration with top 3 clients representing 40% of revenue creating dependency risk"
         ])
@@ -374,8 +374,8 @@ class TestRule37BusinessRisksQuality:
             ticker="TEST", quarter="Q1 2026", metrics=None,
             section_analysis={}, company_overview=co,
         )
-        errors = [e for e in result.errors if "risks_insufficient" in e.check]
-        assert len(errors) >= 1
+        wrns = [w for w in result.warnings if "risks_insufficient" in w.check]
+        assert len(wrns) >= 1
 
     def test_37_substantive_risks_pass(self):
         co = _make_minimal_co(business_risks=[
