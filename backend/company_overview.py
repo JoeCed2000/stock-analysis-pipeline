@@ -395,7 +395,7 @@ RULES:
 - Keep each bullet concise and investor-facing; avoid marketing language.
 - business_segments: list SPECIFIC segment NAMES (e.g. "Google Cloud", "Compute & Networking"). Never use numbers ("two") or generic labels. Extract from the long description or web results.
 - The CEO MUST be identified by name (e.g. "CEO Sundar Pichai"). If unknown, use null for the name field but state uncertainty in ceo_leadership_style.
-- competitors: list at least 2-3 named competitors with ticker symbols when possible.
+- competitors: list at least 5-6 named competitors with ticker symbols. More is better — aim for a comprehensive competitive landscape.
 - strengths_vs_competitors and weaker_areas_vs_competitors must be balanced competitive analysis, not valuation comments or volatility observations.
 - NEVER use internal pipeline language: no "LLM synthesis was unavailable", no "could not be reliably synthesized", no "transcript-level validation", no "requires transcript-level", no "fallback dataset". This is client-facing content.
 - growth_drivers, moats, key_kpis, and business_risks should be grounded in available data/news.

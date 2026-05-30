@@ -51,7 +51,7 @@ def _build_styles():
     return {
         'title': ParagraphStyle(
             'COTitle', parent=base['Title'],
-            fontSize=18, textColor=DARK, spaceAfter=6, leading=22
+            fontSize=18, textColor=DARK, spaceAfter=6, leading=22, keepWithNext=1
         ),
         'subtitle': ParagraphStyle(
             'COSubtitle', parent=base['Normal'],
@@ -59,11 +59,11 @@ def _build_styles():
         ),
         'h1': ParagraphStyle(
             'COH1', parent=base['Heading1'],
-            fontSize=14, textColor=BLUE, spaceBefore=16, spaceAfter=8, leading=18
+            fontSize=14, textColor=BLUE, spaceBefore=16, spaceAfter=8, leading=18, keepWithNext=1
         ),
         'h2': ParagraphStyle(
             'COH2', parent=base['Heading2'],
-            fontSize=12, textColor=DARK, spaceBefore=10, spaceAfter=6, leading=16
+            fontSize=12, textColor=DARK, spaceBefore=10, spaceAfter=6, leading=16, keepWithNext=1
         ),
         'body': ParagraphStyle(
             'COBody', parent=base['Normal'],
