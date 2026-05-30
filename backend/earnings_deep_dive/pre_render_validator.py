@@ -1809,7 +1809,7 @@ def validate_pre_render(
                                         f"'{canonical}' exists in the metrics ledger. "
                                         f"Do not claim a metric is unavailable if it is displayed."
                                     ),
-                                    severity="error",
+                                    severity="warning",  # Phase 1: content quality, not data integrity — LLM phrasing, metric IS displayed
                                 ))
 
         # 27b. Sanity bounds

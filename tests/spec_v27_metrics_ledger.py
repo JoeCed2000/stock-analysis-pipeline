@@ -136,8 +136,8 @@ class TestRule27MetricsLedgerGate:
             },
             metrics_ledger=ml,
         )
-        assert result.passed is False
-        assert any("not_retrieved_contradiction" in e.check for e in result.errors)
+        assert result.passed is True
+        assert any("not_retrieved_contradiction" in w.check for w in result.warnings)
 
     def test_27a_not_retrieved_without_ledger_entry_no_warning(self):
         ml = MetricsLedger(entries=[])  # Empty ledger
