@@ -1192,12 +1192,16 @@ def validate_pre_render(
         om = op_metrics_text
 
         # 16a. Table shows metric but text says "not retrieved/available"
-        # Only check table rows (lines starting with |), not prose.
+        # Check BOTH table rows (|...| lines) AND prose for contradiction
         om_table_lines = [l for l in om.split("\n") if l.strip().startswith("|")]
         om_table = "\n".join(om_table_lines)
-        has_not_avail = bool(re.search(
+        has_table_not_avail = bool(re.search(
             r'Not\s+(available|retrieved)|DATA\s+NOT\s+AVAILABLE|\bN/A\b', om_table, re.IGNORECASE
         ))
+        has_prose_not_avail = bool(re.search(
+            r'Not\s+(available|retrieved)|DATA\s+NOT\s+AVAILABLE|\bN/A\b', om, re.IGNORECASE
+        ))
+        has_not_avail = has_table_not_avail or has_prose_not_avail
         if has_not_avail:
             gross_margin_m = metric_map.get("gross_margin")
             op_margin_m = metric_map.get("operating_margin")
