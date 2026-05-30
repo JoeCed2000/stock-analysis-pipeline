@@ -82,12 +82,17 @@ def _codex_chat(prompt: str, system: str = "", max_tokens: int = 1000, model: Op
                              "-o", output_file,
                              full_prompt])
                 
+                # Build environment with real HOME so Codex finds auth.json
+                env = os.environ.copy()
+                env["HOME"] = _REAL_HOME
+
                 proc = subprocess.Popen(
                     args,
                     stdin=slave_fd,
                     stdout=slave_fd,
                     stderr=slave_fd,
                     close_fds=True,
+                    env=env,
                 )
                 
                 os.close(slave_fd)
