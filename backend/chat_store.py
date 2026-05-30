@@ -241,29 +241,55 @@ def track_session_ticker(session_id: str, ticker: str) -> None:
 
     meta = json.loads(row[0]) if row[0] else {}
     viewed = meta.get("viewed_tickers", [])
-    if ticker not in viewed:
-        viewed.append(ticker)
-        # Keep last 10
-        if len(viewed) > 10:
-            viewed = viewed[-10:]
-        meta["viewed_tickers"] = viewed
-        conn.execute(
-            "UPDATE chat_sessions SET metadata_json=?, updated_at=? WHERE id=?",
-            (json.dumps(meta), _utcnow_iso(), session_id),
-        )
-        conn.commit()
+
+    # Store as {ticker, at} with timestamp
+    now = _utcnow_iso()
+    entry = {"ticker": ticker.upper(), "at": now}
+
+    # Remove existing entry for same ticker, append new one
+    viewed = [v for v in viewed if v.get("ticker") != ticker.upper()]
+    viewed.append(entry)
+
+    # Keep last 15
+    if len(viewed) > 15:
+        viewed = viewed[-15:]
+
+    meta["viewed_tickers"] = viewed
+    conn.execute(
+        "UPDATE chat_sessions SET metadata_json=?, updated_at=? WHERE id=?",
+        (json.dumps(meta), now, session_id),
+    )
+    conn.commit()
 
 
-def get_session_tickers(session_id: str) -> list[str]:
-    """Get tickers this session has viewed, most recent last."""
+def get_session_tickers(session_id: str, max_age_hours: int = 2) -> list[str]:
+    """Get tickers this session has viewed in the last N hours, most recent last."""
     conn = get_conn()
     row = conn.execute(
         "SELECT metadata_json FROM chat_sessions WHERE id=?", (session_id,)
     ).fetchone()
     if not row or not row[0]:
         return []
+
+    from datetime import datetime, timezone, timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+
     meta = json.loads(row[0]) if row[0] else {}
-    return meta.get("viewed_tickers", [])
+    viewed = meta.get("viewed_tickers", [])
+    recent = []
+    for v in viewed:
+        at_str = v.get("at", "")
+        try:
+            at = datetime.fromisoformat(at_str)
+            if at >= cutoff:
+                recent.append(v["ticker"])
+        except (ValueError, KeyError):
+            # Old format (plain string) — include
+            if isinstance(v, str):
+                recent.append(v)
+            continue
+
+    return recent
 
 
 # ── Message Operations ───────────────────────────────────────────────────────

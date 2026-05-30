@@ -111,7 +111,7 @@ def _get_recent_tickers(
     tickers: list[str] = []
     if session_id:
         from . import chat_store
-        tickers = chat_store.get_session_tickers(session_id)
+        tickers = chat_store.get_session_tickers(session_id, max_age_hours=2)
 
     if not tickers:
         return []
@@ -166,7 +166,46 @@ def _get_recent_tickers(
         if len(result) >= limit:
             break
 
+    # Also include uploaded PDFs from feedback directories
+    feedback_uploads = _get_uploaded_feedback_pdfs(session_id, limit=3)
+    for fu in feedback_uploads:
+        if fu["ticker"] not in seen:
+            result.append(fu)
+
     return result[:limit]
+
+
+def _get_uploaded_feedback_pdfs(session_id: Optional[str], limit: int = 3) -> list[dict]:
+    """Find PDFs uploaded via feedback that belong to this session's tickers."""
+    from pathlib import Path
+    analyses_dir = Path(__file__).resolve().parent.parent / "analyses"
+    if not analyses_dir.exists():
+        return []
+
+    # Get tickers for this session
+    tickers = set()
+    if session_id:
+        from . import chat_store
+        tickers = set(chat_store.get_session_tickers(session_id, max_age_hours=24))
+
+    results = []
+    for fb_dir in sorted(analyses_dir.glob("feedback_*"), key=lambda d: d.stat().st_mtime, reverse=True):
+        ticker = fb_dir.name.replace("feedback_", "").upper()
+        if tickers and ticker not in tickers:
+            continue
+        pdfs = list(fb_dir.glob("*.pdf"))
+        if pdfs:
+            from datetime import datetime
+            mtime = fb_dir.stat().st_mtime
+            results.append({
+                "ticker": ticker,
+                "date": datetime.fromtimestamp(mtime).strftime("%Y-%m-%d"),
+                "pdfs": [p.name for p in sorted(pdfs, key=lambda p: p.stat().st_mtime, reverse=True)[:4]],
+                "_source": "uploaded",
+            })
+        if len(results) >= limit:
+            break
+    return results
 
 
 _TICKER_BLACKLIST = {"ZZZZ", "FAIL", "TEST", "NVDQ", "NBUS", "NBIS", "EEM", "MC", "SNDK"}
