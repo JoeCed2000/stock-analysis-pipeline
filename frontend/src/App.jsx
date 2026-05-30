@@ -8,6 +8,7 @@ import AboutSection from './components/AboutSection.jsx';
 import LanguageSelector from './components/LanguageSelector.jsx';
 import AdminPage from './components/AdminPage.jsx';
 import FeedbackPage from './components/FeedbackPage.jsx';
+import ChatWidget from './components/ChatWidget.jsx';
 import NotFound from './components/NotFound.jsx';
 import { analyzeTickersAsync, getJobStatus, getDossierStatus, countDossierSections, getSeekingAlphaAccessStatus } from './api.js';
 import translations from './i18n.js';

@@ -129,6 +129,7 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
       case 'assistant_completed':
         setStreaming(false);
         setStreamingMsgId(null);
+        setLoading(false);
         setMessages(prev => prev.map(m =>
           m.id === data.message_id ? { ...m, status: 'completed' } : m
         ));
@@ -136,6 +137,7 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
       case 'assistant_error':
         setStreaming(false);
         setStreamingMsgId(null);
+        setLoading(false);
         setMessages(prev => prev.map(m =>
           m.id === data.message_id
             ? { ...m, content: m.content || '[エラーが発生しました]', status: 'failed' }
@@ -191,6 +193,9 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || `HTTP ${res.status}`);
       }
+      // Loading will be reset by WebSocket event (assistant_completed/assistant_error)
+      // Safety timeout: reset after 30s if WebSocket doesn't respond
+      setTimeout(() => setLoading(false), 30000);
     } catch (e) {
       setError(e.message || 'Failed to send message');
       setLoading(false);
