@@ -344,7 +344,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) with EXACTLY this 
   }},
   "business_description": "A comprehensive 5-8 sentence paragraph (~10 lines) describing what the company does, its products, markets, and scale. Be specific and detailed.",
   "revenue_model": "A comprehensive 5-8 sentence paragraph (~10 lines) explaining how the company makes money — major revenue engines, monetization approach, key customer segments. Be specific and detailed.",
-  "business_segments": ["segment 1", "segment 2"],
+  "business_segments": ["Segment Name: Brief description of what this segment does", "Another Segment: Brief description"],
   "growth_drivers": ["driver 1", "driver 2", "driver 3"],
   "moats": ["moat 1", "moat 2"],
   "key_kpis": ["KPI 1 with value if known", "KPI 2 with value if known"],
@@ -408,7 +408,7 @@ RULES:
 - Use actual numbers from Yahoo Finance when available. If a field is missing, use null (not "N/A" or 0) for numbers.
 - PARAGRAPH DEPTH: All text fields (business_description, revenue_model, competitive_position, strengths/weaker_areas, client_types, management_weaknesses, investor_takeaway, ceo_leadership_style, long_term_vision) MUST be substantial 5-8 sentence paragraphs, not 2-3 sentence summaries. Aim for ~10 lines each. This is client-facing professional analysis.
 - For list fields, always return arrays (possibly empty), never strings.
-- business_segments: list SPECIFIC segment NAMES (e.g. "Google Cloud", "Compute & Networking"). Never use numbers ("two") or generic labels. Extract from the long description or web results.
+- business_segments: list SEGMENTS with descriptions using "Name: Description" format (e.g. "Compute & Networking: Data center GPUs, networking, and AI software."). Never use numbers ("two") or generic labels. Each segment entry MUST include a colon-separated description.
 - The CEO MUST be identified by name (e.g. "CEO Sundar Pichai"). If unknown, use null for the name field but state uncertainty in ceo_leadership_style.
 - competitors: list at least 5-6 named competitors with ticker symbols. More is better — aim for a comprehensive competitive landscape.
 - strengths_vs_competitors and weaker_areas_vs_competitors must be balanced competitive analysis, not valuation comments or volatility observations.
