@@ -1505,7 +1505,10 @@ def _add_earnings_deep_dive_if_transcript(
                 logger.info(f"[{ticker}] Marked segments as annual context (no transcript)")
 
         from backend.earnings_deep_dive.generator import generate_deep_dive
-        from backend.earnings_deep_dive.mapper import build_earnings_deep_dive_report
+        from backend.earnings_deep_dive.mapper import (
+            build_earnings_deep_dive_report,
+            _build_report_period_context,
+        )
         from backend.earnings_deep_dive.pdf_renderer import render_earnings_deep_dive_pdf
 
         # Generate EN deep-dive; JP only when language is Japanese
@@ -1534,37 +1537,21 @@ def _add_earnings_deep_dive_if_transcript(
             validate_pre_render,
             annotate_sections_with_warnings,
             format_validation_error,
-            _try_parse_quarter,
         )
         from backend.earnings_deep_dive.errors import ValidationError
 
-        # ── §3: Build lightweight period context for validation ──
-        _pc_kwargs = dict(
+        # ── §3: Build report period context for pre-render validation ──
+        # Use the canonical _build_report_period_context from mapper —
+        # single source of truth, same as what flows into the report model.
+        # This ensures the gate actually checks real period data instead of
+        # a placeholder where all periods equal transcript_quarter.
+        _period_ctx = _build_report_period_context(
             ticker=ticker,
             company_name=company_name,
-            filing_period=transcript_quarter,
-            report_title_period_label=transcript_quarter,
-            guidance_period=None,  # Not available at this stage
-            transcript_period=transcript_quarter,
-            press_release_period=transcript_quarter,
-            comparison_prior_year_period=None,
+            resolved_quarter=transcript_quarter,
+            metrics=deep_dive_metrics,
+            transcript_url=transcript_url,
         )
-        fy, fq = _try_parse_quarter(transcript_quarter)
-        if fy and fq:
-            _pc_kwargs.update(fiscal_year=fy, fiscal_quarter=fq,
-                              comparison_prior_year_period=f"Q{fq} {fy - 1}")
-
-        class _LightPeriodContext:
-            """Minimal period context for pre-render validation.
-
-            The full ReportPeriodContext is built later in the mapper — we only
-            need enough here to run the §3 period consistency gate.
-            """
-            def __init__(self, **kwargs):
-                for k, v in kwargs.items():
-                    setattr(self, k, v)
-
-        _period_ctx = _LightPeriodContext(**_pc_kwargs)
 
         en_validation = validate_pre_render(
             ticker=ticker,
