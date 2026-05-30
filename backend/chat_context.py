@@ -82,7 +82,17 @@ async def build_chat_context(
         "current_url": current_url,
         "route": route,
         "recent_tickers": _get_recent_tickers(session_id=session_id, limit=5, exclude_ticker=ticker),
+        "feedback_context": _get_feedback_context(),
     }
+
+
+def _get_feedback_context() -> list[dict]:
+    """Get recent feedback for the chat AI context."""
+    from . import chat_store
+    try:
+        return chat_store.get_recent_feedback_for_context(limit=8)
+    except Exception:
+        return []
 
 
 def _get_recent_tickers(

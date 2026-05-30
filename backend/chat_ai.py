@@ -122,6 +122,14 @@ When Nami indicates she's done or the conversation is wrapping up:
 - Be supportive and clear.
 - End with a useful next step or one targeted clarification question when appropriate.
 - The CURRENT CONTEXT section below provides real-time info about the page Nami is viewing.
+
+## Using Feedback Context
+- The context may include past feedback Nami submitted (bugs, UX issues, feature requests).
+- If a previous feedback item is relevant to the current conversation, reference it naturally:
+  「以前に○○についてご指摘いただきましたが、その件は…」
+- If a feedback item is marked 🟢 (resolved), you can mention it was addressed.
+- If marked 🔴 (open), acknowledge it's still being worked on.
+- Do NOT list all feedback items unless Nami asks — weave them in only when relevant.
 """
 
 
@@ -139,6 +147,7 @@ def build_prompt(
     current_url: Optional[str] = None,
     route: Optional[str] = None,
     recent_tickers: Optional[list[dict]] = None,
+    feedback_context: Optional[list[dict]] = None,
 ) -> str:
     """Build the full prompt sent to the AI, including context."""
 
@@ -182,6 +191,15 @@ def build_prompt(
             pdfs = ", ".join(rt.get("pdfs", [])[:2]) or "no PDF"
             ticker_lines.append(f"  • {rt['ticker']} (analyzed {rt.get('date','?')}, PDFs: {pdfs})")
         ctx_lines.append("\n".join(ticker_lines))
+        has_useful_context = True
+
+    # Recent feedback & responses
+    if feedback_context:
+        fb_lines = ["- Recent feedback & actions:"]
+        for fb in feedback_context[:8]:
+            status_icon = {"open": "🔴", "pending": "🟡", "resolved": "🟢", "taken_into_account": "🟢"}.get(fb.get("status", ""), "⚪")
+            fb_lines.append(f"  {status_icon} [{fb.get('type','?')}] {fb['content'][:120]}")
+        ctx_lines.append("\n".join(fb_lines))
         has_useful_context = True
 
     if not has_useful_context:
@@ -302,6 +320,7 @@ async def stream_ai_response(
     current_url: Optional[str] = None,
     route: Optional[str] = None,
     recent_tickers: Optional[list[dict]] = None,
+    feedback_context: Optional[list[dict]] = None,
 ) -> AsyncGenerator[str, None]:
     """Build prompt, stream AI response. Main entry point."""
     prompt = build_prompt(
@@ -317,6 +336,7 @@ async def stream_ai_response(
         current_url=current_url,
         route=route,
         recent_tickers=recent_tickers,
+        feedback_context=feedback_context,
     )
     async for token in stream_deepseek(SYSTEM_PROMPT, prompt):
         yield token

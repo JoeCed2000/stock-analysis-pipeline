@@ -319,6 +319,7 @@ async def _generate_and_stream(
             current_url=ctx["current_url"],
             route=ctx["route"],
             recent_tickers=ctx.get("recent_tickers"),
+            feedback_context=ctx.get("feedback_context"),
         ):
             full_response += token
             if ws:

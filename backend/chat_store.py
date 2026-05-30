@@ -557,6 +557,69 @@ def close_session(session_id: str) -> bool:
     return conn.total_changes > 0
 
 
+def get_recent_feedback_for_context(visitor_name: str = "Nami", limit: int = 10) -> list[dict]:
+    """Get recent feedback items for chat context.
+
+    Pulls from both chat_feedback (auto-detected) and the JSON feedback_store.
+    Returns a list of {type, content, status, date, ticker} for the AI prompt.
+    """
+    conn = get_conn()
+    items = []
+
+    # 1. Chat feedback (auto-detected)
+    rows = conn.execute(
+        """SELECT cf.feedback_type, cf.content, cf.status, cf.created_at,
+                  cs.current_ticker
+           FROM chat_feedback cf
+           JOIN chat_sessions cs ON cf.session_id = cs.id
+           WHERE cs.visitor_name = ?
+           ORDER BY cf.created_at DESC
+           LIMIT ?""",
+        (visitor_name, limit),
+    ).fetchall()
+
+    for r in rows:
+        items.append({
+            "source": "chat",
+            "type": r[0],
+            "content": r[1][:200],
+            "status": r[2],
+            "date": (r[3] or "")[:10],
+            "ticker": r[4],
+        })
+
+    # 2. Form feedback (JSON feedback_store) — try to load
+    try:
+        from . import feedback_store
+        all_fb = feedback_store.list_all_feedback()
+        for fb in all_fb[-limit:]:
+            files = fb.get("files", [])
+            content = (fb.get("text") or "")[:200]
+            if files:
+                content += f" [attached: {', '.join(f[:50] for f in files[:3])}]"
+            items.append({
+                "source": "form",
+                "type": fb.get("category", "other"),
+                "content": content,
+                "status": fb.get("status", "pending"),
+                "date": (fb.get("created_at") or "")[:10],
+                "ticker": fb.get("ticker"),
+            })
+    except Exception:
+        pass  # feedback_store may not be available
+
+    # Sort by date, most recent first, deduplicate by content
+    seen = set()
+    unique = []
+    for item in sorted(items, key=lambda x: x["date"], reverse=True):
+        key = item["content"][:80]
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
+
+    return unique[:limit]
+
+
 # ── Init ─────────────────────────────────────────────────────────────────────
 
 def initialize() -> None:
