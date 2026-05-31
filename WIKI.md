@@ -1,6 +1,32 @@
 # Stock Analysis Pipeline — WIKI
 
-## Architecture
+## 2026-05-31 — Transcript URL: Seeking Alpha canonical + NTFS→ext4 migration
+
+**Commits:** `0e161df`, `e71c827`, `71c7aab`, `93f8d66` (kanban/spec-fonctionnelle-sa)
+**Session:** DeepSeek-first profile, Telegram
+
+### Root causes
+1. `_transcript_url()` prioritized stockanalysis.com (400) over seekingalpha.com (300)
+2. `pdf_renderer.py:655` hardcoded stockanalysis.com fallback URL
+3. Backend was running from NTFS (`/mnt/c/...`) while all commits were on ext4
+4. `_is_earnings_call_title()` filter not synced to NTFS — GOOGL got "Cloud Next keynote" instead of earnings call
+
+### Fixes applied
+1. **pipeline.py** — SA priority 400, StockAnalysis→SA canonical conversion, all fallbacks → SA
+2. **pdf_renderer.py** — fallback `seekingalpha.com/symbol/{TICKER}/earnings/transcripts`
+3. **main.py** — localhost auth bypass moved before API_KEY check (no more 403 on localhost)
+4. **Backend** — now runs from ext4: `/home/ced/codex-projects/stock-analysis-pipeline/`
+5. **WSL** — `~/.sudo_as_admin_successful` created (suppresses sudo hint in terminal output)
+
+### Verified
+- ✅ `_transcript_url()` test: stockanalysis.com URL → `https://seekingalpha.com/symbol/GOOGL/earnings/transcripts`
+- ✅ Transcript filter: "Earnings Call: Q4 2025" (not keynote)
+- ✅ Source label: "Seeking Alpha"
+- ✅ Backend cwd: ext4
+
+### Pending
+- GOOGL deep dive PDF regeneration (backend slow/timing out)
+- End-to-end SA URL verification in final PDF
 - **Backend**: Python 3.11+ FastAPI (port 8780), yfinance + finnhub-python
 - **Frontend**: React + Vite (port 5173 dev, bundled to dist/)
 - **Chat**: Live AI chatbot widget (floating bubble on Feedback page), DeepSeek V3 streaming via WebSocket
