@@ -13,6 +13,7 @@ export default function AdminPage({ t, onClose }) {
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(0);
   const [feedbacks, setFeedbacks] = useState([]);
+  const [feedbackError, setFeedbackError] = useState('');
 
   const fetchData = useCallback(async () => {
     try {
@@ -20,14 +21,19 @@ export default function AdminPage({ t, onClose }) {
       const [statsRes, searchRes, fbRes] = await Promise.all([
         fetch(`${API}/admin/search-stats`).then(r => r.ok ? r.json() : null),
         fetch(`${API}/admin/recent-searches?limit=${PAGE_SIZE}&offset=${offset}`).then(r => r.ok ? r.json() : null),
-        fetch(`${API}/admin/feedback`).then(r => r.ok ? r.json() : null),
+        fetch(`${API}/feedback`).then(r => r.ok ? r.json() : { error: `HTTP ${r.status}` }),
       ]);
       if (statsRes) setStats(statsRes);
       if (searchRes) {
         setSearches(searchRes.searches || []);
         setTotalCount(searchRes.total || 0);
       }
-      if (fbRes) setFeedbacks(fbRes || []);
+      if (fbRes?.error) {
+        setFeedbackError(fbRes.error);
+      } else {
+        setFeedbackError('');
+        setFeedbacks((fbRes?.entries || []));
+      }
     } catch (e) {
       console.error('[AdminPage] fetch failed:', e);
     }
@@ -166,7 +172,11 @@ export default function AdminPage({ t, onClose }) {
             {feedbacks.filter(f => !f.processed).length} unprocessed / {feedbacks.length} total
           </span>
         </div>
-        {feedbacks.length === 0 ? (
+        {feedbackError ? (
+          <div style={{ padding: 24, textAlign: 'center', color: '#f85149', fontSize: 13 }}>
+            Feedback history failed to load: {feedbackError}
+          </div>
+        ) : feedbacks.length === 0 ? (
           <div style={{ padding: 24, textAlign: 'center', color: '#484f58', fontSize: 13 }}>
             No feedback yet — Nami's notes will appear here
           </div>
@@ -223,7 +233,7 @@ export default function AdminPage({ t, onClose }) {
                     {fb.files.map((f, j) => (
                       <a
                         key={j}
-                        href={getFeedbackAttachmentUrl(fb.ticker, f)}
+                        href={getFeedbackAttachmentUrl(fb._ticker || fb.ticker, f)}
                         target="_blank"
                         rel="noreferrer"
                         style={{
