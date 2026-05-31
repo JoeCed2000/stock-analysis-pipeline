@@ -10,7 +10,7 @@ import AdminPage from './components/AdminPage.jsx';
 import FeedbackPage from './components/FeedbackPage.jsx';
 import ChatWidget from './components/ChatWidget.jsx';
 import NotFound from './components/NotFound.jsx';
-import { analyzeTickersAsync, getJobStatus, getDossierStatus, countDossierSections, getSeekingAlphaAccessStatus, testSeekingAlphaAccess } from './api.js';
+import { analyzeTickersAsync, getJobStatus, getDossierStatus, countDossierSections, testSeekingAlphaAccess } from './api.js';
 import translations from './i18n.js';
 import SearchMonitor from './components/SearchMonitor.jsx';
 // BUILD: v3 — explicit loading state machine, no fake timer progress
@@ -91,11 +91,17 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!showAdmin && !showFeedback) {
+      setSaAccess({ loading: false, configured: null, error: null });
+      return undefined;
+    }
+
     let alive = true;
 
     const refreshSeekingAlphaStatus = async () => {
       try {
-        // Use the TEST endpoint for real connectivity check, not just cookie presence
+        // Use the TEST endpoint for real connectivity check, not just cookie presence.
+        // This endpoint is protected; only poll it from admin/feedback routes.
         const data = await testSeekingAlphaAccess();
         if (!alive) return;
         setSaAccess({
@@ -119,7 +125,7 @@ export default function App() {
       alive = false;
       clearInterval(timer);
     };
-  }, []);
+  }, [showAdmin, showFeedback]);
 
   const t = (key, params) => {
     let str = translations[lang]?.[key] || translations.en[key] || key;

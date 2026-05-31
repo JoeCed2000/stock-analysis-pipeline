@@ -168,23 +168,18 @@ async def rate_limit_middleware(request: Request, call_next):
 _API_KEY = os.getenv("CED_CONTROL_KEY", "")
 
 async def _require_auth(request: Request):
-    """FastAPI dependency: reject if CED_CONTROL_KEY is not set or doesn't match.
-    Local requests (127.0.0.1, localhost) bypass auth automatically.
-    Accepts X-API-Key header (primary) or api_key query param (fallback for downloads)."""
-    # Bypass auth for local requests and in-process FastAPI TestClient.
-    # TestClient uses a synthetic host ("testclient") and cannot send browser
-    # referer/origin headers; production network clients cannot spoof this host.
+    """FastAPI dependency: require CED_CONTROL_KEY for protected endpoints.
+
+    Local loopback requests and in-process FastAPI TestClient bypass auth so
+    local tooling/tests keep working. Remote browser headers (Origin/Referer)
+    are never trusted for auth because they are client-controlled/spoofable.
+    Accepts X-API-Key header (primary) or api_key query param (fallback for downloads).
+    """
     host = request.client.host if request.client else ""
     if host in ("127.0.0.1", "::1", "localhost", "testclient"):
         return
     if not _API_KEY:
         raise HTTPException(status_code=403, detail="API key not configured (set CED_CONTROL_KEY)")
-    # Bypass auth for same-origin browser requests (frontend served by this server)
-    referer = request.headers.get("referer", "")
-    origin = request.headers.get("origin", "")
-    allowed_origins = ("sa.cedlabusa.net", "www.cedlabusa.net", "localhost:5173", "127.0.0.1:5173", "localhost:8780")
-    if any(o in referer or o in origin for o in allowed_origins):
-        return
     provided = request.headers.get("X-API-Key", "") or request.query_params.get("api_key", "")
     if provided != _API_KEY:
         raise HTTPException(status_code=403, detail="Invalid API key")
@@ -1051,169 +1046,33 @@ async def dossier_status(ticker: str):
 
 @app.get("/api/dossier/{ticker}/download")
 async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
-    """Download the complete dossier as ZIP. Generates files synchronously if not ready.
-    Converts MD/TXT → PDF on-the-fly. ZIP contains ONLY PDF + XLSX + README.txt.
-    Use ?lang=ja for Japanese translated dossier.
-    Use ?quarter=2025Q4 for quarter-specific deep-dive (auto-generates)."""
+    """Download an already-generated dossier as ZIP.
+
+    This endpoint is intentionally read-only: it never triggers a ticker analysis,
+    quarter regeneration, LLM generation, or on-disk PDF conversion. Generation is
+    handled by explicit POST/async routes; download only serves verified artifacts.
+    """
     ticker = ticker.strip().upper()
     dossier_language = _normalize_dossier_language(lang)
-    translation_language = _translation_language(dossier_language)
+
+    if quarter and quarter != "latest":
+        raise HTTPException(
+            status_code=404,
+            detail=f"No pre-generated dossier found for {ticker} quarter={quarter}",
+        )
+
     from backend.async_dossier import get_dossier_status
+
     status = get_dossier_status(ticker)
-    
-    # If dossier not ready, generate it synchronously
     if not status.get("ready"):
-        logger.info(f"[{ticker}] Dossier not ready — generating synchronously... [lang={lang}]")
-        try:
-            from backend.pipeline import analyze_ticker
-            result = analyze_ticker(ticker, output_base=str(ANALYSES_DIR), language=dossier_language)
-            logger.info(f"[{ticker}] Dossier generated — {result.decision} ({result.scoring.total}/40)")
-        except Exception as e:
-            logger.error(f"[{ticker}] Dossier generation failed: {e}")
-            raise HTTPException(
-                status_code=503,
-                detail=f"Dossier generation failed: {str(e)}"
-            )
-    
+        logger.info("[%s] Dossier download refused — no verified dossier ready", ticker)
+        raise HTTPException(status_code=404, detail=f"No verified dossier ready for {ticker}")
+
     matches = _find_analysis_dirs(ticker)
     if not matches:
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
-    
-    analysis_dir = matches[0]
-    
-    # If quarter specified, regenerate deep-dive for that quarter
-    if quarter and quarter != "latest":
-        logger.info(f"[{ticker}] Regenerating deep-dive for quarter={quarter}...")
-        from backend.async_dossier import set_dossier_phase, DossierPhase
-        set_dossier_phase(ticker, DossierPhase.PDF_GENERATING)
-        try:
-            from backend.sources_collector import get_yahoo_data_for_quarter
-            from backend.pipeline import _deep_dive_metrics
-            from backend.models import AnalysisResult
-            from backend.earnings_deep_dive.errors import ValidationError
-            from datetime import datetime, timezone
-            q_data = get_yahoo_data_for_quarter(ticker, quarter)
-            if q_data:
-                dummy = AnalysisResult(
-                    ticker=ticker,
-                    company_name=q_data.get("company_name", ticker),
-                    retrieved_at=datetime.now(timezone.utc).isoformat(),
-                    price=q_data.get("price"),
-                    currency=q_data.get("currency", "USD"),
-                    sector=q_data.get("sector"),
-                )
-                metrics = _deep_dive_metrics(dummy, q_data)
-                
-                # ── IR scraping (mirrors _add_earnings_deep_dive_if_transcript) ──
-                from backend.pipeline import _investor_relations_url, _company_website, \
-                    _extract_next_earnings_from_ir, _extract_audio_webcast_from_ir
-                website = _company_website(q_data)
-                investor_relations = _investor_relations_url(q_data)
-                if investor_relations:
-                    metrics = metrics.model_copy(update={"investor_relations_url": investor_relations})
-                    next_earnings = _extract_next_earnings_from_ir(investor_relations, ticker)
-                    if next_earnings:
-                        metrics = metrics.model_copy(update={"next_earnings_date": next_earnings})
-                        logger.info(f"[{ticker}] Next earnings date: {next_earnings}")
-                    audio_url = _extract_audio_webcast_from_ir(investor_relations, ticker)
-                    if audio_url:
-                        metrics = metrics.model_copy(update={"earnings_audio_url": audio_url})
-                        logger.info(f"[{ticker}] Earnings audio: {audio_url}")
-                if website:
-                    metrics = metrics.model_copy(update={"company_website": website})
-                
-                from backend.earnings_deep_dive.generator import generate_deep_dive
 
-                response = generate_deep_dive(DeepDiveRequest(
-                    ticker=ticker,
-                    company=q_data.get("company_name", ticker),
-                    quarter=quarter,
-                    language=dossier_language,
-                    output_dir=str(analysis_dir),
-                    metrics=metrics,
-                ))
-                logger.info(f"[{ticker}] Deep-dive regenerated for {quarter}")
-                
-                # Strip echoed prompt questions from LLM output (mirrors pipeline.py)
-                from backend.pipeline import _strip_prompt_leaks_from_sections
-                response.sections = _strip_prompt_leaks_from_sections(response.sections)
-
-                # ── Pre-render validation (BLOCKING — hard data contract gate) ──
-                set_dossier_phase(ticker, DossierPhase.PDF_VALIDATING)
-                from backend.earnings_deep_dive.pre_render_validator import (
-                    validate_pre_render,
-                    annotate_sections_with_warnings,
-                    format_validation_error,
-                )
-                from backend.earnings_deep_dive.errors import ValidationError
-                pre_val = validate_pre_render(
-                    ticker=ticker,
-                    quarter=quarter,
-                    metrics=metrics,
-                    section_analysis=response.sections,
-                )
-                if pre_val.errors:
-                    error_msg = format_validation_error(pre_val, ticker)
-                    logger.error(error_msg)
-                    raise ValidationError(
-                        ticker=ticker,
-                        errors=pre_val.errors,
-                        message=error_msg,
-                    )
-                elif pre_val.warnings:
-                    logger.warning(
-                        f"[{ticker}] Pre-render validation: {len(pre_val.warnings)} warning(s) "
-                        f"— sections flagged with ⚠️"
-                    )
-                    response.sections = annotate_sections_with_warnings(
-                        response.sections, pre_val,
-                    )
-
-                # Render PDF and validate (mirrors _add_earnings_deep_dive_if_transcript)
-                from backend.earnings_deep_dive.mapper import build_earnings_deep_dive_report
-                from backend.earnings_deep_dive.pdf_renderer import render_earnings_deep_dive_pdf
-                from backend.earnings_deep_dive.deep_dive_validator import validate_deep_dive, validate_render_model
-                import json as _json
-                
-                pdf_path = os.path.join(str(analysis_dir), "07_final_report", "earnings_deep_dive.pdf")
-                report_model = build_earnings_deep_dive_report(
-                    ticker=ticker,
-                    company=q_data.get("company_name", ticker),
-                    quarter=quarter,
-                    language=dossier_language,
-                    metrics=metrics,
-                    transcript_url=response.transcript_url or "",
-                    section_analysis=response.sections,
-                )
-                render_earnings_deep_dive_pdf(report_model, pdf_path)
-                
-                # Validate
-                md_passed, issues = validate_deep_dive(response.markdown_path)
-                render_issues = validate_render_model(report_model)
-                passed = md_passed and not render_issues
-                val_result = {"passed": passed, "issues": issues + render_issues,
-                              "checked_at": datetime.now(timezone.utc).isoformat()}
-                val_path = os.path.join(str(analysis_dir), "07_final_report", "deep_dive_validation.json")
-                with open(val_path, "w") as f:
-                    _json.dump(val_result, f, indent=2)
-                logger.info(f"[{ticker}] Deep-dive PDF rendered + validated (passed={passed})")
-                set_dossier_phase(ticker, DossierPhase.COMPLETE)
-        except ValidationError as ve:
-            set_dossier_phase(ticker, DossierPhase.PDF_BLOCKED, error=str(ve))
-            logger.error(f"[{ticker}] Data contract violation: {ve}")
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "message": f"PDF build blocked — data contract violation for {ticker}",
-                    "errors": [{"check": e.check, "detail": e.detail} for e in (ve.errors or [])],
-                }
-            )
-        except Exception as e:
-            set_dossier_phase(ticker, DossierPhase.FAILED, error=str(e))
-            logger.warning(f"[{ticker}] Deep-dive regeneration for {quarter} failed: {e}")
-
-    status = get_dossier_status(ticker)
-    if not status.get("download_enabled"):
+    if not status.get("download_enabled", status.get("ready", False)):
         raise HTTPException(
             status_code=409,
             detail={
@@ -1222,92 +1081,58 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
                 "deep_dive_validated": status.get("deep_dive_validated"),
             },
         )
-    
-    # Translate dossier content if non-English language requested
-    # NEVER mutate originals — work on a temp copy (Codex P0 audit 2026-05-05)
-    # NOTE: translation is deferred to async background to avoid Cloudflare tunnel timeouts
-    work_dir = None
-    if dossier_language != "en":
-        logger.info(f"[{ticker}] Skipping synchronous translation to {dossier_language} (deferred to async)")
-    # Translation disabled for now — was causing 100s+ delays and tunnel timeouts
-    
-    # Use the translated temp dir if available, otherwise original
-    source_dir = work_dir if work_dir else analysis_dir
-    
-    # Pre-convert MD/TXT files to PDF on-the-fly 
-    try:
-        from backend.pdf_generator import md_to_pdf
-        refresh_pdf = work_dir is not None
-        for fpath in sorted(source_dir.rglob("*.md")):
-            pdf_path = fpath.with_suffix(".pdf")
-            if _should_convert_dossier_text_to_pdf(fpath, refresh_pdf=refresh_pdf):
-                try:
-                    md_to_pdf(str(fpath), str(pdf_path), title=f"{ticker} — {fpath.stem.replace('_', ' ').title()}")
-                    logger.info(f"[{ticker}] Converted {fpath.name} → PDF")
-                except Exception as e:
-                    logger.warning(f"[{ticker}] MD→PDF failed for {fpath.name}: {e}")
-        for fpath in sorted(source_dir.rglob("*.txt")):
-            pdf_path = fpath.with_suffix(".pdf")
-            if _should_convert_dossier_text_to_pdf(fpath, refresh_pdf=refresh_pdf):
-                try:
-                    md_to_pdf(str(fpath), str(pdf_path), title=f"{ticker} — {fpath.stem.replace('_', ' ').title()}")
-                    logger.info(f"[{ticker}] Converted {fpath.name} → PDF")
-                except Exception as e:
-                    logger.warning(f"[{ticker}] TXT→PDF failed for {fpath.name}: {e}")
-    except Exception as e:
-        logger.warning(f"[{ticker}] On-the-fly PDF conversion error: {e}")
-    
+
+    source_dir = matches[0]
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         included_dirs = set()
         for fpath in sorted(source_dir.rglob("*")):
-            if fpath.is_file():
-                rel_parts = fpath.relative_to(source_dir).parts
-                if rel_parts and rel_parts[0] in ("en", "jp") and rel_parts[0] != dossier_language:
+            if not fpath.is_file():
+                continue
+            rel_parts = fpath.relative_to(source_dir).parts
+            if rel_parts and rel_parts[0] in ("en", "jp") and rel_parts[0] != dossier_language:
+                continue
+            # Only PDF + XLSX + README.txt + transcript verbatim .txt in the deliverable ZIP.
+            if fpath.suffix in (".json", ".csv", ".md"):
+                continue
+            if fpath.suffix == ".txt":
+                if fpath.name == "README.txt":
+                    pass
+                elif "04_transcripts_and_management" in str(fpath) and "transcript_" in fpath.name:
+                    pass
+                else:
                     continue
-                # Only PDF + XLSX + README.txt + transcript verbatim .txt in the deliverable ZIP
-                if fpath.suffix in ('.json', '.csv', '.md'):
-                    continue
-                if fpath.suffix == '.txt':
-                    if fpath.name == 'README.txt':
-                        pass  # always include
-                    elif '04_transcripts_and_management' in str(fpath) and 'transcript_' in fpath.name:
-                        pass  # verbatim transcript — always include
-                    else:
-                        continue
-                arcname = fpath.relative_to(source_dir)
-                zf.write(fpath, arcname)
-                included_dirs.add(str(arcname.parent))
-        
-        
-        # Ensure ALL 7 directories are represented
-        for folder in ["01_official_company_sources", "02_sec_or_regulatory_filings",
-                       "03_financial_data_sources", "04_transcripts_and_management",
-                       "05_market_and_context", "06_extracted_data", "07_final_report"]:
+            arcname = fpath.relative_to(source_dir)
+            zf.write(fpath, arcname)
+            included_dirs.add(str(arcname.parent))
+
+        # Ensure all canonical folders are represented in the ZIP without mutating disk.
+        folders = [
+            "01_official_company_sources",
+            "02_sec_or_regulatory_filings",
+            "03_financial_data_sources",
+            "04_transcripts_and_management",
+            "05_market_and_context",
+            "06_extracted_data",
+            "07_final_report",
+        ]
+        for folder in folders:
             if folder not in included_dirs:
-                zf.writestr(f"{folder}/README.txt",
-                           f"{folder}\n{'='*len(folder)}\n\nDossier section — see full report for details.\n")
-        for language in (dossier_language,):
-            if (source_dir / language).is_dir():
-                for folder in ["01_official_company_sources", "02_sec_or_regulatory_filings",
-                               "03_financial_data_sources", "04_transcripts_and_management",
-                               "05_market_and_context", "06_extracted_data", "07_final_report"]:
-                    lang_folder = f"{language}/{folder}"
-                    if lang_folder not in included_dirs:
-                        zf.writestr(f"{lang_folder}/README.txt",
-                                   f"{folder}\n{'='*len(folder)}\n\nDossier section — see full report for details.\n")
-    
+                zf.writestr(
+                    f"{folder}/README.txt",
+                    f"{folder}\n{'=' * len(folder)}\n\nDossier section — see full report for details.\n",
+                )
+        if (source_dir / dossier_language).is_dir():
+            for folder in folders:
+                lang_folder = f"{dossier_language}/{folder}"
+                if lang_folder not in included_dirs:
+                    zf.writestr(
+                        f"{lang_folder}/README.txt",
+                        f"{folder}\n{'=' * len(folder)}\n\nDossier section — see full report for details.\n",
+                    )
+
     lang_suffix = f"_{dossier_language}" if dossier_language != "en" else ""
     buf.seek(0)
-    
-    # Clean up temp dir if translation created one
-    if work_dir:
-        try:
-            shutil.rmtree(work_dir, ignore_errors=True)
-            logger.debug(f"[{ticker}] Temp translation dir cleaned up")
-        except Exception as e:
-            logger.debug(f"Fallback: {e}")
-    
     return StreamingResponse(
         buf,
         media_type="application/zip",
@@ -2207,7 +2032,7 @@ async def cache_info(ticker: str, lang: str = "en"):
     return JSONResponse(overview_cache_info(ticker, lang))
 
 
-@app.post("/api/cache/overview/{ticker}/flush")
+@app.post("/api/cache/overview/{ticker}/flush", dependencies=[Depends(_require_auth)])
 async def cache_flush(ticker: str, lang: str = "en"):
     """Flush (delete) cached company overview for a ticker.
 

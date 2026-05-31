@@ -27,13 +27,17 @@ export default function CacheIndicator({ ticker }) {
     fetchInfo();
   }, [fetchInfo]);
 
+  const canFlushCache = typeof window !== 'undefined'
+    && ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+
   const handleFlush = async () => {
-    if (!ticker || flushing) return;
+    if (!ticker || flushing || !canFlushCache) return;
     setFlushing(true);
     setActionMessage('');
     try {
       const res = await fetch(`${API_BASE}/cache/overview/${ticker}/flush`, { method: 'POST' });
       const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.detail || `HTTP ${res.status}`);
       const deletedCount = Array.isArray(payload?.deleted) ? payload.deleted.length : 0;
       setActionMessage(deletedCount > 0 ? 'cache cleared' : 'already fresh');
       setTimeout(() => {
@@ -79,23 +83,25 @@ export default function CacheIndicator({ ticker }) {
     }}>
       <span style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: dotColor, flexShrink: 0 }} />
       <span style={{ color: '#8b949e' }}>{label}</span>
-      <button
-        onClick={handleFlush}
-        disabled={flushing}
-        style={{
-          background: 'none',
-          border: 'none',
-          cursor: flushing ? 'default' : 'pointer',
-          color: '#58a6ff',
-          fontSize: 10,
-          padding: '1px 4px',
-          textDecoration: 'underline',
-          opacity: flushing ? 0.5 : 1,
-        }}
-        title="Clear cache now and fetch fresh data on next analysis"
-      >
-        {flushing ? 'refreshing…' : 'clear + refresh'}
-      </button>
+      {canFlushCache && (
+        <button
+          onClick={handleFlush}
+          disabled={flushing}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: flushing ? 'default' : 'pointer',
+            color: '#58a6ff',
+            fontSize: 10,
+            padding: '1px 4px',
+            textDecoration: 'underline',
+            opacity: flushing ? 0.5 : 1,
+          }}
+          title="Clear cache now and fetch fresh data on next analysis"
+        >
+          {flushing ? 'refreshing…' : 'clear + refresh'}
+        </button>
+      )}
       {actionMessage && (
         <span style={{ color: '#8b949e', fontSize: 10 }}>
           · {actionMessage}
