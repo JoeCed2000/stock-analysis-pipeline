@@ -14,6 +14,7 @@ Cron jobs read index.json, process new entries, and mark them as processed.
 
 import json
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,17 @@ logger = logging.getLogger(__name__)
 PARIS = __import__("zoneinfo").ZoneInfo("Europe/Paris")
 ANALYSES_DIR = get_analyses_dir()
 GENERAL_FEEDBACK_BUCKET = "GENERAL"
+MAX_FEEDBACK_UPLOAD_BYTES = 10 * 1024 * 1024  # Public endpoint: keep uploads bounded.
+ALLOWED_FEEDBACK_UPLOAD_SUFFIXES = {
+    ".csv",
+    ".jpeg",
+    ".jpg",
+    ".md",
+    ".pdf",
+    ".png",
+    ".txt",
+    ".webp",
+}
 
 
 def _normalize_feedback_bucket(ticker: str | None) -> str:
@@ -59,6 +71,35 @@ def _read_index(bucket: str) -> list[dict[str, Any]]:
 def _write_index(bucket: str, entries: list[dict[str, Any]]) -> None:
     with open(_index_path(bucket), "w", encoding="utf-8") as f:
         json.dump(entries, f, indent=2, ensure_ascii=False)
+
+
+def _sanitize_upload_filename(filename: str) -> str:
+    """Return a safe basename for a public feedback attachment."""
+    original_name = (filename or "").replace("\\", "/")
+    basename = Path(original_name).name.strip()
+    if not basename or basename in {".", ".."}:
+        raise ValueError("Invalid feedback attachment filename")
+
+    suffix = Path(basename).suffix.lower()
+    if suffix not in ALLOWED_FEEDBACK_UPLOAD_SUFFIXES:
+        allowed = ", ".join(sorted(ALLOWED_FEEDBACK_UPLOAD_SUFFIXES))
+        raise ValueError(f"Feedback attachment type not allowed: {suffix or '[none]'} (allowed: {allowed})")
+
+    stem = Path(basename).stem
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._-") or "attachment"
+    return f"{safe_stem}{suffix}"
+
+
+def _validate_upload_content(filename: str, content: bytes) -> None:
+    if len(content) > MAX_FEEDBACK_UPLOAD_BYTES:
+        raise ValueError(
+            f"Feedback attachment too large: {filename} "
+            f"({len(content)} bytes > {MAX_FEEDBACK_UPLOAD_BYTES} bytes)"
+        )
+
+
+def _is_indexed_feedback_file(bucket: str, filename: str) -> bool:
+    return any(filename in (entry.get("files") or []) for entry in _read_index(bucket))
 
 
 def _attach_latest_pdf(ticker: str, fb_dir: Path, entry_id: str) -> str | None:
@@ -103,13 +144,15 @@ def _decorate_entry(entry: dict[str, Any], bucket: str) -> dict[str, Any]:
 
 
 def get_feedback_file_path(bucket: str, filename: str) -> Path:
-    """Resolve a feedback attachment path safely within its bucket directory."""
+    """Resolve an indexed feedback attachment safely within its bucket directory."""
     normalized_bucket = _normalize_feedback_bucket(bucket)
     fb_dir = (ANALYSES_DIR / f"feedback_{normalized_bucket}").resolve()
     requested = Path(filename)
 
     if requested.is_absolute() or requested.name != filename or ".." in requested.parts:
         raise ValueError("Invalid feedback filename")
+    if not _is_indexed_feedback_file(normalized_bucket, requested.name):
+        raise FileNotFoundError(filename)
 
     file_path = (fb_dir / requested.name).resolve()
     if file_path.parent != fb_dir:
@@ -137,13 +180,18 @@ async def save_feedback(
     log_label = ticker or GENERAL_FEEDBACK_BUCKET
     normalized_category = (category or "general").strip().lower().replace(" ", "_")
 
-    files_saved: list[str] = []
+    pending_files: list[tuple[str, bytes]] = []
     for upload in (files or []):
         if not upload.filename:
             continue
-        safe_name = f"{entry_id}_{upload.filename.replace(' ', '_')}"
-        file_path = fb_dir / safe_name
+        safe_basename = _sanitize_upload_filename(upload.filename)
         content = await upload.read()
+        _validate_upload_content(safe_basename, content)
+        pending_files.append((f"{entry_id}_{safe_basename}", content))
+
+    files_saved: list[str] = []
+    for safe_name, content in pending_files:
+        file_path = fb_dir / safe_name
         with open(file_path, "wb") as f:
             f.write(content)
         files_saved.append(safe_name)

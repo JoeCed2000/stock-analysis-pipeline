@@ -190,6 +190,55 @@ class TestFeedbackEndpoint:
 
         assert resp.status_code == 200
         assert resp.content == b"fake png"
+        assert resp.headers["x-content-type-options"] == "nosniff"
+
+    def test_feedback_upload_rejects_active_content_extensions(self, client):
+        resp = self._submit(
+            client,
+            text="HTML should not be accepted as a public feedback attachment",
+            files={"files": ("proof.html", b"<script>alert(1)</script>", "text/html")},
+        )
+
+        assert resp.status_code == 400
+        assert "not allowed" in resp.json()["detail"]
+        assert not (self.feedback_root / "feedback_GENERAL" / "index.json").exists()
+
+    def test_feedback_upload_rejects_oversized_attachment(self, client, monkeypatch):
+        monkeypatch.setattr("backend.feedback_store.MAX_FEEDBACK_UPLOAD_BYTES", 4)
+
+        resp = self._submit(
+            client,
+            text="Attachment is too large",
+            files={"files": ("shot.png", b"12345", "image/png")},
+        )
+
+        assert resp.status_code == 400
+        assert "too large" in resp.json()["detail"]
+        assert not (self.feedback_root / "feedback_GENERAL" / "index.json").exists()
+
+    def test_feedback_upload_sanitizes_path_like_filenames(self, client):
+        resp = self._submit(
+            client,
+            text="Path-like filename should be flattened",
+            files={"files": ("../evil screenshot.png", b"fake png", "image/png")},
+        )
+
+        assert resp.status_code == 200
+        entries = json.loads((self.feedback_root / "feedback_GENERAL" / "index.json").read_text())
+        saved_name = entries[0]["files"][0]
+        assert ".." not in saved_name
+        assert "/" not in saved_name
+        assert saved_name.endswith("evil_screenshot.png")
+        assert (self.feedback_root / "feedback_GENERAL" / saved_name).exists()
+
+    def test_feedback_file_download_rejects_unindexed_bucket_file(self, client):
+        self._submit(client, ticker="AAPL", text="Creates index")
+        index_path = self.feedback_root / "feedback_AAPL" / "index.json"
+        assert index_path.exists()
+
+        resp = client.get("/api/feedback-file/AAPL/index.json", headers={"X-API-Key": TEST_KEY})
+
+        assert resp.status_code == 404
 
     def test_feedback_file_download_missing_returns_404(self, client):
         resp = client.get("/api/feedback-file/AAPL/missing.pdf", headers={"X-API-Key": TEST_KEY})

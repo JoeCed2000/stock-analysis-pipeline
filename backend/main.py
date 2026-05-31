@@ -1888,10 +1888,14 @@ async def submit_feedback(
     try:
         result = await save_feedback(normalized_ticker or None, text, files, category=normalized_category)
         return JSONResponse({"status": "ok", **result})
+    except ValueError as e:
+        scope = normalized_ticker or "GENERAL"
+        logger.warning(f"Feedback validation failed for {scope}: {e}")
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         scope = normalized_ticker or "GENERAL"
         logger.error(f"Feedback save failed for {scope}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/feedback")
@@ -1943,7 +1947,11 @@ async def download_feedback_file(bucket: str, filename: str):
         raise HTTPException(status_code=404, detail="Feedback attachment not found") from exc
 
     media_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
-    return FileResponse(file_path, media_type=media_type)
+    return FileResponse(
+        file_path,
+        media_type=media_type,
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
 
 
 @app.get("/api/company-overview/{ticker}/download")
