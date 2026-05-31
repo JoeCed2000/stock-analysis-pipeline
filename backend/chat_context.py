@@ -67,6 +67,39 @@ def _detect_visitor_name(session_id: str) -> str:
         return localized_visitor_label("en")
 
 
+def _is_nami_session(session_id: str) -> bool:
+    """Return true only for server-recognized Nami sessions.
+
+    Feedback-page data is Nami-only by product convention, but it must not leak
+    into Ced/unknown chat contexts. The gate is therefore the same trusted
+    server-side fingerprint resolution used for the display name.
+    """
+    return _detect_visitor_name(session_id) == "Nami-san"
+
+
+def _get_form_feedback_context(limit: int = 8) -> list[dict]:
+    """Return Nami-only feedback-page entries for chat context."""
+    try:
+        from . import feedback_store
+
+        items = []
+        for entry in feedback_store.list_all_feedback()[:limit]:
+            text = (entry.get("text") or entry.get("message") or entry.get("content") or "").strip()
+            files = entry.get("files") or []
+            items.append({
+                "source": "feedback_page",
+                "type": entry.get("category") or "feedback",
+                "content": text[:200],
+                "status": entry.get("status") or ("taken_into_account" if entry.get("processed") else "pending"),
+                "date": (entry.get("submitted_at") or entry.get("date") or "")[:10],
+                "ticker": entry.get("ticker") or entry.get("_ticker"),
+                "files": files[:4] if isinstance(files, list) else [],
+            })
+        return items
+    except Exception:
+        return []
+
+
 async def build_chat_context(
     session_id: str,
     user_message: str,
@@ -161,15 +194,27 @@ def _get_previous_chat_summaries(session_id: str) -> list[dict]:
 
 
 def _get_feedback_context(session_id: str) -> list[dict]:
-    """Get recent feedback for the chat AI context, scoped by visitor."""
+    """Get recent feedback for the chat AI context.
+
+    Chat-origin feedback remains strictly scoped by visitor_id. The separate
+    feedback page store has no visitor_id field; by product convention that
+    area belongs to Nami only, so it is included only for sessions that the
+    server-side fingerprint resolves to Nami-san.
+    """
     from . import chat_store
     try:
         session = chat_store.get_session(session_id)
         if not session or not session.visitor_id:
             return []
-        return chat_store.get_recent_feedback_for_context(
+
+        items = chat_store.get_recent_feedback_for_context(
             visitor_id=session.visitor_id, limit=8,
         )
+        if _is_nami_session(session_id):
+            remaining = max(0, 8 - len(items))
+            if remaining:
+                items.extend(_get_form_feedback_context(limit=remaining))
+        return items[:8]
     except Exception:
         return []
 
@@ -181,9 +226,13 @@ def _get_recent_tickers(
 ) -> list[dict]:
     """Get tickers this visitor has viewed, with their available PDFs.
 
-    Uses the visitor's ticker history (NOT the global analyses/ directory).
+    Uses visitor history by default. Feedback-page uploads are Nami-only by
+    product convention and are therefore included only for sessions that the
+    server recognizes as Nami-san.
     """
     from pathlib import Path
+
+    is_nami = _is_nami_session(session_id) if session_id else False
 
     # Get tickers from visitor history
     tickers: list[str] = []
@@ -194,7 +243,7 @@ def _get_recent_tickers(
             tickers = chat_store.get_session_tickers(session.visitor_id, max_age_hours=2)
 
     if not tickers:
-        return []
+        return _get_uploaded_feedback_pdfs(session_id, limit=limit) if is_nami else []
 
     # Reverse to get most recent first, filter, deduplicate
     seen = set()
@@ -246,35 +295,34 @@ def _get_recent_tickers(
         if len(result) >= limit:
             break
 
-    # Also include uploaded PDFs from feedback directories
-    feedback_uploads = _get_uploaded_feedback_pdfs(session_id, limit=3)
-    for fu in feedback_uploads:
-        if fu["ticker"] not in seen:
-            result.append(fu)
+    # Also include uploaded PDFs from feedback directories, but only for Nami.
+    if is_nami:
+        feedback_uploads = _get_uploaded_feedback_pdfs(session_id, limit=3)
+        for fu in feedback_uploads:
+            if fu["ticker"] not in seen:
+                result.append(fu)
 
     return result[:limit]
 
 
 def _get_uploaded_feedback_pdfs(session_id: Optional[str], limit: int = 3) -> list[dict]:
-    """Find PDFs uploaded via feedback that belong to this session's tickers."""
+    """Find PDFs uploaded via the Nami-only feedback area.
+
+    These uploads are intentionally exposed only to server-recognized Nami
+    sessions. Other visitors only see PDFs tied to their explicit ticker
+    history through _get_recent_tickers().
+    """
+    if not session_id or not _is_nami_session(session_id):
+        return []
+
     from pathlib import Path
     analyses_dir = Path(__file__).resolve().parent.parent / "analyses"
     if not analyses_dir.exists():
         return []
 
-    # Get tickers for this visitor
-    tickers = set()
-    if session_id:
-        from . import chat_store
-        session = chat_store.get_session(session_id)
-        if session and session.visitor_id:
-            tickers = set(chat_store.get_session_tickers(session.visitor_id, max_age_hours=24))
-
     results = []
     for fb_dir in sorted(analyses_dir.glob("feedback_*"), key=lambda d: d.stat().st_mtime, reverse=True):
         ticker = fb_dir.name.replace("feedback_", "").upper()
-        if tickers and ticker not in tickers:
-            continue
         pdfs = list(fb_dir.glob("*.pdf"))
         if pdfs:
             from datetime import datetime

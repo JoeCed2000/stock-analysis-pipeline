@@ -26,7 +26,7 @@ import pytest
 # Ensure backend package is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from backend import chat_store
+from backend import chat_context, chat_store
 from backend.chat_models import ChatSession
 
 
@@ -274,6 +274,53 @@ class TestVisitorIsolation:
         # Empty visitor_id → no feedback
         fb_empty = chat_store.get_recent_feedback_for_context("")
         assert fb_empty == []
+
+    @patch("backend.feedback_store.list_all_feedback")
+    def test_nami_session_gets_feedback_page_context(self, mock_list_all, monkeypatch, tmp_path):
+        """Feedback-page entries are intentionally attached to Nami sessions."""
+        _make_db_path(monkeypatch, tmp_path)
+        mock_list_all.return_value = [{
+            "id": "fb-1",
+            "ticker": "GOOGL",
+            "category": "report_content",
+            "text": "Company overview PDF needs the client-requested details.",
+            "status": "pending",
+            "submitted_at": "2026-05-31T12:00:00+09:00",
+            "files": ["goog_company_overview.pdf"],
+        }]
+        sess = _create_test_session(
+            visitor_id=uuid.uuid4().hex,
+            metadata={"device": "apple-mac-safari"},
+        )
+
+        feedback = chat_context._get_feedback_context(sess.id)
+
+        assert any(item["source"] == "feedback_page" for item in feedback)
+        assert feedback[-1]["ticker"] == "GOOGL"
+        assert feedback[-1]["files"] == ["goog_company_overview.pdf"]
+
+    @patch("backend.feedback_store.list_all_feedback")
+    def test_non_nami_session_does_not_get_feedback_page_context(self, mock_list_all, monkeypatch, tmp_path):
+        """Feedback-page entries must not leak into Ced/unknown contexts."""
+        _make_db_path(monkeypatch, tmp_path)
+        mock_list_all.return_value = [{
+            "id": "fb-1",
+            "ticker": "GOOGL",
+            "category": "report_content",
+            "text": "Nami-only feedback",
+            "status": "pending",
+            "submitted_at": "2026-05-31T12:00:00+09:00",
+            "files": ["goog_company_overview.pdf"],
+        }]
+        sess = _create_test_session(
+            visitor_id=uuid.uuid4().hex,
+            metadata={"device": "linux-chrome"},
+        )
+
+        feedback = chat_context._get_feedback_context(sess.id)
+
+        assert feedback == []
+        mock_list_all.assert_not_called()
 
     def test_create_session_generates_visitor_id_when_missing(self, monkeypatch, tmp_path):
         """API endpoint generates UUID4 visitor_id when not provided (test via store layer)."""
