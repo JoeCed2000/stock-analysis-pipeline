@@ -651,8 +651,8 @@ def _earnings_documents_story(
             transcript_url = source.url
             break
     if not transcript_label:
-        transcript_label = "Earnings Transcript — Seeking Alpha"  # StockAnalysis republishes SA
-        transcript_url = f"https://stockanalysis.com/stocks/{report.ticker.lower()}/transcripts/"
+        transcript_label = "Earnings Transcript — Seeking Alpha"
+        transcript_url = f"https://seekingalpha.com/symbol/{report.ticker.upper()}/earnings/transcripts"
 
     ir_value = _source_note(report, "investor relations")
     press_release_value = _source_note(report, "press release")
