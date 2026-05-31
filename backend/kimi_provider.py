@@ -145,7 +145,7 @@ def _deepseek_chat(
                 "Content-Type": "application/json",
             },
             json={
-                "model": "deepseek-v4-flash",
+                "model": "deepseek-v4-pro",
                 "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": prompt},

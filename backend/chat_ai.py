@@ -276,7 +276,7 @@ async def stream_deepseek(
     import httpx
 
     payload = {
-        "model": "deepseek-v4-flash",
+        "model": "deepseek-v4-pro",
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
