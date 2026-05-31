@@ -31,14 +31,14 @@ logger = logging.getLogger(__name__)
 MAX_CODEX_TOKENS = 16000
 
 def _llm_chat(prompt: str, system: str = "", max_tokens: int = MAX_CODEX_TOKENS) -> str | None:
-    """Codex GPT-5.5 (primary, free via ChatGPT Plus) → DeepSeek V4 Pro (fallback) → Gemini Flash Lite."""
-    # 1. Codex GPT-5.5 — free via ChatGPT Plus, highest quality synthesis
-    result = codex_chat(prompt, system=system, max_tokens=max_tokens)
-    if result:
-        return result
-    # 2. DeepSeek V4 Pro — paid fallback ($0.27/M tokens)
+    """DeepSeek V4 Pro (primary, best at following numerical instructions) → Codex GPT-5.5 (fallback) → Gemini Flash Lite."""
+    # 1. DeepSeek V4 Pro — paid, best at following data contract instructions
     from backend.kimi_provider import _deepseek_chat
     result = _deepseek_chat(prompt, system, max_tokens)
+    if result:
+        return result
+    # 2. Codex GPT-5.5 — free via ChatGPT Plus, high quality but prone to hallucinating transcript numbers
+    result = codex_chat(prompt, system=system, max_tokens=max_tokens)
     if result:
         return result
     # 3. Gemini Flash Lite — free, last resort (may 429/503 under load)
