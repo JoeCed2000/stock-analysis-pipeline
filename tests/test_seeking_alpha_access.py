@@ -20,6 +20,12 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture
+def remote_client():
+    """Simulate production traffic so auth bypass for loopback/testclient does not apply."""
+    return TestClient(app, client=("203.0.113.10", 50000))
+
+
 class TestSeekingAlphaAccessAdmin:
     @pytest.fixture(autouse=True)
     def setup(self, tmp_path, monkeypatch):
@@ -34,6 +40,58 @@ class TestSeekingAlphaAccessAdmin:
         assert payload["configured"] is False
         assert payload["cookie_count"] == 0
         assert "cookie_header" not in payload
+
+    def test_feedback_mode_status_is_public_for_remote_browser(self, remote_client):
+        resp = remote_client.get("/api/admin/seeking-alpha/access")
+
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["configured"] is False
+        assert "cookie_header" not in payload
+
+    def test_feedback_mode_save_is_public_but_clear_stays_protected(self, remote_client):
+        save_resp = remote_client.post(
+            "/api/admin/seeking-alpha/access",
+            json={"cookie_header": "sessionid=abc123; xsrf=token456"},
+        )
+
+        assert save_resp.status_code == 200
+        saved = save_resp.json()
+        assert saved["configured"] is True
+        assert saved["cookie_count"] == 2
+        assert "cookie_header" not in saved
+        assert (self.state_dir / "seeking_alpha_access.json").exists()
+
+        clear_resp = remote_client.delete("/api/admin/seeking-alpha/access")
+        assert clear_resp.status_code == 403
+        assert (self.state_dir / "seeking_alpha_access.json").exists()
+
+    def test_feedback_mode_probe_is_public_for_remote_browser(self, remote_client, monkeypatch):
+        captured = {}
+
+        class FakeResponse:
+            status_code = 200
+            text = "<html>transcript list</html>"
+            url = "https://seekingalpha.com/symbol/NVDA/earnings/transcripts"
+
+        def fake_get(url, headers=None, timeout=None, follow_redirects=None):
+            captured["url"] = url
+            captured["headers"] = headers or {}
+            return FakeResponse()
+
+        monkeypatch.setattr("backend.seeking_alpha_access.http.get", fake_get)
+        remote_client.post(
+            "/api/admin/seeking-alpha/access",
+            json={"cookie_header": "sessionid=abc123; xsrf=token456"},
+        )
+
+        resp = remote_client.post("/api/admin/seeking-alpha/test", json={"ticker": "nvda"})
+
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["ok"] is True
+        assert payload["ticker"] == "NVDA"
+        assert captured["headers"]["Cookie"] == "sessionid=abc123; xsrf=token456"
 
     def test_save_then_clear_roundtrip(self, client):
         save_resp = client.post(

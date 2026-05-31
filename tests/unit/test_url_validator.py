@@ -7,10 +7,12 @@ from backend.url_validator import (
     _extract_urls_from_pdf,
     _extract_urls_from_report,
     _extract_urls_from_text,
+    _extract_urls_from_text_file,
     UrlCheck,
     ValidationReport,
     validate_pdf_urls_sync,
     validate_report_urls_sync,
+    validate_text_urls_sync,
 )
 
 
@@ -140,6 +142,41 @@ class TestExtractPdfUrls:
         mock_check.assert_called_once()
 
 
+class TestExtractTextFileUrls:
+    def test_extract_urls_from_txt_file_cleans_html_and_trailing_punctuation(self, tmp_path):
+        txt_path = tmp_path / "sources.txt"
+        txt_path.write_text(
+            "Primary: https://example.com/report?x=1&amp;y=2,\n"
+            "Mirror: https://example.com/other).\n"
+            "Duplicate: https://example.com/report?x=1&y=2\n",
+            encoding="utf-8",
+        )
+
+        urls = _extract_urls_from_text_file(txt_path)
+
+        assert urls == [
+            ("https://example.com/report?x=1&y=2", "TXT sources.txt"),
+            ("https://example.com/other", "TXT sources.txt"),
+        ]
+
+    def test_validate_text_urls_sync_checks_extracted_txt_urls(self, tmp_path):
+        txt_path = tmp_path / "transcript_TEST.txt"
+        txt_path.write_text("**URL:** https://validated.example.com/transcript\n", encoding="utf-8")
+
+        async def fake_check(url, label, timeout=8.0):
+            return UrlCheck(url=url, label=label, alive=True, status_code=200)
+
+        with patch("backend.url_validator._check_one_url", side_effect=fake_check) as mock_check:
+            result = validate_text_urls_sync(txt_path, ticker="TXT")
+
+        assert result.ticker == "TXT"
+        assert result.total_urls == 1
+        assert result.alive == 1
+        assert result.dead == 0
+        assert result.checks[0].url == "https://validated.example.com/transcript"
+        mock_check.assert_called_once()
+
+
 class TestValidationReport:
     def test_healthy_when_no_dead(self):
         r = ValidationReport(total_urls=5, alive=5, dead=0)
@@ -253,6 +290,22 @@ class TestSyncValidation:
         result = validate_report_urls_sync(r, ticker="TEST")
         assert isinstance(result, ValidationReport)
         mock_validate.assert_called_once()
+
+
+class TestTextWriterWiring:
+    def test_transcript_writers_validate_final_txt_artifacts(self):
+        import inspect
+        from backend.earnings_deep_dive.generator import _save_verbatim_transcript
+        from backend.pipeline import _save_news_as_transcript
+        from backend.transcript_rich import _save_transcript
+
+        generator_source = inspect.getsource(_save_verbatim_transcript)
+        rich_source = inspect.getsource(_save_transcript)
+        news_source = inspect.getsource(_save_news_as_transcript)
+
+        assert "validate_text_urls_sync(filepath" in generator_source
+        assert "validate_text_urls_sync(local_path" in rich_source
+        assert "validate_text_urls_sync(path" in news_source
 
 
 class TestRendererWiring:

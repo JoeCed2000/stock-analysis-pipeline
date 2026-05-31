@@ -730,5 +730,19 @@ def _save_verbatim_transcript(
         f.write("## Verbatim Transcript\n\n")
         f.write(transcript_text)
     
+    try:
+        from backend.url_validator import validate_text_urls_sync
+        vr = validate_text_urls_sync(filepath, ticker=ticker)
+        if not vr.healthy:
+            logger.warning(
+                "[%s] TXT URL validation found %s/%s dead links in %s",
+                ticker,
+                vr.dead,
+                vr.total_urls,
+                filepath,
+            )
+    except Exception as e:
+        logger.warning("[%s] TXT URL validation failed for %s: %s", ticker, filepath, e)
+
     logger.info(f"Verbatim transcript saved: {filepath} ({len(transcript_text)} chars, source={source_name})")
     return filepath

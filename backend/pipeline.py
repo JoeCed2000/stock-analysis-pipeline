@@ -1916,6 +1916,20 @@ def _save_news_as_transcript(ticker: str, output_dir: str, fh_data: Dict) -> Non
                 f.write(f"    Summary: {summary[:500]}\n")
             f.write("\n")
 
+    try:
+        from backend.url_validator import validate_text_urls_sync
+        vr = validate_text_urls_sync(path, ticker=ticker)
+        if not vr.healthy:
+            logger.warning(
+                "[%s] TXT URL validation found %s/%s dead links in %s",
+                ticker,
+                vr.dead,
+                vr.total_urls,
+                path,
+            )
+    except Exception as e:
+        logger.warning("[%s] TXT URL validation failed for %s: %s", ticker, path, e)
+
     logger.info(f"Earnings news saved: {path} ({len(news)} articles)")
 
 

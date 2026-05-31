@@ -96,6 +96,17 @@ def _extract_urls_from_text(text: str, label: str) -> list[tuple[str, str]]:
     return [(_clean_extracted_url(match.group(0)), label) for match in _URL_RE.finditer(text)]
 
 
+def _extract_urls_from_text_file(text_path: str | Path) -> list[tuple[str, str]]:
+    """Extract and deduplicate URLs from a final text artifact (.txt/.md)."""
+    path = Path(text_path)
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        logger.warning("Text URL extraction failed for %s: %s", path, exc)
+        return []
+    return _dedupe_url_pairs(_extract_urls_from_text(text, f"TXT {path.name}"))
+
+
 def _extract_urls_from_report(report) -> list[tuple[str, str]]:
     """Extract every (url, label) pair from an EarningsDeepDiveReport model.
 
@@ -341,6 +352,15 @@ async def validate_pdf_urls(pdf_path: str | Path, ticker: str = "") -> Validatio
     )
 
 
+async def validate_text_urls(text_path: str | Path, ticker: str = "") -> ValidationReport:
+    """Validate URLs extracted from a final rendered text artifact (.txt/.md)."""
+    return await _validate_url_pairs(
+        _extract_urls_from_text_file(text_path),
+        ticker=ticker,
+        source="text-artifact",
+    )
+
+
 def validate_report_urls_sync(report, ticker: str = "") -> ValidationReport:
     """Synchronous wrapper — runs the async validator in a new event loop."""
     try:
@@ -364,4 +384,17 @@ def validate_pdf_urls_sync(pdf_path: str | Path, ticker: str = "") -> Validation
     import concurrent.futures
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(asyncio.run, validate_pdf_urls(pdf_path, ticker))
+        return future.result(timeout=_TOTAL_BATCH_TIMEOUT + 5)
+
+
+def validate_text_urls_sync(text_path: str | Path, ticker: str = "") -> ValidationReport:
+    """Synchronous wrapper for final text artifact URL validation."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(validate_text_urls(text_path, ticker))
+    # Already in an async context — create a new loop in a thread
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(asyncio.run, validate_text_urls(text_path, ticker))
         return future.result(timeout=_TOTAL_BATCH_TIMEOUT + 5)

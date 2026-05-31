@@ -2028,8 +2028,15 @@ async def clear_seeking_alpha_access():
     return JSONResponse(clear_access())
 
 
-@app.post("/api/admin/seeking-alpha/test", dependencies=[Depends(_require_auth)])
+@app.post("/api/admin/seeking-alpha/test")
 async def test_seeking_alpha_access(payload: SeekingAlphaProbeRequest | None = None):
+    """Probe stored Seeking Alpha cookies without exposing the cookie value.
+
+    Public by design for the feedback page: after Nami submits cookies, the UI
+    must be able to confirm pending → verified/failed without embedding an
+    admin API key. The endpoint only accepts a ticker and returns probe status;
+    it never returns the stored Cookie header.
+    """
     from backend.seeking_alpha_access import probe_access
 
     ticker = payload.ticker if payload else "NVDA"
