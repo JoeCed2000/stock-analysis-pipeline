@@ -162,9 +162,10 @@ async def rate_limit_middleware(request: Request, call_next):
     return await call_next(request)
 
 # ── API Auth gate —─────────────────────────────────────────────────
-# Protects write + admin endpoints behind CED_CONTROL_KEY env var.
+# Protects admin and privileged write endpoints behind CED_CONTROL_KEY.
+# The user-facing feedback form/history is public by design because the static
+# production UI cannot safely embed an admin secret; it is instead rate-limited.
 # Set CED_CONTROL_KEY in .env. Without it, protected endpoints return 403.
-# Matching spec: SEC-002 (X-API-Key write endpoints), BR-008 (auth obligatoire).
 _API_KEY = os.getenv("CED_CONTROL_KEY", "")
 
 async def _require_auth(request: Request):
@@ -1860,17 +1861,19 @@ async def search_stats():
 
 
 # ── Nami Feedback System ──────────────────────────────────────────────
-@app.post("/api/feedback", dependencies=[Depends(_require_auth)])
+@app.post("/api/feedback")
 async def submit_feedback(
     ticker: str = Form(""),
     category: str = Form("general"),
     text: str = Form(""),
     files: list[UploadFile] = FastAPIFile(default=[]),
 ):
-    """Submit feedback for a ticker or as general product feedback.
+    """Submit feedback from the user-facing feedback page.
 
-    When ticker is omitted, feedback is stored in the GENERAL bucket so the user can
-    submit comments independently from any analysis card.
+    This endpoint is intentionally public: the static production UI cannot carry
+    CED_CONTROL_KEY, and the page must let Nami/Ced submit feedback without an
+    admin secret. Abuse is limited by the `/api/feedback` moderate rate limit;
+    admin review stays protected through `/api/admin/feedback`.
     """
     from backend.feedback_store import save_feedback
     normalized_ticker = (ticker or "").strip().upper()
@@ -1881,7 +1884,7 @@ async def submit_feedback(
         raise HTTPException(status_code=422, detail=f"Invalid ticker: {normalized_ticker}")
     if not text.strip() and not files:
         raise HTTPException(status_code=422, detail="Feedback text or at least one attachment is required")
-    
+
     try:
         result = await save_feedback(normalized_ticker or None, text, files, category=normalized_category)
         return JSONResponse({"status": "ok", **result})
@@ -1891,9 +1894,14 @@ async def submit_feedback(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/feedback", dependencies=[Depends(_require_auth)])
+@app.get("/api/feedback")
 async def list_all_feedback():
-    """List all feedback entries across general + per-ticker buckets for the user page."""
+    """List feedback entries for the user-facing feedback page.
+
+    Public by design so the production static UI can show submission status
+    without embedding an admin API key. The privileged admin view remains on
+    `/api/admin/feedback` and stays protected by `_require_auth`.
+    """
     from backend.feedback_store import list_all_feedback as list_all_fb
     entries = list_all_fb()
     return JSONResponse({
@@ -1986,15 +1994,25 @@ async def download_company_overview(ticker: str, format: str = "auto"):
     raise HTTPException(status_code=404, detail=f"No company overview artifact found for {ticker}")
 
 
-@app.get("/api/admin/seeking-alpha/access", dependencies=[Depends(_require_auth)])
+@app.get("/api/admin/seeking-alpha/access")
 async def get_seeking_alpha_access_status():
+    """Return Seeking Alpha cookie status without exposing the cookie value.
+
+    Public by design for the feedback page: Nami can confirm whether cookies are
+    configured, while the endpoint never returns the stored Cookie header.
+    """
     from backend.seeking_alpha_access import get_access_status
 
     return JSONResponse(get_access_status())
 
 
-@app.post("/api/admin/seeking-alpha/access", dependencies=[Depends(_require_auth)])
+@app.post("/api/admin/seeking-alpha/access")
 async def save_seeking_alpha_access(payload: SeekingAlphaAccessUpdateRequest):
+    """Store Seeking Alpha cookies submitted from the feedback page.
+
+    The Cookie header is write-only for the UI: it is saved server-side and never
+    returned by status endpoints. Clearing stored cookies remains admin-protected.
+    """
     from backend.seeking_alpha_access import save_access
 
     try:

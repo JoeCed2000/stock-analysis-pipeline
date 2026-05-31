@@ -3,9 +3,13 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.url_validator import (
+    _check_one_url,
+    _extract_urls_from_pdf,
     _extract_urls_from_report,
+    _extract_urls_from_text,
     UrlCheck,
     ValidationReport,
+    validate_pdf_urls_sync,
     validate_report_urls_sync,
 )
 
@@ -86,6 +90,56 @@ class TestExtractUrls:
         assert urls == []
 
 
+class TestExtractPdfUrls:
+    def test_extract_urls_from_visible_pdf_text_and_annotations(self, tmp_path):
+        from reportlab.pdfgen import canvas
+
+        pdf_path = tmp_path / "links.pdf"
+        c = canvas.Canvas(str(pdf_path))
+        c.drawString(72, 720, "Visible source: https://visible.example.com/path?x=1.")
+        c.drawString(72, 700, "Clickable source")
+        c.linkURL("https://click.example.com/report", (72, 696, 220, 714), relative=0)
+        c.save()
+
+        urls = _extract_urls_from_pdf(pdf_path)
+
+        assert ("https://click.example.com/report", "PDF link annotation p1") in urls
+        assert ("https://visible.example.com/path?x=1", "PDF visible text p1") in urls
+        assert len({url for url, _ in urls}) == len(urls)
+
+    def test_extract_urls_from_text_cleans_html_and_trailing_punctuation(self):
+        urls = _extract_urls_from_text(
+            "Sources: https://example.com/report?x=1&amp;y=2, and https://example.com/other).",
+            "PDF visible text p1",
+        )
+
+        assert urls == [
+            ("https://example.com/report?x=1&y=2", "PDF visible text p1"),
+            ("https://example.com/other", "PDF visible text p1"),
+        ]
+
+    def test_validate_pdf_urls_sync_checks_extracted_pdf_urls(self, tmp_path):
+        from reportlab.pdfgen import canvas
+
+        pdf_path = tmp_path / "validate.pdf"
+        c = canvas.Canvas(str(pdf_path))
+        c.drawString(72, 720, "https://validated.example.com/source")
+        c.save()
+
+        async def fake_check(url, label, timeout=8.0):
+            return UrlCheck(url=url, label=label, alive=True, status_code=200)
+
+        with patch("backend.url_validator._check_one_url", side_effect=fake_check) as mock_check:
+            result = validate_pdf_urls_sync(pdf_path, ticker="PDF")
+
+        assert result.ticker == "PDF"
+        assert result.total_urls == 1
+        assert result.alive == 1
+        assert result.dead == 0
+        assert result.checks[0].url == "https://validated.example.com/source"
+        mock_check.assert_called_once()
+
+
 class TestValidationReport:
     def test_healthy_when_no_dead(self):
         r = ValidationReport(total_urls=5, alive=5, dead=0)
@@ -108,6 +162,88 @@ class TestValidationReport:
         assert r.dead_urls[0].url == "https://dead.com"
 
 
+class TestCheckOneUrl:
+    @pytest.mark.asyncio
+    async def test_restricted_status_is_reachable_not_dead(self):
+        class FakeResponse:
+            status_code = 403
+            has_redirect_location = False
+            headers = {}
+
+        class FakeAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            async def request(self, method, url):
+                return FakeResponse()
+
+        with patch("httpx.AsyncClient", FakeAsyncClient):
+            check = await _check_one_url("https://seekingalpha.com/symbol/NVDA/earnings/transcripts", "SA")
+
+        assert check.status_code == 403
+        assert check.alive is True
+        assert check.error == "restricted but reachable: 403"
+
+    @pytest.mark.asyncio
+    async def test_known_antibot_5xx_is_reachable_not_dead(self):
+        class FakeResponse:
+            status_code = 503
+            has_redirect_location = False
+            headers = {}
+
+        class FakeAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            async def request(self, method, url):
+                return FakeResponse()
+
+        with patch("httpx.AsyncClient", FakeAsyncClient):
+            check = await _check_one_url("https://finance.yahoo.com/quote/GOOGL", "Yahoo")
+
+        assert check.status_code == 503
+        assert check.alive is True
+        assert check.error == "transient anti-bot response: 503"
+
+    @pytest.mark.asyncio
+    async def test_404_remains_dead(self):
+        class FakeResponse:
+            status_code = 404
+            has_redirect_location = False
+            headers = {}
+
+        class FakeAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            async def request(self, method, url):
+                return FakeResponse()
+
+        with patch("httpx.AsyncClient", FakeAsyncClient):
+            check = await _check_one_url("https://example.com/missing", "Missing")
+
+        assert check.status_code == 404
+        assert check.alive is False
+
+
 class TestSyncValidation:
     @patch("backend.url_validator.asyncio.get_running_loop", side_effect=RuntimeError)
     @patch("backend.url_validator.validate_report_urls")
@@ -117,3 +253,15 @@ class TestSyncValidation:
         result = validate_report_urls_sync(r, ticker="TEST")
         assert isinstance(result, ValidationReport)
         mock_validate.assert_called_once()
+
+
+class TestRendererWiring:
+    def test_pdf_renderer_validates_final_pdf_artifact(self):
+        import inspect
+        from backend.earnings_deep_dive.pdf_renderer import render_earnings_deep_dive_pdf
+
+        source = inspect.getsource(render_earnings_deep_dive_pdf)
+
+        assert "validate_pdf_urls_sync" in source
+        assert "validate_pdf_urls_sync(output" in source
+        assert "validate_report_urls_sync(report" not in source

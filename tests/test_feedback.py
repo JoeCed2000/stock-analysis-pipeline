@@ -27,6 +27,12 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture
+def remote_client():
+    """Simulate production traffic so auth bypass for loopback/testclient does not apply."""
+    return TestClient(app, client=("203.0.113.10", 50000))
+
+
 class TestFeedbackEndpoint:
     @pytest.fixture(autouse=True)
     def setup(self, tmp_path, monkeypatch):
@@ -113,6 +119,30 @@ class TestFeedbackEndpoint:
         texts = [entry["text"] for entry in payload["entries"]]
         assert "General feedback visible to user" in texts
         assert "Ticker feedback visible to user" in texts
+
+    def test_feedback_user_page_list_is_public_for_remote_browser(self, client, remote_client):
+        self._submit(client, text="General feedback visible on production page")
+
+        resp = remote_client.get("/api/feedback")
+
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["total"] == 1
+        assert payload["entries"][0]["text"] == "General feedback visible on production page"
+
+    def test_feedback_user_page_submit_is_public_for_remote_browser(self, remote_client):
+        resp = remote_client.post("/api/feedback", data={"text": "Remote browser can submit feedback"})
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"
+        entries = json.loads((self.feedback_root / "feedback_GENERAL" / "index.json").read_text())
+        assert entries[0]["text"] == "Remote browser can submit feedback"
+
+    def test_admin_feedback_remains_protected_for_remote_browser(self, remote_client):
+        resp = remote_client.get("/api/admin/feedback")
+
+        assert resp.status_code == 403
+        assert resp.json()["detail"] == "Invalid API key"
 
     def test_admin_feedback_endpoint_reads_same_store(self, client):
         self._submit(client, ticker="MSFT", text="Admin sees this")

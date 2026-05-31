@@ -2384,9 +2384,12 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         print(f"[PDF RENDER] Recovered with {len(report.sections)} sections (1 dropped)", file=sys.stderr)
 
     # ── URL validation (BL-SA-003) — non-blocking, advisory only ──
+    # Validate the final rendered PDF artifact, not only the source model. This
+    # catches hallucinated/escaped/injected links that are visible or clickable
+    # in the delivered file.
     try:
-        from backend.url_validator import validate_report_urls_sync
-        vr = validate_report_urls_sync(report, ticker=getattr(report, 'ticker', ''))
+        from backend.url_validator import validate_pdf_urls_sync
+        vr = validate_pdf_urls_sync(output, ticker=getattr(report, 'ticker', ''))
         if vr.dead > 0:
             print(f"[URL VALIDATOR] 🔴 {vr.dead}/{vr.total_urls} DEAD links in {vr.ticker}", file=__import__('sys').stderr)
             for c in vr.dead_urls:

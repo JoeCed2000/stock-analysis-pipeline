@@ -9,7 +9,9 @@ warnings, doesn't abort pipeline.
 from __future__ import annotations
 
 import asyncio
+from html import unescape
 import logging
+import re
 import ssl
 import time as _time
 from dataclasses import dataclass, field
@@ -24,6 +26,15 @@ _CONNECT_TIMEOUT = 8.0       # seconds per connection attempt
 _TOTAL_BATCH_TIMEOUT = 30.0  # seconds for all URLs in one report
 _MAX_REDIRECTS = 3
 _USER_AGENT = "SA-Pipeline/2.0 (URL Validator; +https://sa.cedlabusa.net)"
+_RESTRICTED_BUT_REACHABLE_STATUS_CODES = {401, 403, 429}
+_ANTI_BOT_TRANSIENT_HOSTS = (
+    "finance.yahoo.com",
+    "query1.finance.yahoo.com",
+    "query2.finance.yahoo.com",
+    "seekingalpha.com",
+)
+_URL_RE = re.compile(r"https?://[^\s<>\]\)\}\"']+", re.IGNORECASE)
+_TRAILING_URL_CHARS = ".,;:)]}>\"'"
 
 
 @dataclass
@@ -55,6 +66,36 @@ class ValidationReport:
         return self.dead == 0
 
 
+def _clean_extracted_url(url: str) -> str:
+    """Normalize a URL extracted from model/PDF text without changing semantics."""
+    cleaned = unescape((url or "").strip())
+    while cleaned and cleaned[-1] in _TRAILING_URL_CHARS:
+        cleaned = cleaned[:-1]
+    return cleaned
+
+
+def _dedupe_url_pairs(urls: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Deduplicate URL/label pairs while preserving the first human context."""
+    seen: set[str] = set()
+    deduped: list[tuple[str, str]] = []
+    for url, label in urls:
+        cleaned = _clean_extracted_url(url)
+        if not cleaned:
+            continue
+        normalized = cleaned.rstrip("/")
+        if normalized not in seen:
+            seen.add(normalized)
+            deduped.append((cleaned, label))
+    return deduped
+
+
+def _extract_urls_from_text(text: str, label: str) -> list[tuple[str, str]]:
+    """Extract HTTP(S) URLs from visible text, with context labels for logs."""
+    if not text:
+        return []
+    return [(_clean_extracted_url(match.group(0)), label) for match in _URL_RE.finditer(text)]
+
+
 def _extract_urls_from_report(report) -> list[tuple[str, str]]:
     """Extract every (url, label) pair from an EarningsDeepDiveReport model.
 
@@ -84,16 +125,39 @@ def _extract_urls_from_report(report) -> list[tuple[str, str]]:
             label = f"ClaimSource[{cs.source_id}]"
             urls.append((src_url, label))
 
-    # Dedup by URL (keep first label)
-    seen: set[str] = set()
-    deduped: list[tuple[str, str]] = []
-    for url, label in urls:
-        normalized = url.strip().rstrip("/")
-        if normalized not in seen:
-            seen.add(normalized)
-            deduped.append((url, label))
+    return _dedupe_url_pairs(urls)
 
-    return deduped
+
+def _extract_urls_from_pdf(pdf_path: str | Path) -> list[tuple[str, str]]:
+    """Extract every URL actually embedded or visible in the rendered PDF.
+
+    This closes the BL-SA-003 gap where the model object was validated while the
+    delivered PDF could still contain a different, escaped, omitted, or injected
+    URL. We read both clickable URI annotations and visible page text.
+    """
+    path = Path(pdf_path)
+    if not path.exists():
+        raise FileNotFoundError(f"PDF not found: {path}")
+
+    try:
+        import fitz  # PyMuPDF
+    except Exception as exc:  # pragma: no cover - dependency failure path
+        raise RuntimeError("PyMuPDF/fitz is required for PDF URL validation") from exc
+
+    urls: list[tuple[str, str]] = []
+    with fitz.open(str(path)) as doc:
+        for page_index in range(len(doc)):
+            page = doc.load_page(page_index)
+            page_label = page_index + 1
+            for link in page.get_links() or []:
+                uri = link.get("uri")
+                if uri:
+                    urls.append((uri, f"PDF link annotation p{page_label}"))
+
+            text = str(page.get_text("text") or "")
+            urls.extend(_extract_urls_from_text(text, f"PDF visible text p{page_label}"))
+
+    return _dedupe_url_pairs(urls)
 
 
 async def _check_one_url(
@@ -115,14 +179,15 @@ async def _check_one_url(
 
     # Skip private/internal URLs
     parsed = urlparse(url)
-    if parsed.hostname in ("localhost", "127.0.0.1", "::1"):
+    hostname = parsed.hostname or ""
+    if hostname in ("localhost", "127.0.0.1", "::1"):
         check.alive = True  # local — assume reachable
         check.status_code = 0
         return check
 
     # Skip known API endpoints that reject HEAD
     known_get_only = ("finnhub.io", "alphavantage.co", "seekingalpha.com/api")
-    method = "GET" if any(h in (parsed.hostname or "") for h in known_get_only) else "HEAD"
+    method = "GET" if any(h in hostname for h in known_get_only) else "HEAD"
 
     async with httpx.AsyncClient(
         timeout=timeout,
@@ -136,6 +201,15 @@ async def _check_one_url(
             check.alive = 200 <= resp.status_code < 400
             if resp.status_code in (301, 302, 307, 308):
                 check.alive = True  # redirected but reachable
+            elif resp.status_code in _RESTRICTED_BUT_REACHABLE_STATUS_CODES:
+                # Auth/rate-limit/anti-bot pages prove the host+path exists; they
+                # are not hallucinated dead links. Keep advisory logs quiet unless
+                # the URL is truly missing or unreachable.
+                check.alive = True
+                check.error = f"restricted but reachable: {resp.status_code}"
+            elif resp.status_code >= 500 and any(h in hostname for h in _ANTI_BOT_TRANSIENT_HOSTS):
+                check.alive = True
+                check.error = f"transient anti-bot response: {resp.status_code}"
             if resp.has_redirect_location:
                 check.redirected_to = str(resp.headers.get("location", ""))
         except httpx.TimeoutException:
@@ -164,26 +238,26 @@ def os_error_summary(e: Exception) -> str:
     return msg
 
 
-async def validate_report_urls(report, ticker: str = "") -> ValidationReport:
-    """Validate all URLs in an EarningsDeepDiveReport model.
-
-    Returns a ValidationReport with per-URL status.
-    Logs warnings for dead links — does NOT abort.
-    """
+async def _validate_url_pairs(
+    url_pairs: list[tuple[str, str]],
+    *,
+    ticker: str = "",
+    source: str = "report",
+) -> ValidationReport:
+    """Validate a prepared list of URL/label pairs."""
     t0 = _time.monotonic()
-    url_pairs = _extract_urls_from_report(report)
 
     report_obj = ValidationReport(
-        ticker=ticker or getattr(report, "ticker", ""),
+        ticker=ticker,
         total_urls=len(url_pairs),
         checks=[],
     )
 
     if not url_pairs:
-        logger.info(f"[{ticker}] No URLs to validate")
+        logger.info(f"[{ticker}] No {source} URLs to validate")
         return report_obj
 
-    logger.info(f"[{ticker}] Validating {len(url_pairs)} URLs...")
+    logger.info(f"[{ticker}] Validating {len(url_pairs)} {source} URLs...")
 
     # Run all checks in parallel with overall timeout
     try:
@@ -231,18 +305,40 @@ async def validate_report_urls(report, ticker: str = "") -> ValidationReport:
     # Log dead links prominently
     if report_obj.dead > 0:
         logger.warning(
-            f"[{ticker}] 🔴 {report_obj.dead}/{report_obj.total_urls} URLs DEAD "
+            f"[{ticker}] 🔴 {report_obj.dead}/{report_obj.total_urls} {source} URLs DEAD "
             f"({report_obj.duration_ms:.0f}ms)"
         )
         for c in report_obj.dead_urls:
             logger.warning(f"  DEAD: [{c.label}] {c.url} — {c.error or c.status_code}")
     else:
         logger.info(
-            f"[{ticker}] ✅ All {report_obj.total_urls} URLs alive "
+            f"[{ticker}] ✅ All {report_obj.total_urls} {source} URLs alive "
             f"({report_obj.duration_ms:.0f}ms)"
         )
 
     return report_obj
+
+
+async def validate_report_urls(report, ticker: str = "") -> ValidationReport:
+    """Validate all URLs in an EarningsDeepDiveReport model.
+
+    Returns a ValidationReport with per-URL status.
+    Logs warnings for dead links — does NOT abort.
+    """
+    return await _validate_url_pairs(
+        _extract_urls_from_report(report),
+        ticker=ticker or getattr(report, "ticker", ""),
+        source="report-model",
+    )
+
+
+async def validate_pdf_urls(pdf_path: str | Path, ticker: str = "") -> ValidationReport:
+    """Validate URLs extracted from the final rendered PDF artifact."""
+    return await _validate_url_pairs(
+        _extract_urls_from_pdf(pdf_path),
+        ticker=ticker,
+        source="rendered-PDF",
+    )
 
 
 def validate_report_urls_sync(report, ticker: str = "") -> ValidationReport:
@@ -255,4 +351,17 @@ def validate_report_urls_sync(report, ticker: str = "") -> ValidationReport:
     import concurrent.futures
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(asyncio.run, validate_report_urls(report, ticker))
+        return future.result(timeout=_TOTAL_BATCH_TIMEOUT + 5)
+
+
+def validate_pdf_urls_sync(pdf_path: str | Path, ticker: str = "") -> ValidationReport:
+    """Synchronous wrapper for final PDF URL validation."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(validate_pdf_urls(pdf_path, ticker))
+    # Already in an async context — create a new loop in a thread
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(asyncio.run, validate_pdf_urls(pdf_path, ticker))
         return future.result(timeout=_TOTAL_BATCH_TIMEOUT + 5)
