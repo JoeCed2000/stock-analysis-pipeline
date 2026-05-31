@@ -1,8 +1,9 @@
-"""
-StockAnalysis.com transcript fetcher — FREE, no API key required.
+"""StockAnalysis.com transcript fetcher — FREE, no API key required.
 Fetches full earnings call transcripts from stockanalysis.com/stocks/{ticker}/transcripts/
-"""
 
+IMPORTANT: Filters out non-earnings-call events (keynotes, conferences, summits)
+so the deep dive generator gets real financial call transcripts.
+"""
 import re
 import logging
 from typing import Optional, Dict, List
@@ -29,10 +30,26 @@ def _fetch_page(url: str) -> Optional[str]:
     return None
 
 
+def _is_earnings_call_title(title: str) -> bool:
+    """Check if a transcript title looks like an earnings call (not a keynote/conference/summit)."""
+    title_lower = title.lower()
+    # Must contain a quarter indicator (Q1-Q4)
+    if not re.search(r'\bq[1-4]\b', title_lower):
+        return False
+    # Exclude known non-earnings event patterns
+    exclude = [
+        'keynote', 'conference', 'summit', 'i/o ', "i/o'",
+        'google cloud next', 'developer', 'opening', 'm&a announcement',
+    ]
+    for ex in exclude:
+        if ex in title_lower:
+            return False
+    return True
+
+
 def search_transcripts(ticker: str, limit: int = 5) -> List[Dict]:
-    """
-    Search StockAnalysis.com for earnings call transcripts.
-    Returns list of {title, url, date} dicts — FREE, no auth needed.
+    """Search StockAnalysis.com for earnings call transcripts.
+    Only returns actual earnings calls (Q1-Q4), filtering out keynotes and conferences.
     """
     ticker_lower = ticker.lower()
     url = f"{BASE}/stocks/{ticker_lower}/transcripts/"
@@ -42,18 +59,29 @@ def search_transcripts(ticker: str, limit: int = 5) -> List[Dict]:
         return []
     
     results = []
-    # Extract transcript links: href="/stocks/{ticker}/transcripts/{id}-{slug}/"
-    pattern = rf'href="(/stocks/{re.escape(ticker_lower)}/transcripts/(\d+)-[^"]+/)"'
+    # Extract transcript links WITH title text: <a href="...">Title Text</a>
+    pattern = (
+        r'<a\b[^>]*\bhref\s*=\s*"'
+        r'(/stocks/' + re.escape(ticker_lower) + r'/transcripts/(\d+)-[^"]+/)"'
+        r'[^>]*>([^<]+)</a>'
+    )
     seen = set()
-    for match in re.finditer(pattern, html):
+    for match in re.finditer(pattern, html, re.IGNORECASE):
         href = match.group(1)
         transcript_id = match.group(2)
+        title = match.group(3).strip()
+        
         if transcript_id in seen:
             continue
-        seen.add(transcript_id)
         
+        # Filter: only actual earnings calls
+        if not _is_earnings_call_title(title):
+            logger.debug(f"StockAnalysis: skipping non-earnings transcript #{transcript_id}: {title}")
+            continue
+        
+        seen.add(transcript_id)
         results.append({
-            "title": "",  # Will be filled when fetching individual transcript
+            "title": title,
             "url": urljoin(BASE, href),
             "id": transcript_id,
             "source": "Seeking Alpha",  # Canonical source — StockAnalysis republishes SA transcripts verbatim
@@ -61,15 +89,15 @@ def search_transcripts(ticker: str, limit: int = 5) -> List[Dict]:
         if len(results) >= limit:
             break
     
-    logger.info(f"StockAnalysis: {len(results)} transcripts found for {ticker}")
+    logger.info(
+        f"StockAnalysis: {len(results)} earnings-call transcripts found for {ticker} "
+        f"(filtered from listing page)"
+    )
     return results
 
 
 def fetch_transcript(url: str) -> Optional[Dict]:
-    """
-    Fetch full transcript text from a StockAnalysis.com transcript page.
-    Returns {title, content, date, speakers} dict or None.
-    """
+    """Fetch full transcript text from a StockAnalysis.com transcript page."""
     html = _fetch_page(url)
     if not html:
         return None
@@ -85,7 +113,6 @@ def fetch_transcript(url: str) -> Optional[Dict]:
     date = date_match.group(1) if date_match else ""
     
     # Extract transcript content — StockAnalysis uses a Svelte SSR page
-    # The content is embedded in JSON-LD or in the page body
     content = ""
     
     # Try JSON-LD first
@@ -104,13 +131,11 @@ def fetch_transcript(url: str) -> Optional[Dict]:
     
     # Fallback: extract from page text between title and footer
     if not content:
-        # Remove scripts/styles
         clean = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
         clean = re.sub(r'<style[^>]*>.*?</style>', '', clean, flags=re.DOTALL)
         clean = re.sub(r'<nav[^>]*>.*?</nav>', '', clean, flags=re.DOTALL)
         clean = re.sub(r'<header[^>]*>.*?</header>', '', clean, flags=re.DOTALL)
         clean = re.sub(r'<footer[^>]*>.*?</footer>', '', clean, flags=re.DOTALL)
-        # Extract text from remaining HTML
         text = re.sub(r'<[^>]+>', '\n', clean)
         text = re.sub(r'\n{3,}', '\n\n', text)
         text = text.strip()
