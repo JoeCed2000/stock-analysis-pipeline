@@ -171,14 +171,14 @@ async def _require_auth(request: Request):
     """FastAPI dependency: reject if CED_CONTROL_KEY is not set or doesn't match.
     Local requests (127.0.0.1, localhost) bypass auth automatically.
     Accepts X-API-Key header (primary) or api_key query param (fallback for downloads)."""
-    if not _API_KEY:
-        raise HTTPException(status_code=403, detail="API key not configured (set CED_CONTROL_KEY)")
     # Bypass auth for local requests and in-process FastAPI TestClient.
     # TestClient uses a synthetic host ("testclient") and cannot send browser
     # referer/origin headers; production network clients cannot spoof this host.
     host = request.client.host if request.client else ""
     if host in ("127.0.0.1", "::1", "localhost", "testclient"):
         return
+    if not _API_KEY:
+        raise HTTPException(status_code=403, detail="API key not configured (set CED_CONTROL_KEY)")
     # Bypass auth for same-origin browser requests (frontend served by this server)
     referer = request.headers.get("referer", "")
     origin = request.headers.get("origin", "")
