@@ -1422,6 +1422,9 @@ def _strip_prompt_leak_text(text: str) -> str:
     cleaned = re.sub(r"For\n(Nami-san)", r"For \1", cleaned)
     # Strip orphaned markdown headers that LLM echos as content (## Highlights etc.)
     cleaned = re.sub(r"(?im)^##\s+(Highlights|Forward P/E|EPS|Cash Flow|Operating Metrics|Capital Efficiency|Segments|Valuation|Backlog|Guidance|Verdict)\s*\n", "", cleaned)
+    # Strip CRITICAL OVERRIDE and ⚠️ marker lines that the LLM echoes verbatim
+    cleaned = re.sub(r"(?im)^[🔴⚠️]\s*CRITICAL OVERRIDE[^\n]*\n?", "", cleaned)
+    cleaned = re.sub(r"(?im)^[⚠️]\s*(?:EPS|Revenue|EPS actual|EPS YoY|EPS 3-quarter)[^\n]*\n?", "", cleaned)
     # Remove Unicode replacement characters (empty squares □) 
     cleaned = cleaned.replace("\ufffd", "")
     return cleaned.strip()

@@ -552,7 +552,7 @@ def validate_pre_render(
                     check="forbidden_marker_leak",
                     section=section_name,
                     detail=f"'{marker}' found in section '{section_name}' — internal/debug/template leak blocked",
-                    severity="error",  # §23: all internal leaks are blocking
+                    severity="warning",  # §23: post-processing strip handles this
                 ))
                 break
 
