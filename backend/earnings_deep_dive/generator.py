@@ -408,6 +408,7 @@ def _load_transcript(request: DeepDiveRequest) -> Tuple[str, Dict[str, Any]]:
             domain_map = {
                 "fool.com": "The Motley Fool",
                 "seekingalpha.com": "Seeking Alpha",
+                "stockanalysis.com": "Seeking Alpha",
                 "alphavantage.co": "Alpha Vantage",
             }
             source_name = domain_map.get(domain, domain.split(".")[0].title())
