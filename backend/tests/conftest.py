@@ -44,7 +44,7 @@ def sample_yf_info() -> dict:
         "52w_high": 199.62,
         "52w_low": 124.17,
         "revenue_growth": 0.05,
-        "earnings_growth": 0.08,
+        "earnings_growth": 0.12,
         "total_revenue": 383285000000,
         "currency": "USD",
         "exchange": "NASDAQ",

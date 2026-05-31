@@ -1,0 +1,1467 @@
+{
+  "/home/ced/codex-projects/stock-analysis-pipeline/run_daily_backlog.py": {
+    "mtime": 1777863705.1549563,
+    "ast_hash": "f6735bba5f85022032668a8cd9995c42",
+    "semantic_hash": "f6735bba5f85022032668a8cd9995c42"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_fast_run.py": {
+    "mtime": 1778037315.3848183,
+    "ast_hash": "2a000e8bc64f00dc0e4619132525e364",
+    "semantic_hash": "2a000e8bc64f00dc0e4619132525e364"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_probe_analyses.py": {
+    "mtime": 1778082274.840441,
+    "ast_hash": "e3761080f84d6003f8ee8025b5d5d373",
+    "semantic_hash": "e3761080f84d6003f8ee8025b5d5d373"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/vercel.json": {
+    "mtime": 1778148997.6571887,
+    "ast_hash": "57a040ac2d38b3701545b3cd025d85c6",
+    "semantic_hash": "57a040ac2d38b3701545b3cd025d85c6"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_cron_run2.py": {
+    "mtime": 1778123245.5496674,
+    "ast_hash": "e27164bf378e9c27ed54bf45bf3cdf87",
+    "semantic_hash": "e27164bf378e9c27ed54bf45bf3cdf87"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_daily_backlog.py": {
+    "mtime": 1778814085.4275532,
+    "ast_hash": "61da39ec81402ba6ce584c0951e2276c",
+    "semantic_hash": "61da39ec81402ba6ce584c0951e2276c"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/bench_timing.py": {
+    "mtime": 1778443974.2781029,
+    "ast_hash": "f8ce1a3b1642cf23f78cfb4dd75e277c",
+    "semantic_hash": "f8ce1a3b1642cf23f78cfb4dd75e277c"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_check_eps2.py": {
+    "mtime": 1780163668.826839,
+    "ast_hash": "bd781e0afb8205d51376523898c1f2ac",
+    "semantic_hash": "bd781e0afb8205d51376523898c1f2ac"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_check_analyses.py": {
+    "mtime": 1778158729.0402963,
+    "ast_hash": "5a313ccaea32727e68437b0d3b7255bf",
+    "semantic_hash": "5a313ccaea32727e68437b0d3b7255bf"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_diag_render.py": {
+    "mtime": 1778149116.250775,
+    "ast_hash": "02cdfe5c5d1e40192afa6295383c7838",
+    "semantic_hash": "02cdfe5c5d1e40192afa6295383c7838"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_check_eps.py": {
+    "mtime": 1780163668.299493,
+    "ast_hash": "bd781e0afb8205d51376523898c1f2ac",
+    "semantic_hash": "bd781e0afb8205d51376523898c1f2ac"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/bench_full.py": {
+    "mtime": 1778444655.6994672,
+    "ast_hash": "3244ebea76cb707cc0ac9c4bd7708533",
+    "semantic_hash": "3244ebea76cb707cc0ac9c4bd7708533"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_probe_dossiers.py": {
+    "mtime": 1778082293.7300656,
+    "ast_hash": "f388f1b4fcc81c31258497ea5136c46a",
+    "semantic_hash": "f388f1b4fcc81c31258497ea5136c46a"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/push_yf_cache.py": {
+    "mtime": 1777921804.6719368,
+    "ast_hash": "3a94c83f9e9411cff9b1e36ee9a4f1f3",
+    "semantic_hash": "3a94c83f9e9411cff9b1e36ee9a4f1f3"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_inspect_api.py": {
+    "mtime": 1778071852.2138455,
+    "ast_hash": "35198eb8277c76690caddb9708576b37",
+    "semantic_hash": "35198eb8277c76690caddb9708576b37"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backup_from_render.py": {
+    "mtime": 1777934433.516138,
+    "ast_hash": "72a2db7ba17c05b3f6f8be752ee93871",
+    "semantic_hash": "72a2db7ba17c05b3f6f8be752ee93871"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_run_backlog.py": {
+    "mtime": 1779171347.7922356,
+    "ast_hash": "874b3fd9e5b12e8e1e962920449403b0",
+    "semantic_hash": "874b3fd9e5b12e8e1e962920449403b0"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tunnel-sync.sh": {
+    "mtime": 1778350089.7253084,
+    "ast_hash": "d002dbb6c25197cebc1b6be8f345c6cf",
+    "semantic_hash": "d002dbb6c25197cebc1b6be8f345c6cf"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/debug_rev2.py": {
+    "mtime": 1778189239.084444,
+    "ast_hash": "8fda5bef9b33e3ef2384c91c6a84fc0d",
+    "semantic_hash": "8fda5bef9b33e3ef2384c91c6a84fc0d"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_check_render_api.py": {
+    "mtime": 1778073189.8240745,
+    "ast_hash": "c998688fdd26b48246eb8e466de57e06",
+    "semantic_hash": "c998688fdd26b48246eb8e466de57e06"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/debug_build.py": {
+    "mtime": 1778185694.6225748,
+    "ast_hash": "12bb2a19e0e8121f7686ef9291b00aa9",
+    "semantic_hash": "12bb2a19e0e8121f7686ef9291b00aa9"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_daily_run.py": {
+    "mtime": 1778610914.8214722,
+    "ast_hash": "dd1f70bbf45d0046d39bfbbd08da3d41",
+    "semantic_hash": "dd1f70bbf45d0046d39bfbbd08da3d41"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/run_daily.py": {
+    "mtime": 1778468468.2718217,
+    "ast_hash": "8729e20ccaa7fcb6cb503cab163527db",
+    "semantic_hash": "8729e20ccaa7fcb6cb503cab163527db"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/COMMANDS.sh": {
+    "mtime": 1778790292.3734238,
+    "ast_hash": "86ca0fc45e42135ed3bd17738d141a95",
+    "semantic_hash": "86ca0fc45e42135ed3bd17738d141a95"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/regenerate_jp.py": {
+    "mtime": 1778181854.463804,
+    "ast_hash": "ff8b4704e170de440bee7c13af4573fc",
+    "semantic_hash": "ff8b4704e170de440bee7c13af4573fc"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/debug_om.py": {
+    "mtime": 1778185605.6293125,
+    "ast_hash": "69238e88a102c57c5782283194e8d90a",
+    "semantic_hash": "69238e88a102c57c5782283194e8d90a"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/render_final_pdfs.py": {
+    "mtime": 1778180936.9518895,
+    "ast_hash": "65d32c74a46b7b6ac66e5cd9de118aea",
+    "semantic_hash": "65d32c74a46b7b6ac66e5cd9de118aea"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_check_eps3.py": {
+    "mtime": 1780163668.5088804,
+    "ast_hash": "bd781e0afb8205d51376523898c1f2ac",
+    "semantic_hash": "bd781e0afb8205d51376523898c1f2ac"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_check_feedback.py": {
+    "mtime": 1778681126.2623532,
+    "ast_hash": "c2e23cc9e4156e470d429d916c01ee19",
+    "semantic_hash": "c2e23cc9e4156e470d429d916c01ee19"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_run_mc.py": {
+    "mtime": 1778210027.6667578,
+    "ast_hash": "cafd72bc289b865659f25267dc974f97",
+    "semantic_hash": "cafd72bc289b865659f25267dc974f97"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/debug_enrich.py": {
+    "mtime": 1778182058.6945856,
+    "ast_hash": "73c1b041e196135229e0780c11a9bff8",
+    "semantic_hash": "73c1b041e196135229e0780c11a9bff8"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_run_remaining.py": {
+    "mtime": 1778209789.1108046,
+    "ast_hash": "72ab1fbeb388d69375fc43cfc4c1c84e",
+    "semantic_hash": "72ab1fbeb388d69375fc43cfc4c1c84e"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_cron_run.py": {
+    "mtime": 1778122898.6536987,
+    "ast_hash": "aa121e0f748e5672fcbc28f4c9cf8ffd",
+    "semantic_hash": "aa121e0f748e5672fcbc28f4c9cf8ffd"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/regenerate_jp_v2.py": {
+    "mtime": 1778189546.5963743,
+    "ast_hash": "62b520ca9fe6d75e0660d9dfa1fd4d1b",
+    "semantic_hash": "62b520ca9fe6d75e0660d9dfa1fd4d1b"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_run_daily_backlog.py": {
+    "mtime": 1778387696.2932858,
+    "ast_hash": "1bb1289244038c765d3ec956dd4e33ff",
+    "semantic_hash": "1bb1289244038c765d3ec956dd4e33ff"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/debug_revenue.py": {
+    "mtime": 1778189113.2457888,
+    "ast_hash": "ded86dcad05d85b729f7fdbba6ebe054",
+    "semantic_hash": "ded86dcad05d85b729f7fdbba6ebe054"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/fill_dossiers.py": {
+    "mtime": 1778022835.5037706,
+    "ast_hash": "c0b7366d687a55a2216fe85cdfca7f3e",
+    "semantic_hash": "c0b7366d687a55a2216fe85cdfca7f3e"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_run_batch.py": {
+    "mtime": 1778641263.313746,
+    "ast_hash": "76858f727fd6ba7cf2deb1e2955daf83",
+    "semantic_hash": "76858f727fd6ba7cf2deb1e2955daf83"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/regenerate_en.py": {
+    "mtime": 1778189523.8694954,
+    "ast_hash": "f6b9ddc502d5691539535f2f601fe189",
+    "semantic_hash": "f6b9ddc502d5691539535f2f601fe189"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_extract_log.py": {
+    "mtime": 1778151393.0213442,
+    "ast_hash": "3ed32623ff641ae4aa7e8765a9457af1",
+    "semantic_hash": "3ed32623ff641ae4aa7e8765a9457af1"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_check_dossiers.py": {
+    "mtime": 1778158729.0484226,
+    "ast_hash": "5a72d808fd1b9112c1ed996eb93bc28e",
+    "semantic_hash": "5a72d808fd1b9112c1ed996eb93bc28e"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/_check_api.py": {
+    "mtime": 1778135285.7861114,
+    "ast_hash": "88cc410b9849cf6f083e61fd938c92f5",
+    "semantic_hash": "88cc410b9849cf6f083e61fd938c92f5"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests_e2e/test_peer_benchmark.py": {
+    "mtime": 1779731145.9440444,
+    "ast_hash": "dc9bd8b0d606b7599aab702f81ed161c",
+    "semantic_hash": "dc9bd8b0d606b7599aab702f81ed161c"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests_e2e/test_sa_recette.py": {
+    "mtime": 1779541419.6285589,
+    "ast_hash": "2cecfbc3461648d346361afcc2208ab8",
+    "semantic_hash": "2cecfbc3461648d346361afcc2208ab8"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests_e2e/conftest.py": {
+    "mtime": 1778792821.8356485,
+    "ast_hash": "12660d36edfd9461a512915a6c7c2751",
+    "semantic_hash": "12660d36edfd9461a512915a6c7c2751"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/reports/generated/latest_nvda_en.json": {
+    "mtime": 1778361648.031632,
+    "ast_hash": "2d7d30ea1c6f925302d2c3abed382951",
+    "semantic_hash": "2d7d30ea1c6f925302d2c3abed382951"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/reports/generated/pdf-validation-result.json": {
+    "mtime": 1778096124.1818109,
+    "ast_hash": "e781b4d755abc4c3a6cbf9039de8f437",
+    "semantic_hash": "e781b4d755abc4c3a6cbf9039de8f437"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/reports/generated/07_final_report/deep_dive_validation.json": {
+    "mtime": 1778418012.8743086,
+    "ast_hash": "6299274b4024e117ea749242b307055e",
+    "semantic_hash": "6299274b4024e117ea749242b307055e"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/reports/generated/07_final_report/earnings_deep_dive_meta.json": {
+    "mtime": 1778418012.8273091,
+    "ast_hash": "4da87214a4e87bdc26576ef20e47618e",
+    "semantic_hash": "4da87214a4e87bdc26576ef20e47618e"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/reports/generated/04_transcripts_and_management/transcript_sources_MSFT.json": {
+    "mtime": 1778416034.1836126,
+    "ast_hash": "984ca0aab0d71dea0987c872d32c5799",
+    "semantic_hash": "984ca0aab0d71dea0987c872d32c5799"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/reports/generated/04_transcripts_and_management/transcript_sources_NVDA.json": {
+    "mtime": 1778417881.3407457,
+    "ast_hash": "4b6d0ed751311a158fe88cf35d9d4100",
+    "semantic_hash": "4b6d0ed751311a158fe88cf35d9d4100"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/reports/pipeline-smoke/2026-05-06_MSFT_Microsoft_Corporation/06_extracted_data/sources_manifest.json": {
+    "mtime": 1778056072.878693,
+    "ast_hash": "7771ddc75b94885d147677aaf682ef4b",
+    "semantic_hash": "7771ddc75b94885d147677aaf682ef4b"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/reports/pipeline-smoke/2026-05-06_MSFT_Microsoft_Corporation/07_final_report/deep_dive_validation.json": {
+    "mtime": 1778056072.8175862,
+    "ast_hash": "76b244a0f0d0d3f156d58931cbb37195",
+    "semantic_hash": "76b244a0f0d0d3f156d58931cbb37195"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/reports/pipeline-smoke/2026-05-06_MSFT_Microsoft_Corporation/07_final_report/earnings_deep_dive_meta.json": {
+    "mtime": 1778056072.7133985,
+    "ast_hash": "52e944a17773ccf1ae74ec63e1e75e7d",
+    "semantic_hash": "52e944a17773ccf1ae74ec63e1e75e7d"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/reports/pipeline-smoke/2026-05-06_MSFT_Microsoft_Corporation/03_financial_data_sources/yahoo_snapshot_MSFT.json": {
+    "mtime": 1778055837.966839,
+    "ast_hash": "b39b8f004238fcbb0526dd189156292c",
+    "semantic_hash": "b39b8f004238fcbb0526dd189156292c"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/reports/pdf-visual-diff/pdf-analysis.json": {
+    "mtime": 1778055675.1303077,
+    "ast_hash": "195dcdc5c850c5136393a6ca3e517dd7",
+    "semantic_hash": "195dcdc5c850c5136393a6ca3e517dd7"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/docs/generate_spec_pdf.py": {
+    "mtime": 1779182610.7396348,
+    "ast_hash": "fd59f13acdc15cdf4ae3ff74c2b876fc",
+    "semantic_hash": "fd59f13acdc15cdf4ae3ff74c2b876fc"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/docs/specs/modele_expected.json": {
+    "mtime": 1778256219.3551798,
+    "ast_hash": "5b62137e9e87fda2915be63f778bd952",
+    "semantic_hash": "5b62137e9e87fda2915be63f778bd952"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/docs/specs/modele_schema.json": {
+    "mtime": 1778256154.133063,
+    "ast_hash": "0e199e8dfde1005d50b6ec5db4d7e52c",
+    "semantic_hash": "0e199e8dfde1005d50b6ec5db4d7e52c"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/docs/specs/modele_expected_chatgpt.json": {
+    "mtime": 1778257964.3071644,
+    "ast_hash": "f494659a737088090926859889804a15",
+    "semantic_hash": "f494659a737088090926859889804a15"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/vercel.json": {
+    "mtime": 1778151861.5001757,
+    "ast_hash": "ded0b04edc8941c3e8fa851382c63aa3",
+    "semantic_hash": "ded0b04edc8941c3e8fa851382c63aa3"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/vite.config.js": {
+    "mtime": 1780147123.903493,
+    "ast_hash": "e33920f5afa9079d1ad8ef93073d4308",
+    "semantic_hash": "e33920f5afa9079d1ad8ef93073d4308"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/package.json": {
+    "mtime": 1779739402.4124334,
+    "ast_hash": "99c8702caa61e1f2d02f0098c2de684a",
+    "semantic_hash": "99c8702caa61e1f2d02f0098c2de684a"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/dist-tailscale/assets/index-ijVzrQcu.js": {
+    "mtime": 1778169604.8625617,
+    "ast_hash": "dc5463ca043d1eedf530c31e07eafffe",
+    "semantic_hash": "dc5463ca043d1eedf530c31e07eafffe"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/api.js": {
+    "mtime": 1779964229.7699733,
+    "ast_hash": "278d3312f73a7db04c48eb71cbc18679",
+    "semantic_hash": "278d3312f73a7db04c48eb71cbc18679"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/main.jsx": {
+    "mtime": 1779660890.9953737,
+    "ast_hash": "8c68866e7c40cfdafa7c7743a3201a19",
+    "semantic_hash": "8c68866e7c40cfdafa7c7743a3201a19"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/App.jsx": {
+    "mtime": 1780159261.0725791,
+    "ast_hash": "32ad84e9eb3bcad2adbdabd468460f19",
+    "semantic_hash": "32ad84e9eb3bcad2adbdabd468460f19"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/i18n.js": {
+    "mtime": 1780089797.6757865,
+    "ast_hash": "02c47a19284cf42b6b6775ac1d4bf4e4",
+    "semantic_hash": "02c47a19284cf42b6b6775ac1d4bf4e4"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/useDossierPolling.js": {
+    "mtime": 1779804888.7832382,
+    "ast_hash": "1866f65a392eaf61f8809c1d871e8e83",
+    "semantic_hash": "1866f65a392eaf61f8809c1d871e8e83"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/SeekingAlphaAccessPanel.jsx": {
+    "mtime": 1779974601.3676364,
+    "ast_hash": "6b8855acab89e278cb6b89381b953e7d",
+    "semantic_hash": "6b8855acab89e278cb6b89381b953e7d"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/NotFound.jsx": {
+    "mtime": 1779805596.974427,
+    "ast_hash": "79361bd2b0bea83527a08b85d6891538",
+    "semantic_hash": "79361bd2b0bea83527a08b85d6891538"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/TickerInput.jsx": {
+    "mtime": 1779907304.5109031,
+    "ast_hash": "b9f83c3aa7da05e805541c100c5f992c",
+    "semantic_hash": "b9f83c3aa7da05e805541c100c5f992c"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/AnalysisCard.jsx": {
+    "mtime": 1780089797.6757865,
+    "ast_hash": "a75c80e0ad13f35c30a05ed9bcda59ce",
+    "semantic_hash": "a75c80e0ad13f35c30a05ed9bcda59ce"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/FeedbackPage.jsx": {
+    "mtime": 1780147113.2692902,
+    "ast_hash": "fc7597a79a78ef54f2bdd2702c89c773",
+    "semantic_hash": "fc7597a79a78ef54f2bdd2702c89c773"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/ScoringChart.jsx": {
+    "mtime": 1779198395.8056052,
+    "ast_hash": "d30d4ae5188cc96c775ba7b81d983f08",
+    "semantic_hash": "d30d4ae5188cc96c775ba7b81d983f08"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/BatchAnalysis.jsx": {
+    "mtime": 1777966467.1779697,
+    "ast_hash": "eca11f5a0492078b8a953dab35f59776",
+    "semantic_hash": "eca11f5a0492078b8a953dab35f59776"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/MetricsHistoryChart.jsx": {
+    "mtime": 1779977842.636078,
+    "ast_hash": "c6edca98038c5ee5ec7e70d03eb53c7a",
+    "semantic_hash": "c6edca98038c5ee5ec7e70d03eb53c7a"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/ExportMenu.jsx": {
+    "mtime": 1779745332.5131743,
+    "ast_hash": "34f328937e43c41a9b597f1971092490",
+    "semantic_hash": "34f328937e43c41a9b597f1971092490"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/chartUtils.js": {
+    "mtime": 1779978690.1045704,
+    "ast_hash": "cd99c53c3e8175e8279fd3d38e436cac",
+    "semantic_hash": "cd99c53c3e8175e8279fd3d38e436cac"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/SearchMonitor.jsx": {
+    "mtime": 1778140602.6352527,
+    "ast_hash": "d31d515a7346e6aa6cea4e8b9e4e0315",
+    "semantic_hash": "d31d515a7346e6aa6cea4e8b9e4e0315"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/LanguageSelector.jsx": {
+    "mtime": 1779541369.1014032,
+    "ast_hash": "00d558ff5c14f51e7b187bf1f02161b2",
+    "semantic_hash": "00d558ff5c14f51e7b187bf1f02161b2"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/FeedbackPanel.jsx": {
+    "mtime": 1779803377.3223338,
+    "ast_hash": "3e5edc769a88a87f83ad365009b38acf",
+    "semantic_hash": "3e5edc769a88a87f83ad365009b38acf"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/QuarterSelector.jsx": {
+    "mtime": 1778013419.3054695,
+    "ast_hash": "20f140a40a5bfde30c4eead9d0687b15",
+    "semantic_hash": "20f140a40a5bfde30c4eead9d0687b15"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/SkeletonCard.jsx": {
+    "mtime": 1777900791.3082006,
+    "ast_hash": "8caaa45eb481f6abc20adeb08d84adb1",
+    "semantic_hash": "8caaa45eb481f6abc20adeb08d84adb1"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/SmartLoader.jsx": {
+    "mtime": 1779978191.0740879,
+    "ast_hash": "ab7dcc615fb2dde78115a3f2840871e5",
+    "semantic_hash": "ab7dcc615fb2dde78115a3f2840871e5"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/AdminPage.jsx": {
+    "mtime": 1779964249.350179,
+    "ast_hash": "5c1208bd532256bff15c2828bb4b9c4c",
+    "semantic_hash": "5c1208bd532256bff15c2828bb4b9c4c"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/chartComponents.jsx": {
+    "mtime": 1779660881.6545029,
+    "ast_hash": "82aab6b4c66aab7cb796ed3c2742a53e",
+    "semantic_hash": "82aab6b4c66aab7cb796ed3c2742a53e"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/ValuationGroup.jsx": {
+    "mtime": 1779745397.707172,
+    "ast_hash": "04ed968a1eb8b6c43af57d68125aa620",
+    "semantic_hash": "04ed968a1eb8b6c43af57d68125aa620"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/ReportView.jsx": {
+    "mtime": 1779797871.5360537,
+    "ast_hash": "29d0fb7e8f20464871015485d9e18ffb",
+    "semantic_hash": "29d0fb7e8f20464871015485d9e18ffb"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/CacheIndicator.jsx": {
+    "mtime": 1779977830.900913,
+    "ast_hash": "da6b1f0f119df393c7a7bb8206a69922",
+    "semantic_hash": "da6b1f0f119df393c7a7bb8206a69922"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/AboutSection.jsx": {
+    "mtime": 1778007569.6350417,
+    "ast_hash": "16e7c6c530b0182110e751a8704ae4f2",
+    "semantic_hash": "16e7c6c530b0182110e751a8704ae4f2"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/ChatWidget.jsx": {
+    "mtime": 1780159879.4380991,
+    "ast_hash": "a74d808ea99de73d29f572241a209919",
+    "semantic_hash": "a74d808ea99de73d29f572241a209919"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/AnalysisUtils.js": {
+    "mtime": 1779804842.418121,
+    "ast_hash": "3e6bfe7ed6a64ca38faa34f27d34c8af",
+    "semantic_hash": "3e6bfe7ed6a64ca38faa34f27d34c8af"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/components/PeerBenchmark/PeerBenchmarkGroup.jsx": {
+    "mtime": 1779977936.4677286,
+    "ast_hash": "1c9bb06905b95b68e1d6d33c740c40c7",
+    "semantic_hash": "1c9bb06905b95b68e1d6d33c740c40c7"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/export/copySummary.js": {
+    "mtime": 1779774619.5651307,
+    "ast_hash": "66b84bf509638fec896e5a99c14537da",
+    "semantic_hash": "66b84bf509638fec896e5a99c14537da"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/export/exportDataBridge.js": {
+    "mtime": 1779745358.4775484,
+    "ast_hash": "637e4dce2fb1e9474faa7a37b878f894",
+    "semantic_hash": "637e4dce2fb1e9474faa7a37b878f894"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/export/exportConstants.js": {
+    "mtime": 1779738131.51841,
+    "ast_hash": "eb48836a27534ab8f8e222b1f68e5db5",
+    "semantic_hash": "eb48836a27534ab8f8e222b1f68e5db5"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/export/pngExport.js": {
+    "mtime": 1779739157.360548,
+    "ast_hash": "ab1067521fb2965679400e39d4178c8a",
+    "semantic_hash": "ab1067521fb2965679400e39d4178c8a"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/export/csvExport.js": {
+    "mtime": 1779739222.629087,
+    "ast_hash": "95e6f3993caf1657b670dd7a46fcd9e1",
+    "semantic_hash": "95e6f3993caf1657b670dd7a46fcd9e1"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/frontend/src/export/exportSnapshot.js": {
+    "mtime": 1779738153.8302362,
+    "ast_hash": "4abea2ae86890b4c8df725f3439d2259",
+    "semantic_hash": "4abea2ae86890b4c8df725f3439d2259"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tools/analyze-ticker/tool.json": {
+    "mtime": 1778482002.794649,
+    "ast_hash": "736ee7721e6ea90a9e18d8adba8b80f7",
+    "semantic_hash": "736ee7721e6ea90a9e18d8adba8b80f7"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tools/analyze-ticker/run.sh": {
+    "mtime": 1778481881.7944703,
+    "ast_hash": "17afa8a271dd594b4d773da71159b85a",
+    "semantic_hash": "17afa8a271dd594b4d773da71159b85a"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tools/generate-pdf/tool.json": {
+    "mtime": 1778482003.9047277,
+    "ast_hash": "604a6aaf884e0a7a311b54567c632929",
+    "semantic_hash": "604a6aaf884e0a7a311b54567c632929"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tools/generate-pdf/run.sh": {
+    "mtime": 1778481883.7077816,
+    "ast_hash": "28cf5bb0c87a2cb242a34042007dd73b",
+    "semantic_hash": "28cf5bb0c87a2cb242a34042007dd73b"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tools/scripts/registry-update.sh": {
+    "mtime": 1778481895.2855532,
+    "ast_hash": "045c472df155669d4886cdae75b99636",
+    "semantic_hash": "045c472df155669d4886cdae75b99636"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/skills-starter-kit/skills/agentic-engineering-review/scripts/audit_http_imports.sh": {
+    "mtime": 1778050689.5599897,
+    "ast_hash": "04bd8e3009f585e77a510ae366353709",
+    "semantic_hash": "04bd8e3009f585e77a510ae366353709"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/spec_v27_period_consistency.py": {
+    "mtime": 1780072149.4300778,
+    "ast_hash": "ae27eb0b8cb496b8e8b46b0f6b30b3a0",
+    "semantic_hash": "ae27eb0b8cb496b8e8b46b0f6b30b3a0"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_async_dossier.py": {
+    "mtime": 1779800267.1273577,
+    "ast_hash": "dc166b5aeb1e6ce6a679d5482c1429f3",
+    "semantic_hash": "dc166b5aeb1e6ce6a679d5482c1429f3"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_api_pipeline_smoke.py": {
+    "mtime": 1779106396.9694855,
+    "ast_hash": "7008128e28a8e1bab4bb2246b34e8e7e",
+    "semantic_hash": "7008128e28a8e1bab4bb2246b34e8e7e"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_codex_provider.py": {
+    "mtime": 1778055448.490881,
+    "ast_hash": "d0fade37b0dfc8b3cbcde17898c28948",
+    "semantic_hash": "d0fade37b0dfc8b3cbcde17898c28948"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_performance_imports.py": {
+    "mtime": 1778158702.4482377,
+    "ast_hash": "bd73c9075591ae3211ca4e650b4f03ba",
+    "semantic_hash": "bd73c9075591ae3211ca4e650b4f03ba"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_v27_valuation_context.py": {
+    "mtime": 1780165870.9380076,
+    "ast_hash": "d7ae143f3115a90be7550720325bb18b",
+    "semantic_hash": "d7ae143f3115a90be7550720325bb18b"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_v27_cache_transparency.py": {
+    "mtime": 1779792721.7753196,
+    "ast_hash": "8a986749b04ba8ceb3986b60697000aa",
+    "semantic_hash": "8a986749b04ba8ceb3986b60697000aa"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/spec_v27_company_overview_download_gate.py": {
+    "mtime": 1780089797.6757865,
+    "ast_hash": "bc22711ac59f550492ca34914d3a20be",
+    "semantic_hash": "bc22711ac59f550492ca34914d3a20be"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_coverage_gaps.py": {
+    "mtime": 1779712851.3550675,
+    "ast_hash": "b9fb925614ccd96b51527ce41a6c02eb",
+    "semantic_hash": "b9fb925614ccd96b51527ce41a6c02eb"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_validator.py": {
+    "mtime": 1778685189.283574,
+    "ast_hash": "54959b730c3788792f364e78c893e8f0",
+    "semantic_hash": "54959b730c3788792f364e78c893e8f0"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_pipeline_no_datetime_shadowing.py": {
+    "mtime": 1779511310.2253082,
+    "ast_hash": "583340fc34600a358a790a8a335924dc",
+    "semantic_hash": "583340fc34600a358a790a8a335924dc"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/spec_v27_earnings_docs.py": {
+    "mtime": 1780074946.216163,
+    "ast_hash": "dd51a9630e715a1b4744b72320eedf0f",
+    "semantic_hash": "dd51a9630e715a1b4744b72320eedf0f"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_seeking_alpha_access.py": {
+    "mtime": 1779966301.0067608,
+    "ast_hash": "91032784181c915cccf147a20c2a15dc",
+    "semantic_hash": "91032784181c915cccf147a20c2a15dc"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/spec_v27_highlights_quality.py": {
+    "mtime": 1780137223.832383,
+    "ast_hash": "3587f899a20345dfd5a779334b4339d2",
+    "semantic_hash": "3587f899a20345dfd5a779334b4339d2"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_v27_peer_benchmark.py": {
+    "mtime": 1779790926.851698,
+    "ast_hash": "e8d505a6f9088c4eadb472400ccd8683",
+    "semantic_hash": "e8d505a6f9088c4eadb472400ccd8683"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/spec_v27_tables_charts.py": {
+    "mtime": 1780135954.9846146,
+    "ast_hash": "68cb31f22cb7b21f73817074e8520fec",
+    "semantic_hash": "68cb31f22cb7b21f73817074e8520fec"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_f3_f4_column_labels_and_margin_pts.py": {
+    "mtime": 1779171263.0204551,
+    "ast_hash": "e026c7ea19941b54222e9e95b0fa007e",
+    "semantic_hash": "e026c7ea19941b54222e9e95b0fa007e"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_earnings_deep_dive_integration.py": {
+    "mtime": 1778773425.6048493,
+    "ast_hash": "7e7aa02d478ff70360dbd1e8d16f950a",
+    "semantic_hash": "7e7aa02d478ff70360dbd1e8d16f950a"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_v27_data_quality.py": {
+    "mtime": 1779791661.087552,
+    "ast_hash": "45e58c832237063814b2c7d51da5d46f",
+    "semantic_hash": "45e58c832237063814b2c7d51da5d46f"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_post_process_markdown.py": {
+    "mtime": 1780089797.6604004,
+    "ast_hash": "43d3c62d13058ab731c3d390512a5728",
+    "semantic_hash": "43d3c62d13058ab731c3d390512a5728"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/spec_v27_eps_revenue.py": {
+    "mtime": 1780137831.0326374,
+    "ast_hash": "e60cef4531fd63155f4dc7ab5b8c2f2a",
+    "semantic_hash": "e60cef4531fd63155f4dc7ab5b8c2f2a"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_valuation_context_route.py": {
+    "mtime": 1780040309.0164545,
+    "ast_hash": "21f9939bd828967a4bbffcc7df4c315c",
+    "semantic_hash": "21f9939bd828967a4bbffcc7df4c315c"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/spec_v27_company_overview_gates.py": {
+    "mtime": 1780136945.874823,
+    "ast_hash": "5626de427cc4beff8b15785494ad69b8",
+    "semantic_hash": "5626de427cc4beff8b15785494ad69b8"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_chat_widget.py": {
+    "mtime": 1780156698.2263527,
+    "ast_hash": "bf919e897fa3d437cd0aec42be837ba7",
+    "semantic_hash": "bf919e897fa3d437cd0aec42be837ba7"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_live_nvda_smoke.py": {
+    "mtime": 1778937148.915526,
+    "ast_hash": "bd520bdf1a1af96f17a8ce74d8caf338",
+    "semantic_hash": "bd520bdf1a1af96f17a8ce74d8caf338"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_batch.py": {
+    "mtime": 1779802366.197189,
+    "ast_hash": "0a879415fd97ece1b194612bbb7cbfab",
+    "semantic_hash": "0a879415fd97ece1b194612bbb7cbfab"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_report_model.py": {
+    "mtime": 1779296022.8586824,
+    "ast_hash": "cb01cfd196878137a41b8f0920f7f99e",
+    "semantic_hash": "cb01cfd196878137a41b8f0920f7f99e"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_valuation.py": {
+    "mtime": 1779682083.2436774,
+    "ast_hash": "437df1f4bb47bebd2a30b268a91e8601",
+    "semantic_hash": "437df1f4bb47bebd2a30b268a91e8601"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/spec_v27_pdf_renderer.py": {
+    "mtime": 1779787281.3564658,
+    "ast_hash": "4f465747b24fa6781b022f4a4b1f2bf2",
+    "semantic_hash": "4f465747b24fa6781b022f4a4b1f2bf2"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_models.py": {
+    "mtime": 1779194344.2081604,
+    "ast_hash": "2ee06c3da8f01fa1f452fc556f8d9e06",
+    "semantic_hash": "2ee06c3da8f01fa1f452fc556f8d9e06"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_performance.py": {
+    "mtime": 1778766639.470616,
+    "ast_hash": "b40156e304d3dbcb5fc14f7b00170860",
+    "semantic_hash": "b40156e304d3dbcb5fc14f7b00170860"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_scoring.py": {
+    "mtime": 1779712915.8608038,
+    "ast_hash": "389a5d227ec1fe1ee9ebac7dde465e26",
+    "semantic_hash": "389a5d227ec1fe1ee9ebac7dde465e26"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/spec_v27_sections_consistency.py": {
+    "mtime": 1780135930.8763702,
+    "ast_hash": "89eba3c09e9b1e328845b3f94a47b694",
+    "semantic_hash": "89eba3c09e9b1e328845b3f94a47b694"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_pdf_model_validation.py": {
+    "mtime": 1778095935.2266426,
+    "ast_hash": "da8efa2f478731738971301c2a06459a",
+    "semantic_hash": "da8efa2f478731738971301c2a06459a"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_ir_scraping.py": {
+    "mtime": 1779801271.3520718,
+    "ast_hash": "fd9cad8e92a7a3437c2e3e29c56d151d",
+    "semantic_hash": "fd9cad8e92a7a3437c2e3e29c56d151d"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/spec_v27_missing_data_leaks.py": {
+    "mtime": 1780135219.3128257,
+    "ast_hash": "476a86c55cfd44cbc8e6167ce7a986e1",
+    "semantic_hash": "476a86c55cfd44cbc8e6167ce7a986e1"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_circuit_breaker.py": {
+    "mtime": 1777974956.0339103,
+    "ast_hash": "a5e0a9ca1bc42aacff1cf6c497f6cac2",
+    "semantic_hash": "a5e0a9ca1bc42aacff1cf6c497f6cac2"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_rapidapi_sa.py": {
+    "mtime": 1777993304.4107852,
+    "ast_hash": "d98b4f53c181b3fcdd1731af26b25ce0",
+    "semantic_hash": "d98b4f53c181b3fcdd1731af26b25ce0"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_source_granularity_integration.py": {
+    "mtime": 1778891808.371316,
+    "ast_hash": "472bf7ca0bb277cd5d26f1813d3f9853",
+    "semantic_hash": "472bf7ca0bb277cd5d26f1813d3f9853"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_translator.py": {
+    "mtime": 1778055205.4253213,
+    "ast_hash": "da586b0b0a30c6709d9c45548226d3f9",
+    "semantic_hash": "da586b0b0a30c6709d9c45548226d3f9"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_pre_render_validator.py": {
+    "mtime": 1779511075.3293996,
+    "ast_hash": "2526161302582eee3c41ae77efed1ef3",
+    "semantic_hash": "2526161302582eee3c41ae77efed1ef3"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_earnings_pdf_renderer.py": {
+    "mtime": 1779171660.2773614,
+    "ast_hash": "71ac5b6bca8d091ae60e8bdcc6b1e5fa",
+    "semantic_hash": "71ac5b6bca8d091ae60e8bdcc6b1e5fa"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_market_data.py": {
+    "mtime": 1779682251.6767025,
+    "ast_hash": "0296b34c2f91f6a879c0504e947df41a",
+    "semantic_hash": "0296b34c2f91f6a879c0504e947df41a"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_storage_paths.py": {
+    "mtime": 1779947594.7220082,
+    "ast_hash": "26476d242b2cf8fbd3661e96f7049314",
+    "semantic_hash": "26476d242b2cf8fbd3661e96f7049314"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_valuation_context_support.py": {
+    "mtime": 1780040309.0123713,
+    "ast_hash": "17097f1cef7218eaf607def898d9abb0",
+    "semantic_hash": "17097f1cef7218eaf607def898d9abb0"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/spec_v27_verdict_valuation_dq_segments.py": {
+    "mtime": 1780074093.2399535,
+    "ast_hash": "064263f49206b04db37bb1c4e1084b80",
+    "semantic_hash": "064263f49206b04db37bb1c4e1084b80"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/spec_v27_competitive_positioning.py": {
+    "mtime": 1780075487.805674,
+    "ast_hash": "56f524827cfb7046337eccbfb58ea118",
+    "semantic_hash": "56f524827cfb7046337eccbfb58ea118"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_mapper_backlog_wording.py": {
+    "mtime": 1780042856.894191,
+    "ast_hash": "29937790fa6c0e67d55f6705e450bfef",
+    "semantic_hash": "29937790fa6c0e67d55f6705e450bfef"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_source_granularity.py": {
+    "mtime": 1778890987.522875,
+    "ast_hash": "1d118b0dbe4961345b2b095e0fff7804",
+    "semantic_hash": "1d118b0dbe4961345b2b095e0fff7804"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_integration.py": {
+    "mtime": 1777973290.42314,
+    "ast_hash": "b89846d28e4bedc38f754494806ac21e",
+    "semantic_hash": "b89846d28e4bedc38f754494806ac21e"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/spec_v27_integration.py": {
+    "mtime": 1779788221.472228,
+    "ast_hash": "f81166daf5907827f1c7e318a240b536",
+    "semantic_hash": "f81166daf5907827f1c7e318a240b536"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/spec_v27_report_model.py": {
+    "mtime": 1779785683.6287642,
+    "ast_hash": "a4667f4f43aa3720127cc7be0132a780",
+    "semantic_hash": "a4667f4f43aa3720127cc7be0132a780"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_api_compatibility.py": {
+    "mtime": 1779907313.1869032,
+    "ast_hash": "104b15ed9814afcb07eab31c62f5e3f2",
+    "semantic_hash": "104b15ed9814afcb07eab31c62f5e3f2"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_feedback.py": {
+    "mtime": 1779978133.9158678,
+    "ast_hash": "2167b61c9d7d0fc7c06bf70878b18a5a",
+    "semantic_hash": "2167b61c9d7d0fc7c06bf70878b18a5a"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_dossier_language_zip.py": {
+    "mtime": 1778055216.578099,
+    "ast_hash": "344114baa78e6b4efac974fd346d56f3",
+    "semantic_hash": "344114baa78e6b4efac974fd346d56f3"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_company_overview_pdf.py": {
+    "mtime": 1780043839.542427,
+    "ast_hash": "fc290811211833e4c70752d8daa0b7ee",
+    "semantic_hash": "fc290811211833e4c70752d8daa0b7ee"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_quarterly_comparison.py": {
+    "mtime": 1780165836.6985605,
+    "ast_hash": "aa877e9150cf8a93178c719c604940d0",
+    "semantic_hash": "aa877e9150cf8a93178c719c604940d0"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_transcript_finder.py": {
+    "mtime": 1778158729.2159784,
+    "ast_hash": "26aadea6cf92778554042d8dbab8f423",
+    "semantic_hash": "26aadea6cf92778554042d8dbab8f423"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_company_overview_integration.py": {
+    "mtime": 1779351363.1010275,
+    "ast_hash": "ef86b01d013a1aca221a40d517c7842b",
+    "semantic_hash": "ef86b01d013a1aca221a40d517c7842b"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_f1_f2_eps_source_and_title.py": {
+    "mtime": 1779171334.108636,
+    "ast_hash": "0d01f4be052b13d0241d0b0892d6b9e2",
+    "semantic_hash": "0d01f4be052b13d0241d0b0892d6b9e2"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/spec_v27_management_analysis.py": {
+    "mtime": 1780075418.1515286,
+    "ast_hash": "ba96addfde1200400daeb1e7ce913bb1",
+    "semantic_hash": "ba96addfde1200400daeb1e7ce913bb1"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_pipeline_regression_fixture.py": {
+    "mtime": 1778937430.0170197,
+    "ast_hash": "e7795b30ece3eed46b68e76f8d49b5fb",
+    "semantic_hash": "e7795b30ece3eed46b68e76f8d49b5fb"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/spec_v27_source_registry.py": {
+    "mtime": 1780136494.357058,
+    "ast_hash": "9b8847bb6ec7de0ef3e2ca9656513ae5",
+    "semantic_hash": "9b8847bb6ec7de0ef3e2ca9656513ae5"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_earnings_pdf_template.py": {
+    "mtime": 1780077940.6069608,
+    "ast_hash": "c4b7c4c4301605fd05aadcf52aef06de",
+    "semantic_hash": "c4b7c4c4301605fd05aadcf52aef06de"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_main_endpoints.py": {
+    "mtime": 1777964757.1360788,
+    "ast_hash": "20372b22f9bbf5b0209027fa390e322a",
+    "semantic_hash": "20372b22f9bbf5b0209027fa390e322a"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_company_overview.py": {
+    "mtime": 1779295811.877364,
+    "ast_hash": "75dec6a8da0cda3e8a9ad727ce1e7af6",
+    "semantic_hash": "75dec6a8da0cda3e8a9ad727ce1e7af6"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_seeking_alpha.py": {
+    "mtime": 1777872056.5937362,
+    "ast_hash": "851032f25aa4dcbeffc0da8b4b54a80f",
+    "semantic_hash": "851032f25aa4dcbeffc0da8b4b54a80f"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_orchestrator.py": {
+    "mtime": 1779712915.3145607,
+    "ast_hash": "61284296ef31cc339b33064d5457ce14",
+    "semantic_hash": "61284296ef31cc339b33064d5457ce14"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_scorer.py": {
+    "mtime": 1780165836.6985605,
+    "ast_hash": "ffe9ab2f18ce40e4fedf7867930d0501",
+    "semantic_hash": "ffe9ab2f18ce40e4fedf7867930d0501"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_pipeline_transcript_url.py": {
+    "mtime": 1780063372.8654506,
+    "ast_hash": "84d3f41fd7ca9b11f527e7dd2a1d82fc",
+    "semantic_hash": "84d3f41fd7ca9b11f527e7dd2a1d82fc"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_pdf_scoring_block.py": {
+    "mtime": 1779713072.6410282,
+    "ast_hash": "75f763f53f2f3782c4df44f37f266e29",
+    "semantic_hash": "75f763f53f2f3782c4df44f37f266e29"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_earnings_deep_dive.py": {
+    "mtime": 1780077923.8215122,
+    "ast_hash": "d2d5b56d6c3bbe5db0d76133b0d8013d",
+    "semantic_hash": "d2d5b56d6c3bbe5db0d76133b0d8013d"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/spec_v27_metrics_ledger.py": {
+    "mtime": 1780135553.0465093,
+    "ast_hash": "e20bc6f1b33feb0d9e6a6a3fade67d5c",
+    "semantic_hash": "e20bc6f1b33feb0d9e6a6a3fade67d5c"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_quality_gates.py": {
+    "mtime": 1780065250.3867402,
+    "ast_hash": "211da241127d26256072f023b6913e65",
+    "semantic_hash": "211da241127d26256072f023b6913e65"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_pdf_commentary.py": {
+    "mtime": 1780042994.177643,
+    "ast_hash": "1407ef92bef692cb236ac395f0f18ca6",
+    "semantic_hash": "1407ef92bef692cb236ac395f0f18ca6"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/test_version_endpoint.py": {
+    "mtime": 1779627954.4283705,
+    "ast_hash": "040e508de9a1890f7f90d2c0d6830a5c",
+    "semantic_hash": "040e508de9a1890f7f90d2c0d6830a5c"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/tests/unit/test_url_validator.py": {
+    "mtime": 1779205693.4693422,
+    "ast_hash": "bee4a85fd0265abc50246e7d4a85bfc7",
+    "semantic_hash": "bee4a85fd0265abc50246e7d4a85bfc7"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/feedback_pipeline.py": {
+    "mtime": 1780164613.2210088,
+    "ast_hash": "e8883a75a636914fbf74baf4ddd141a6",
+    "semantic_hash": "e8883a75a636914fbf74baf4ddd141a6"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/google_search.py": {
+    "mtime": 1778057334.7098851,
+    "ast_hash": "3993141aa5caf040d8420eef4963cdda",
+    "semantic_hash": "3993141aa5caf040d8420eef4963cdda"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/chat_retrieval.py": {
+    "mtime": 1780157553.5895727,
+    "ast_hash": "8b8f0026e3832f26fb7a331b3b2ea581",
+    "semantic_hash": "8b8f0026e3832f26fb7a331b3b2ea581"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/pdf_generator.py": {
+    "mtime": 1780067687.9535646,
+    "ast_hash": "3e2eb4abf525fa199ff28837ee0ca2ad",
+    "semantic_hash": "3e2eb4abf525fa199ff28837ee0ca2ad"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/management_analyzer.py": {
+    "mtime": 1777970816.8833947,
+    "ast_hash": "f0f0ba8e7f2c17e868cf1eef03fb7430",
+    "semantic_hash": "f0f0ba8e7f2c17e868cf1eef03fb7430"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/chat_models.py": {
+    "mtime": 1780159731.8314593,
+    "ast_hash": "db0f099103990aecc8d715c431fa689b",
+    "semantic_hash": "db0f099103990aecc8d715c431fa689b"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/__init__.py": {
+    "mtime": 1779947635.2288444,
+    "ast_hash": "26fa0d8ad012740e7135d436096b7831",
+    "semantic_hash": "26fa0d8ad012740e7135d436096b7831"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/kimi_provider.py": {
+    "mtime": 1780150438.5649946,
+    "ast_hash": "1189e200d2b70b7c1417971da945de3b",
+    "semantic_hash": "1189e200d2b70b7c1417971da945de3b"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/company_overview.py": {
+    "mtime": 1780144664.7097049,
+    "ast_hash": "3deee03b20fe9958ffc6af7e8a593230",
+    "semantic_hash": "3deee03b20fe9958ffc6af7e8a593230"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/press_release_fetcher.py": {
+    "mtime": 1778162630.4991715,
+    "ast_hash": "90ca17cba1d02129ff24d5efd15e1d37",
+    "semantic_hash": "90ca17cba1d02129ff24d5efd15e1d37"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/transcript_web_search.py": {
+    "mtime": 1780159174.2434552,
+    "ast_hash": "2b115fba5f13033df304263ab561bc0c",
+    "semantic_hash": "2b115fba5f13033df304263ab561bc0c"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/codex_provider.py": {
+    "mtime": 1780129014.2143328,
+    "ast_hash": "853200564adeebf90a55be451d14e473",
+    "semantic_hash": "853200564adeebf90a55be451d14e473"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/valuation.py": {
+    "mtime": 1780034636.1268444,
+    "ast_hash": "3f108fc22ece185fb23171574d606377",
+    "semantic_hash": "3f108fc22ece185fb23171574d606377"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/chat_store.py": {
+    "mtime": 1780159799.821905,
+    "ast_hash": "4e3e5b5ed4b3e912d47604ae4b884b22",
+    "semantic_hash": "4e3e5b5ed4b3e912d47604ae4b884b22"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/pipeline.py": {
+    "mtime": 1780165836.6985605,
+    "ast_hash": "feca1e716b2241028e2b413f7b9097d8",
+    "semantic_hash": "feca1e716b2241028e2b413f7b9097d8"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/async_dossier.py": {
+    "mtime": 1779804452.6384304,
+    "ast_hash": "b818681a79639996ccf7cbcccb5a6d02",
+    "semantic_hash": "b818681a79639996ccf7cbcccb5a6d02"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/search_logger.py": {
+    "mtime": 1778140484.9540899,
+    "ast_hash": "ad433796e7a3e1a921c460b170d2267f",
+    "semantic_hash": "ad433796e7a3e1a921c460b170d2267f"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/seeking_alpha_access.py": {
+    "mtime": 1779965986.1619608,
+    "ast_hash": "45119fdf5edd05f40e02ac8b7c9c9ac9",
+    "semantic_hash": "45119fdf5edd05f40e02ac8b7c9c9ac9"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/peer_batch.py": {
+    "mtime": 1779723838.4965658,
+    "ast_hash": "8fb865cbcc98d7c2b3c04cd753ae6910",
+    "semantic_hash": "8fb865cbcc98d7c2b3c04cd753ae6910"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/stockanalysis.py": {
+    "mtime": 1779399640.6964998,
+    "ast_hash": "6da191ec58a0e768877a4da33d1e9533",
+    "semantic_hash": "6da191ec58a0e768877a4da33d1e9533"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/seeking_alpha.py": {
+    "mtime": 1779964213.9905298,
+    "ast_hash": "44b1cc33bca5859008dbd52bde2fc462",
+    "semantic_hash": "44b1cc33bca5859008dbd52bde2fc462"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/excel_generator.py": {
+    "mtime": 1777893767.2489982,
+    "ast_hash": "5f33492f24694fec4a61682ef6c3234e",
+    "semantic_hash": "5f33492f24694fec4a61682ef6c3234e"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/ddg_transcript_search.py": {
+    "mtime": 1778175565.7642405,
+    "ast_hash": "d4a48a0448212803d2b5fbe27fa1b1d4",
+    "semantic_hash": "d4a48a0448212803d2b5fbe27fa1b1d4"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/scorer.py": {
+    "mtime": 1780165836.6985605,
+    "ast_hash": "3da06ae5b5f11de7850f5d4c97c26df1",
+    "semantic_hash": "3da06ae5b5f11de7850f5d4c97c26df1"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/tenk_pdf.py": {
+    "mtime": 1777894070.05107,
+    "ast_hash": "fcb4a57adefec7ec7e6086cafee77737",
+    "semantic_hash": "fcb4a57adefec7ec7e6086cafee77737"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/storage_paths.py": {
+    "mtime": 1779947552.055297,
+    "ast_hash": "6f327b75e3b44d146e9be9af3003e82c",
+    "semantic_hash": "6f327b75e3b44d146e9be9af3003e82c"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/transcript_rich.py": {
+    "mtime": 1778136250.3847444,
+    "ast_hash": "6c81a6e2d013e2182c74cd38b43f100c",
+    "semantic_hash": "6c81a6e2d013e2182c74cd38b43f100c"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/market_data.py": {
+    "mtime": 1779682286.8720014,
+    "ast_hash": "b6c1ee24d20a5064710ca0b5426bb83d",
+    "semantic_hash": "b6c1ee24d20a5064710ca0b5426bb83d"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/chat_delivery_watchdog.py": {
+    "mtime": 1780151832.2247758,
+    "ast_hash": "48071a6039ca852d6c128a1d635809cb",
+    "semantic_hash": "48071a6039ca852d6c128a1d635809cb"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/chat_ai.py": {
+    "mtime": 1780165137.5801942,
+    "ast_hash": "1d0af76b2407b2b68c9a8cd0d80f8dde",
+    "semantic_hash": "1d0af76b2407b2b68c9a8cd0d80f8dde"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/translator.py": {
+    "mtime": 1779541160.9129739,
+    "ast_hash": "3d950f7ba0066115200a173e569c2c06",
+    "semantic_hash": "3d950f7ba0066115200a173e569c2c06"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/url_validator.py": {
+    "mtime": 1779205509.0562565,
+    "ast_hash": "c1b58ed3bb88691089374e4fbb7df10d",
+    "semantic_hash": "c1b58ed3bb88691089374e4fbb7df10d"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/orchestrator.py": {
+    "mtime": 1779712866.4986134,
+    "ast_hash": "37cf1c1c95766ad2a86ff2954b064392",
+    "semantic_hash": "37cf1c1c95766ad2a86ff2954b064392"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/market_cache.py": {
+    "mtime": 1779681970.5029356,
+    "ast_hash": "dcfbefb6b61d061438bf64853a50e097",
+    "semantic_hash": "dcfbefb6b61d061438bf64853a50e097"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/gemini_provider.py": {
+    "mtime": 1778444617.1623755,
+    "ast_hash": "69de7679d126286226a3874cc6de4148",
+    "semantic_hash": "69de7679d126286226a3874cc6de4148"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/peer_universe.json": {
+    "mtime": 1779723394.4747972,
+    "ast_hash": "0a9b1da0656b4ce442631fd91e39d6d5",
+    "semantic_hash": "0a9b1da0656b4ce442631fd91e39d6d5"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/peer_benchmark.py": {
+    "mtime": 1779724012.2589164,
+    "ast_hash": "9b3d6f301c5b59924011e4e5c5f167e3",
+    "semantic_hash": "9b3d6f301c5b59924011e4e5c5f167e3"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/i18n.py": {
+    "mtime": 1780078092.8757517,
+    "ast_hash": "a4fecc726048ad765e11db818fa121fa",
+    "semantic_hash": "a4fecc726048ad765e11db818fa121fa"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/quality_gates.py": {
+    "mtime": 1780063945.0487337,
+    "ast_hash": "84386cf9af0c20b78a44d9aea0fb20d4",
+    "semantic_hash": "84386cf9af0c20b78a44d9aea0fb20d4"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/main.py": {
+    "mtime": 1780147985.2881982,
+    "ast_hash": "97a6bafeb372152f31612c028e3ea452",
+    "semantic_hash": "97a6bafeb372152f31612c028e3ea452"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/chat_context.py": {
+    "mtime": 1780159828.446149,
+    "ast_hash": "7ab9f00181412b338340cd0272fbcb52",
+    "semantic_hash": "7ab9f00181412b338340cd0272fbcb52"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/models.py": {
+    "mtime": 1780032564.6075428,
+    "ast_hash": "3e76e48e79cd3719d309b7428d6721cf",
+    "semantic_hash": "3e76e48e79cd3719d309b7428d6721cf"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/job_store.py": {
+    "mtime": 1778163911.4725792,
+    "ast_hash": "91c41b6b515469dd523ae50dfcdda942",
+    "semantic_hash": "91c41b6b515469dd523ae50dfcdda942"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/search_db.py": {
+    "mtime": 1779804552.9803693,
+    "ast_hash": "2124df9d1d89728453910a9e940962c4",
+    "semantic_hash": "2124df9d1d89728453910a9e940962c4"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/peer_universe.py": {
+    "mtime": 1780030244.2732713,
+    "ast_hash": "9eb04e0512b83491fa016712dd060d6e",
+    "semantic_hash": "9eb04e0512b83491fa016712dd060d6e"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/edgar_extractor.py": {
+    "mtime": 1779804457.8197844,
+    "ast_hash": "685565d438f0a57cb16c6a9383673c60",
+    "semantic_hash": "685565d438f0a57cb16c6a9383673c60"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/sources_collector.py": {
+    "mtime": 1779798835.1029592,
+    "ast_hash": "dbe5d3d59dbec3849aec727121e860e1",
+    "semantic_hash": "dbe5d3d59dbec3849aec727121e860e1"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/sec_8k.py": {
+    "mtime": 1777974478.1767716,
+    "ast_hash": "a275a3c7093df82e128987e83e381e35",
+    "semantic_hash": "a275a3c7093df82e128987e83e381e35"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/chat.py": {
+    "mtime": 1780165273.2242937,
+    "ast_hash": "c1abf09b9ae198cb66263216159ac789",
+    "semantic_hash": "c1abf09b9ae198cb66263216159ac789"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/transcript_finder.py": {
+    "mtime": 1779399668.522543,
+    "ast_hash": "acf5de3cb5adea6aeb866b70d6a40c6c",
+    "semantic_hash": "acf5de3cb5adea6aeb866b70d6a40c6c"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/company_profile.py": {
+    "mtime": 1780091475.1127567,
+    "ast_hash": "ce04b6836abce3b3b75a29065a4d51ca",
+    "semantic_hash": "ce04b6836abce3b3b75a29065a4d51ca"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/rapidapi_sa.py": {
+    "mtime": 1777993388.122648,
+    "ast_hash": "2f7eee0af1da2d25cf6a1fd3b561c013",
+    "semantic_hash": "2f7eee0af1da2d25cf6a1fd3b561c013"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/http_client.py": {
+    "mtime": 1777975851.5815058,
+    "ast_hash": "28a423e75c383b3482ca402ae0c6a7f0",
+    "semantic_hash": "28a423e75c383b3482ca402ae0c6a7f0"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/alpha_vantage.py": {
+    "mtime": 1777975098.1205258,
+    "ast_hash": "ed6233c5f483722bf87daabe9875eb0e",
+    "semantic_hash": "ed6233c5f483722bf87daabe9875eb0e"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/company_overview_pdf.py": {
+    "mtime": 1780165291.2285347,
+    "ast_hash": "8e89b97ff8b8e8c01f6543a687dcc09f",
+    "semantic_hash": "8e89b97ff8b8e8c01f6543a687dcc09f"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/feedback_store.py": {
+    "mtime": 1779978107.6206396,
+    "ast_hash": "8d2b49537de2728f455e2608963009eb",
+    "semantic_hash": "8d2b49537de2728f455e2608963009eb"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/market_context.py": {
+    "mtime": 1778610574.0134406,
+    "ast_hash": "e552c5a713442c42778d173cb7564b95",
+    "semantic_hash": "e552c5a713442c42778d173cb7564b95"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/tone_config.json": {
+    "mtime": 1777871964.152665,
+    "ast_hash": "9f5495587a92ead4a7a734aadff26680",
+    "semantic_hash": "9f5495587a92ead4a7a734aadff26680"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/logging_config.py": {
+    "mtime": 1777993500.6489658,
+    "ast_hash": "94241561f6fbabc3bcb013112f54f576",
+    "semantic_hash": "94241561f6fbabc3bcb013112f54f576"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/preload/__init__.py": {
+    "mtime": 1778449149.0790951,
+    "ast_hash": "e4c2ca6fd38b9f5ecfbb7e497300ee53",
+    "semantic_hash": "e4c2ca6fd38b9f5ecfbb7e497300ee53"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/preload/scheduler.py": {
+    "mtime": 1778449457.779975,
+    "ast_hash": "f021889f89f48365ceaa8267b911d28f",
+    "semantic_hash": "f021889f89f48365ceaa8267b911d28f"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/preload/fetchers.py": {
+    "mtime": 1780159333.9833767,
+    "ast_hash": "b7d8ae6f91726c95b6c3c93fffacea66",
+    "semantic_hash": "b7d8ae6f91726c95b6c3c93fffacea66"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/preload/registry.py": {
+    "mtime": 1778449178.8541753,
+    "ast_hash": "ec29bdc415a88ab258cbee5dbb05e3e9",
+    "semantic_hash": "ec29bdc415a88ab258cbee5dbb05e3e9"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/preload/store.py": {
+    "mtime": 1779947562.340497,
+    "ast_hash": "cbe153aea20b4b63cb95f724f579349c",
+    "semantic_hash": "cbe153aea20b4b63cb95f724f579349c"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/routes/__init__.py": {
+    "mtime": 1779714336.522125,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/routes/peer_benchmark.py": {
+    "mtime": 1780000338.9467075,
+    "ast_hash": "522fc5db8e425807faf90793113f86ec",
+    "semantic_hash": "522fc5db8e425807faf90793113f86ec"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/routes/valuation_context.py": {
+    "mtime": 1779714332.567281,
+    "ast_hash": "b167a997b1c7f6a39859a431b1cb43f4",
+    "semantic_hash": "b167a997b1c7f6a39859a431b1cb43f4"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/sources/motleyfool.py": {
+    "mtime": 1778007408.779194,
+    "ast_hash": "6f6c4065eb9e76c2006b3825ba20110b",
+    "semantic_hash": "6f6c4065eb9e76c2006b3825ba20110b"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/services/__init__.py": {
+    "mtime": 1779713570.1026726,
+    "ast_hash": "25915d7379148c7b78f5686e77b0044f",
+    "semantic_hash": "25915d7379148c7b78f5686e77b0044f"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/services/valuation_context.py": {
+    "mtime": 1780040259.997569,
+    "ast_hash": "0463899e6bdd7043ab07c0e637e52ac9",
+    "semantic_hash": "0463899e6bdd7043ab07c0e637e52ac9"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/tests/test_revenue_estimate.py": {
+    "mtime": 1780163879.0672896,
+    "ast_hash": "0d326884342230bd505513f711254257",
+    "semantic_hash": "0d326884342230bd505513f711254257"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/tests/__init__.py": {
+    "mtime": 1779429552.347948,
+    "ast_hash": "e36c299c9e0a16489873ef03d1e57e7a",
+    "semantic_hash": "e36c299c9e0a16489873ef03d1e57e7a"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/tests/test_metrics_history_endpoint.py": {
+    "mtime": 1780001696.089008,
+    "ast_hash": "f0b61277435d9bd15f9bd6e1e2e8abc7",
+    "semantic_hash": "f0b61277435d9bd15f9bd6e1e2e8abc7"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/tests/test_chat_widget.py": {
+    "mtime": 1780159958.3153071,
+    "ast_hash": "b5da69d94343ca7752a40142a7687efa",
+    "semantic_hash": "b5da69d94343ca7752a40142a7687efa"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/tests/test_peer_benchmark.py": {
+    "mtime": 1779724039.9033797,
+    "ast_hash": "750799612675ef6b5b046c18a8e063eb",
+    "semantic_hash": "750799612675ef6b5b046c18a8e063eb"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/tests/test_peer_benchmark_api.py": {
+    "mtime": 1779996023.0353706,
+    "ast_hash": "0bbfcca77a9fa787cdbd11f2c632ec5f",
+    "semantic_hash": "0bbfcca77a9fa787cdbd11f2c632ec5f"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/tests/test_peer_batch.py": {
+    "mtime": 1779723910.1218576,
+    "ast_hash": "7aa7a2216a85e9c30f3f14f17ce38a97",
+    "semantic_hash": "7aa7a2216a85e9c30f3f14f17ce38a97"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/tests/test_valuation_context_endpoint.py": {
+    "mtime": 1779714265.5473294,
+    "ast_hash": "6041edfceea0acc3a7ac568b622d61cf",
+    "semantic_hash": "6041edfceea0acc3a7ac568b622d61cf"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/tests/test_valuation_context.py": {
+    "mtime": 1780165306.9452577,
+    "ast_hash": "efd92a5d4a0b8a0828e9acbb89fb7f47",
+    "semantic_hash": "efd92a5d4a0b8a0828e9acbb89fb7f47"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/tests/test_peer_universe.py": {
+    "mtime": 1780030367.9106126,
+    "ast_hash": "b5796ed374750e0c6d7e45136dc23701",
+    "semantic_hash": "b5796ed374750e0c6d7e45136dc23701"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/tests/test_valuation_endpoint.py": {
+    "mtime": 1780165836.6985605,
+    "ast_hash": "516f1b1e48d3e602cd7fe8693f04ac04",
+    "semantic_hash": "516f1b1e48d3e602cd7fe8693f04ac04"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/tests/conftest.py": {
+    "mtime": 1780165836.6985605,
+    "ast_hash": "ed7f45ba21d31428b8cf757891d18a43",
+    "semantic_hash": "ed7f45ba21d31428b8cf757891d18a43"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/tests/test_company_overview.py": {
+    "mtime": 1779429737.2551253,
+    "ast_hash": "3b55ea8a8fcb209e91b1b94113e01600",
+    "semantic_hash": "3b55ea8a8fcb209e91b1b94113e01600"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/earnings_deep_dive/generator.py": {
+    "mtime": 1780089797.656554,
+    "ast_hash": "7ac63e12a10ef803ee7b3afeba5cd2d9",
+    "semantic_hash": "7ac63e12a10ef803ee7b3afeba5cd2d9"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/earnings_deep_dive/pre_render_validator.py": {
+    "mtime": 1780138575.0770037,
+    "ast_hash": "cd8bed122c3c26586bfb2c6706408b49",
+    "semantic_hash": "cd8bed122c3c26586bfb2c6706408b49"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/earnings_deep_dive/__init__.py": {
+    "mtime": 1780089797.656554,
+    "ast_hash": "1625021117b0a0847fea7627cc2bb0b0",
+    "semantic_hash": "1625021117b0a0847fea7627cc2bb0b0"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/earnings_deep_dive/markdown.py": {
+    "mtime": 1780089797.656554,
+    "ast_hash": "a6e61d99e47ae9fab18eb4e00f333528",
+    "semantic_hash": "a6e61d99e47ae9fab18eb4e00f333528"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/earnings_deep_dive/pdf_renderer.py": {
+    "mtime": 1780165836.6985605,
+    "ast_hash": "bc6f77c17169f90786cc3b0542cd4f4b",
+    "semantic_hash": "bc6f77c17169f90786cc3b0542cd4f4b"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/earnings_deep_dive/report_model.py": {
+    "mtime": 1780075443.8014245,
+    "ast_hash": "69712e5913127a29fcf534960b71f444",
+    "semantic_hash": "69712e5913127a29fcf534960b71f444"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/earnings_deep_dive/template.py": {
+    "mtime": 1780078068.1885786,
+    "ast_hash": "ed67c58f22e260d4e08a534b2e9ff81f",
+    "semantic_hash": "ed67c58f22e260d4e08a534b2e9ff81f"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/earnings_deep_dive/mapper.py": {
+    "mtime": 1780165276.778966,
+    "ast_hash": "506dab7038846e99ce882ed8cbd2ac53",
+    "semantic_hash": "506dab7038846e99ce882ed8cbd2ac53"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/earnings_deep_dive/errors.py": {
+    "mtime": 1778831119.0503185,
+    "ast_hash": "6f5f21e5fd628a3cfa621a8720ed2442",
+    "semantic_hash": "6f5f21e5fd628a3cfa621a8720ed2442"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/earnings_deep_dive/schemas.py": {
+    "mtime": 1780064783.0551007,
+    "ast_hash": "5fede041228aff49ec6358c15c9fa873",
+    "semantic_hash": "5fede041228aff49ec6358c15c9fa873"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/earnings_deep_dive/validators.py": {
+    "mtime": 1780078120.9660058,
+    "ast_hash": "e8583ac7a4c3c679fbf04f7e88b5f565",
+    "semantic_hash": "e8583ac7a4c3c679fbf04f7e88b5f565"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/earnings_deep_dive/deep_dive_validator.py": {
+    "mtime": 1779985904.7271872,
+    "ast_hash": "852c0aaf2ce620a56f1c0657c2be2546",
+    "semantic_hash": "852c0aaf2ce620a56f1c0657c2be2546"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/backend/earnings_deep_dive/prompts.py": {
+    "mtime": 1780140611.3770378,
+    "ast_hash": "06e230528161c3ec094af34f764478d1",
+    "semantic_hash": "06e230528161c3ec094af34f764478d1"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/scripts/validate_pdf_against_model.py": {
+    "mtime": 1778096029.3635745,
+    "ast_hash": "e18791a20026194cf35529a9e062928e",
+    "semantic_hash": "e18791a20026194cf35529a9e062928e"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/scripts/tmp_emoji_font_probe.py": {
+    "mtime": 1778096547.2171192,
+    "ast_hash": "e5cf33e607828c8fb8f2805ef25e205e",
+    "semantic_hash": "e5cf33e607828c8fb8f2805ef25e205e"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/scripts/pdf_audit_extract.py": {
+    "mtime": 1778053982.299213,
+    "ast_hash": "f367f65673d8fa7292523bd7fb8f54ab",
+    "semantic_hash": "f367f65673d8fa7292523bd7fb8f54ab"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/scripts/nami_feedback_watchdog.py": {
+    "mtime": 1778703950.8369756,
+    "ast_hash": "9e6534e8c94adc0b82678d164a2d2d65",
+    "semantic_hash": "9e6534e8c94adc0b82678d164a2d2d65"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/scripts/extract_pdf_text.py": {
+    "mtime": 1778484848.6524692,
+    "ast_hash": "609f946b2c4b5e8d76bf10d73a0f9778",
+    "semantic_hash": "609f946b2c4b5e8d76bf10d73a0f9778"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/scripts/generate_sample_earnings_pdf.py": {
+    "mtime": 1778162899.6391625,
+    "ast_hash": "ec7643fadbc3c52c59d240feda356bd8",
+    "semantic_hash": "ec7643fadbc3c52c59d240feda356bd8"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/scripts/verify_cache_busting.py": {
+    "mtime": 1778891919.9349346,
+    "ast_hash": "de0474be256576f3e89bd5df4e0060b4",
+    "semantic_hash": "de0474be256576f3e89bd5df4e0060b4"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/scripts/audit_http_imports.sh": {
+    "mtime": 1777976620.2296858,
+    "ast_hash": "2c509dd6692c5fdb2fc8241678d97bec",
+    "semantic_hash": "2c509dd6692c5fdb2fc8241678d97bec"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/benchmarks/baseline_20260510_054259.json": {
+    "mtime": 1778387696.3531888,
+    "ast_hash": "1b68a3309fadfa78a8de7f757b877c6f",
+    "semantic_hash": "1b68a3309fadfa78a8de7f757b877c6f"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/benchmarks/baseline_s2_20260524_141152.json": {
+    "mtime": 1779624712.3205984,
+    "ast_hash": "6876f03469510d62442e061558944548",
+    "semantic_hash": "6876f03469510d62442e061558944548"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/benchmarks/bench_baseline.py": {
+    "mtime": 1778387696.3531888,
+    "ast_hash": "ac39e79d4e36919471fa5eb98f3a8b1a",
+    "semantic_hash": "ac39e79d4e36919471fa5eb98f3a8b1a"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/benchmarks/baseline_v3_20260524_140632.json": {
+    "mtime": 1779624460.5453293,
+    "ast_hash": "298b8138e6e52ccfdf6dc86c1b659735",
+    "semantic_hash": "298b8138e6e52ccfdf6dc86c1b659735"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/benchmarks/bench_baseline_v3.py": {
+    "mtime": 1779624479.8808365,
+    "ast_hash": "5aa92aa06ba45389179cbb82cc863a2c",
+    "semantic_hash": "5aa92aa06ba45389179cbb82cc863a2c"
+  },
+  "/home/ced/codex-projects/stock-analysis-pipeline/.wiki_builder_cache/stock-analysis-pipeline/file_hashes.json": {
+    "mtime": 1779984941.239312,
+    "ast_hash": "c4aa716838de4b2d9ece34400f5b513d",
+    "semantic_hash": "c4aa716838de4b2d9ece34400f5b513d"
+  }
+}

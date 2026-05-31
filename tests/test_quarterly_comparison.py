@@ -131,7 +131,8 @@ def test_extract_quarterly_comparison_includes_operating_cash_flow_and_forward_p
     assert expected_keys <= result.keys()
     assert result["gross_margin"] == pytest.approx(560.0 / 800.0 * 100)
     assert result["gross_margin_prior_year"] == pytest.approx(480.0 / 700.0 * 100)
-    assert result["gross_margin_yoy"] == pytest.approx((70.0 / (480.0 / 700.0 * 100) - 1) * 100)
+    assert result["gross_margin_yoy"] == pytest.approx(70.0 - 480.0 / 700.0 * 100)
+    assert result["operating_margin_yoy"] == pytest.approx(47.5 - 320.0 / 700.0 * 100)
     assert result["operating_margin"] == pytest.approx(380.0 / 800.0 * 100)
     assert result["capex"] == -309.0
     assert result["capex_yoy"] == pytest.approx((-309.0 / -167.0 - 1) * 100)
@@ -225,7 +226,7 @@ def test_operating_metrics_rows_use_prior_year_and_yoy():
     )
 
     assert rows[0] == ["粗利益", "$560.0B", "$480.0B", "+16.7%", "会社開示 / 計算ベース"]
-    assert rows[1][1:4] == ["+70.0%", "+68.6%", "+2.1%"]
+    assert rows[1][1:4] == ["+70.0%", "+68.6%", "+2.1 pts"]
     assert rows[2][1:4] == ["$180.0B", "$160.0B", "+12.5%"]
     assert rows[5][1:4] == ["$100.0B", "$80.0B", "+25.0%"]
     assert MISSING not in rows[5]

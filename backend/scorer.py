@@ -193,20 +193,40 @@ def _score_management(guidance: Any, yoy: Any, annual: Any) -> int:
 
 
 def _score_valuation(pe: Any, fpe: Any, peg: Any) -> int:
-    """Score valuation: 5=cheap, 1=expensive."""
+    """Score valuation: 5=cheap, 1=expensive.
+    
+    Uses P/E as primary signal, with PEG-based adjustment:
+    - PEG < 1.0 → bonus (stock undervalued relative to growth)
+    - PEG > 2.0 → penalty (stock overvalued relative to growth)
+    """
     # Use forward PE if available, else trailing
     pe_val = fpe if fpe is not None else pe
     if pe_val is None:
         return 3  # unknown
     if pe_val < 15:
-        return 5
-    if pe_val < 20:
-        return 4
-    if pe_val < 30:
-        return 3
-    if pe_val < 45:
-        return 2
-    return 1
+        score = 5
+    elif pe_val < 20:
+        score = 4
+    elif pe_val < 30:
+        score = 3
+    elif pe_val < 45:
+        score = 2
+    else:
+        score = 1
+
+    # PEG-based adjustment
+    if peg is not None:
+        try:
+            p = float(peg)
+            if p > 0:
+                if p < 1.0:
+                    score += 1  # cheap relative to growth
+                elif p > 2.0:
+                    score -= 1  # expensive relative to growth
+        except (TypeError, ValueError):
+            pass
+
+    return max(1, min(5, score))
 
 
 def _score_geopolitical(sector: Any, industry: Any) -> int:

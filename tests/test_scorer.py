@@ -1071,3 +1071,151 @@ class TestAcceptanceCriteria:
                 f"(gm={gm}, om={om}, nd={nd})"
             )
             assert 0 <= s.financial_health <= 10
+
+
+class TestPEGConsistency:
+    """Regression tests for PEG ratio consistency — Fix for Nami correction:
+    'The valuation seems off for NVDA, PEG ratio is inconsistent'"""
+
+    def test_score_valuation_uses_peg_bonus_below_1(self):
+        """PEG < 1.0 should add +1 bonus to valuation score."""
+        from backend.scorer import _score_valuation
+        # P/E=25 (score=3, <30 bucket) + PEG=0.8 (<1.0) → score=4
+        assert _score_valuation(25, 25, 0.8) == 4
+
+    def test_score_valuation_peg_penalty_above_2(self):
+        """PEG > 2.0 should apply -1 penalty to valuation score."""
+        from backend.scorer import _score_valuation
+        # P/E=25 (score=3) + PEG=2.5 (>2.0) → score=2
+        assert _score_valuation(25, 25, 2.5) == 2
+
+    def test_score_valuation_peg_neutral_1_to_2(self):
+        """PEG 1.0-2.0 should not change the score."""
+        from backend.scorer import _score_valuation
+        # P/E=25 (score=3) + PEG=1.5 (1.0-2.0) → score=3
+        assert _score_valuation(25, 25, 1.5) == 3
+
+    def test_score_valuation_peg_none_no_change(self):
+        """No PEG data should not change P/E-based score."""
+        from backend.scorer import _score_valuation
+        # P/E=25 (score=3) + PEG=None → score=3
+        assert _score_valuation(25, 25, None) == 3
+
+    def test_score_valuation_peg_negative_no_change(self):
+        """Negative PEG (negative earnings) should not change score."""
+        from backend.scorer import _score_valuation
+        # P/E=25 (score=3) + PEG=-0.5 → score=3 (no adjustment for negative PEG)
+        assert _score_valuation(25, 25, -0.5) == 3
+
+    def test_score_valuation_peg_clamped_min_max(self):
+        """PEG adjustment must not push score outside 1-5 range."""
+        from backend.scorer import _score_valuation
+        # P/E=10 (score=5, maxed) + PEG=0.5 → still 5 (capped)
+        assert _score_valuation(10, 10, 0.5) == 5
+        # P/E=60 (score=1, mined) + PEG=3.0 → still 1 (capped)
+        assert _score_valuation(60, 60, 3.0) == 1
+
+    def test_nvda_like_peg_bonus_integration(self):
+        """NVDA-like: P/E=30, forward P/E=25, PEG=0.8 should get +1 bonus.
+        
+        The total score should reflect the PEG adjustment.
+        Before fix: valuation_risk = 3 (from fpe=25 → score=3)
+        After fix: valuation_risk = 4 (PEG=0.8 < 1.0 → +1 bonus)
+        """
+        data = {
+            "financials": {
+                "revenue_yoy_growth": 0.78,
+                "revenue_annual_growth": 0.65,
+                "gross_margin": 0.75,
+                "operating_margin": 0.55,
+                "net_income": 6e10,
+                "free_cash_flow": 3e10,
+                "net_debt": -5e9,
+                "guidance_official": 0.30,
+            },
+            "valuation": {
+                "pe_current": 45,
+                "pe_forward": 25,
+                "peg_ratio": 0.8,
+            },
+            "sector": "Technology",
+            "industry": "Semiconductors",
+            "market_cap": 2.5e12,
+            "price": 130,
+            "52w_high": 150,
+        }
+        from backend.scorer import score_ticker
+        s = score_ticker(data)
+        raw = s._raw_subscores
+        # PEG=0.8 < 1.0 → valuation_risk should now be 4 (was 3 before fix)
+        assert raw["valuation_risk"] == 4, (
+            f"Expected valuation_risk=4 (PEG=0.8 bonus), got {raw['valuation_risk']}"
+        )
+        assert s.valuation == round(4 * 8 / 5)  # 6
+
+    def test_msft_like_peg_penalty_integration(self):
+        """MSFT-like: P/E=33, forward P/E=28, PEG=2.1 should get -1 penalty.
+        
+        Before fix: valuation_risk = 3 (from fpe=28 → score=3)
+        After fix: valuation_risk = 2 (PEG=2.1 > 2.0 → -1 penalty)
+        """
+        data = {
+            "financials": {
+                "revenue_yoy_growth": 0.16,
+                "revenue_annual_growth": 0.15,
+                "gross_margin": 0.69,
+                "operating_margin": 0.44,
+                "net_income": 7e10,
+                "free_cash_flow": 5e10,
+                "net_debt": 1e10,
+                "guidance_official": 0.12,
+            },
+            "valuation": {
+                "pe_current": 33,
+                "pe_forward": 28,
+                "peg_ratio": 2.1,
+            },
+            "sector": "Technology",
+            "industry": "Software—Infrastructure",
+            "market_cap": 3.0e12,
+            "price": 420,
+            "52w_high": 440,
+        }
+        from backend.scorer import score_ticker
+        s = score_ticker(data)
+        raw = s._raw_subscores
+        # PEG=2.1 > 2.0 → valuation_risk should now be 2 (was 3 before fix)
+        assert raw["valuation_risk"] == 2, (
+            f"Expected valuation_risk=2 (PEG=2.1 penalty), got {raw['valuation_risk']}"
+        )
+
+    def test_struggling_value_no_peg_unchanged(self):
+        """Struggling value stock with PEG=None should be unchanged."""
+        data = {
+            "financials": {
+                "revenue_yoy_growth": -0.02,
+                "revenue_annual_growth": -0.01,
+                "gross_margin": 0.25,
+                "operating_margin": 0.04,
+                "net_income": 1e9,
+                "free_cash_flow": 5e8,
+                "net_debt": 2e10,
+                "guidance_official": None,
+            },
+            "valuation": {
+                "pe_current": 10,
+                "pe_forward": 9,
+                "peg_ratio": None,
+            },
+            "sector": "Consumer Cyclical",
+            "industry": "Retail",
+            "market_cap": 2e10,
+            "price": 50,
+            "52w_high": 80,
+        }
+        from backend.scorer import score_ticker
+        s = score_ticker(data)
+        raw = s._raw_subscores
+        # No PEG → valuation_risk should be 5 (P/E=9 → score=5, unchanged)
+        assert raw["valuation_risk"] == 5
+        assert s.decision() == "HOLD"

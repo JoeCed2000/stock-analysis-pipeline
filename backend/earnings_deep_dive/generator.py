@@ -71,6 +71,7 @@ SECTION_METRIC_KEYS = {
         "guidance",
     },
     "Operating Metrics": {
+        "revenue_actual",
         "gross_margin",
         "operating_margin",
         "operating_income",

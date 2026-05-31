@@ -1,0 +1,1 @@
+{"nodes": [], "edges": [{"source": "concept_earnings_deep_dive", "target": "concept_scoring", "relation": "includes", "confidence": "INFERRED", "confidence_score": 0.8, "source_file": "docs/spec-fonctionnelle.md", "source_location": null, "weight": 1.0}], "hyperedges": []}

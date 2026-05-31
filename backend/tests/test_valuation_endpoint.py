@@ -876,3 +876,38 @@ class TestEdgeCases:
         assert _safe_float("not_a_number") is None
         assert _safe_float(42.5) == 42.5
         assert _safe_float(0) == 0
+
+
+# =====================================================================
+# REGRESSION: AAPL EPS growth — 1 test
+# =====================================================================
+
+
+class TestAaplEpsGrowth:
+    """Regression: AAPL EPS growth should reflect correct expected_growth."""
+
+    def test_aapl_eps_growth_from_expected_growth(self, mock_stock_data):
+        """AAPL eps_growth resolves from expected_growth=0.12 (12%).
+
+        Regression for [CHAT-FB] correction: user reported seeing 8%
+        when the correct value is 12%. The mock fixture provides
+        expected_growth=0.12 which should pass through to eps_growth.
+        """
+        from backend.valuation import get_valuation
+
+        with patch("backend.valuation.get_stock_data", return_value=mock_stock_data):
+            with patch("backend.valuation._yf_ticker_safe") as mock_yt:
+                mock_ticker = MagicMock()
+                mock_ticker.info = {}
+                mock_yt.return_value = mock_ticker
+
+                resp = get_valuation("AAPL")
+
+        # eps_growth from expected_growth (12%)
+        assert resp.eps_growth == 0.12, (
+            f"AAPL eps_growth should be 0.12, got {resp.eps_growth}"
+        )
+        # revenue_growth from revenue_yoy_growth (8%) — separate field
+        assert resp.revenue_growth == 0.08, (
+            f"AAPL revenue_growth should be 0.08, got {resp.revenue_growth}"
+        )

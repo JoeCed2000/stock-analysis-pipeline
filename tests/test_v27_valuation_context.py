@@ -107,12 +107,16 @@ class TestBuildValuationContextFull:
 class TestBuildValuationContextPartial:
     """Graceful degradation when yfinance info is incomplete."""
 
-    def test_missing_peg_ratio_sets_none(self):
+    def test_missing_peg_ratio_falls_back_to_forward_pe(self):
+        """When pegRatio is missing but forwardPE + earningsGrowth are available,
+        PEG is computed from forward P/E and earnings growth."""
         info = _yf_info()
         del info["pegRatio"]
         vc = _build_valuation_context(yf_info=info, metrics=None, generated_at="t")
-        assert vc.peg_signal is None
-        assert vc.peg_signal_label is None
+        # PEG = forwardPE / (earningsGrowth * 100) = 17.03 / 214.5 ≈ 0.079
+        assert vc.peg_signal is not None
+        assert vc.peg_signal == pytest.approx(0.079, abs=0.01)
+        assert vc.peg_signal_label is not None
 
     def test_missing_ps_sets_none(self):
         info = _yf_info()
@@ -177,25 +181,33 @@ class TestValuationLabels:
 
     def test_peg_attractive_below_1(self):
         # PEG = 15.0 / (0.30 * 100) = 15.0 / 30 = 0.5 (< 1 → Attractive)
-        vc = _build_valuation_context(yf_info=_yf_info(trailingPE=15.0, earningsGrowth=0.30), metrics=None, generated_at="t")
+        info = _yf_info(trailingPE=15.0, earningsGrowth=0.30)
+        del info["pegRatio"]  # force computed PEG
+        vc = _build_valuation_context(yf_info=info, metrics=None, generated_at="t")
         assert "Attractive" in vc.peg_signal_label or "attractive" in str(vc.peg_signal_label).lower()
 
     def test_peg_fair_between_1_and_2(self):
         # PEG = 15.0 / (0.10 * 100) = 15.0 / 10 = 1.5 (1-2 → Fair)
-        vc = _build_valuation_context(yf_info=_yf_info(trailingPE=15.0, earningsGrowth=0.10), metrics=None, generated_at="t")
+        info = _yf_info(trailingPE=15.0, earningsGrowth=0.10)
+        del info["pegRatio"]  # force computed PEG
+        vc = _build_valuation_context(yf_info=info, metrics=None, generated_at="t")
         assert "Fair" in vc.peg_signal_label or "fair" in str(vc.peg_signal_label).lower()
 
     def test_peg_expensive_above_2(self):
         # PEG = 25.0 / (0.10 * 100) = 25.0 / 10 = 2.5 (>2 → Expensive)
-        vc = _build_valuation_context(yf_info=_yf_info(trailingPE=25.0, earningsGrowth=0.10), metrics=None, generated_at="t")
+        info = _yf_info(trailingPE=25.0, earningsGrowth=0.10)
+        del info["pegRatio"]  # force computed PEG
+        del info["forwardPE"]  # force trailing PE computation
+        vc = _build_valuation_context(yf_info=info, metrics=None, generated_at="t")
         assert "Expensive" in vc.peg_signal_label or "High" in vc.peg_signal_label
 
     def test_peg_negative_growth_handled(self):
-        # Negative growth → no PEG computed (growth > 0 guard), fallback pegRatio removed
+        # Negative growth → no PEG computed (growth > 0 guard)
         info = _yf_info(trailingPE=15.0, earningsGrowth=-0.1)
         del info["pegRatio"]
+        del info["revenueGrowth"]  # also remove revenueGrowth so no fallback
         vc = _build_valuation_context(yf_info=info, metrics=None, generated_at="t")
-        assert vc.peg_signal is None  # negative growth → skip, no fallback
+        assert vc.peg_signal is None  # negative growth → skip
 
     def test_fcf_yield_strong_above_8pct(self):
         # freeCashflow / marketCap = 0.10 (10%)
@@ -233,6 +245,7 @@ class TestYfInfoWireThrough:
         vc = report.valuation_context
         assert vc is not None, "valuation_context should be populated when yf_info is passed"
         assert vc.peg_signal is not None, "PEG signal should be computed from yf_info"
+        # PEG = trailingPE / (earningsGrowth * 100) = 33.0 / 214.5 ≈ 0.154
         assert vc.peg_signal == pytest.approx(0.154, abs=0.01)
         assert vc.peg_signal_label is not None
 
