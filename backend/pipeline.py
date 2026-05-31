@@ -137,9 +137,9 @@ def _transcript_url(source: Dict[str, Any], ticker: str | None = None,
                 )
                 canonical_ticker = (ticker or (match.group(1) if match else "")).strip().lower()
                 if canonical_ticker:
-                    candidates.append((400, f"https://stockanalysis.com/stocks/{canonical_ticker}/transcripts/"))
+                    candidates.append((300, f"https://stockanalysis.com/stocks/{canonical_ticker}/transcripts/"))
             elif "seekingalpha.com" in host:
-                candidates.append((300, url))
+                candidates.append((400, url))
             elif _is_ir_portal(host):
                 candidates.append((50, url))  # Low priority — investor relations portal
             else:
@@ -151,12 +151,12 @@ def _transcript_url(source: Dict[str, Any], ticker: str | None = None,
         best = max(candidates, key=lambda x: x[0])
         # Never return an investor-relations portal URL when we have a ticker
         if best[0] <= 50 and ticker:
-            return f"https://stockanalysis.com/stocks/{ticker.strip().lower()}/transcripts/"
+            return f"https://seekingalpha.com/symbol/{ticker.strip().upper()}/earnings/transcripts"
         return best[1]
 
-    # Fallback: construct stockanalysis.com URL when ticker is known
+    # Fallback: construct Seeking Alpha URL when ticker is known
     if ticker:
-        return f"https://stockanalysis.com/stocks/{ticker.strip().lower()}/transcripts/"
+        return f"https://seekingalpha.com/symbol/{ticker.strip().upper()}/earnings/transcripts"
 
     return None
 
