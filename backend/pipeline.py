@@ -130,14 +130,16 @@ def _transcript_url(source: Dict[str, Any], ticker: str | None = None,
             path = parsed.path.strip("/")
 
             if host == "stockanalysis.com":
+                # StockAnalysis republishes Seeking Alpha transcripts.
+                # When we have a ticker, use the canonical SA URL instead.
                 match = re.match(
                     r"stocks/([^/]+)/transcripts(?:/[^/]+)?/?$",
                     path,
                     re.IGNORECASE,
                 )
-                canonical_ticker = (ticker or (match.group(1) if match else "")).strip().lower()
+                canonical_ticker = (ticker or (match.group(1) if match else "")).strip().upper()
                 if canonical_ticker:
-                    candidates.append((300, f"https://stockanalysis.com/stocks/{canonical_ticker}/transcripts/"))
+                    candidates.append((350, f"https://seekingalpha.com/symbol/{canonical_ticker}/earnings/transcripts"))
             elif "seekingalpha.com" in host:
                 candidates.append((400, url))
             elif _is_ir_portal(host):
