@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import SeekingAlphaAccessPanel from './SeekingAlphaAccessPanel.jsx';
-import ChatWidget from './ChatWidget.jsx';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -56,6 +55,77 @@ function categoryLabel(value, lang) {
   const match = FEEDBACK_CATEGORY_OPTIONS.find((opt) => opt.value === value);
   if (!match) return value || (lang === 'jp' ? '一般' : 'General');
   return lang === 'jp' ? match.jp : match.en;
+}
+
+function publicNote(entry, lang) {
+  const note = (entry?.notes || '').trim();
+  if (!note) return '';
+  const lower = note.toLowerCase();
+
+  if (lower.includes('p1/p5/p7/p9') || lower.includes('page 1') || lower.includes('page 5')) {
+    return lang === 'jp'
+      ? 'Google のPDFに関するコメントは、下の添付資料に紐づけています。メインPDFと、コメント付きPDF（1・5・7・9ページ）を確認できます。'
+      : 'Google PDF feedback is linked to the attached documents below: the main Google PDF plus annotated PDFs for pages 1, 5, 7 and 9.';
+  }
+
+  if (lower.includes('attachment refreshed') || lower.includes('v2')) {
+    return lang === 'jp'
+      ? '修正版PDFを添付済みです。表示崩れと箇条書きのフォーマットを修正しました。'
+      : 'An updated PDF is attached. Formatting issues and bullet rendering were corrected.';
+  }
+
+  if (lower.includes('company overview')) {
+    return lang === 'jp'
+      ? 'Company Overview セクションを追加済みです。競合、強み、弱み、事業セグメント、顧客、経営陣を確認できます。'
+      : 'The Company Overview section has been added, including competitors, strengths, weaknesses, segments, clients and management.';
+  }
+
+  if (lower.includes('cloudflare') || lower.includes('tunnel') || lower.includes('pc reboot')) {
+    return lang === 'jp'
+      ? 'アクセス問題は復旧済みです。サイトを再度利用できます。'
+      : 'The access issue has been resolved and the site is available again.';
+  }
+
+  const sanitized = note
+    .replace(/Auto-intake:\s*/gi, '')
+    .replace(/Kanban task\s+\S+\s+created and promoted by\s+\S+\.\s*/gi, '')
+    .replace(/processing_task_id\s*[:=]\s*\S+/gi, '')
+    .replace(/Cloudflare tunnel/gi, 'access service')
+    .replace(/\bKanban\b/gi, 'tracking')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!sanitized) {
+    return lang === 'jp'
+      ? 'このフィードバックは確認済みです。'
+      : 'This feedback has been reviewed.';
+  }
+  return sanitized;
+}
+
+function friendlyFileLabel(fileName, entry, lang) {
+  const name = String(fileName || '');
+  const lower = name.toLowerCase();
+  const ticker = entry?._ticker || entry?.ticker || '';
+  const companyLabel = ticker === 'GOOG' || ticker === 'GOOGL' ? 'Google' : ticker;
+  const pageMatch = name.match(/Page[_\s-]*(\d+)/i);
+
+  if (lower.includes('deep_dive')) {
+    return companyLabel
+      ? `${companyLabel} Deep Dive PDF`
+      : (lang === 'jp' ? 'メイン分析PDF' : 'Main analysis PDF');
+  }
+  if (lower.includes('company_overview')) {
+    return companyLabel
+      ? `${companyLabel} Company Overview PDF`
+      : 'Company Overview PDF';
+  }
+  if (pageMatch) {
+    return lang === 'jp'
+      ? `コメント付きPDF（${pageMatch[1]}ページ）`
+      : `Annotated PDF — page ${pageMatch[1]}`;
+  }
+  return lang === 'jp' ? '添付資料' : 'Attached document';
 }
 
 export default function FeedbackPage({ lang = 'en', onClose }) {
@@ -299,6 +369,7 @@ export default function FeedbackPage({ lang = 'en', onClose }) {
               {history.map((entry) => {
                 const meta = statusMeta(entry, lang);
                 const isLatest = latestId && entry.id === latestId;
+                const note = publicNote(entry, lang);
                 return (
                   <div
                     key={entry.id}
@@ -347,9 +418,9 @@ export default function FeedbackPage({ lang = 'en', onClose }) {
                       </div>
                     )}
 
-                    {entry.notes && (
+                    {note && (
                       <div style={{ marginTop: 8, padding: '10px 12px', background: '#161b22', border: '1px solid #30363d', borderRadius: 6, color: '#c9d1d9', fontSize: 13, lineHeight: 1.5 }}>
-                        <strong style={{ color: '#d29922' }}>{lang === 'jp' ? 'メモ' : 'Notes'}:</strong> {entry.notes}
+                        <strong style={{ color: '#d29922' }}>{lang === 'jp' ? '対応状況' : 'Status update'}:</strong> {note}
                       </div>
                     )}
 
@@ -368,7 +439,7 @@ export default function FeedbackPage({ lang = 'en', onClose }) {
                               style={{ ...fileChipStyle, textDecoration: 'none' }}
                               title={lang === 'jp' ? '新しいタブで開く' : 'Open in new tab'}
                             >
-                              📄 {fileName}
+                              📄 {friendlyFileLabel(fileName, entry, lang)}
                             </a>
                           );
                         })}
@@ -389,9 +460,6 @@ export default function FeedbackPage({ lang = 'en', onClose }) {
           }
         }
       `}</style>
-
-      {/* Live Chat Widget */}
-      <ChatWidget lang="ja" />
 
     </div>
   );
