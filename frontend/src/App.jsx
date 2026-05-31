@@ -91,7 +91,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!showAdmin && !showFeedback) {
+    if (show404) {
       setSaAccess({ loading: false, configured: null, error: null });
       return undefined;
     }
@@ -101,7 +101,8 @@ export default function App() {
     const refreshSeekingAlphaStatus = async () => {
       try {
         // Use the TEST endpoint for real connectivity check, not just cookie presence.
-        // This endpoint is protected; only poll it from admin/feedback routes.
+        // The server-side probe is public/read-only and never exposes cookie values;
+        // poll it on the homepage because that is where the SA badge is rendered.
         const data = await testSeekingAlphaAccess();
         if (!alive) return;
         setSaAccess({
@@ -125,7 +126,7 @@ export default function App() {
       alive = false;
       clearInterval(timer);
     };
-  }, [showAdmin, showFeedback]);
+  }, [show404]);
 
   const t = (key, params) => {
     let str = translations[lang]?.[key] || translations.en[key] || key;
