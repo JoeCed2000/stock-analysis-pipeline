@@ -22,18 +22,23 @@ def localized_visitor_label(language: str | None = "ja") -> str:
 
 
 def resolve_visitor_display_name(metadata: dict | None, language: str | None = "ja") -> str:
-    """Resolve the chat display label without fingerprint-derived identity.
+    """Resolve the chat display label from trusted server-side metadata.
 
-    The client cannot choose a name via the legacy visitor_name payload. Known
-    device fingerprints are retained only as audit metadata; they never map to
-    personal names. Unknown and known fingerprints alike receive a localized
-    neutral visitor label unless trusted server-side metadata supplies an
-    explicit display_name.
+    The frontend still cannot choose a name through the legacy visitor_name
+    payload. The backend may, however, personalize known operational devices
+    from the server-observed fingerprint so the assistant can greet Nami as
+    Nami-san and Ced as Ced while keeping unknown visitors neutral.
     """
     meta = metadata or {}
     display_name = (meta.get("display_name") or "").strip()
     if display_name:
         return display_name
+
+    device = (meta.get("device") or "").strip().lower()
+    if device in {"apple-mac-safari", "apple-iphone-safari", "apple-ipad-safari"}:
+        return "Nami-san"
+    if device in {"linux-chrome", "windows-chrome", "linux-edge", "windows-edge"}:
+        return "Ced"
 
     return localized_visitor_label(language)
 
@@ -73,7 +78,7 @@ async def build_chat_context(
     selected_section: Optional[str] = None,
     current_url: Optional[str] = None,
     route: Optional[str] = None,
-    language: str = "ja",
+    language: Optional[str] = None,
 ) -> dict:
     """Build the full context dict for an AI response.
 
@@ -83,13 +88,15 @@ async def build_chat_context(
 
     # Get session info
     session = chat_store.get_session(session_id)
+    effective_language = language or (session.language if session else None) or "ja"
     if session:
-        # Update session with latest context
+        # Update session with latest context without overwriting the stored
+        # language when debug/context callers do not provide one explicitly.
         chat_store.update_session(
             session_id,
             current_ticker=ticker or session.current_ticker,
             current_pdf_id=pdf_id or session.current_pdf_id,
-            language=language,
+            language=effective_language,
         )
 
     # Get recent history
@@ -120,7 +127,7 @@ async def build_chat_context(
             pass
 
     return {
-        "language": language,
+        "language": effective_language,
         "ticker": ticker,
         "pdf_title": pdf_title,
         "pdf_page": pdf_page,

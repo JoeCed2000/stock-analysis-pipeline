@@ -289,7 +289,7 @@ import json
 
 
 def test_detect_visitor_label_for_known_linux_device():
-    """Known Linux Chrome fingerprint resolves to a neutral visitor label."""
+    """Known Linux Chrome fingerprint resolves to Ced."""
     from backend.chat_context import _detect_visitor_name
     from backend import chat_store
     sid = chat_store.create_session(
@@ -297,11 +297,11 @@ def test_detect_visitor_label_for_known_linux_device():
         language="ja",
         metadata={"client_ip": "2a01:cb00::1", "device": "linux-chrome", "user_agent": "..."}
     ).id
-    assert _detect_visitor_name(sid) == "訪問者"
+    assert _detect_visitor_name(sid) == "Ced"
 
 
 def test_detect_visitor_label_for_known_apple_device():
-    """Known Apple/Safari fingerprint resolves to a neutral visitor label."""
+    """Known Apple/Safari fingerprint resolves to Nami-san."""
     from backend.chat_context import _detect_visitor_name
     from backend import chat_store
     sid = chat_store.create_session(
@@ -309,11 +309,11 @@ def test_detect_visitor_label_for_known_apple_device():
         language="ja",
         metadata={"client_ip": "86.242.1.1", "device": "apple-mac-safari", "user_agent": "..."}
     ).id
-    assert _detect_visitor_name(sid) == "訪問者"
+    assert _detect_visitor_name(sid) == "Nami-san"
 
 
 def test_detect_visitor_explicit_display_name_only():
-    """Only an explicit display_name metadata field may customize the display label."""
+    """Explicit display_name metadata remains the highest-priority label."""
     from backend.chat_context import _detect_visitor_name
     from backend import chat_store
     sid = chat_store.create_session(
@@ -348,8 +348,8 @@ def test_detect_visitor_corrupted_metadata():
     assert _detect_visitor_name(sid) == "訪問者"
 
 
-def test_session_creation_stores_neutral_apple_display_label_without_exposing_it(client):
-    """POST /api/chat/session stores a neutral label and keeps fingerprint as audit metadata."""
+def test_session_creation_stores_nami_display_label_without_exposing_it(client):
+    """POST /api/chat/session stores Nami-san for the known Safari fingerprint."""
     import sqlite3
     from backend import chat_store
     res = client.post("/api/chat/session", json={
@@ -366,7 +366,7 @@ def test_session_creation_stores_neutral_apple_display_label_without_exposing_it
     conn = sqlite3.connect(chat_store.DB_PATH)
     row = conn.execute("SELECT visitor_name, metadata_json FROM chat_sessions WHERE id=?", (sid,)).fetchone()
     conn.close()
-    assert row[0] == "訪問者"
+    assert row[0] == "Nami-san"
     meta = json.loads(row[1])
     assert meta["device"] == "apple-mac-safari"
     assert meta["visitor_id"] == "visitor-apple-123"
@@ -374,7 +374,7 @@ def test_session_creation_stores_neutral_apple_display_label_without_exposing_it
 
 
 def test_session_creation_linux_chrome_fingerprint_display_label(client):
-    """POST /api/chat/session with Linux Chrome stores a neutral display label."""
+    """POST /api/chat/session with Linux Chrome stores Ced as display label."""
     import sqlite3
     from backend import chat_store
     res = client.post("/api/chat/session", json={
@@ -389,14 +389,14 @@ def test_session_creation_linux_chrome_fingerprint_display_label(client):
     conn = sqlite3.connect(chat_store.DB_PATH)
     row = conn.execute("SELECT visitor_name, metadata_json FROM chat_sessions WHERE id=?", (sid,)).fetchone()
     conn.close()
-    assert row[0] == "訪問者"
+    assert row[0] == "Ced"
     meta = json.loads(row[1])
     assert meta["device"] == "linux-chrome"
     assert meta["visitor_id"] == "visitor-linux-123"
 
 
-def test_context_includes_neutral_visitor_display_name(client):
-    """build_chat_context() returns the neutral display label for fingerprints."""
+def test_context_includes_known_visitor_display_name(client):
+    """build_chat_context() returns the known visitor display label for fingerprints."""
     import asyncio
     from backend import chat_context, chat_store
     sid = chat_store.create_session(
@@ -410,11 +410,41 @@ def test_context_includes_neutral_visitor_display_name(client):
         user_message="Hello",
         language="ja",
     ))
-    assert ctx["visitor_display_name"] == "訪問者"
+    assert ctx["visitor_display_name"] == "Ced"
 
 
-def test_known_device_labels_are_neutral_and_server_controlled(client):
-    """Different fingerprints stay isolated but resolve to neutral display labels."""
+def test_context_uses_session_language_when_not_explicitly_passed(client):
+    """Debug/context callers must not overwrite an English session to Japanese."""
+    import asyncio
+    from backend import chat_context, chat_store
+    sid = chat_store.create_session(
+        visitor_name="Visitor",
+        language="en",
+        metadata={"client_ip": "2a01:cb00::1", "device": "linux-chrome"}
+    ).id
+
+    ctx = asyncio.run(chat_context.build_chat_context(
+        session_id=sid,
+        user_message="Hello",
+    ))
+    assert ctx["language"] == "en"
+    assert ctx["visitor_display_name"] == "Ced"
+
+
+def test_unknown_device_stays_neutral(client):
+    """Unknown fingerprints remain neutral and localized."""
+    from backend.chat_context import _detect_visitor_name
+    from backend import chat_store
+    sid = chat_store.create_session(
+        visitor_name="Visitor",
+        language="ja",
+        metadata={"client_ip": "203.0.113.10", "device": "android-chrome"}
+    ).id
+    assert _detect_visitor_name(sid) == "訪問者"
+
+
+def test_known_device_labels_are_personalized_and_server_controlled(client):
+    """Different fingerprints stay isolated and resolve to server-controlled labels."""
     from backend import chat_store
     linux_sid = chat_store.create_session(
         visitor_name="Visitor", language="ja",
@@ -426,5 +456,5 @@ def test_known_device_labels_are_neutral_and_server_controlled(client):
     ).id
 
     from backend.chat_context import _detect_visitor_name
-    assert _detect_visitor_name(linux_sid) == "訪問者"
-    assert _detect_visitor_name(apple_sid) == "訪問者"
+    assert _detect_visitor_name(linux_sid) == "Ced"
+    assert _detect_visitor_name(apple_sid) == "Nami-san"

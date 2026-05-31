@@ -68,7 +68,7 @@ export default function App() {
       const saved = localStorage.getItem('lang');
       if (saved && translations[saved]) return saved;
     }
-    return 'en';
+    return 'jp';
   });
 
   const [audienceMode] = useState(() => {
