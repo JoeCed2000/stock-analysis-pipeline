@@ -1044,14 +1044,16 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
                     rev_q = result.get("revenue_quarterly")
                     rev_prior = result.get("revenue_quarterly_prior_year")
                     if rev_q is not None and rev_prior is not None and rev_prior > 0:
-                        # Use current quarter revenue / (1 + growth) to get last year same quarter
-                        # Then apply expected growth to estimate current consensus
-                        expected_growth = info.get("expectedGrowth", info.get("earningsGrowth"))
-                        if expected_growth:
-                            expected_growth = float(expected_growth)
-                            # Rough estimate: prior year same quarter × (1 + expected growth)
-                            rev_estimate = rev_prior * (1 + abs(expected_growth))
-                            result["revenue_estimate"] = rev_estimate
+                        # Use revenue growth (not earnings growth!) to project revenue estimate
+                        rev_growth = info.get("revenueGrowth")
+                        if rev_growth is not None:
+                            rev_growth = float(rev_growth)
+                        else:
+                            # Fallback: compute from current vs prior revenue
+                            rev_growth = (rev_q - rev_prior) / rev_prior if rev_prior > 0 else 0.0
+                        # Estimate: prior year same quarter × (1 + revenue growth)
+                        rev_estimate = rev_prior * (1 + rev_growth)
+                        result["revenue_estimate"] = rev_estimate
 
         current_values = {
             "roe": _ratio(efficiency_current_net_income, balance_value(("Stockholders Equity", "Common Stock Equity"), 0)),
