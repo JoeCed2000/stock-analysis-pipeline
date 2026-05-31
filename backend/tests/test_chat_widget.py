@@ -55,7 +55,7 @@ def _make_db_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 
 def _create_test_session(
     visitor_id: str = "",
-    visitor_name: str = "Nami",
+    visitor_name: str = "Visitor",
     language: str = "ja",
     metadata: dict | None = None,
 ) -> ChatSession:
@@ -155,7 +155,7 @@ class TestVisitorIsolation:
         _make_db_path(monkeypatch, tmp_path)
 
         # Create sessions with empty visitor_id
-        sess = _create_test_session(visitor_id="", visitor_name="Nami")
+        sess = _create_test_session(visitor_id="", visitor_name="Visitor")
 
         # get_sessions_by_visitor on empty should return empty
         results = chat_store.get_sessions_by_visitor("")
@@ -184,7 +184,7 @@ class TestVisitorIsolation:
         _make_db_path(monkeypatch, tmp_path)
 
         # Create legacy session (no visitor_id)
-        legacy = _create_test_session(visitor_id="", visitor_name="Nami")
+        legacy = _create_test_session(visitor_id="", visitor_name="Visitor")
         _add_ticker(legacy.id, "AAPL")
 
         # New session WITH visitor_id
@@ -203,8 +203,8 @@ class TestVisitorIsolation:
 
         # Both have empty visitor_id but same IP/device
         meta = {"client_ip": "1.2.3.4", "device": "same-device"}
-        sess_a = _create_test_session(visitor_id="", visitor_name="Nami", metadata=meta)
-        sess_b = _create_test_session(visitor_id="", visitor_name="Nami", metadata=meta)
+        sess_a = _create_test_session(visitor_id="", visitor_name="Visitor", metadata=meta)
+        sess_b = _create_test_session(visitor_id="", visitor_name="Visitor", metadata=meta)
 
         _add_ticker(sess_a.id, "AAPL")
         _add_ticker(sess_b.id, "GOOGL")
@@ -255,8 +255,8 @@ class TestVisitorIsolation:
         vid_a = uuid.uuid4().hex
         vid_b = uuid.uuid4().hex
 
-        sess_a = _create_test_session(visitor_id=vid_a, visitor_name="Nami")
-        sess_b = _create_test_session(visitor_id=vid_b, visitor_name="Nami")
+        sess_a = _create_test_session(visitor_id=vid_a, visitor_name="Visitor")
+        sess_b = _create_test_session(visitor_id=vid_b, visitor_name="Visitor")
 
         _add_feedback(sess_a.id, "bug", "This chart is broken")
         _add_feedback(sess_b.id, "ux", "This is hard to use")

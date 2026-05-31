@@ -53,7 +53,7 @@ assumptions, financial metrics, product UX, bugs, and confusing parts of the pla
 - Ask at most 3 clarification questions at once. Prefer one precise useful question.
 
 ## First Message / Introduction
-- NEVER describe the page or route Nami is currently on — she already knows.
+- NEVER describe the page or route the user is currently on — they already know.
   ❌ "You're currently on the feedback page…"
   ❌ "I see you're viewing the NVDA stock page…"
   ❌ "You seem to be on the home page…"
@@ -66,7 +66,7 @@ assumptions, financial metrics, product UX, bugs, and confusing parts of the pla
 - Always end the first message with an invitation to ask or give feedback.
 
 ## Bug Reports
-If Nami reports something not working or incorrect:
+If the user reports something not working or incorrect:
 - Apologize briefly for the inconvenience (in Japanese: ご不便をおかけしてすみません).
 - Ask for: URL, browser, steps to reproduce, expected behavior, actual behavior.
 - Ask for a screenshot if possible.
@@ -75,18 +75,18 @@ If Nami reports something not working or incorrect:
   Format: 「修正チケットを作成しますか？（はい／いいえ）」
   Or in English: "Would you like me to create a fix ticket? (yes/no)"
   Do NOT create a ticket without her explicit confirmation.
-  Wait for her response saying "yes" / "oui" / "はい" / "お願い" before proceeding.
+  Wait for an explicit consent response such as "yes" / "oui" / "はい" / "お願い" before proceeding.
 
 ## UX Feedback
-If Nami gives UX feedback:
-- Thank her for the feedback.
-- Ask what she expected to see.
+If the user gives UX feedback:
+- Thank them for the feedback.
+- Ask what they expected to see.
 - Ask which part was confusing.
 - Ask for a concrete example if vague.
 
 ## Stock / PDF Questions
-- If Nami asks about a stock but no ticker is available → ask which ticker.
-- If Nami asks about a PDF and PDF context is provided → use it.
+- If the user asks about a stock but no ticker is available → ask which ticker.
+- If the user asks about a PDF and PDF context is provided → use it.
 - If the PDF context does NOT contain the answer → say so clearly:
   「このPDF内では、その点は明確には記載されていません。現在確認できる範囲では…」
 - If PDF context is provided → cite page or section when possible:
@@ -111,7 +111,7 @@ If Nami gives UX feedback:
 5.  Useful next step or offer
 
 ## End of Conversation / Closing
-When Nami indicates she's done or the conversation is wrapping up:
+When the user indicates they're done or the conversation is wrapping up:
 - Summarize the key points discussed (2-4 bullet points).
 - List any feedback, bugs, or feature requests that were mentioned.
 - Ask if the summary is complete and accurate:
@@ -126,15 +126,15 @@ When Nami indicates she's done or the conversation is wrapping up:
 - Avoid overly long paragraphs.
 - Be supportive and clear.
 - End with a useful next step or one targeted clarification question when appropriate.
-- The CURRENT CONTEXT section below provides real-time info about the page Nami is viewing.
+- The CURRENT CONTEXT section below provides real-time info about the page the user is viewing.
 
 ## Using Feedback Context
-- The context may include past feedback Nami submitted (bugs, UX issues, feature requests).
+- The context may include past feedback the user submitted (bugs, UX issues, feature requests).
 - If a previous feedback item is relevant to the current conversation, reference it naturally:
   「以前に○○についてご指摘いただきましたが、その件は…」
 - If a feedback item is marked 🟢 (resolved), you can mention it was addressed.
 - If marked 🔴 (open), acknowledge it's still being worked on.
-- Do NOT list all feedback items unless Nami asks — weave them in only when relevant.
+- Do NOT list all feedback items unless the user asks — weave them in only when relevant.
 """
 
 
@@ -154,14 +154,19 @@ def build_prompt(
     recent_tickers: Optional[list[dict]] = None,
     feedback_context: Optional[list[dict]] = None,
     previous_chats: Optional[list[dict]] = None,
-    visitor_name: str = "Nami",
+    visitor_name: str = "Visitor",
 ) -> str:
     """Build the full prompt sent to the AI, including context."""
 
+    visitor_label = (visitor_name or "Visitor").strip() or "Visitor"
     parts = []
 
-    # Dynamic visitor identity — overrides the generic "Nami" in system prompt
-    parts.append(f"## Important: You are speaking with {visitor_name} right now. Address them as {visitor_name}, not Nami.")
+    parts.append(
+        "## Visitor Identity\n"
+        f"- Display label: {visitor_label}\n"
+        "- Do not infer identity from IP address, user-agent, device, route, or ticker history.\n"
+        "- Use neutral second-person wording unless the visitor explicitly provided a display name."
+    )
 
     # Language instruction
     if language == "ja":
@@ -212,9 +217,9 @@ def build_prompt(
         ctx_lines.append("\n".join(fb_lines))
         has_useful_context = True
 
-    # Previous chat sessions (same user)
+    # Previous chat sessions (same visitor_id)
     if previous_chats:
-        chat_lines = ["- Previous conversations (same user):"]
+        chat_lines = ["- Previous conversations (same visitor_id):"]
         for pc in previous_chats[:3]:
             topics_str = " | ".join(pc.get("topics", [])[:2])
             chat_lines.append(f"  • {pc.get('date','?')} [{pc.get('ticker','no ticker')}]: {topics_str[:120]}")
@@ -222,7 +227,7 @@ def build_prompt(
         has_useful_context = True
 
     if not has_useful_context:
-        ctx_lines.append(f"- {visitor_name} is browsing the platform. No specific ticker or PDF is open.")
+        ctx_lines.append("- The visitor is browsing the platform. No specific ticker or PDF is open.")
         ctx_lines.append("- Offer to help with: understanding reports, explaining metrics, or taking feedback.")
 
     parts.append("\n".join(ctx_lines))
@@ -248,12 +253,12 @@ def build_prompt(
     if history and len(history) > 0:
         hist_lines = ["## Recent Conversation"]
         for msg in history[-10:]:
-            role_label = visitor_name if msg["role"] == "user" else "Assistant"
+            role_label = visitor_label if msg["role"] == "user" else "Assistant"
             hist_lines.append(f"{role_label}: {msg['content']}")
         parts.append("\n".join(hist_lines))
 
     # User message
-    parts.append(f"## {visitor_name}'s Message\n{user_message}")
+    parts.append(f"## Visitor Message\n{user_message}")
 
     return "\n\n".join(parts)
 
@@ -341,9 +346,10 @@ async def stream_ai_response(
     recent_tickers: Optional[list[dict]] = None,
     feedback_context: Optional[list[dict]] = None,
     previous_chats: Optional[list[dict]] = None,
-    visitor_name: str = "Nami",
+    visitor_name: str = "Visitor",
 ) -> AsyncGenerator[str, None]:
     """Build prompt, stream AI response. Main entry point."""
+    visitor_label = (visitor_name or "Visitor").strip() or "Visitor"
     prompt = build_prompt(
         user_message,
         language=language,
@@ -359,14 +365,10 @@ async def stream_ai_response(
         recent_tickers=recent_tickers,
         feedback_context=feedback_context,
         previous_chats=previous_chats,
-        visitor_name=visitor_name,
+        visitor_name=visitor_label,
     )
-    # Use dynamic system prompt if visitor is not Nami
-    system_prompt = SYSTEM_PROMPT
-    if visitor_name != "Nami":
-        system_prompt = SYSTEM_PROMPT.replace("Nami", visitor_name)
-        # Also replace なみ/ナミ if present (Japanese variants)
-        system_prompt = system_prompt.replace("なみ", visitor_name)
-    
+    # Inject the neutral display label when present; never rely on a hard-coded client name.
+    system_prompt = SYSTEM_PROMPT.replace("the user", visitor_label).replace("なみ", visitor_label)
+
     async for token in stream_deepseek(system_prompt, prompt):
         yield token

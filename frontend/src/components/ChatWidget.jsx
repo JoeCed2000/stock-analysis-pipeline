@@ -33,7 +33,7 @@ const QUICK_ACTIONS_JA = [
 ];
 
 // ── ChatWidget ──────────────────────────────────────────────────────────
-export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, currentUrl, visitorName }) {
+export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, currentUrl }) {
   const [open, setOpen] = useState(false);
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -58,7 +58,7 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
         const res = await fetch(`${API_BASE}/chat/session`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ visitor_name: visitorName || 'Nami', language: 'ja', visitor_id: visitorId }),
+          body: JSON.stringify({ language: 'ja', visitor_id: visitorId }),
         });
         if (res.ok && !cancelled) {
           const data = await res.json();
@@ -340,7 +340,7 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
       <div style={messagesContainerStyle}>
         {messages.length === 0 && !streaming && (
           <div style={welcomeStyle}>
-            <p style={{ margin: '0 0 8px 0', fontSize: 15 }}>👋 こんにちは、ナミさん！</p>
+            <p style={{ margin: '0 0 8px 0', fontSize: 15 }}>👋 こんにちは！</p>
             <p style={{ margin: 0, color: '#8b949e' }}>
               分析レポートについてのご質問や、フィードバックをいつでもお聞かせください。
             </p>

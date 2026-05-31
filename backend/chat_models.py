@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field
 
 class ChatSessionRequest(BaseModel):
     visitor_id: Optional[str] = None
-    visitor_name: str = "Nami"
     language: str = "ja"
     metadata: dict = Field(default_factory=dict)
 
@@ -43,7 +42,6 @@ class ChatSessionResponse(BaseModel):
     session_id: str
     visitor_id: str
     language: str
-    visitor_name: str
 
 
 class ChatMessageResponse(BaseModel):
@@ -97,7 +95,7 @@ class ChatSession:
         self,
         id: str,
         visitor_id: str = "",
-        visitor_name: str = "Nami",
+        visitor_name: str = "Visitor",
         language: str = "ja",
         status: str = "active",
         current_ticker: Optional[str] = None,

@@ -47,7 +47,7 @@ def _init_tables(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS chat_sessions (
             id              TEXT PRIMARY KEY,
             visitor_id      TEXT NOT NULL DEFAULT '',
-            visitor_name    TEXT NOT NULL DEFAULT 'Nami',
+            visitor_name    TEXT NOT NULL DEFAULT 'Visitor',
             language        TEXT NOT NULL DEFAULT 'ja',
             status          TEXT NOT NULL DEFAULT 'active',
             current_ticker  TEXT,
@@ -132,8 +132,6 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             ON chat_messages(status, created_at);
         CREATE INDEX IF NOT EXISTS idx_sessions_updated
             ON chat_sessions(updated_at);
-        CREATE INDEX IF NOT EXISTS idx_sessions_visitor
-            ON chat_sessions(visitor_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_pdf_ticker
             ON pdf_documents(ticker);
         CREATE INDEX IF NOT EXISTS idx_chunks_pdf
@@ -169,6 +167,18 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             VALUES (new.rowid, new.content, new.section_title);
         END;
     """)
+
+    existing_columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()
+    }
+    if "visitor_id" not in existing_columns:
+        conn.execute("ALTER TABLE chat_sessions ADD COLUMN visitor_id TEXT NOT NULL DEFAULT ''")
+    conn.execute(
+        "UPDATE chat_sessions SET visitor_name = 'Visitor' WHERE visitor_name IN ('Nami', '')"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sessions_visitor ON chat_sessions(visitor_id, created_at)"
+    )
     conn.commit()
 
 
@@ -176,7 +186,7 @@ def _init_tables(conn: sqlite3.Connection) -> None:
 
 def create_session(
     visitor_id: str = "",
-    visitor_name: str = "Nami",
+    visitor_name: str = "Visitor",
     language: str = "ja",
     metadata: Optional[dict] = None,
 ) -> ChatSession:
@@ -187,11 +197,11 @@ def create_session(
     conn.execute(
         """INSERT INTO chat_sessions (id, visitor_id, visitor_name, language, created_at, updated_at, last_seen_at, metadata_json)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (sid, visitor_id or "", visitor_name, language, now, now, now, meta_json),
+        (sid, visitor_id or "", visitor_name or "Visitor", language, now, now, now, meta_json),
     )
     conn.commit()
     return ChatSession(
-        id=sid, visitor_id=visitor_id or "", visitor_name=visitor_name, language=language,
+        id=sid, visitor_id=visitor_id or "", visitor_name=visitor_name or "Visitor", language=language,
         created_at=now, updated_at=now, last_seen_at=now,
         metadata_json=meta_json,
     )
@@ -313,46 +323,7 @@ def get_session_tickers(visitor_id: str, max_age_hours: int = 2) -> list[str]:
     return result
 
 
-def get_visitor_tickers(visitor_name: str, max_age_hours: int = 2) -> list[str]:
-    """Get tickers a visitor has viewed across ALL their sessions in N hours."""
-    conn = get_conn()
-    from datetime import datetime, timezone, timedelta
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
 
-    rows = conn.execute(
-        "SELECT metadata_json FROM chat_sessions WHERE visitor_name=? AND metadata_json IS NOT NULL",
-        (visitor_name,),
-    ).fetchall()
-
-    all_tickers: list[tuple[str, datetime]] = []
-    for (meta_json,) in rows:
-        try:
-            meta = json.loads(meta_json)
-        except json.JSONDecodeError:
-            continue
-        viewed = meta.get("viewed_tickers", [])
-        for v in viewed:
-            ticker = v.get("ticker") if isinstance(v, dict) else str(v)
-            if not ticker:
-                continue
-            at_str = v.get("at", "") if isinstance(v, dict) else ""
-            try:
-                at = datetime.fromisoformat(at_str)
-            except (ValueError, TypeError):
-                at = datetime.now(timezone.utc)  # unknown time, assume recent
-            if at >= cutoff:
-                all_tickers.append((ticker, at))
-
-    # Sort by time, most recent first, deduplicate keeping first occurrence
-    all_tickers.sort(key=lambda x: x[1], reverse=True)
-    seen = set()
-    result = []
-    for ticker, _ in all_tickers:
-        if ticker not in seen:
-            seen.add(ticker)
-            result.append(ticker)
-
-    return result
 
 
 def get_sessions_by_visitor(
@@ -653,7 +624,7 @@ def export_session(session_id: str) -> Optional[str]:
     """Export a chat session as formatted text. Returns the text or None."""
     conn = get_conn()
     session = conn.execute(
-        "SELECT visitor_name, language, current_ticker, created_at FROM chat_sessions WHERE id=?",
+        "SELECT visitor_id, language, current_ticker, created_at FROM chat_sessions WHERE id=?",
         (session_id,),
     ).fetchone()
     if not session:
@@ -671,17 +642,18 @@ def export_session(session_id: str) -> Optional[str]:
         (session_id,),
     ).fetchall()
 
+    visitor_label = session[0] or "legacy-session"
     lines = []
     lines.append("=" * 60)
     lines.append(f"CHAT SESSION: {session_id}")
-    lines.append(f"Visitor: {session[0]}  |  Language: {session[1]}  |  Ticker: {session[2] or 'N/A'}")
+    lines.append(f"Visitor ID: {visitor_label}  |  Language: {session[1]}  |  Ticker: {session[2] or 'N/A'}")
     lines.append(f"Started: {session[3]}")
     lines.append(f"Messages: {len(messages)}  |  Feedback items: {len(feedbacks)}")
     lines.append("=" * 60)
     lines.append("")
 
     for msg in messages:
-        role_label = "🧑 Nami" if msg[0] == "user" else "🤖 Assistant"
+        role_label = "🧑 Visitor" if msg[0] == "user" else "🤖 Assistant"
         ticker_tag = f" [{msg[3]}]" if msg[3] else ""
         lines.append(f"{role_label}{ticker_tag} — {msg[4][:19]}")
         lines.append("-" * 40)
@@ -715,19 +687,16 @@ def close_session(session_id: str) -> bool:
 
 
 def get_recent_feedback_for_context(visitor_id: str = "", limit: int = 10) -> list[dict]:
-    """Get recent feedback items for chat context, scoped by visitor_id.
+    """Get recent chat feedback items scoped by visitor_id.
 
-    Fail-closed: empty visitor_id returns empty list.
-    Pulls from both chat_feedback (auto-detected) and the JSON feedback_store.
-    Returns a list of {type, content, status, date, ticker} for the AI prompt.
+    Fail-closed: empty visitor_id returns empty list. The JSON form feedback
+    store is intentionally excluded because it currently has no visitor_id and
+    would leak global feedback across visitors.
     """
     if not visitor_id:
         return []
 
     conn = get_conn()
-    items = []
-
-    # 1. Chat feedback (auto-detected) — scoped by visitor_id
     rows = conn.execute(
         """SELECT cf.feedback_type, cf.content, cf.status, cf.created_at,
                   cs.current_ticker
@@ -739,6 +708,7 @@ def get_recent_feedback_for_context(visitor_id: str = "", limit: int = 10) -> li
         (visitor_id, limit),
     ).fetchall()
 
+    items = []
     for r in rows:
         items.append({
             "source": "chat",
@@ -749,36 +719,7 @@ def get_recent_feedback_for_context(visitor_id: str = "", limit: int = 10) -> li
             "ticker": r[4],
         })
 
-    # 2. Form feedback (JSON feedback_store) — try to load
-    try:
-        from . import feedback_store
-        all_fb = feedback_store.list_all_feedback()
-        for fb in all_fb[-limit:]:
-            files = fb.get("files", [])
-            content = (fb.get("text") or "")[:200]
-            if files:
-                content += f" [attached: {', '.join(f[:50] for f in files[:3])}]"
-            items.append({
-                "source": "form",
-                "type": fb.get("category", "other"),
-                "content": content,
-                "status": fb.get("status", "pending"),
-                "date": (fb.get("created_at") or "")[:10],
-                "ticker": fb.get("ticker"),
-            })
-    except Exception:
-        pass  # feedback_store may not be available
-
-    # Sort by date, most recent first, deduplicate by content
-    seen = set()
-    unique = []
-    for item in sorted(items, key=lambda x: x["date"], reverse=True):
-        key = item["content"][:80]
-        if key not in seen:
-            seen.add(key)
-            unique.append(item)
-
-    return unique[:limit]
+    return items[:limit]
 
 
 # ── Init ─────────────────────────────────────────────────────────────────────

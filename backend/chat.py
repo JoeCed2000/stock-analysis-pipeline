@@ -10,6 +10,7 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 import uuid
 from typing import Optional
@@ -38,6 +39,8 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 # ── Security constants ─────────────────────────────────────────────────────
 _MAX_MESSAGE_LENGTH = 4000  # characters
+_VISITOR_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
+_DEFAULT_VISITOR_NAME = "Visitor"
 
 # Trusted proxy IPs for X-Forwarded-For header validation
 _TRUSTED_PROXY_IPS = {
@@ -125,22 +128,17 @@ def _fingerprint_device(user_agent: str) -> str:
     return "-".join(parts)
 
 
-def _resolve_visitor_name(client_visitor_name: str, device_info: str) -> str:
-    """Resolve visitor name from device fingerprint, not client selector.
+def _normalize_visitor_id(raw_visitor_id: Optional[str]) -> str:
+    """Return a cryptographic visitor_id, never an IP/device-derived identity.
 
-    Priority:
-    1. Device fingerprint match → canonical identity
-    2. Unknown device → default
+    The frontend normally sends crypto.randomUUID() from localStorage. If the
+    value is missing, blank, or malformed, generate a fresh UUID4 server-side
+    instead of falling back to visitor_name, IP, or device fingerprinting.
     """
-    device = device_info.lower()
-    if device.startswith("linux") and "chrome" in device:
-        return "Cédric"
-    if device.startswith("apple-mac") and "safari" in device:
-        return "Nami"
-    if device.startswith("windows") and "chrome" in device:
-        return "Cédric"
-    # Unknown device → use fingerprint as name, not client-provided value
-    return client_visitor_name or "Visitor"
+    candidate = (raw_visitor_id or "").strip()
+    if _VISITOR_ID_RE.fullmatch(candidate):
+        return candidate
+    return uuid.uuid4().hex
 
 
 def _check_origin(request: Request) -> None:
@@ -179,16 +177,17 @@ def _utcnow_iso() -> str:
 
 @router.post("/session", response_model=ChatSessionResponse)
 async def create_session(req: ChatSessionRequest, request: Request):
-    """Create or return an existing session."""
-    # Capture client IP (with trusted proxy chain validation) and device fingerprint
+    """Create a chat session keyed by cryptographic visitor_id.
+
+    Identity isolation is based only on visitor_id. IP and device fingerprint are
+    recorded as diagnostics metadata, never used to merge or name visitors.
+    """
     client_ip = _get_real_client_ip(request)
     user_agent = request.headers.get("User-Agent", "")
     device_info = _fingerprint_device(user_agent)
+    visitor_id = _normalize_visitor_id(req.visitor_id)
 
-    # Generate UUID4 visitor_id if not provided
-    visitor_id = req.visitor_id or uuid.uuid4().hex
-
-    meta = req.metadata or {}
+    meta = dict(req.metadata or {})
     meta.update({
         "client_ip": client_ip,
         "user_agent": user_agent[:200],
@@ -198,7 +197,7 @@ async def create_session(req: ChatSessionRequest, request: Request):
 
     session = chat_store.create_session(
         visitor_id=visitor_id,
-        visitor_name=_resolve_visitor_name(req.visitor_name, device_info),
+        visitor_name=_DEFAULT_VISITOR_NAME,
         language=req.language,
         metadata=meta,
     )
@@ -212,7 +211,6 @@ async def create_session(req: ChatSessionRequest, request: Request):
         session_id=session.id,
         visitor_id=visitor_id,
         language=session.language,
-        visitor_name=session.visitor_name,
     )
 
 
@@ -448,7 +446,7 @@ async def _generate_and_stream(
             recent_tickers=ctx.get("recent_tickers"),
             feedback_context=ctx.get("feedback_context"),
             previous_chats=ctx.get("previous_chats"),
-            visitor_name=ctx.get("visitor_display_name", "Nami"),
+            visitor_name=ctx.get("visitor_display_name", "Visitor"),
         ):
             full_response += token
             if ws:
@@ -780,10 +778,11 @@ async def close_chat_session(session_id: str, request: Request):
     if not text:
         raise HTTPException(status_code=500, detail="Export failed")
 
-    # Save to file
+    # Save to file. Use visitor_id, never visitor_name/device-derived identity.
     _CHAT_EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     safe_ts = chat_store._utcnow_iso().replace(":", "-")[:19]
-    filename = f"chat_{session.visitor_name or 'nami'}_{safe_ts}_{session_id[:8]}.txt"
+    safe_visitor = re.sub(r"[^A-Za-z0-9_-]+", "", session.visitor_id or "")[:16] or "visitor"
+    filename = f"chat_{safe_visitor}_{safe_ts}_{session_id[:8]}.txt"
     filepath = _CHAT_EXPORT_DIR / filename
     filepath.write_text(text, encoding="utf-8")
 
@@ -791,7 +790,7 @@ async def close_chat_session(session_id: str, request: Request):
     chat_store.close_session(session_id)
     chat_store.log_event(session_id, "session_closed", {
         "export_file": str(filepath),
-        "message_count": text.count("🧑 Nami") + text.count("🤖 Assistant"),
+        "message_count": text.count("🧑 Visitor") + text.count("🤖 Assistant"),
     })
 
     # Write a pending-delivery marker for Hermes to pick up

@@ -22,14 +22,45 @@ def client():
 
 def test_create_session(client):
     res = client.post("/api/chat/session", json={
-        "visitor_name": "Nami",
+        "visitor_id": "visitor-test-123",
         "language": "ja",
     })
     assert res.status_code == 200
     data = res.json()
     assert data["session_id"].startswith("sess_")
     assert data["language"] == "ja"
-    assert data["visitor_name"] == "Nami"
+    assert data["visitor_id"] == "visitor-test-123"
+    assert "visitor_name" not in data
+
+
+def test_create_session_generates_visitor_id_when_missing(client):
+    res = client.post("/api/chat/session", json={"language": "ja"})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["session_id"].startswith("sess_")
+    assert data["visitor_id"]
+    assert "visitor_name" not in data
+
+
+def test_create_session_ignores_spoofed_visitor_name(client):
+    """Legacy/spoofed visitor_name payload must not reintroduce identity."""
+    import sqlite3
+    from backend import chat_store
+
+    res = client.post("/api/chat/session", json={
+        "visitor_id": "visitor-spoof-123",
+        "visitor_name": "Nami",
+        "language": "ja",
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert data["visitor_id"] == "visitor-spoof-123"
+    assert "visitor_name" not in data
+
+    conn = sqlite3.connect(chat_store.DB_PATH)
+    row = conn.execute("SELECT visitor_name FROM chat_sessions WHERE id=?", (data["session_id"],)).fetchone()
+    conn.close()
+    assert row[0] == "Visitor"
 
 
 def test_get_history_empty(client):
@@ -253,98 +284,101 @@ def test_max_message_size_rejected(client):
     assert "too long" in res.json()["detail"].lower()
 
 
-# ── Visitor Name Detection Tests ──────────────────────────────────────────
+# ── Visitor Display Name Hardening Tests ──────────────────────────────────
 import json
 
 
-def test_detect_visitor_ced_device():
-    """linux-chrome device → 'Cédric'."""
+def test_detect_visitor_neutral_for_linux_device():
+    """Device fingerprints are diagnostics only; Linux Chrome must not infer Cédric."""
     from backend.chat_context import _detect_visitor_name
     from backend import chat_store
     sid = chat_store.create_session(
-        visitor_name="Nami",
+        visitor_name="Visitor",
         language="ja",
         metadata={"client_ip": "2a01:cb00::1", "device": "linux-chrome", "user_agent": "..."}
     ).id
-    assert _detect_visitor_name(sid) == "Cédric"
+    assert _detect_visitor_name(sid) == "Visitor"
 
 
-def test_detect_visitor_nami_device():
-    """apple-mac-safari device → 'Nami'."""
+def test_detect_visitor_neutral_for_apple_device():
+    """Device fingerprints are diagnostics only; Apple/Safari must not infer Nami."""
     from backend.chat_context import _detect_visitor_name
     from backend import chat_store
     sid = chat_store.create_session(
-        visitor_name="Nami",
+        visitor_name="Visitor",
         language="ja",
         metadata={"client_ip": "86.242.1.1", "device": "apple-mac-safari", "user_agent": "..."}
     ).id
-    assert _detect_visitor_name(sid) == "Nami"
+    assert _detect_visitor_name(sid) == "Visitor"
 
 
-def test_detect_visitor_unknown_device():
-    """Unknown device → default 'Nami'."""
+def test_detect_visitor_explicit_display_name_only():
+    """Only an explicit display_name metadata field may customize the display label."""
     from backend.chat_context import _detect_visitor_name
     from backend import chat_store
     sid = chat_store.create_session(
-        visitor_name="Nami",
+        visitor_name="Visitor",
         language="ja",
-        metadata={"client_ip": "10.0.0.1", "device": "android-chrome", "user_agent": "..."}
+        metadata={"display_name": "Client A", "device": "android-chrome"}
     ).id
-    assert _detect_visitor_name(sid) == "Nami"
+    assert _detect_visitor_name(sid) == "Client A"
 
 
 def test_detect_visitor_missing_metadata():
-    """Session without metadata → default 'Nami'."""
+    """Session without metadata → neutral default."""
     from backend.chat_context import _detect_visitor_name
     from backend import chat_store
     sid = chat_store.create_session(
-        visitor_name="Nami",
+        visitor_name="Visitor",
         language="ja",
     ).id
-    assert _detect_visitor_name(sid) == "Nami"
+    assert _detect_visitor_name(sid) == "Visitor"
 
 
 def test_detect_visitor_corrupted_metadata():
-    """Session with corrupted metadata_json → default 'Nami'."""
+    """Session with corrupted metadata_json → neutral default."""
     from backend.chat_context import _detect_visitor_name
     from backend import chat_store
     import sqlite3
-    sid = chat_store.create_session(visitor_name="Nami", language="ja").id
-    # Corrupt the metadata
+    sid = chat_store.create_session(visitor_name="Visitor", language="ja").id
     conn = sqlite3.connect(chat_store.DB_PATH)
     conn.execute("UPDATE chat_sessions SET metadata_json='not-json' WHERE id=?", (sid,))
     conn.commit()
     conn.close()
-    assert _detect_visitor_name(sid) == "Nami"
+    assert _detect_visitor_name(sid) == "Visitor"
 
 
-def test_session_creation_stores_device_fingerprint(client):
-    """POST /api/chat/session stores device in metadata_json."""
+def test_session_creation_stores_device_fingerprint_without_identity(client):
+    """POST /api/chat/session stores device diagnostics, not visitor_name identity."""
     import sqlite3
     from backend import chat_store
     res = client.post("/api/chat/session", json={
-        "visitor_name": "Nami",
+        "visitor_id": "visitor-apple-123",
         "language": "ja",
     }, headers={
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15"
     })
     assert res.status_code == 200
     sid = res.json()["session_id"]
+    assert res.json()["visitor_id"] == "visitor-apple-123"
+    assert "visitor_name" not in res.json()
 
     conn = sqlite3.connect(chat_store.DB_PATH)
-    row = conn.execute("SELECT metadata_json FROM chat_sessions WHERE id=?", (sid,)).fetchone()
+    row = conn.execute("SELECT visitor_name, metadata_json FROM chat_sessions WHERE id=?", (sid,)).fetchone()
     conn.close()
-    meta = json.loads(row[0])
+    assert row[0] == "Visitor"
+    meta = json.loads(row[1])
     assert meta["device"] == "apple-mac-safari"
+    assert meta["visitor_id"] == "visitor-apple-123"
     assert "client_ip" in meta
 
 
-def test_session_creation_linux_chrome_fingerprint(client):
-    """POST /api/chat/session with Linux Chrome → device=linux-chrome."""
+def test_session_creation_linux_chrome_fingerprint_without_identity(client):
+    """POST /api/chat/session with Linux Chrome stores device only."""
     import sqlite3
     from backend import chat_store
     res = client.post("/api/chat/session", json={
-        "visitor_name": "Nami",
+        "visitor_id": "visitor-linux-123",
         "language": "ja",
     }, headers={
         "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0"
@@ -353,18 +387,20 @@ def test_session_creation_linux_chrome_fingerprint(client):
     sid = res.json()["session_id"]
 
     conn = sqlite3.connect(chat_store.DB_PATH)
-    row = conn.execute("SELECT metadata_json FROM chat_sessions WHERE id=?", (sid,)).fetchone()
+    row = conn.execute("SELECT visitor_name, metadata_json FROM chat_sessions WHERE id=?", (sid,)).fetchone()
     conn.close()
-    meta = json.loads(row[0])
+    assert row[0] == "Visitor"
+    meta = json.loads(row[1])
     assert meta["device"] == "linux-chrome"
+    assert meta["visitor_id"] == "visitor-linux-123"
 
 
-def test_context_includes_visitor_display_name(client):
-    """build_chat_context() returns visitor_display_name from session fingerprint."""
+def test_context_includes_neutral_visitor_display_name(client):
+    """build_chat_context() returns neutral visitor_display_name from fingerprints."""
     import asyncio
     from backend import chat_context, chat_store
     sid = chat_store.create_session(
-        visitor_name="Nami",
+        visitor_name="Visitor",
         language="ja",
         metadata={"client_ip": "2a01:cb00::1", "device": "linux-chrome"}
     ).id
@@ -374,22 +410,21 @@ def test_context_includes_visitor_display_name(client):
         user_message="Hello",
         language="ja",
     ))
-    assert ctx["visitor_display_name"] == "Cédric"
+    assert ctx["visitor_display_name"] == "Visitor"
 
 
-def test_visitor_isolation_different_devices_different_names(client):
-    """Two sessions with different device types get different visitor names."""
+def test_visitor_identity_not_derived_from_different_devices(client):
+    """Different device types must not produce different visitor names."""
     from backend import chat_store
-    ced_sid = chat_store.create_session(
-        visitor_name="Nami", language="ja",
+    linux_sid = chat_store.create_session(
+        visitor_name="Visitor", language="ja",
         metadata={"client_ip": "2a01:cb00::1", "device": "linux-chrome"}
     ).id
-    nami_sid = chat_store.create_session(
-        visitor_name="Nami", language="ja",
+    apple_sid = chat_store.create_session(
+        visitor_name="Visitor", language="ja",
         metadata={"client_ip": "86.242.1.1", "device": "apple-mac-safari"}
     ).id
 
     from backend.chat_context import _detect_visitor_name
-    assert _detect_visitor_name(ced_sid) == "Cédric"
-    assert _detect_visitor_name(nami_sid) == "Nami"
-    assert _detect_visitor_name(ced_sid) != _detect_visitor_name(nami_sid)
+    assert _detect_visitor_name(linux_sid) == "Visitor"
+    assert _detect_visitor_name(apple_sid) == "Visitor"

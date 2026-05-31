@@ -14,55 +14,30 @@ logger = logging.getLogger(__name__)
 
 
 def _detect_visitor_name(session_id: str) -> str:
-    """Detect visitor display name for personalized AI greeting.
+    """Return a neutral display label without fingerprint-based identity.
 
-    Priority:
-    1. visitor_id (once CHAT-HARDEN t_8e1f1cdd ships) → resolved via metadata
-    2. Device fingerprint (current heuristic, pre-visitor_id)
-    3. Default: "Nami"
+    CHAT-HARDEN: visitor isolation uses visitor_id only. IP, user-agent, and
+    device fingerprints are diagnostic metadata and must never infer the user's
+    name. A future explicit profile/display-name field may be used here, but
+    absent that field the safe default is a neutral label.
     """
     from . import chat_store
     import json
 
     try:
         session = chat_store.get_session(session_id)
-        if not session:
-            return "Nami"
+        if not session or not session.metadata_json:
+            return "Visitor"
 
-        meta = {}
-        if session.metadata_json:
-            try:
-                meta = json.loads(session.metadata_json)
-            except json.JSONDecodeError:
-                pass
-
-        # Phase 2 (CHAT-HARDEN): visitor_id-based identity
-        visitor_id = None
         try:
-            visitor_id = getattr(session, "visitor_id", None)
-        except Exception:
-            pass
-        if not visitor_id:
-            visitor_id = meta.get("visitor_id")
+            meta = json.loads(session.metadata_json)
+        except json.JSONDecodeError:
+            return "Visitor"
 
-        if visitor_id:
-            # Check metadata for stored display_name
-            name = meta.get("display_name")
-            if name:
-                return name
-            # No display_name yet → fall through to device fingerprint
-            # (do NOT return "Nami" here — that skips Phase 1)
-
-        # Phase 1 (current): device fingerprint heuristic
-        device = meta.get("device", "")
-        if device == "linux-chrome":
-            return "Cédric"
-        if device == "apple-mac-safari":
-            return "Nami"
-
-        return "Nami"
+        display_name = (meta.get("display_name") or "").strip()
+        return display_name or "Visitor"
     except Exception:
-        return "Nami"
+        return "Visitor"
 
 
 async def build_chat_context(
