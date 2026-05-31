@@ -421,7 +421,18 @@ Return ONLY the JSON object. No markdown fences, no explanations."""
 
     system = "You are a senior equity research analyst synthesizing company overviews. You write in English. You return ONLY valid JSON with no markdown fences."
 
-    # ── Primary: DeepSeek V3 (fast, cheap, reliable) ──────────
+    # ── Primary: Codex GPT-5.5 (highest quality, free via ChatGPT Plus) ──
+    response = _codex_chat(prompt, system=system, max_tokens=6000)
+    if response:
+        parsed = _parse_llm_response(response, ticker, yf_info)
+        if parsed is not None:
+            logger.info(f"[{ticker}] GPT-5.5 synthesis succeeded")
+            return parsed
+        logger.warning(f"[{ticker}] GPT-5.5 response failed to parse, falling back to DeepSeek...")
+    else:
+        logger.warning(f"[{ticker}] GPT-5.5 unavailable, falling back to DeepSeek...")
+
+    # ── Fallback 1: DeepSeek V4 Pro (paid, reliable) ──────────
     try:
         from backend.kimi_provider import _deepseek_chat
         ds_response = _deepseek_chat(prompt, system=system, max_tokens=6000, temperature=0.0)
@@ -431,18 +442,7 @@ Return ONLY the JSON object. No markdown fences, no explanations."""
                 logger.info(f"[{ticker}] DeepSeek synthesis succeeded")
                 return parsed
     except Exception as ds_e:
-        logger.warning(f"[{ticker}] DeepSeek primary failed: {ds_e}")
-
-    # ── Fallback 1: Codex Spark (slower, higher quality) ──────
-    response = _codex_chat(prompt, system=system, max_tokens=6000)
-
-    if response:
-        parsed = _parse_llm_response(response, ticker, yf_info)
-        if parsed is not None:
-            return parsed
-        logger.warning(f"[{ticker}] Codex response failed to parse, using deterministic fallback...")
-    else:
-        logger.warning(f"[{ticker}] Codex unavailable (quota/auth/hung), using deterministic fallback...")
+        logger.warning(f"[{ticker}] DeepSeek fallback failed: {ds_e}")
 
     # ── Fallback 2: Deterministic (yfinance + regex) ─────────
     return _fallback_overview(ticker, yf_info)

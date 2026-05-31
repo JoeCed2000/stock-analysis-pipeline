@@ -47,7 +47,7 @@ def _codex_chat(prompt: str, system: str = "", max_tokens: int = 1000, model: Op
     when EN and JP deep-dive generations run in parallel.
     
     Args:
-        model: Optional model override (e.g. 'gpt-5.3-spark' for cheap fallback).
+        model: Optional model override (e.g. 'gpt-5.5' for highest quality).
                When None, uses the default Codex model.
     """
     if not os.path.exists(CODEX_BIN):
