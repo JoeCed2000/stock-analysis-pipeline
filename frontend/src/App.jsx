@@ -71,15 +71,11 @@ export default function App() {
     return 'en';
   });
 
-  const [audienceMode, setAudienceMode] = useState(() => {
-    // Auto-detect from device fingerprint (no manual selector)
-    // Migrate old localStorage key to prevent stale values from removed selector
+  const [audienceMode] = useState(() => {
+    // Clear stale manual/persona selector state; chat identity is visitor_id-based.
     if (typeof window !== 'undefined') {
       localStorage.removeItem('audienceMode');
     }
-    const ua = (typeof navigator !== 'undefined' && navigator.userAgent || '').toLowerCase();
-    const isNamiDevice = ua.includes('mac os') && ua.includes('safari') && !ua.includes('chrome');
-    if (isNamiDevice) return 'nami_personal';
     return 'client_report';
   });
 
@@ -143,7 +139,7 @@ export default function App() {
     const params = new URLSearchParams();
     if (quarter) params.set('quarter', quarter);
     if (lang === 'jp') params.set('lang', 'jp');
-    if (audienceMode !== 'nami_personal') params.set('audience_mode', audienceMode);
+    params.set('audience_mode', audienceMode);
     const qs = params.toString();
     const pdfUrl = `${API_BASE}/report/${result.ticker}/pdf${qs ? '?' + qs : ''}`;
     
@@ -461,7 +457,7 @@ export default function App() {
           </span>
           <LanguageSelector lang={lang} onLanguageChange={handleLanguageChange} />
           <span style={{ marginLeft: 8, fontSize: 11, color: '#8b949e' }}>
-            {audienceMode === 'nami_personal' ? '🧠 Nami' : '📋 Client'}
+            📋 Client
           </span>
         </div>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: '#e1e4e8', marginBottom: 4 }}>
@@ -608,7 +604,7 @@ export default function App() {
 
       {/* Live Chat Widget — global, always visible */}
       <ChatWidget
-        lang="ja"
+        lang={lang}
         ticker={results.length > 0 ? results[0].ticker : null}
         pdfTitle={results.length > 0 ? `${results[0].ticker} Deep Dive Report` : null}
       />

@@ -84,7 +84,7 @@ export default function FeedbackPanel({ ticker, t, lang }) {
       marginTop: 16,
     }}>
       <h4 style={{ margin: '0 0 4px 0', color: '#e1e4e8', fontSize: 14 }}>
-        💬 {lang === 'jp' ? 'フィードバック' : 'Feedback for Nami'}
+        💬 {lang === 'jp' ? 'フィードバック' : 'Feedback'}
       </h4>
       <p style={{ margin: '0 0 12px 0', color: '#484f58', fontSize: 11 }}>
         📎 {lang === 'jp' ? '最新のディープダイブPDFが自動添付されます' : 'Latest deep-dive PDF auto-attached'}

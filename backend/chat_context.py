@@ -13,31 +13,53 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def _detect_visitor_name(session_id: str) -> str:
-    """Return a neutral display label without fingerprint-based identity.
+def localized_visitor_label(language: str | None = "ja") -> str:
+    """Return the neutral visitor label in the active chat language."""
+    lang = (language or "ja").strip().lower()
+    if lang.startswith("en"):
+        return "visitor"
+    return "訪問者"
 
-    CHAT-HARDEN: visitor isolation uses visitor_id only. IP, user-agent, and
-    device fingerprints are diagnostic metadata and must never infer the user's
-    name. A future explicit profile/display-name field may be used here, but
-    absent that field the safe default is a neutral label.
+
+def resolve_visitor_display_name(metadata: dict | None, language: str | None = "ja") -> str:
+    """Resolve the chat display label without fingerprint-derived identity.
+
+    The client cannot choose a name via the legacy visitor_name payload. Known
+    device fingerprints are retained only as audit metadata; they never map to
+    personal names. Unknown and known fingerprints alike receive a localized
+    neutral visitor label unless trusted server-side metadata supplies an
+    explicit display_name.
     """
+    meta = metadata or {}
+    display_name = (meta.get("display_name") or "").strip()
+    if display_name:
+        return display_name
+
+    return localized_visitor_label(language)
+
+
+def _detect_visitor_name(session_id: str) -> str:
+    """Return the server-resolved display label for a chat session."""
     from . import chat_store
     import json
 
     try:
         session = chat_store.get_session(session_id)
-        if not session or not session.metadata_json:
-            return "Visitor"
+        if not session:
+            return localized_visitor_label("en")
+
+        language = getattr(session, "language", "ja") or "ja"
+        if not session.metadata_json:
+            return localized_visitor_label(language)
 
         try:
             meta = json.loads(session.metadata_json)
         except json.JSONDecodeError:
-            return "Visitor"
+            return localized_visitor_label(language)
 
-        display_name = (meta.get("display_name") or "").strip()
-        return display_name or "Visitor"
+        return resolve_visitor_display_name(meta, language)
     except Exception:
-        return "Visitor"
+        return localized_visitor_label("en")
 
 
 async def build_chat_context(

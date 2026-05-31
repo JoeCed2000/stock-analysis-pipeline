@@ -179,8 +179,9 @@ def _utcnow_iso() -> str:
 async def create_session(req: ChatSessionRequest, request: Request):
     """Create a chat session keyed by cryptographic visitor_id.
 
-    Identity isolation is based only on visitor_id. IP and device fingerprint are
-    recorded as diagnostics metadata, never used to merge or name visitors.
+    Identity isolation is based only on visitor_id. Device fingerprints are
+    audit metadata only; they never resolve to personal display labels, merge
+    sessions, or override visitor_id.
     """
     client_ip = _get_real_client_ip(request)
     user_agent = request.headers.get("User-Agent", "")
@@ -197,7 +198,7 @@ async def create_session(req: ChatSessionRequest, request: Request):
 
     session = chat_store.create_session(
         visitor_id=visitor_id,
-        visitor_name=_DEFAULT_VISITOR_NAME,
+        visitor_name=chat_context.resolve_visitor_display_name(meta, req.language),
         language=req.language,
         metadata=meta,
     )

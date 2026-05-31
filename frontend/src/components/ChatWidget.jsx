@@ -22,6 +22,38 @@ function uid() {
   return 'ik_' + Math.random().toString(36).slice(2, 10);
 }
 
+function normalizeChatLanguage(lang) {
+  return String(lang || 'ja').toLowerCase().startsWith('en') ? 'en' : 'ja';
+}
+
+function mergeChatMessages(existingMessages, incomingMessages) {
+  const merged = [...existingMessages];
+
+  for (const incoming of incomingMessages || []) {
+    const byId = merged.findIndex((m) => m.id === incoming.id);
+    if (byId >= 0) {
+      merged[byId] = { ...merged[byId], ...incoming };
+      continue;
+    }
+
+    if (incoming.role === 'user') {
+      const optimisticIdx = merged.findIndex((m) =>
+        m.role === 'user'
+        && String(m.id || '').startsWith('ik_')
+        && m.content === incoming.content
+      );
+      if (optimisticIdx >= 0) {
+        merged[optimisticIdx] = { ...merged[optimisticIdx], ...incoming };
+        continue;
+      }
+    }
+
+    merged.push(incoming);
+  }
+
+  return merged.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+}
+
 // ── Quick action suggestions ─────────────────────────────────────────────
 const QUICK_ACTIONS_JA = [
   'この銘柄の要点を教えて',
@@ -32,8 +64,63 @@ const QUICK_ACTIONS_JA = [
   'バグを報告する',
 ];
 
+const QUICK_ACTIONS_EN = [
+  'Give me the key takeaways for this stock',
+  'What are the main risks?',
+  'Compare the bull and bear cases',
+  'Summarize this PDF briefly',
+  'Report something confusing',
+  'Report a bug',
+];
+
+const CHAT_COPY = {
+  ja: {
+    connectError: '接続に失敗しました',
+    sendError: '送信に失敗しました',
+    statusOnline: '🟢 オンライン',
+    statusReconnecting: '🟡 再接続中…',
+    statusOffline: '🔴 オフライン',
+    openTitle: 'チャットを開く',
+    closeLabel: '閉じる',
+    header: '💬 アシスタント',
+    greeting: '👋 こんにちは！',
+    intro: '分析レポートについてのご質問や、フィードバックをいつでもお聞かせください。',
+    errorFallback: '[エラーが発生しました]',
+    typing: '入力中…',
+    copyTitle: 'コピー',
+    copied: '✅ コピー済',
+    copy: '📋 コピー',
+    thinking: '考え中...',
+    placeholder: 'この分析について質問してください…',
+    retry: '🔄 再試行',
+  },
+  en: {
+    connectError: 'Failed to connect',
+    sendError: 'Failed to send message',
+    statusOnline: '🟢 Online',
+    statusReconnecting: '🟡 Reconnecting…',
+    statusOffline: '🔴 Offline',
+    openTitle: 'Open chat',
+    closeLabel: 'Close',
+    header: '💬 Assistant',
+    greeting: '👋 Hello!',
+    intro: 'Ask any question about the analysis report, or share feedback at any time.',
+    errorFallback: '[An error occurred]',
+    typing: 'Typing…',
+    copyTitle: 'Copy',
+    copied: '✅ Copied',
+    copy: '📋 Copy',
+    thinking: 'Thinking...',
+    placeholder: 'Ask a question about this analysis…',
+    retry: '🔄 Retry',
+  },
+};
+
 // ── ChatWidget ──────────────────────────────────────────────────────────
 export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, currentUrl }) {
+  const chatLang = normalizeChatLanguage(lang);
+  const copy = CHAT_COPY[chatLang];
+  const quickActions = chatLang === 'en' ? QUICK_ACTIONS_EN : QUICK_ACTIONS_JA;
   const [open, setOpen] = useState(false);
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -44,6 +131,7 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
   const [error, setError] = useState('');
   const [wsStatus, setWsStatus] = useState('disconnected'); // connected | disconnected | reconnecting
   const timersRef = useRef([]);
+  const sendingRef = useRef(false);
   const wsRef = useRef(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
@@ -58,7 +146,7 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
         const res = await fetch(`${API_BASE}/chat/session`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ language: 'ja', visitor_id: visitorId }),
+          body: JSON.stringify({ language: chatLang, visitor_id: visitorId }),
         });
         if (res.ok && !cancelled) {
           const data = await res.json();
@@ -75,12 +163,12 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
           }
         }
       } catch (e) {
-        if (!cancelled) setError('Failed to connect');
+        if (!cancelled) setError(copy.connectError);
       }
     }
     init();
     return () => { cancelled = true; };
-  }, []);
+  }, [chatLang, copy.connectError]);
 
   // ── WebSocket ──────────────────────────────────────────────────────
   const connectWs = useCallback(() => {
@@ -132,13 +220,24 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
       case 'assistant_started':
         setStreaming(true);
         setStreamingMsgId(data.message_id);
-        setMessages(prev => [...prev, {
-          id: data.message_id,
-          role: 'assistant',
-          content: '',
-          status: 'processing',
-          created_at: new Date().toISOString(),
-        }]);
+        setMessages(prev => {
+          const existingIdx = prev.findIndex(m => m.id === data.message_id);
+          const assistantMsg = {
+            id: data.message_id,
+            role: 'assistant',
+            content: '',
+            status: 'processing',
+            created_at: new Date().toISOString(),
+          };
+          if (existingIdx >= 0) {
+            return prev.map((m, idx) => (
+              idx === existingIdx
+                ? { ...assistantMsg, ...m, status: m.status || 'processing' }
+                : m
+            ));
+          }
+          return [...prev, assistantMsg];
+        });
         break;
       case 'assistant_delta':
         setMessages(prev => prev.map(m =>
@@ -149,6 +248,7 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
         setStreaming(false);
         setStreamingMsgId(null);
         setLoading(false);
+        sendingRef.current = false;
         setMessages(prev => prev.map(m =>
           m.id === data.message_id ? { ...m, status: 'completed' } : m
         ));
@@ -157,16 +257,17 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
         setStreaming(false);
         setStreamingMsgId(null);
         setLoading(false);
+        sendingRef.current = false;
         setMessages(prev => prev.map(m =>
           m.id === data.message_id
-            ? { ...m, content: m.content || '[エラーが発生しました]', status: 'failed' }
+            ? { ...m, content: m.content || copy.errorFallback, status: 'failed' }
             : m
         ));
         break;
       default:
         break;
     }
-  }, []);
+  }, [copy.errorFallback]);
 
   // ── Scroll to bottom ────────────────────────────────────────────────
   useEffect(() => {
@@ -175,7 +276,8 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
 
   // ── Send message ────────────────────────────────────────────────────
   const sendMessage = useCallback(async (text) => {
-    if (!text.trim() || !sessionId || loading) return;
+    if (!text.trim() || !sessionId || loading || sendingRef.current) return;
+    sendingRef.current = true;
     const trimmed = text.trim();
     setInput('');
     setLoading(true);
@@ -188,6 +290,7 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
       status: 'completed',
       created_at: new Date().toISOString(),
     };
+    const idempotencyKey = userMsg.id;
     setMessages(prev => [...prev, userMsg]);
 
     try {
@@ -197,20 +300,26 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
         body: JSON.stringify({
           session_id: sessionId,
           message: trimmed,
-          idempotency_key: uid(),
+          idempotency_key: idempotencyKey,
           context: {
             current_url: currentUrl || window.location.href,
             route: window.location.hash || '/',
             ticker: ticker || null,
             pdf_id: pdfId || null,
             pdf_title: pdfTitle || null,
-            client_language: 'ja',
+            client_language: chatLang,
           },
         }),
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || `HTTP ${res.status}`);
+      }
+      const sendData = await res.json();
+      if (sendData.user_message_id) {
+        setMessages(prev => prev.map(m =>
+          m.id === userMsg.id ? { ...m, id: sendData.user_message_id } : m
+        ));
       }
       // REST fallback: if WebSocket doesn't respond within 5s, poll history
       const restTimeout = setTimeout(async () => {
@@ -220,24 +329,13 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
           if (histRes.ok) {
             const histData = await histRes.json();
             const msgs = histData.messages || [];
-            // Find assistant messages not yet in our list
-            const newMsgs = msgs.filter(m => !messages.find(existing => existing.id === m.id));
-            if (newMsgs.length > 0) {
-              setMessages(prev => {
-                const merged = [...prev];
-                for (const nm of newMsgs) {
-                  if (!merged.find(m => m.id === nm.id)) {
-                    merged.push(nm);
-                  }
-                }
-                return merged;
-              });
-            }
+            setMessages(prev => mergeChatMessages(prev, msgs));
             // Check if any message is still processing
             const hasProcessing = msgs.some(m => m.status === 'processing' && m.role === 'assistant');
             if (!hasProcessing) {
               setLoading(false);
               setStreaming(false);
+              sendingRef.current = false;
             }
           }
         } catch {}
@@ -247,15 +345,17 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
       const safetyTimeout = setTimeout(() => {
         setLoading(false);
         setStreaming(false);
+        sendingRef.current = false;
       }, 15000);
 
       // Store for cleanup
       timersRef.current.push(restTimeout, safetyTimeout);
     } catch (e) {
-      setError(e.message || 'Failed to send message');
+      setError(e.message || copy.sendError);
       setLoading(false);
+      sendingRef.current = false;
     }
-  }, [sessionId, loading, ticker, pdfId, pdfTitle, currentUrl]);
+  }, [sessionId, loading, ticker, pdfId, pdfTitle, currentUrl, chatLang, copy.sendError]);
 
   // ── Keyboard handler ────────────────────────────────────────────────
   const handleKeyDown = useCallback((e) => {
@@ -296,9 +396,9 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
   }, [open]);
 
   // ── Get status display ──────────────────────────────────────────────
-  const statusText = wsStatus === 'connected' ? '🟢 オンライン'
-    : wsStatus === 'reconnecting' ? '🟡 再接続中…'
-    : '🔴 オフライン';
+  const statusText = wsStatus === 'connected' ? copy.statusOnline
+    : wsStatus === 'reconnecting' ? copy.statusReconnecting
+    : copy.statusOffline;
 
   // ── Bubble ──────────────────────────────────────────────────────────
   if (!open) {
@@ -307,8 +407,8 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
         <button
           onClick={() => setOpen(true)}
           style={bubbleStyle}
-          title="チャットを開く"
-          aria-label="チャットを開く"
+          title={copy.openTitle}
+          aria-label={copy.openTitle}
         >
           💬
         </button>
@@ -323,7 +423,7 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
       <div style={headerStyle}>
         <div>
           <div style={{ fontWeight: 700, fontSize: 15, color: '#e6edf3' }}>
-            💬 アシスタント
+            {copy.header}
           </div>
           <div style={{ fontSize: 11, color: '#8b949e', marginTop: 2 }}>
             {statusText}
@@ -331,7 +431,7 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
             {pdfTitle && <span style={{ marginLeft: 6, color: '#d29922' }}>· PDF</span>}
           </div>
         </div>
-        <button onClick={() => setOpen(false)} style={closeButtonStyle} aria-label="閉じる">
+        <button onClick={() => setOpen(false)} style={closeButtonStyle} aria-label={copy.closeLabel}>
           ✕
         </button>
       </div>
@@ -340,12 +440,12 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
       <div style={messagesContainerStyle}>
         {messages.length === 0 && !streaming && (
           <div style={welcomeStyle}>
-            <p style={{ margin: '0 0 8px 0', fontSize: 15 }}>👋 こんにちは！</p>
+            <p style={{ margin: '0 0 8px 0', fontSize: 15 }}>{copy.greeting}</p>
             <p style={{ margin: 0, color: '#8b949e' }}>
-              分析レポートについてのご質問や、フィードバックをいつでもお聞かせください。
+              {copy.intro}
             </p>
             <div style={{ marginTop: 14, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {QUICK_ACTIONS_JA.map((action, i) => (
+              {quickActions.map((action, i) => (
                 <button
                   key={i}
                   onClick={() => sendMessage(action)}
@@ -363,20 +463,20 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
             <div style={msg.role === 'user' ? userBubbleStyle : assistantBubbleStyle}>
               <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content || (msg.status === 'processing' ? '…' : '')}</div>
               {msg.status === 'processing' && !streaming && (
-                <span style={typingStyle}>入力中…</span>
+                <span style={typingStyle}>{copy.typing}</span>
               )}
               {msg.status === 'failed' && (
                 <button onClick={() => retryMessage(msg)} style={retryButtonStyle}>
-                  🔄 再試行
+                  {copy.retry}
                 </button>
               )}
               {msg.role === 'assistant' && msg.content && msg.status === 'completed' && (
                 <button
                   onClick={() => copyMessage(msg)}
                   style={copyButtonStyle}
-                  title="コピー"
+                  title={copy.copyTitle}
                 >
-                  {copiedId === msg.id ? '✅ コピー済' : '📋 コピー'}
+                  {copiedId === msg.id ? copy.copied : copy.copy}
                 </button>
               )}
             </div>
@@ -411,7 +511,7 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
           <span className="chat-typing-dot">●</span>
           <span className="chat-typing-dot">●</span>
           <span className="chat-typing-dot">●</span>
-          <span style={{ marginLeft: 8, fontSize: 12, color: '#8b949e' }}>考え中...</span>
+          <span style={{ marginLeft: 8, fontSize: 12, color: '#8b949e' }}>{copy.thinking}</span>
         </div>
       )}
 
@@ -422,7 +522,7 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="この分析について質問してください…"
+          placeholder={copy.placeholder}
           rows={2}
           style={chatInputStyle}
           disabled={false}

@@ -1,15 +1,16 @@
 """AI service for the live chat widget.
 
-Builds the system prompt, calls DeepSeek with streaming,
-and saves the final response.
+Builds the system prompt and streams responses through a configurable chat
+engine (OpenAI, Gemini, or DeepSeek), without exposing provider details to the
+client-facing conversation.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
-from typing import AsyncGenerator, Optional
+from dataclasses import dataclass
+from typing import Any, AsyncGenerator, Optional
 
 import logging
 
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # ── System Prompt ────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = r"""You are an AI assistant inside Ced's Stock Analysis platform.
+SYSTEM_PROMPT = r"""You are an AI assistant inside a stock analysis platform.
 
 ## Your Role
 Your job is to help the user understand stock analysis reports, ticker pages, PDFs, risks,
@@ -117,7 +118,7 @@ When the user indicates they're done or the conversation is wrapping up:
 - Ask if the summary is complete and accurate:
   「以上が今回の会話のまとめです。不足している点や、他にご質問はありますか？」
 - If there were actionable items (bugs reported, features requested), confirm they've been recorded:
-  「ご指摘いただいた点は記録し、Cedに共有されます。」
+  「ご指摘いただいた点は記録し、運営チームに共有されます。」
 - Do NOT close abruptly — always offer one more opportunity to ask or clarify.
 
 ## Important
@@ -136,6 +137,22 @@ When the user indicates they're done or the conversation is wrapping up:
 - If marked 🔴 (open), acknowledge it's still being worked on.
 - Do NOT list all feedback items unless the user asks — weave them in only when relevant.
 """
+
+
+def _localized_visitor_label(language: str | None = "ja") -> str:
+    """Return the neutral visitor label in the active prompt language."""
+    lang = (language or "ja").strip().lower()
+    if lang.startswith("en"):
+        return "visitor"
+    return "訪問者"
+
+
+def _normalize_visitor_label(visitor_name: str | None, language: str = "ja") -> str:
+    """Normalize legacy Visitor fallbacks into localized labels."""
+    label = (visitor_name or "").strip()
+    if not label or label.lower() == "visitor":
+        return _localized_visitor_label(language)
+    return label
 
 
 def build_prompt(
@@ -158,14 +175,15 @@ def build_prompt(
 ) -> str:
     """Build the full prompt sent to the AI, including context."""
 
-    visitor_label = (visitor_name or "Visitor").strip() or "Visitor"
+    visitor_label = _normalize_visitor_label(visitor_name, language)
     parts = []
 
     parts.append(
         "## Visitor Identity\n"
         f"- Display label: {visitor_label}\n"
-        "- Do not infer identity from IP address, user-agent, device, route, or ticker history.\n"
-        "- Use neutral second-person wording unless the visitor explicitly provided a display name."
+        "- Use only this server-provided label; do not infer or invent another identity.\n"
+        "- If the label is a real name or ends with -san, address the visitor with that label when natural.\n"
+        "- If the label is the localized neutral visitor label, prefer neutral second-person wording."
     )
 
     # Language instruction
@@ -258,54 +276,204 @@ def build_prompt(
         parts.append("\n".join(hist_lines))
 
     # User message
-    parts.append(f"## Visitor Message\n{user_message}")
+    message_heading = "Visitor Message" if language == "en" else "訪問者メッセージ"
+    parts.append(f"## {message_heading}\n{user_message}")
 
     return "\n\n".join(parts)
 
 
 # ── Streaming DeepSeek Call ──────────────────────────────────────────────────
 
-async def stream_deepseek(
-    system_prompt: str,
-    user_prompt: str,
-    *,
-    max_tokens: int = 2048,
-    temperature: float = 0.0,
-) -> AsyncGenerator[str, None]:
-    """Stream tokens from DeepSeek API. Yields content deltas."""
-    api_key = os.getenv("DEEPSEEK_API_KEY", "")
-    if not api_key:
-        yield "[ERROR: DeepSeek API key not configured]"
-        return
 
-    import httpx
 
-    payload = {
-        "model": "deepseek-v4-pro",
+# ── Chat Engine Configuration ───────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class ChatEngineConfig:
+    provider: str
+    model: str
+    api_key: str
+    endpoint: str
+    max_tokens: int
+    temperature: float
+    timeout_seconds: float
+
+
+_PROVIDER_ALIASES = {
+    "google": "gemini",
+    "google_gemini": "gemini",
+    "google-gemini": "gemini",
+}
+
+_DEFAULT_MODELS = {
+    "openai": "gpt-4.1-mini",
+    "deepseek": "deepseek-v4-pro",
+    "gemini": "gemini-1.5-flash",
+}
+
+_OPENAI_COMPATIBLE_ENDPOINTS = {
+    "openai": "https://api.openai.com/v1/chat/completions",
+    "deepseek": "https://api.deepseek.com/v1/chat/completions",
+}
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning("Invalid integer env for %s; using default", name)
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning("Invalid float env for %s; using default", name)
+        return default
+
+
+def _normalize_provider(provider: str) -> str:
+    normalized = provider.strip().lower().replace(" ", "_")
+    return _PROVIDER_ALIASES.get(normalized, normalized)
+
+
+def _default_provider() -> str:
+    explicit = os.getenv("SA_CHAT_PROVIDER", "").strip()
+    if explicit:
+        return _normalize_provider(explicit)
+    if os.getenv("OPENAI_API_KEY", "").strip():
+        return "openai"
+    if os.getenv("DEEPSEEK_API_KEY", "").strip():
+        return "deepseek"
+    if os.getenv("GEMINI_API_KEY", "").strip() or os.getenv("GOOGLE_API_KEY", "").strip():
+        return "gemini"
+    return "openai"
+
+
+def _provider_api_key(provider: str) -> str:
+    if provider == "openai":
+        return os.getenv("OPENAI_API_KEY", "").strip()
+    if provider == "deepseek":
+        return os.getenv("DEEPSEEK_API_KEY", "").strip()
+    if provider == "gemini":
+        return (os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")).strip()
+    return ""
+
+
+def _chat_engine_config(*, provider: Optional[str] = None, model: Optional[str] = None) -> ChatEngineConfig:
+    resolved_provider = _normalize_provider(provider or _default_provider())
+    if resolved_provider not in _DEFAULT_MODELS:
+        logger.warning("Unsupported SA chat provider %r; falling back to openai", resolved_provider)
+        resolved_provider = "openai"
+
+    resolved_model = (model or os.getenv("SA_CHAT_MODEL", "").strip() or _DEFAULT_MODELS[resolved_provider]).strip()
+    if resolved_provider == "gemini":
+        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{resolved_model}:streamGenerateContent"
+    else:
+        endpoint = _OPENAI_COMPATIBLE_ENDPOINTS[resolved_provider]
+
+    return ChatEngineConfig(
+        provider=resolved_provider,
+        model=resolved_model,
+        api_key=_provider_api_key(resolved_provider),
+        endpoint=endpoint,
+        max_tokens=_env_int("SA_CHAT_MAX_OUTPUT_TOKENS", 900),
+        temperature=_env_float("SA_CHAT_TEMPERATURE", 0.15),
+        timeout_seconds=_env_float("SA_CHAT_TIMEOUT_SECONDS", 120.0),
+    )
+
+
+def _client_facing_error(language: str = "ja") -> str:
+    if language == "en":
+        return "I'm sorry, the chat service is temporarily unavailable. Please try again shortly."
+    return "申し訳ありません。現在チャットサービスが一時的に利用できません。しばらくしてからもう一度お試しください。"
+
+
+def _openai_compatible_payload(config: ChatEngineConfig, system_prompt: str, user_prompt: str) -> dict[str, Any]:
+    return {
+        "model": config.model,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        "max_tokens": max_tokens,
-        "temperature": temperature,
+        "max_tokens": config.max_tokens,
+        "temperature": config.temperature,
         "stream": True,
     }
 
+
+def _gemini_payload(config: ChatEngineConfig, system_prompt: str, user_prompt: str) -> dict[str, Any]:
+    return {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": f"{system_prompt}\n\n{user_prompt}"}],
+            }
+        ],
+        "generationConfig": {
+            "maxOutputTokens": config.max_tokens,
+            "temperature": config.temperature,
+        },
+    }
+
+
+def _extract_openai_delta(data: dict[str, Any]) -> str:
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
+        return data.get("choices", [{}])[0].get("delta", {}).get("content", "") or ""
+    except (AttributeError, IndexError, TypeError):
+        return ""
+
+
+def _extract_gemini_delta(data: Any) -> str:
+    if isinstance(data, list):
+        return "".join(_extract_gemini_delta(item) for item in data)
+    if not isinstance(data, dict):
+        return ""
+    chunks: list[str] = []
+    for candidate in data.get("candidates", []) or []:
+        content = candidate.get("content", {}) if isinstance(candidate, dict) else {}
+        for part in content.get("parts", []) or []:
+            if isinstance(part, dict) and part.get("text"):
+                chunks.append(str(part["text"]))
+    return "".join(chunks)
+
+
+async def _stream_openai_compatible(
+    config: ChatEngineConfig,
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    language: str = "ja",
+) -> AsyncGenerator[str, None]:
+    import httpx  # type: ignore[import-not-found]
+
+    if not config.api_key:
+        logger.error("SA chat provider credentials missing for provider=%s", config.provider)
+        yield _client_facing_error(language)
+        return
+
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(config.timeout_seconds)) as client:
             async with client.stream(
                 "POST",
-                "https://api.deepseek.com/v1/chat/completions",
+                config.endpoint,
                 headers={
-                    "Authorization": f"Bearer {api_key}",
+                    "Authorization": f"Bearer {config.api_key}",
                     "Content-Type": "application/json",
                 },
-                json=payload,
+                json=_openai_compatible_payload(config, system_prompt, user_prompt),
             ) as response:
                 if response.status_code != 200:
-                    body = await response.aread()
-                    logger.error(f"DeepSeek HTTP {response.status_code}: {body[:500]}")
-                    yield f"[ERROR: DeepSeek returned {response.status_code}]"
+                    await response.aread()
+                    logger.error("SA chat provider HTTP error provider=%s status=%s", config.provider, response.status_code)
+                    yield _client_facing_error(language)
                     return
 
                 async for line in response.aiter_lines():
@@ -315,19 +483,110 @@ async def stream_deepseek(
                     if data_str == "[DONE]":
                         return
                     try:
-                        data = json.loads(data_str)
-                        delta = data.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            yield content
-                    except (json.JSONDecodeError, KeyError, IndexError):
+                        content = _extract_openai_delta(json.loads(data_str))
+                    except json.JSONDecodeError:
                         continue
+                    if content:
+                        yield content
     except httpx.ReadTimeout:
-        logger.warning("DeepSeek stream timeout")
-        yield "\n\n[応答がタイムアウトしました。もう一度お試しください。]"
-    except Exception as e:
-        logger.error(f"DeepSeek stream error: {e}")
-        yield f"\n\n[エラーが発生しました: {type(e).__name__}]"
+        logger.warning("SA chat stream timeout provider=%s", config.provider)
+        yield _client_facing_error(language)
+    except Exception:
+        logger.exception("SA chat stream error provider=%s", config.provider)
+        yield _client_facing_error(language)
+
+
+async def _stream_gemini(
+    config: ChatEngineConfig,
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    language: str = "ja",
+) -> AsyncGenerator[str, None]:
+    import httpx  # type: ignore[import-not-found]
+
+    if not config.api_key:
+        logger.error("SA chat provider credentials missing for provider=%s", config.provider)
+        yield _client_facing_error(language)
+        return
+
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(config.timeout_seconds)) as client:
+            async with client.stream(
+                "POST",
+                config.endpoint,
+                headers={
+                    "x-goog-api-key": config.api_key,
+                    "Content-Type": "application/json",
+                },
+                json=_gemini_payload(config, system_prompt, user_prompt),
+            ) as response:
+                if response.status_code != 200:
+                    await response.aread()
+                    logger.error("SA chat provider HTTP error provider=%s status=%s", config.provider, response.status_code)
+                    yield _client_facing_error(language)
+                    return
+
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    data_str = line[6:] if line.startswith("data: ") else line
+                    if data_str == "[DONE]":
+                        return
+                    try:
+                        content = _extract_gemini_delta(json.loads(data_str))
+                    except json.JSONDecodeError:
+                        continue
+                    if content:
+                        yield content
+    except httpx.ReadTimeout:
+        logger.warning("SA chat stream timeout provider=%s", config.provider)
+        yield _client_facing_error(language)
+    except Exception:
+        logger.exception("SA chat stream error provider=%s", config.provider)
+        yield _client_facing_error(language)
+
+
+async def stream_chat_engine(
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    language: str = "ja",
+) -> AsyncGenerator[str, None]:
+    """Stream tokens from the configured chat provider."""
+    config = _chat_engine_config()
+    if config.provider == "gemini":
+        async for token in _stream_gemini(config, system_prompt, user_prompt, language=language):
+            yield token
+        return
+
+    async for token in _stream_openai_compatible(config, system_prompt, user_prompt, language=language):
+        yield token
+
+async def stream_deepseek(
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    max_tokens: int = 2048,
+    temperature: float = 0.0,
+) -> AsyncGenerator[str, None]:
+    """Backward-compatible DeepSeek stream wrapper.
+
+    New chat traffic should use stream_chat_engine(), but this wrapper preserves
+    any direct internal callers without hard-coding model or endpoint details.
+    """
+    config = _chat_engine_config(provider="deepseek")
+    config = ChatEngineConfig(
+        provider=config.provider,
+        model=config.model,
+        api_key=config.api_key,
+        endpoint=config.endpoint,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        timeout_seconds=config.timeout_seconds,
+    )
+    async for token in _stream_openai_compatible(config, system_prompt, user_prompt):
+        yield token
 
 
 async def stream_ai_response(
@@ -348,8 +607,8 @@ async def stream_ai_response(
     previous_chats: Optional[list[dict]] = None,
     visitor_name: str = "Visitor",
 ) -> AsyncGenerator[str, None]:
-    """Build prompt, stream AI response. Main entry point."""
-    visitor_label = (visitor_name or "Visitor").strip() or "Visitor"
+    """Build prompt and stream the configured AI response. Main entry point."""
+    visitor_label = _normalize_visitor_label(visitor_name, language)
     prompt = build_prompt(
         user_message,
         language=language,
@@ -367,8 +626,7 @@ async def stream_ai_response(
         previous_chats=previous_chats,
         visitor_name=visitor_label,
     )
-    # Inject the neutral display label when present; never rely on a hard-coded client name.
-    system_prompt = SYSTEM_PROMPT.replace("the user", visitor_label).replace("なみ", visitor_label)
+    system_prompt = SYSTEM_PROMPT
 
-    async for token in stream_deepseek(system_prompt, prompt):
+    async for token in stream_chat_engine(system_prompt, prompt, language=language):
         yield token

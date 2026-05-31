@@ -1853,6 +1853,38 @@ async def list_analyses():
     return JSONResponse({"analyses": analyses})
 
 
+def _recent_searches_payload(limit: int = 50, offset: int = 0, status: str = "all") -> dict:
+    """Build the read-only recent search payload used by admin and public UI routes."""
+    from backend.search_db import read_recent_sqlite, _ensure_db, DB_PATH
+    import sqlite3
+
+    results = read_recent_sqlite(limit=max(1, min(limit, 200)), offset=max(0, offset), status_filter=status)
+    # Get total count for pagination
+    _ensure_db()
+    conn = sqlite3.connect(str(DB_PATH))
+    total = conn.execute("SELECT COUNT(*) as n FROM searches").fetchone()[0]
+    conn.close()
+    return {"total": total, "searches": results}
+
+
+def _search_stats_payload() -> dict:
+    """Build read-only aggregate search statistics for dashboard display."""
+    from backend.search_db import get_stats
+
+    return get_stats()
+
+
+@app.get("/api/recent-searches")
+async def public_recent_searches(limit: int = 50, offset: int = 0, status: str = "all"):
+    """Public read-only recent search events for the static production dashboard.
+
+    The static frontend cannot carry an admin API key. This route exposes only
+    already-visible operational search metadata; privileged admin routes remain
+    protected under `/api/admin/*`.
+    """
+    return JSONResponse(_recent_searches_payload(limit=limit, offset=offset, status=status))
+
+
 @app.get("/api/admin/recent-searches", dependencies=[Depends(_require_auth)])
 async def recent_searches(limit: int = 50, offset: int = 0, status: str = "all"):
     """Get recent search events for near-real-time monitoring.
@@ -1864,15 +1896,13 @@ async def recent_searches(limit: int = 50, offset: int = 0, status: str = "all")
     
     Returns {total: int, searches: [{timestamp, ticker, status, duration_ms, cache_hit, user_agent}]}
     """
-    from backend.search_db import read_recent_sqlite, _ensure_db, DB_PATH
-    import sqlite3
-    results = read_recent_sqlite(limit=max(1, min(limit, 200)), offset=max(0, offset), status_filter=status)
-    # Get total count for pagination
-    _ensure_db()
-    conn = sqlite3.connect(str(DB_PATH))
-    total = conn.execute("SELECT COUNT(*) as n FROM searches").fetchone()[0]
-    conn.close()
-    return JSONResponse({"total": total, "searches": results})
+    return JSONResponse(_recent_searches_payload(limit=limit, offset=offset, status=status))
+
+
+@app.get("/api/search-stats")
+async def public_search_stats():
+    """Public read-only aggregate search statistics for the static dashboard."""
+    return JSONResponse(_search_stats_payload())
 
 
 @app.get("/api/admin/search-stats", dependencies=[Depends(_require_auth)])
@@ -1881,8 +1911,7 @@ async def search_stats():
     
     Returns {total, success_rate, avg_duration_ms, top_tickers, recent_errors, last_24h}
     """
-    from backend.search_db import get_stats
-    return JSONResponse(get_stats())
+    return JSONResponse(_search_stats_payload())
 
 
 # ── Nami Feedback System ──────────────────────────────────────────────

@@ -60,7 +60,7 @@ def test_create_session_ignores_spoofed_visitor_name(client):
     conn = sqlite3.connect(chat_store.DB_PATH)
     row = conn.execute("SELECT visitor_name FROM chat_sessions WHERE id=?", (data["session_id"],)).fetchone()
     conn.close()
-    assert row[0] == "Visitor"
+    assert row[0] == "訪問者"
 
 
 def test_get_history_empty(client):
@@ -288,8 +288,8 @@ def test_max_message_size_rejected(client):
 import json
 
 
-def test_detect_visitor_neutral_for_linux_device():
-    """Device fingerprints are diagnostics only; Linux Chrome must not infer Cédric."""
+def test_detect_visitor_label_for_known_linux_device():
+    """Known Linux Chrome fingerprint resolves to a neutral visitor label."""
     from backend.chat_context import _detect_visitor_name
     from backend import chat_store
     sid = chat_store.create_session(
@@ -297,11 +297,11 @@ def test_detect_visitor_neutral_for_linux_device():
         language="ja",
         metadata={"client_ip": "2a01:cb00::1", "device": "linux-chrome", "user_agent": "..."}
     ).id
-    assert _detect_visitor_name(sid) == "Visitor"
+    assert _detect_visitor_name(sid) == "訪問者"
 
 
-def test_detect_visitor_neutral_for_apple_device():
-    """Device fingerprints are diagnostics only; Apple/Safari must not infer Nami."""
+def test_detect_visitor_label_for_known_apple_device():
+    """Known Apple/Safari fingerprint resolves to a neutral visitor label."""
     from backend.chat_context import _detect_visitor_name
     from backend import chat_store
     sid = chat_store.create_session(
@@ -309,7 +309,7 @@ def test_detect_visitor_neutral_for_apple_device():
         language="ja",
         metadata={"client_ip": "86.242.1.1", "device": "apple-mac-safari", "user_agent": "..."}
     ).id
-    assert _detect_visitor_name(sid) == "Visitor"
+    assert _detect_visitor_name(sid) == "訪問者"
 
 
 def test_detect_visitor_explicit_display_name_only():
@@ -332,7 +332,7 @@ def test_detect_visitor_missing_metadata():
         visitor_name="Visitor",
         language="ja",
     ).id
-    assert _detect_visitor_name(sid) == "Visitor"
+    assert _detect_visitor_name(sid) == "訪問者"
 
 
 def test_detect_visitor_corrupted_metadata():
@@ -345,11 +345,11 @@ def test_detect_visitor_corrupted_metadata():
     conn.execute("UPDATE chat_sessions SET metadata_json='not-json' WHERE id=?", (sid,))
     conn.commit()
     conn.close()
-    assert _detect_visitor_name(sid) == "Visitor"
+    assert _detect_visitor_name(sid) == "訪問者"
 
 
-def test_session_creation_stores_device_fingerprint_without_identity(client):
-    """POST /api/chat/session stores device diagnostics, not visitor_name identity."""
+def test_session_creation_stores_neutral_apple_display_label_without_exposing_it(client):
+    """POST /api/chat/session stores a neutral label and keeps fingerprint as audit metadata."""
     import sqlite3
     from backend import chat_store
     res = client.post("/api/chat/session", json={
@@ -366,15 +366,15 @@ def test_session_creation_stores_device_fingerprint_without_identity(client):
     conn = sqlite3.connect(chat_store.DB_PATH)
     row = conn.execute("SELECT visitor_name, metadata_json FROM chat_sessions WHERE id=?", (sid,)).fetchone()
     conn.close()
-    assert row[0] == "Visitor"
+    assert row[0] == "訪問者"
     meta = json.loads(row[1])
     assert meta["device"] == "apple-mac-safari"
     assert meta["visitor_id"] == "visitor-apple-123"
     assert "client_ip" in meta
 
 
-def test_session_creation_linux_chrome_fingerprint_without_identity(client):
-    """POST /api/chat/session with Linux Chrome stores device only."""
+def test_session_creation_linux_chrome_fingerprint_display_label(client):
+    """POST /api/chat/session with Linux Chrome stores a neutral display label."""
     import sqlite3
     from backend import chat_store
     res = client.post("/api/chat/session", json={
@@ -389,14 +389,14 @@ def test_session_creation_linux_chrome_fingerprint_without_identity(client):
     conn = sqlite3.connect(chat_store.DB_PATH)
     row = conn.execute("SELECT visitor_name, metadata_json FROM chat_sessions WHERE id=?", (sid,)).fetchone()
     conn.close()
-    assert row[0] == "Visitor"
+    assert row[0] == "訪問者"
     meta = json.loads(row[1])
     assert meta["device"] == "linux-chrome"
     assert meta["visitor_id"] == "visitor-linux-123"
 
 
 def test_context_includes_neutral_visitor_display_name(client):
-    """build_chat_context() returns neutral visitor_display_name from fingerprints."""
+    """build_chat_context() returns the neutral display label for fingerprints."""
     import asyncio
     from backend import chat_context, chat_store
     sid = chat_store.create_session(
@@ -410,11 +410,11 @@ def test_context_includes_neutral_visitor_display_name(client):
         user_message="Hello",
         language="ja",
     ))
-    assert ctx["visitor_display_name"] == "Visitor"
+    assert ctx["visitor_display_name"] == "訪問者"
 
 
-def test_visitor_identity_not_derived_from_different_devices(client):
-    """Different device types must not produce different visitor names."""
+def test_known_device_labels_are_neutral_and_server_controlled(client):
+    """Different fingerprints stay isolated but resolve to neutral display labels."""
     from backend import chat_store
     linux_sid = chat_store.create_session(
         visitor_name="Visitor", language="ja",
@@ -426,5 +426,5 @@ def test_visitor_identity_not_derived_from_different_devices(client):
     ).id
 
     from backend.chat_context import _detect_visitor_name
-    assert _detect_visitor_name(linux_sid) == "Visitor"
-    assert _detect_visitor_name(apple_sid) == "Visitor"
+    assert _detect_visitor_name(linux_sid) == "訪問者"
+    assert _detect_visitor_name(apple_sid) == "訪問者"

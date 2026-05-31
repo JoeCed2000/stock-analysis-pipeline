@@ -19,8 +19,8 @@ export default function AdminPage({ t, onClose }) {
     try {
       const offset = page * PAGE_SIZE;
       const [statsRes, searchRes, fbRes] = await Promise.all([
-        fetch(`${API}/admin/search-stats`).then(r => r.ok ? r.json() : null),
-        fetch(`${API}/admin/recent-searches?limit=${PAGE_SIZE}&offset=${offset}`).then(r => r.ok ? r.json() : null),
+        fetch(`${API}/search-stats`).then(r => r.ok ? r.json() : null),
+        fetch(`${API}/recent-searches?limit=${PAGE_SIZE}&offset=${offset}`).then(r => r.ok ? r.json() : null),
         fetch(`${API}/feedback`).then(r => r.ok ? r.json() : { error: `HTTP ${r.status}` }),
       ]);
       if (statsRes) setStats(statsRes);
@@ -161,7 +161,7 @@ export default function AdminPage({ t, onClose }) {
       <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 8, overflow: 'hidden', marginBottom: 24 }}>
         <div style={{ padding: '10px 16px', borderBottom: '1px solid #30363d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>
-            <span style={{ fontSize: 14, fontWeight: 600, color: '#e1e4e8' }}>💬 Nami Feedback</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#e1e4e8' }}>💬 Client Feedback</span>
             <span style={{ fontSize: 11, color: '#484f58', marginLeft: 8 }}>(auto-refresh 5s)</span>
           </span>
           <span style={{
@@ -178,7 +178,7 @@ export default function AdminPage({ t, onClose }) {
           </div>
         ) : feedbacks.length === 0 ? (
           <div style={{ padding: 24, textAlign: 'center', color: '#484f58', fontSize: 13 }}>
-            No feedback yet — Nami's notes will appear here
+            No feedback yet — client notes will appear here
           </div>
         ) : (
           <div style={{ maxHeight: 400, overflowY: 'auto' }}>
