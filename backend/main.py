@@ -2030,10 +2030,12 @@ async def clear_seeking_alpha_access():
 
 @app.post("/api/admin/seeking-alpha/test")
 async def test_seeking_alpha_access(payload: SeekingAlphaProbeRequest | None = None):
-    """Probe transcript access after feedback-page cookie submission.
+    """Probe stored Seeking Alpha cookies without exposing the cookie value.
 
-    Public by design because it only returns probe metadata and never exposes the
-    stored Cookie header; mutation/clear operations stay controlled separately.
+    Public by design for the feedback page: after Nami submits cookies, the UI
+    must be able to confirm pending → verified/failed without embedding an
+    admin API key. The endpoint only accepts a ticker and returns probe status;
+    it never returns the stored Cookie header.
     """
     from backend.seeking_alpha_access import probe_access
 
