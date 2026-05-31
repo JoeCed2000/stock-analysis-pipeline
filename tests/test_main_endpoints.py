@@ -124,6 +124,37 @@ def test_dossier_download_quarter_param_is_read_only(tmp_path, monkeypatch):
     assert exc.value.status_code == 404
 
 
+def test_report_pdf_does_not_retry_when_validator_blocked(tmp_path, monkeypatch):
+    analyses_dir = tmp_path / "analyses"
+    analysis = analyses_dir / "2026-05-04_AAPL_Apple_Inc"
+    final_report_dir = analysis / "07_final_report"
+    data_dir = analysis / "03_financial_data_sources"
+    final_report_dir.mkdir(parents=True)
+    data_dir.mkdir(parents=True)
+    (final_report_dir / "report.md").write_text("# Report")
+    (data_dir / "financials_AAPL.xlsx").write_bytes(b"xlsx")
+    (final_report_dir / "deep_dive_validation.json").write_text(
+        json.dumps({"passed": False, "issues": ["Forbidden marker found"]}),
+        encoding="utf-8",
+    )
+
+    def fail_if_thread_started(*args, **kwargs):
+        raise AssertionError("Validator-blocked PDFs must not be regenerated indefinitely")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(main, "ANALYSES_DIR", analyses_dir)
+    monkeypatch.setattr("threading.Thread", fail_if_thread_started)
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(main.get_report_pdf("AAPL"))
+
+    assert exc.value.status_code == 422
+    detail = cast(dict[str, Any], exc.value.detail)
+    assert detail["status"] == "pdf_blocked"
+    assert detail["retryable"] is False
+    assert "Forbidden marker found" in detail["issues"]
+
+
 def test_root_requirements_include_backend_requirements():
     def package_names(path):
         names = set()

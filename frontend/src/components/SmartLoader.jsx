@@ -6,6 +6,7 @@ const PHASE_TO_STEP = {
   fetching: 1,
   generating: 2,
   finalizing: 3,
+  pdf_blocked: 3,
   done: 3,
   error: 3,
 };
@@ -16,6 +17,7 @@ const PHASE_LABEL_FALLBACK = {
   fetching: 'Fetching financial data',
   generating: 'Generating analysis',
   finalizing: 'Finalizing dossier',
+  pdf_blocked: 'PDF generation blocked — data validation failed',
   done: 'Completed',
   error: 'Error',
 };
@@ -26,6 +28,7 @@ const PHASE_BASE_PERCENT = {
   fetching: 35,
   generating: 65,
   finalizing: 85,
+  pdf_blocked: 100,
   done: 100,
   error: 100,
 };
@@ -35,11 +38,12 @@ const ACTIVITIES_BY_PHASE = {
   fetching: ['act_fetch_is', 'act_fetch_bs', 'act_fetch_cf', 'act_parse_docs'],
   generating: ['act_calc_ratios', 'act_compare_peers', 'act_score_growth', 'act_score_momentum'],
   finalizing: ['act_score_value', 'act_score_profit', 'act_prep_insights', 'act_finalize'],
+  pdf_blocked: ['act_pdf_blocked'],
   done: ['act_finalize'],
   error: ['act_finalize'],
 };
 
-const PHASE_ORDER = ['queued', 'fetching', 'generating', 'finalizing', 'done'];
+const PHASE_ORDER = ['queued', 'fetching', 'generating', 'finalizing', 'pdf_blocked', 'done'];
 
 function clampPercent(value) {
   if (value == null || Number.isNaN(value)) return 0;

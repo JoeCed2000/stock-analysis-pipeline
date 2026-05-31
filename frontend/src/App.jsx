@@ -161,7 +161,10 @@ export default function App() {
         toast.textContent = `📊 Generating deep-dive for ${result.ticker}...`;
         document.body.appendChild(toast);
         
+        const MAX_PDF_POLL_ATTEMPTS = 36; // 36 * 5s = 3 min cap for transient generation
+        let pollAttempts = 0;
         const poll = async () => {
+          pollAttempts += 1;
           const res = await fetch(pdfUrl);
           if (res.status === 200) {
             toast.textContent = `✅ Deep-dive ready for ${result.ticker}`;
@@ -169,9 +172,17 @@ export default function App() {
             const blob = await res.blob();
             const blobUrl = URL.createObjectURL(blob);
             window.open(blobUrl, '_blank', 'noopener');
-          } else if (res.status === 202) {
+          } else if (res.status === 422) {
+            let detail = null;
+            try { detail = await res.json(); } catch { detail = null; }
+            toast.textContent = `⛔ PDF blocked for ${result.ticker}: ${detail?.detail?.message || 'validation failed'}`;
+            setTimeout(() => toast.remove(), 9000);
+          } else if (res.status === 202 && pollAttempts < MAX_PDF_POLL_ATTEMPTS) {
             toast.textContent = `📊 Generating deep-dive for ${result.ticker}...`;
             setTimeout(poll, 5000);
+          } else if (res.status === 202) {
+            toast.textContent = `⏱️ PDF generation timed out for ${result.ticker}`;
+            setTimeout(() => toast.remove(), 9000);
           } else {
             toast.textContent = `❌ Failed to generate deep-dive for ${result.ticker}`;
             setTimeout(() => toast.remove(), 5000);
@@ -270,6 +281,22 @@ export default function App() {
                 await new Promise((r2) => setTimeout(r2, 3000));
                 try {
                   const ds = await getDossierStatus(r.ticker);
+                  if (ds?.phase === 'pdf_blocked' || ds?.deep_dive_validated === false) {
+                    setProgress((p) => ({
+                      ...p,
+                      current: idx,
+                      ticker: r.ticker,
+                      phase: 'pdf_blocked',
+                      phaseText: t('pdf_blocked') || 'PDF generation blocked — data validation failed',
+                      percent: 100,
+                    }));
+                    const issues = Array.isArray(ds?.verification_issues) && ds.verification_issues.length > 0
+                      ? `: ${ds.verification_issues.join('; ')}`
+                      : '';
+                    setError(`PDF generation blocked for ${r.ticker}${issues}`);
+                    return;
+                  }
+
                   const sectionCount = countDossierSections(ds?.files || []);
                   const tickerProgress = (idx + Math.min(sectionCount, 7) / 7) / resultsCount;
                   const pct = 78 + (tickerProgress * 20);

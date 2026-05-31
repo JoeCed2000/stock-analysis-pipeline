@@ -65,6 +65,7 @@ def test_get_dossier_status_blocks_download_when_validation_fails(tmp_path, monk
 
     assert status["ready"] is True
     assert status["deep_dive_validated"] is False
+    assert status["phase"] == async_dossier.DossierPhase.PDF_BLOCKED
     assert status["verified"] is False
     assert status["download_enabled"] is False
     assert "Forbidden marker found" in status["verification_issues"]

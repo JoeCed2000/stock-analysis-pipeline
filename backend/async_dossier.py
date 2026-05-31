@@ -255,8 +255,10 @@ def get_dossier_status(ticker: str) -> dict:
     elif status.get("deep_dive_validated") is True and status.get("ready"):
         status["phase"] = DossierPhase.COMPLETE
     elif status.get("deep_dive_validated") is False:
-        # Validation explicitly failed
-        status["phase"] = DossierPhase.FAILED
+        # Validation explicitly failed: PDF generation is blocked until the
+        # underlying data/renderer issue is fixed. This is not a retryable
+        # transient failure, so expose the dedicated phase to the frontend.
+        status["phase"] = DossierPhase.PDF_BLOCKED
         status["error"] = reg_entry.get("error") or "Deep-dive validation failed"
     elif status.get("deep_dive_validated") is None and status.get("ready"):
         # Report is ready but deep-dive hasn't been generated yet

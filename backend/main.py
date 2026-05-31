@@ -1046,7 +1046,7 @@ async def dossier_status(ticker: str):
 
 
 @app.get("/api/dossier/{ticker}/download")
-async def dossier_download(ticker: str, lang: str = "en", quarter: str = None):
+async def dossier_download(ticker: str, lang: str = "en", quarter: str | None = None):
     """Download an already-generated dossier as ZIP.
 
     This endpoint is intentionally read-only: it never triggers a ticker analysis,
@@ -1468,6 +1468,31 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
         deep_dive = analysis_dir / "07_final_report" / "earnings_deep_dive.pdf"
     report_pdf = analysis_dir / "07_final_report" / "report.pdf"
 
+    # Validator-blocked dossiers are terminal until the underlying content issue
+    # is fixed. Do not keep retrying PDF generation: that creates an infinite
+    # 202/poll loop and hides the real data-contract error from the UI.
+    validation_path = deep_dive.parent / "deep_dive_validation.json"
+    if not deep_dive.exists() and validation_path.exists():
+        try:
+            validation = json.loads(validation_path.read_text(encoding="utf-8"))
+        except Exception:
+            validation = {}
+        if validation.get("passed") is False:
+            issues = validation.get("issues") or validation.get("errors") or []
+            if not isinstance(issues, list):
+                issues = [str(issues)]
+            from backend.async_dossier import set_dossier_phase, DossierPhase
+            set_dossier_phase(ticker, DossierPhase.PDF_BLOCKED, error="Deep-dive validation failed")
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "status": "pdf_blocked",
+                    "retryable": False,
+                    "message": f"PDF build blocked — data contract violation for {ticker}",
+                    "issues": issues,
+                },
+            )
+
     # Prefer deep-dive PDF; if it doesn't exist, launch async generation
     # and return 202 Accepted so the client can poll (no 2-min timeout)
     if not deep_dive.exists():
@@ -1476,6 +1501,7 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
         async def _generate_deep_dive_async(ticker: str, lang: str, dd_path: Path):
             """Background deep-dive generation — runs in thread to not block."""
             from backend.async_dossier import set_dossier_phase, DossierPhase
+            from backend.earnings_deep_dive.errors import ValidationError
             set_dossier_phase(ticker, DossierPhase.PDF_GENERATING)
             try:
                 from backend.earnings_deep_dive.generator import generate_deep_dive
@@ -1539,7 +1565,6 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                     annotate_sections_with_warnings,
                     format_validation_error,
                 )
-                from backend.earnings_deep_dive.errors import ValidationError
                 sections = getattr(dd_response, 'sections', None)
                 pre_val = validate_pre_render(
                     ticker=ticker,

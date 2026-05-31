@@ -33,6 +33,7 @@ const translations = {
     
     // Progress
     buildingDossier: "📊 Building dossier…",
+    pdf_blocked: "PDF generation blocked — data validation failed",
     scoringAnalysis: "⚡ Scoring analysis…",
     sections: "sections",
     of: "of",
@@ -107,6 +108,7 @@ const translations = {
     act_parse_docs: "Parsing regulatory filings",
     act_score_momentum: "Scoring momentum indicators",
     act_finalize: "Finalizing analysis report",
+    act_pdf_blocked: "PDF generation blocked by validation gate",
     error: "Error",
     noResults: "No results",
     tryExample: "Try e.g. AAPL, MSFT, GOOGL",
@@ -217,6 +219,7 @@ const translations = {
     
     // Progress
     buildingDossier: "📊 ドシエ作成中…",
+    pdf_blocked: "PDF生成が検証ゲートで停止しました",
     scoringAnalysis: "⚡ スコアリング分析中…",
     sections: "セクション",
     of: "/",
@@ -291,6 +294,7 @@ const translations = {
     act_parse_docs: "規制当局への提出書類を解析中",
     act_score_momentum: "モメンタム指標を評価中",
     act_finalize: "分析レポートを最終処理中",
+    act_pdf_blocked: "検証ゲートによりPDF生成を停止しました",
     error: "エラー",
     noResults: "結果なし",
     tryExample: "例: AAPL, MSFT, GOOGL",
