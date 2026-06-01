@@ -126,6 +126,7 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [streamingMsgId, setStreamingMsgId] = useState(null);
   const [error, setError] = useState('');
@@ -276,8 +277,9 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
 
   // ── Send message ────────────────────────────────────────────────────
   const sendMessage = useCallback(async (text) => {
-    if (!text.trim() || !sessionId || loading || sendingRef.current) return;
+    if (!text.trim() || !sessionId || submitting || sendingRef.current) return;
     sendingRef.current = true;
+    setSubmitting(true);
     const trimmed = text.trim();
     setInput('');
     setLoading(true);
@@ -316,6 +318,8 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
         throw new Error(errData.detail || `HTTP ${res.status}`);
       }
       const sendData = await res.json();
+      setSubmitting(false);
+      sendingRef.current = false;
       if (sendData.user_message_id) {
         setMessages(prev => prev.map(m =>
           m.id === userMsg.id ? { ...m, id: sendData.user_message_id } : m
@@ -353,9 +357,10 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
     } catch (e) {
       setError(e.message || copy.sendError);
       setLoading(false);
+      setSubmitting(false);
       sendingRef.current = false;
     }
-  }, [sessionId, loading, ticker, pdfId, pdfTitle, currentUrl, chatLang, copy.sendError]);
+  }, [sessionId, submitting, ticker, pdfId, pdfTitle, currentUrl, chatLang, copy.sendError]);
 
   // ── Keyboard handler ────────────────────────────────────────────────
   const handleKeyDown = useCallback((e) => {
@@ -529,8 +534,8 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
         />
         <button
           onClick={() => sendMessage(input)}
-          disabled={!input.trim() || (loading && !streaming)}
-          style={sendButtonStyle(!input.trim() || (loading && !streaming))}
+          disabled={!input.trim() || submitting}
+          style={sendButtonStyle(!input.trim() || submitting)}
         >
           ➤
         </button>

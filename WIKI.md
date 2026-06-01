@@ -1,5 +1,31 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-01 — Chat send button unlock fixed
+
+**Scope:** Production chat widget on `https://sa.cedlabusa.net/stock-analysis/`; frontend-only UX/state fix after the provider failover work.
+
+### Root cause
+- The chat send button disabled state was tied to the long-lived assistant response state: `loading && !streaming`.
+- If the WebSocket/REST response cycle stayed in a loading-ish state, the UI could keep the send button disabled after the first message even though the textarea remained usable.
+- The synchronous duplicate-submit guard (`sendingRef`) was correct, but it was held until assistant completion instead of being limited to the initial `POST /api/chat/message` submit phase.
+
+### Fixes applied
+- `frontend/src/components/ChatWidget.jsx`
+  - Added explicit `submitting` state for the short HTTP submit lock.
+  - Send button now disables only when input is empty or `submitting` is true.
+  - `sendingRef` is released after the message POST is accepted, while `loading` continues to drive only the thinking indicator.
+- `frontend/src/components/ChatWidget.duplicationGuard.test.cjs`
+  - Added regression assertions preventing the send button from depending on fragile `loading && !streaming` state.
+  - Updated stale identity assertions to match the current controlled server-side personalization model while keeping the frontend free of client-controlled `visitor_name`.
+
+### Verified
+- ✅ Guard test: `node frontend/src/components/ChatWidget.duplicationGuard.test.cjs` → `PASS`.
+- ✅ Frontend build: `npm --prefix frontend run build` → `index-CPWjM5NO.js`.
+- ✅ `git diff --check` → clean.
+- ✅ `tb sa-check` → `ALL OK`, prod/local APIs OK, fresh dist bundle.
+- ✅ Production browser recipe: opened chat, sent a first message, typed a second message immediately after; the send button re-enabled with text and the second message was sent successfully.
+- ✅ Browser console after recipe: `0` JS errors.
+
 ## 2026-06-01 — Chat provider failover fixed (DeepSeek 402 → Gemini)
 
 **Scope:** Production chat widget on `https://sa.cedlabusa.net/stock-analysis/`; backend-only fix + targeted tests + production browser recipe.

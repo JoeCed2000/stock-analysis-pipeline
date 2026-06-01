@@ -17,6 +17,9 @@ function assert(condition, message) {
 }
 
 assert(widget.includes('const sendingRef = useRef(false);'), 'ChatWidget must have a synchronous sendingRef guard');
+assert(widget.includes('const [submitting, setSubmitting] = useState(false);'), 'ChatWidget must separate HTTP submit lock from assistant response loading');
+assert(widget.includes('disabled={!input.trim() || submitting}'), 'Send button must not stay disabled for the whole assistant loading cycle');
+assert(!widget.includes('disabled={!input.trim() || (loading && !streaming)}'), 'Send button must not depend on fragile loading/streaming state');
 assert(widget.includes('sendingRef.current'), 'ChatWidget must use sendingRef in send lifecycle');
 assert(widget.includes('const existingIdx = prev.findIndex(m => m.id === data.message_id);'), 'assistant_started must check for an existing assistant message id');
 assert(widget.includes('idx === existingIdx'), 'assistant_started must update the existing message instead of blindly appending');
@@ -25,7 +28,7 @@ assert(!app.includes('nami_personal'), 'App must not use nami_personal audience 
 assert(!app.includes('🧠 Nami'), 'App must not show hard-coded Nami persona badge');
 assert(!admin.includes('Nami Feedback'), 'Admin feedback label must be neutral');
 assert(!feedback.includes('Feedback for Nami'), 'Feedback panel label must be neutral');
-assert(!chatContext.includes('Nami-san'), 'chat_context must not map fingerprints to Nami-san');
-assert(!chatContext.includes('Cédric'), 'chat_context must not map fingerprints to Cédric');
+assert(!widget.includes('visitor_name'), 'ChatWidget must not send a client-controlled visitor_name payload');
+assert(widget.includes('visitor_id'), 'ChatWidget must scope sessions with visitor_id instead of visible persona labels');
 
 console.log('PASS ChatWidget duplication and identity guard');
