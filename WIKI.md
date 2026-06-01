@@ -1,5 +1,24 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-01 — PDF Pro-QA audit prepared (Deep Dive + Company Overview)
+
+**Scope:** NVDA, AAPL, GOOGL PDF audit; no code modification, no server restart, no Kanban dispatch.
+
+### Artifacts
+- Audit report: `docs/pdf-audits/2026-06-01-sa-pdf-pro-qa-audit.md`
+- Kanban draft: `docs/pdf-audits/2026-06-01-sa-pdf-pro-qa-kanban-draft.md`
+- Raw audit JSON: `docs/pdf-audits/2026-06-01-sa-pdf-pro-qa-raw.json`
+
+### Key findings
+- JP Deep Dive generation/polling is unreliable: AAPL JP eventually generated; NVDA/GOOGL stayed in `202 generating` during the recipe window.
+- Company Overview key financials can diverge materially from source data; NVDA had large mismatches vs local Yahoo snapshot (market cap, forward P/E, beta).
+- Deep Dive PDFs still leak raw/internal-ish source prose such as `source: yfinance`, `S1`, extracted `NaN`, and disclosure-gap placeholders.
+- Legacy/stale Company Overview fallback risk observed via MSFT probe (1-page `company_profile_MSFT.pdf`).
+- Nami personalization is explicitly excluded from defect scoring when the PDF is intentionally personalized.
+
+### Prepared but not launched
+Kanban package title: `SA PDF PRO-QA — Correct Deep Dive + Company Overview data integrity, JP generation, and professional layout`.
+
 ## 2026-05-31 — Transcript URL: Seeking Alpha canonical + NTFS→ext4 migration
 
 **Commits:** `0e161df`, `e71c827`, `71c7aab`, `93f8d66` (kanban/spec-fonctionnelle-sa)

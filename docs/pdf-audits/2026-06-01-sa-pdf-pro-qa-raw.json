@@ -1,0 +1,763 @@
+{
+  "tickers": {
+    "NVDA": {
+      "analysis_dir": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-01_001134_NVDA_NVIDIA_Corporation",
+      "artifacts": {
+        "deep_en": {
+          "exists": true,
+          "is_pdf": true,
+          "pages": 27,
+          "links": 9,
+          "errors": [],
+          "size": 426594,
+          "lang": {
+            "jp_chars": 0,
+            "latin_chars": 59665,
+            "jp_ratio": 0.0
+          },
+          "forbidden_counts": {
+            "DATA NOT AVAILABLE": 0,
+            "N/A": 0,
+            "null": 0,
+            "undefined": 0,
+            "NaN": 45,
+            "LLM synthesis": 0,
+            "could not be reliably synthesized": 0,
+            "transcript-level validation": 0,
+            "Not retrieved": 0,
+            "request.transcript_text": 0,
+            "source: yfinance": 9,
+            "source_id": 0,
+            "S1": 6,
+            "###": 0,
+            "Nami-san": 12,
+            "Cédric": 0
+          },
+          "placeholder_counts": {
+            "Not available": 2,
+            "not available": 2,
+            "—": 10,
+            "No data": 2,
+            "not disclosed": 14,
+            "unavailable": 4,
+            "not identified": 0
+          },
+          "sections_present": {
+            "Executive Snapshot": false,
+            "Financial Metrics": true,
+            "Valuation": true,
+            "Operating Metrics": true,
+            "Cash Flow": true,
+            "Capital Efficiency": true,
+            "Management": true,
+            "Risks": true,
+            "Sources": true,
+            "Traceability": false,
+            "Peer Benchmark": true
+          },
+          "page_char_min": 1296,
+          "page_char_max": 4635,
+          "page_char_median": 2856,
+          "snippets": [
+            "ing Call Presentation Press Release https://nvidianews.nvidia.com/news/nvidia-announces-financia l-results-for-fourth-quarter-and-fiscal-2026 Primary company-reported earnings source Earning Call Presentation Unav",
+            "exceeded the consensus estimate of $1.77, representing a +$0.10 beat and a 5.5% surprise (source: yfinance eps_actual, eps_estimate). Year-over-year EPS growth accelerated to 214.0% (source: yfinance eps_yoy; inferred from pri",
+            "etter price/performance and more open software stack (ROCm) vs NVIDIA's proprietary CUDA. S1 INTC Intel's Gaudi 3 accelerators and upcoming Falcon Shores aim to capture AI workloads, leveraging the company's reac",
+            "er segment ~70.0% YoY) and Intel (declining), underscoring a structural AI arms race. For Nami-san: This is not a demand pull-forward - it's a platform shift from general-purpose to accelerated computing, implying mult",
+            "venue growth, margin, and free cash flow can persist. (3) Disclosure gaps Items marked as Not available or Not disclosed represent data limitations that should be verified against SEC filings before drawing investment concl",
+            "venue growth, margin, and free cash flow can persist. (3) Disclosure gaps Items marked as Not available or Not disclosed represent data limitations that should be verified against SEC filings before drawing investment concl"
+          ],
+          "rendered_pages": [
+            "/tmp/sa_pdf_audit_output/NVDA_deep_en_p1.png",
+            "/tmp/sa_pdf_audit_output/NVDA_deep_en_p2.png",
+            "/tmp/sa_pdf_audit_output/NVDA_deep_en_p3.png"
+          ]
+        },
+        "deep_jp": {
+          "exists": true,
+          "is_pdf": false,
+          "pages": 0,
+          "links": 0,
+          "errors": [
+            "FileDataError(\"Failed to open file '/tmp/sa_pdf_audit_artifacts/NVDA_deep_jp_probe.bin'.\")"
+          ],
+          "size": 142,
+          "lang": {
+            "jp_chars": 0,
+            "latin_chars": 0,
+            "jp_ratio": 0.0
+          },
+          "forbidden_counts": {
+            "DATA NOT AVAILABLE": 0,
+            "N/A": 0,
+            "null": 0,
+            "undefined": 0,
+            "NaN": 0,
+            "LLM synthesis": 0,
+            "could not be reliably synthesized": 0,
+            "transcript-level validation": 0,
+            "Not retrieved": 0,
+            "request.transcript_text": 0,
+            "source: yfinance": 0,
+            "source_id": 0,
+            "S1": 0,
+            "###": 0,
+            "Nami-san": 0,
+            "Cédric": 0
+          },
+          "placeholder_counts": {
+            "Not available": 0,
+            "not available": 0,
+            "—": 0,
+            "No data": 0,
+            "not disclosed": 0,
+            "unavailable": 0,
+            "not identified": 0
+          },
+          "sections_present": {
+            "Executive Snapshot": false,
+            "Financial Metrics": false,
+            "Valuation": false,
+            "Operating Metrics": false,
+            "Cash Flow": false,
+            "Capital Efficiency": false,
+            "Management": false,
+            "Risks": false,
+            "Sources": false,
+            "Traceability": false,
+            "Peer Benchmark": false
+          },
+          "page_char_min": 0,
+          "page_char_max": 0,
+          "page_char_median": 0,
+          "snippets": []
+        },
+        "company": {
+          "exists": true,
+          "is_pdf": true,
+          "pages": 6,
+          "links": 0,
+          "errors": [],
+          "size": 18859,
+          "lang": {
+            "jp_chars": 0,
+            "latin_chars": 13083,
+            "jp_ratio": 0.0
+          },
+          "forbidden_counts": {
+            "DATA NOT AVAILABLE": 0,
+            "N/A": 0,
+            "null": 0,
+            "undefined": 0,
+            "NaN": 24,
+            "LLM synthesis": 0,
+            "could not be reliably synthesized": 0,
+            "transcript-level validation": 0,
+            "Not retrieved": 0,
+            "request.transcript_text": 0,
+            "source: yfinance": 0,
+            "source_id": 0,
+            "S1": 0,
+            "###": 0,
+            "Nami-san": 0,
+            "Cédric": 0
+          },
+          "placeholder_counts": {
+            "Not available": 0,
+            "not available": 0,
+            "—": 20,
+            "No data": 0,
+            "not disclosed": 0,
+            "unavailable": 0,
+            "not identified": 0
+          },
+          "sections_present": {
+            "Executive Snapshot": true,
+            "Company Overview": true,
+            "How the Company Makes Money": true,
+            "Business Segments": true,
+            "Growth Drivers": true,
+            "Competitive Advantages": true,
+            "Key Metrics": true,
+            "Business Risks": true,
+            "Competitors": true,
+            "Strengths Relative": true,
+            "Weaknesses Relative": true,
+            "CEO Leadership": true,
+            "Investor Takeaway": true,
+            "Sources": true
+          },
+          "page_char_min": 901,
+          "page_char_max": 5155,
+          "page_char_median": 2480.5,
+          "snippets": [
+            "ts a high-growth, high-margin leader in the global AI infrastructure buildout, with a dominant competitive moat via its CUDA ecosystem and relentless innovation cycle. The company’s data center revenue has multipl"
+          ],
+          "rendered_pages": [
+            "/tmp/sa_pdf_audit_output/NVDA_company_p1.png",
+            "/tmp/sa_pdf_audit_output/NVDA_company_p2.png",
+            "/tmp/sa_pdf_audit_output/NVDA_company_p3.png"
+          ]
+        }
+      },
+      "raw_files": {
+        "company_json": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-01_001134_NVDA_NVIDIA_Corporation/01_official_company_sources/company_overview_NVDA.json",
+        "yahoo_snapshot": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-01_001134_NVDA_NVIDIA_Corporation/03_financial_data_sources/yahoo_snapshot_NVDA.json",
+        "validation_en": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-01_001134_NVDA_NVIDIA_Corporation/07_final_report/deep_dive_validation.json",
+        "validation_jp": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-01_001134_NVDA_NVIDIA_Corporation/jp/07_final_report/deep_dive_validation.json"
+      },
+      "raw_compare": {
+        "market_cap": {
+          "company_overview": 3100000000000,
+          "yahoo_snapshot": 5114022068224,
+          "delta_pct": -39.38234996556107
+        },
+        "revenue": {
+          "company_overview": 122000000000,
+          "yahoo_snapshot": null
+        },
+        "gross_margin": {
+          "company_overview": 0.75,
+          "yahoo_snapshot": null
+        },
+        "operating_margin": {
+          "company_overview": 0.65,
+          "yahoo_snapshot": null
+        },
+        "free_cash_flow": {
+          "company_overview": 96000000000,
+          "yahoo_snapshot": null
+        },
+        "pe_ratio": {
+          "company_overview": 50.5,
+          "yahoo_snapshot": null
+        },
+        "pe_forward": {
+          "company_overview": 35.0,
+          "yahoo_snapshot": 16.681019,
+          "delta_pct": 109.81931619405267
+        },
+        "beta": {
+          "company_overview": 1.7,
+          "yahoo_snapshot": 2.244,
+          "delta_pct": -24.242424242424253
+        }
+      }
+    },
+    "AAPL": {
+      "analysis_dir": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-01_003134_AAPL_Apple_Inc",
+      "artifacts": {
+        "deep_en": {
+          "exists": true,
+          "is_pdf": true,
+          "pages": 25,
+          "links": 8,
+          "errors": [],
+          "size": 403863,
+          "lang": {
+            "jp_chars": 0,
+            "latin_chars": 53755,
+            "jp_ratio": 0.0
+          },
+          "forbidden_counts": {
+            "DATA NOT AVAILABLE": 0,
+            "N/A": 0,
+            "null": 0,
+            "undefined": 0,
+            "NaN": 112,
+            "LLM synthesis": 0,
+            "could not be reliably synthesized": 0,
+            "transcript-level validation": 0,
+            "Not retrieved": 0,
+            "request.transcript_text": 0,
+            "source: yfinance": 56,
+            "source_id": 0,
+            "S1": 6,
+            "###": 0,
+            "Nami-san": 0,
+            "Cédric": 0
+          },
+          "placeholder_counts": {
+            "Not available": 1,
+            "not available": 1,
+            "—": 6,
+            "No data": 2,
+            "not disclosed": 28,
+            "unavailable": 2,
+            "not identified": 0
+          },
+          "sections_present": {
+            "Executive Snapshot": false,
+            "Financial Metrics": true,
+            "Valuation": true,
+            "Operating Metrics": true,
+            "Cash Flow": true,
+            "Capital Efficiency": true,
+            "Management": true,
+            "Risks": true,
+            "Sources": true,
+            "Traceability": false,
+            "Peer Benchmark": true
+          },
+          "page_char_min": 608,
+          "page_char_max": 4006,
+          "page_char_median": 2798,
+          "snippets": [
+            "ich add recurring, higher-margin revenue. Additional monetization comes from licensing, financing and payment products, and support services that increase wallet share across the installed base. Business Segments ",
+            "as limited. AAPL reported EPS actual of 2.01 versus EPS estimate of 1.94, a BEAT by 3.5% (source: yfinance eps_actual; source: yfinance eps_estimate; calculation: (2.01 - 1.94) / 1.94 = 3.5%). EPS YoY change was 20.0%, using t",
+            "io, aggressive mid-to-premium pricing, and fast product iteration in multiple categories. S1 Alphabet (GOOGL) Competes in digital ecosystem layers through Android, Play, search and ads; also adjacent to wearables",
+            "venue growth, margin, and free cash flow can persist. (3) Disclosure gaps Items marked as Not available or Not disclosed represent data limitations that should be verified against SEC filings before drawing investment concl",
+            "venue growth, margin, and free cash flow can persist. (3) Disclosure gaps Items marked as Not available or Not disclosed represent data limitations that should be verified against SEC filings before drawing investment concl"
+          ],
+          "rendered_pages": [
+            "/tmp/sa_pdf_audit_output/AAPL_deep_en_p1.png",
+            "/tmp/sa_pdf_audit_output/AAPL_deep_en_p2.png",
+            "/tmp/sa_pdf_audit_output/AAPL_deep_en_p3.png"
+          ]
+        },
+        "deep_jp": {
+          "exists": true,
+          "is_pdf": true,
+          "pages": 27,
+          "links": 8,
+          "errors": [],
+          "size": 837716,
+          "lang": {
+            "jp_chars": 20836,
+            "latin_chars": 16777,
+            "jp_ratio": 0.5539574083428602
+          },
+          "forbidden_counts": {
+            "DATA NOT AVAILABLE": 0,
+            "N/A": 0,
+            "null": 0,
+            "undefined": 0,
+            "NaN": 63,
+            "LLM synthesis": 0,
+            "could not be reliably synthesized": 0,
+            "transcript-level validation": 0,
+            "Not retrieved": 0,
+            "request.transcript_text": 0,
+            "source: yfinance": 42,
+            "source_id": 0,
+            "S1": 6,
+            "###": 0,
+            "Nami-san": 0,
+            "Cédric": 0
+          },
+          "placeholder_counts": {
+            "Not available": 0,
+            "not available": 0,
+            "—": 6,
+            "No data": 0,
+            "not disclosed": 28,
+            "unavailable": 2,
+            "not identified": 0
+          },
+          "sections_present": {
+            "Executive Snapshot": false,
+            "Financial Metrics": true,
+            "Valuation": true,
+            "Operating Metrics": true,
+            "Cash Flow": true,
+            "Capital Efficiency": true,
+            "Management": true,
+            "Risks": false,
+            "Sources": true,
+            "Traceability": false,
+            "Peer Benchmark": true
+          },
+          "page_char_min": 1077,
+          "page_char_max": 2426,
+          "page_char_median": 1745,
+          "snippets": [
+            "ポ ートフォリオと,調達重視の流通網. S1 EPS・売上高 指標 予想 実績 予想比 前年同期比 出所 EPS $1.94 $2.01 +3.5% +21.8% Yahoo Finance (consensus) 売上高 $111.2B $111.2B -0.0% +16.6% SEC Filing (10-Q/10-K) via EDGAR \u0000 EPS & Revenue (1) EPS: 利益は小幅ながら明確にBEA",
+            "PS & Revenue (1) EPS: 利益は小幅ながら明確にBEAT EPS(1株当たり利益)は予想$1.94に対し実績$2.01で,+$0.07,3.5%のBEATでした(source: yfinance eps_estimate, eps_actual; formula=($2.01-$1.94)/$1.94).前年同期比は20.0%で,売上高の16.6%に比べると 利益の伸びはかなり限定的です(source: yfinance eps_",
+            ",ディスプレイ,部品,グローバル 流通で大きな規模を持つ. 幅広いデバイスポートフォリオ,ミッドレン ジからプレミアムまでの積極的な価格設定, 複数カテゴリーでの迅速な製品反復. S1 Alphabet (GOOGL) Android,Play,検索,広告を通じてデジタルエコシステム層で競合し ており,プラットフォームの到達力を通じてウェアラブル/サービス 領域にも隣接している. 巨大なソフトウェア規模のネットワーク効果"
+          ],
+          "rendered_pages": [
+            "/tmp/sa_pdf_audit_output/AAPL_deep_jp_p1.png",
+            "/tmp/sa_pdf_audit_output/AAPL_deep_jp_p2.png",
+            "/tmp/sa_pdf_audit_output/AAPL_deep_jp_p3.png"
+          ]
+        },
+        "company": {
+          "exists": true,
+          "is_pdf": true,
+          "pages": 5,
+          "links": 0,
+          "errors": [],
+          "size": 14353,
+          "lang": {
+            "jp_chars": 0,
+            "latin_chars": 8236,
+            "jp_ratio": 0.0
+          },
+          "forbidden_counts": {
+            "DATA NOT AVAILABLE": 0,
+            "N/A": 0,
+            "null": 0,
+            "undefined": 0,
+            "NaN": 22,
+            "LLM synthesis": 0,
+            "could not be reliably synthesized": 0,
+            "transcript-level validation": 0,
+            "Not retrieved": 0,
+            "request.transcript_text": 0,
+            "source: yfinance": 0,
+            "source_id": 0,
+            "S1": 0,
+            "###": 0,
+            "Nami-san": 0,
+            "Cédric": 0
+          },
+          "placeholder_counts": {
+            "Not available": 0,
+            "not available": 0,
+            "—": 15,
+            "No data": 0,
+            "not disclosed": 0,
+            "unavailable": 0,
+            "not identified": 0
+          },
+          "sections_present": {
+            "Executive Snapshot": true,
+            "Company Overview": true,
+            "How the Company Makes Money": true,
+            "Business Segments": true,
+            "Growth Drivers": true,
+            "Competitive Advantages": true,
+            "Key Metrics": true,
+            "Business Risks": true,
+            "Competitors": true,
+            "Strengths Relative": true,
+            "Weaknesses Relative": true,
+            "CEO Leadership": true,
+            "Investor Takeaway": true,
+            "Sources": true
+          },
+          "page_char_min": 1248,
+          "page_char_max": 3711,
+          "page_char_median": 1693,
+          "snippets": [
+            "ich add recurring, higher-margin revenue. Additional monetization comes from licensing, financing and payment products, and support services that increase wallet share across the installed base. Business Segments "
+          ],
+          "rendered_pages": [
+            "/tmp/sa_pdf_audit_output/AAPL_company_p1.png",
+            "/tmp/sa_pdf_audit_output/AAPL_company_p2.png",
+            "/tmp/sa_pdf_audit_output/AAPL_company_p3.png"
+          ]
+        }
+      },
+      "raw_files": {
+        "company_json": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-01_003134_AAPL_Apple_Inc/01_official_company_sources/company_overview_AAPL.json",
+        "yahoo_snapshot": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-01_003134_AAPL_Apple_Inc/03_financial_data_sources/yahoo_snapshot_AAPL.json",
+        "validation_en": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-01_003134_AAPL_Apple_Inc/07_final_report/deep_dive_validation.json",
+        "validation_jp": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-01_003134_AAPL_Apple_Inc/jp/07_final_report/deep_dive_validation.json"
+      },
+      "raw_compare": {
+        "market_cap": {
+          "company_overview": 4583336181760,
+          "yahoo_snapshot": 4583336595549.074,
+          "delta_pct": -9.028118829862614e-06
+        },
+        "revenue": {
+          "company_overview": 451442016256,
+          "yahoo_snapshot": null
+        },
+        "gross_margin": {
+          "company_overview": null,
+          "yahoo_snapshot": null
+        },
+        "operating_margin": {
+          "company_overview": null,
+          "yahoo_snapshot": null
+        },
+        "free_cash_flow": {
+          "company_overview": null,
+          "yahoo_snapshot": null
+        },
+        "pe_ratio": {
+          "company_overview": 37.733974,
+          "yahoo_snapshot": null
+        },
+        "pe_forward": {
+          "company_overview": 32.479454,
+          "yahoo_snapshot": 30.40936,
+          "delta_pct": 6.807423766892818
+        },
+        "beta": {
+          "company_overview": 1.065,
+          "yahoo_snapshot": 1.0941056,
+          "delta_pct": -2.660218538320256
+        }
+      }
+    },
+    "GOOGL": {
+      "analysis_dir": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-01_003134_GOOGL_Alphabet_Inc",
+      "artifacts": {
+        "deep_en": {
+          "exists": true,
+          "is_pdf": true,
+          "pages": 25,
+          "links": 7,
+          "errors": [],
+          "size": 410685,
+          "lang": {
+            "jp_chars": 0,
+            "latin_chars": 55875,
+            "jp_ratio": 0.0
+          },
+          "forbidden_counts": {
+            "DATA NOT AVAILABLE": 0,
+            "N/A": 0,
+            "null": 0,
+            "undefined": 0,
+            "NaN": 75,
+            "LLM synthesis": 0,
+            "could not be reliably synthesized": 0,
+            "transcript-level validation": 0,
+            "Not retrieved": 0,
+            "request.transcript_text": 0,
+            "source: yfinance": 17,
+            "source_id": 0,
+            "S1": 6,
+            "###": 0,
+            "Nami-san": 23,
+            "Cédric": 0
+          },
+          "placeholder_counts": {
+            "Not available": 2,
+            "not available": 2,
+            "—": 6,
+            "No data": 2,
+            "not disclosed": 25,
+            "unavailable": 3,
+            "not identified": 0
+          },
+          "sections_present": {
+            "Executive Snapshot": false,
+            "Financial Metrics": true,
+            "Valuation": true,
+            "Operating Metrics": true,
+            "Cash Flow": true,
+            "Capital Efficiency": true,
+            "Management": true,
+            "Risks": true,
+            "Sources": true,
+            "Traceability": false,
+            "Peer Benchmark": true
+          },
+          "page_char_min": 1075,
+          "page_char_max": 4636,
+          "page_char_median": 3026,
+          "snippets": [
+            "mall fraction of total revenue. Alphabet's diversified revenue model, anchored by its dominant search and digital advertising ecosystem, provides a strong foundation for ongoing monetization of its massive user ba",
+            "ar above the consensus estimate of $2.67, a positive surprise of $2.44 per share (91.6%) (source: yfinance eps_actual, eps_estimate). While no YoY EPS figure is available in this quarter's filing (EPS YoY not disclosed), the m",
+            "e relationships, faster AI integration into office tools, and growing cloud market share. S1 4 / 25  Amazon (AMZN) Dominates cloud (AWS) and competes in advertising (Amazon Ads) and smart speakers (Alexa). Larges",
+            "significantly underestimated the conversion of that demand into bottom\u0000line earnings. For Nami-san: This is the kind of beat you want - one where profit surges while sales simply meet expectations, proving that AI inve",
+            " actual, $109.91B estimate, missing by $0.01B (0.0%); YoY 21.8%. Trend: QoQ trajectory is not available in the metrics alone, but the transcript's qualitative commentary points to acceleration in Cloud and AI\u0000powered revenu",
+            " actual, $109.91B estimate, missing by $0.01B (0.0%); YoY 21.8%. Trend: QoQ trajectory is not available in the metrics alone, but the transcript's qualitative commentary points to acceleration in Cloud and AI\u0000powered revenu"
+          ],
+          "rendered_pages": [
+            "/tmp/sa_pdf_audit_output/GOOGL_deep_en_p1.png",
+            "/tmp/sa_pdf_audit_output/GOOGL_deep_en_p2.png",
+            "/tmp/sa_pdf_audit_output/GOOGL_deep_en_p3.png"
+          ]
+        },
+        "deep_jp": {
+          "exists": true,
+          "is_pdf": false,
+          "pages": 0,
+          "links": 0,
+          "errors": [
+            "FileDataError(\"Failed to open file '/tmp/sa_pdf_audit_artifacts/GOOGL_deep_jp_probe.bin'.\")"
+          ],
+          "size": 143,
+          "lang": {
+            "jp_chars": 0,
+            "latin_chars": 0,
+            "jp_ratio": 0.0
+          },
+          "forbidden_counts": {
+            "DATA NOT AVAILABLE": 0,
+            "N/A": 0,
+            "null": 0,
+            "undefined": 0,
+            "NaN": 0,
+            "LLM synthesis": 0,
+            "could not be reliably synthesized": 0,
+            "transcript-level validation": 0,
+            "Not retrieved": 0,
+            "request.transcript_text": 0,
+            "source: yfinance": 0,
+            "source_id": 0,
+            "S1": 0,
+            "###": 0,
+            "Nami-san": 0,
+            "Cédric": 0
+          },
+          "placeholder_counts": {
+            "Not available": 0,
+            "not available": 0,
+            "—": 0,
+            "No data": 0,
+            "not disclosed": 0,
+            "unavailable": 0,
+            "not identified": 0
+          },
+          "sections_present": {
+            "Executive Snapshot": false,
+            "Financial Metrics": false,
+            "Valuation": false,
+            "Operating Metrics": false,
+            "Cash Flow": false,
+            "Capital Efficiency": false,
+            "Management": false,
+            "Risks": false,
+            "Sources": false,
+            "Traceability": false,
+            "Peer Benchmark": false
+          },
+          "page_char_min": 0,
+          "page_char_max": 0,
+          "page_char_median": 0,
+          "snippets": []
+        },
+        "company": {
+          "exists": true,
+          "is_pdf": true,
+          "pages": 6,
+          "links": 0,
+          "errors": [],
+          "size": 17974,
+          "lang": {
+            "jp_chars": 0,
+            "latin_chars": 12372,
+            "jp_ratio": 0.0
+          },
+          "forbidden_counts": {
+            "DATA NOT AVAILABLE": 0,
+            "N/A": 0,
+            "null": 0,
+            "undefined": 0,
+            "NaN": 26,
+            "LLM synthesis": 0,
+            "could not be reliably synthesized": 0,
+            "transcript-level validation": 0,
+            "Not retrieved": 0,
+            "request.transcript_text": 0,
+            "source: yfinance": 0,
+            "source_id": 0,
+            "S1": 0,
+            "###": 0,
+            "Nami-san": 0,
+            "Cédric": 0
+          },
+          "placeholder_counts": {
+            "Not available": 0,
+            "not available": 0,
+            "—": 11,
+            "No data": 0,
+            "not disclosed": 0,
+            "unavailable": 0,
+            "not identified": 1
+          },
+          "sections_present": {
+            "Executive Snapshot": true,
+            "Company Overview": true,
+            "How the Company Makes Money": true,
+            "Business Segments": true,
+            "Growth Drivers": true,
+            "Competitive Advantages": true,
+            "Key Metrics": true,
+            "Business Risks": true,
+            "Competitors": true,
+            "Strengths Relative": true,
+            "Weaknesses Relative": true,
+            "CEO Leadership": true,
+            "Investor Takeaway": true,
+            "Sources": true
+          },
+          "page_char_min": 313,
+          "page_char_max": 4431,
+          "page_char_median": 2529.5,
+          "snippets": [
+            "with a powerful pivot toward AI and cloud growth. The bullish argument centers on its dominant search franchise, vast data moat, and underappreciated growth potential in Google Cloud and subscription services, all",
+            "cation Services Classification Industry Internet Content & Information Classification CEO Not identified Leadership Headquarters Mountain View, CA, United States Location Country United States Location Market Cap $4.61T Mark"
+          ],
+          "rendered_pages": [
+            "/tmp/sa_pdf_audit_output/GOOGL_company_p1.png",
+            "/tmp/sa_pdf_audit_output/GOOGL_company_p2.png",
+            "/tmp/sa_pdf_audit_output/GOOGL_company_p3.png"
+          ]
+        }
+      },
+      "raw_files": {
+        "company_json": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-01_003134_GOOGL_Alphabet_Inc/01_official_company_sources/company_overview_GOOGL.json",
+        "yahoo_snapshot": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-01_003134_GOOGL_Alphabet_Inc/03_financial_data_sources/yahoo_snapshot_GOOGL.json",
+        "validation_en": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-01_003134_GOOGL_Alphabet_Inc/07_final_report/deep_dive_validation.json",
+        "validation_jp": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-01_003134_GOOGL_Alphabet_Inc/jp/07_final_report/deep_dive_validation.json"
+      },
+      "raw_compare": {
+        "market_cap": {
+          "company_overview": 4607987679232,
+          "yahoo_snapshot": 4608199439999.999,
+          "delta_pct": -0.004595303887260216
+        },
+        "revenue": {
+          "company_overview": 422498009088,
+          "yahoo_snapshot": null
+        },
+        "gross_margin": {
+          "company_overview": 0.60368,
+          "yahoo_snapshot": null
+        },
+        "operating_margin": {
+          "company_overview": 0.36121,
+          "yahoo_snapshot": null
+        },
+        "free_cash_flow": {
+          "company_overview": 27921750016,
+          "yahoo_snapshot": null
+        },
+        "pe_ratio": {
+          "company_overview": 28.989328,
+          "yahoo_snapshot": null
+        },
+        "pe_forward": {
+          "company_overview": 26.249208,
+          "yahoo_snapshot": 28.59902,
+          "delta_pct": -8.216407415358988
+        },
+        "beta": {
+          "company_overview": 1.267,
+          "yahoo_snapshot": 1.24661,
+          "delta_pct": 1.6356358444100327
+        }
+      }
+    }
+  },
+  "files_rendered": [
+    "/tmp/sa_pdf_audit_output/NVDA_deep_en_p1.png",
+    "/tmp/sa_pdf_audit_output/NVDA_deep_en_p2.png",
+    "/tmp/sa_pdf_audit_output/NVDA_deep_en_p3.png",
+    "/tmp/sa_pdf_audit_output/NVDA_company_p1.png",
+    "/tmp/sa_pdf_audit_output/NVDA_company_p2.png",
+    "/tmp/sa_pdf_audit_output/NVDA_company_p3.png",
+    "/tmp/sa_pdf_audit_output/AAPL_deep_en_p1.png",
+    "/tmp/sa_pdf_audit_output/AAPL_deep_en_p2.png",
+    "/tmp/sa_pdf_audit_output/AAPL_deep_en_p3.png",
+    "/tmp/sa_pdf_audit_output/AAPL_deep_jp_p1.png",
+    "/tmp/sa_pdf_audit_output/AAPL_deep_jp_p2.png",
+    "/tmp/sa_pdf_audit_output/AAPL_deep_jp_p3.png",
+    "/tmp/sa_pdf_audit_output/AAPL_company_p1.png",
+    "/tmp/sa_pdf_audit_output/AAPL_company_p2.png",
+    "/tmp/sa_pdf_audit_output/AAPL_company_p3.png",
+    "/tmp/sa_pdf_audit_output/GOOGL_deep_en_p1.png",
+    "/tmp/sa_pdf_audit_output/GOOGL_deep_en_p2.png",
+    "/tmp/sa_pdf_audit_output/GOOGL_deep_en_p3.png",
+    "/tmp/sa_pdf_audit_output/GOOGL_company_p1.png",
+    "/tmp/sa_pdf_audit_output/GOOGL_company_p2.png",
+    "/tmp/sa_pdf_audit_output/GOOGL_company_p3.png"
+  ]
+}
