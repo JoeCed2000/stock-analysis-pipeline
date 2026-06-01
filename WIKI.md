@@ -1,5 +1,31 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-01 — Chat recent-ticker context fallback clarified
+
+**Scope:** Production chat widget context/prompt behavior for questions like “what are the latest tickers I searched?”.
+
+### Root cause
+- The backend did not ignore context: live debug context for session `sess_5a3e7213644c` showed `visitor_display_name=Ced`, but `ticker=null`, `recent_tickers=[]`, `feedback_context=[]`, `previous_chats=[]`.
+- The visitor-scoped ticker history is populated only when the chat message context includes a ticker (`track_session_ticker()` stores `metadata_json.viewed_tickers`).
+- The screenshot session was a Windows/Chrome Ced session with no recorded `viewed_tickers`; older NVDA probe sessions used different visitor IDs and were outside the current visitor-scoped context.
+- With an empty ticker list, `build_prompt()` did not explicitly instruct the model how to answer “latest tickers”, so the model improvised a generic privacy/search-history refusal.
+
+### Fixes applied
+- `backend/chat_ai.py`
+  - Added explicit context policy for recent/latest ticker questions: answer only from server-provided visitor-scoped ticker history.
+  - If no app-scoped ticker history exists, say no visitor-scoped ticker history is available in this chat/session.
+  - Explicitly forbid the misleading “I lack personal browsing/search history for privacy” answer for this app-scoped context.
+  - Prompt now includes `Recently analyzed tickers: none recorded for this visitor/session context.` when the list is empty.
+- `backend/tests/test_chat_ai_engine.py`
+  - Added regression test for empty recent-ticker context.
+  - Added regression test proving available recent ticker context is rendered in the prompt.
+
+### Verified
+- ✅ Live runtime before fix: `tb sa-check` → `ALL OK`, backend PID `4975`, health `commit=9dd81e7`.
+- ✅ Live DB proof: screenshot message session had no `viewed_tickers`; debug endpoint returned `recent_tickers=[]`.
+- ✅ Targeted tests: `PYTHONPATH=. backend/.venv/bin/pytest backend/tests/test_chat_ai_engine.py -q` → `8 passed`.
+- ✅ `git diff --check` → clean.
+
 ## 2026-06-01 — Chat send button unlock fixed
 
 **Scope:** Production chat widget on `https://sa.cedlabusa.net/stock-analysis/`; frontend-only UX/state fix after the provider failover work.

@@ -196,6 +196,12 @@ def build_prompt(
 
     # Current context — only include what helps the AI, not generic page info
     ctx_lines = ["## Current Context"]
+    ctx_lines.append(
+        "- Context policy: answer questions about recent/latest searched or analyzed tickers "
+        "only from the server-provided visitor-scoped ticker history below. "
+        "If no ticker history is recorded, say that no visitor-scoped ticker history is available "
+        "in this chat/session; do not claim you lack personal browsing/search history for privacy."
+    )
     has_useful_context = False
 
     if ticker:
@@ -225,6 +231,8 @@ def build_prompt(
             ticker_lines.append(f"  • {rt['ticker']} (analyzed {rt.get('date','?')}, PDFs: {pdfs})")
         ctx_lines.append("\n".join(ticker_lines))
         has_useful_context = True
+    else:
+        ctx_lines.append("- Recently analyzed tickers: none recorded for this visitor/session context.")
 
     # Recent feedback & responses
     if feedback_context:

@@ -239,3 +239,30 @@ def test_system_prompt_has_no_hardcoded_people_names():
     """RED: prompt/context isolation must not hard-code Ced/Nami/Cédric into client chat."""
     forbidden = ("Ced", "Cédric", "Nami")
     assert not any(name in chat_ai.SYSTEM_PROMPT for name in forbidden)
+
+
+def test_prompt_handles_empty_recent_ticker_context_without_privacy_refusal():
+    """The model must not improvise a privacy refusal when app-scoped ticker history is empty."""
+    prompt = chat_ai.build_prompt(
+        "tell me about the latest tickers I searched",
+        language="en",
+        visitor_name="Ced",
+        recent_tickers=[],
+    )
+
+    assert "Recently analyzed tickers: none recorded for this visitor/session context" in prompt
+    assert "do not claim you lack personal browsing/search history for privacy" in prompt
+    assert "no visitor-scoped ticker history is available" in prompt
+
+
+def test_prompt_renders_recent_tickers_when_available():
+    """Visitor-scoped ticker context should be explicit in the model prompt."""
+    prompt = chat_ai.build_prompt(
+        "what are my latest tickers?",
+        language="en",
+        visitor_name="Visitor",
+        recent_tickers=[{"ticker": "NVDA", "date": "2026-06-01", "pdfs": ["earnings_deep_dive.pdf"]}],
+    )
+
+    assert "Recently analyzed tickers" in prompt
+    assert "NVDA (analyzed 2026-06-01, PDFs: earnings_deep_dive.pdf)" in prompt
