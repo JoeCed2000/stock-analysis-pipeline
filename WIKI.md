@@ -1,5 +1,40 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-01 — Chat provider failover fixed (DeepSeek 402 → Gemini)
+
+**Scope:** Production chat widget on `https://sa.cedlabusa.net/stock-analysis/`; backend-only fix + targeted tests + production browser recipe.
+
+### Root cause
+- Production chat primary provider was `deepseek` and returned HTTP `402` / insufficient balance.
+- `backend/chat_ai.py` returned the generic client fallback immediately on the first provider failure, so the UI showed: `現在チャットサービスが一時的に利用できません`.
+- First fallback attempt exposed two additional issues:
+  - Gemini fallback used stale default model `gemini-1.5-flash`, which returned HTTP `404`.
+  - Gemini `streamGenerateContent` returns a pretty-printed JSON array in production; the parser only handled one JSON object per line, producing an empty assistant message.
+  - Gemini 2.5 can spend output budget on hidden thinking; live chat now disables thinking with `thinkingConfig.thinkingBudget=0`.
+
+### Fixes applied
+- `backend/chat_ai.py`
+  - Added internal `ChatProviderUnavailable` failure path.
+  - Added provider failover order (`SA_CHAT_FALLBACK_PROVIDERS`, default `gemini,openai,deepseek`).
+  - Primary provider keeps configured `SA_CHAT_MODEL`; fallback providers use their own safe default model.
+  - Gemini default updated to `gemini-2.5-flash`.
+  - Gemini payload disables hidden thinking for live chat.
+  - Gemini parser now buffers pretty-printed streamed JSON and parses it at stream end.
+  - Generic user-facing fallback is emitted only after all providers fail.
+- `backend/tests/test_chat_ai_engine.py`
+  - Added DeepSeek billing-error → Gemini fallback regression.
+  - Added production-shaped pretty JSON stream fixture.
+  - Added assertions for Gemini 2.5 + thinking disabled.
+
+### Verified
+- ✅ Targeted tests: `PYTHONPATH=. backend/.venv/bin/pytest backend/tests/test_chat_ai_engine.py -q` → `6 passed`.
+- ✅ Backend restarted from canonical cwd `/home/ced/codex-projects/stock-analysis-pipeline`, listener `0.0.0.0:8780`, PID `4975`.
+- ✅ `tb sa-check` → `ALL OK`.
+- ✅ Production browser recipe: opened chat, sent `Hello, please confirm the chat is working now.`, received a real assistant answer instead of the unavailable fallback.
+- ✅ Browser console: `0` JS errors.
+- ✅ API history for session `sess_17f7e51df502`: assistant message stored with non-empty response.
+- ✅ Runtime logs show expected DeepSeek `402` followed by failover; no final `All providers unavailable` for the successful probe.
+
 ## 2026-06-01 — PDF Pro-QA audit prepared (Deep Dive + Company Overview)
 
 **Scope:** NVDA, AAPL, GOOGL PDF audit; no code modification, no server restart, no Kanban dispatch.

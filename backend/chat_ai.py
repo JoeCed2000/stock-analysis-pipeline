@@ -299,6 +299,10 @@ class ChatEngineConfig:
     timeout_seconds: float
 
 
+class ChatProviderUnavailable(RuntimeError):
+    """Internal signal that the configured chat provider could not serve the request."""
+
+
 _PROVIDER_ALIASES = {
     "google": "gemini",
     "google_gemini": "gemini",
@@ -308,7 +312,7 @@ _PROVIDER_ALIASES = {
 _DEFAULT_MODELS = {
     "openai": "gpt-4.1-mini",
     "deepseek": "deepseek-v4-pro",
-    "gemini": "gemini-1.5-flash",
+    "gemini": "gemini-2.5-flash",
 }
 
 _OPENAI_COMPATIBLE_ENDPOINTS = {
@@ -396,6 +400,31 @@ def _client_facing_error(language: str = "ja") -> str:
     return "申し訳ありません。現在チャットサービスが一時的に利用できません。しばらくしてからもう一度お試しください。"
 
 
+def _fallback_providers(primary: str) -> list[str]:
+    """Return provider fallback order without repeating the primary provider."""
+    raw = os.getenv("SA_CHAT_FALLBACK_PROVIDERS", "gemini,openai,deepseek")
+    providers: list[str] = []
+    for item in raw.split(","):
+        provider = _normalize_provider(item.strip())
+        if provider and provider in _DEFAULT_MODELS and provider != primary and provider not in providers:
+            providers.append(provider)
+    return providers
+
+
+def _config_for_attempt(provider: str, *, is_primary: bool) -> ChatEngineConfig:
+    """Build config for primary/fallback attempts.
+
+    SA_CHAT_MODEL is provider-specific in practice. Reusing a DeepSeek model name
+    for a Gemini fallback would build an invalid endpoint, so fallback providers
+    use their own safe defaults unless explicitly passed through provider-specific
+    environment in a future extension.
+    """
+    return _chat_engine_config(
+        provider=provider,
+        model=None if is_primary else _DEFAULT_MODELS[provider],
+    )
+
+
 def _openai_compatible_payload(config: ChatEngineConfig, system_prompt: str, user_prompt: str) -> dict[str, Any]:
     return {
         "model": config.model,
@@ -420,6 +449,9 @@ def _gemini_payload(config: ChatEngineConfig, system_prompt: str, user_prompt: s
         "generationConfig": {
             "maxOutputTokens": config.max_tokens,
             "temperature": config.temperature,
+            # Gemini 2.5 may spend the whole output budget on hidden thinking,
+            # yielding an empty visible answer. Disable thinking for live chat.
+            "thinkingConfig": {"thinkingBudget": 0},
         },
     }
 
@@ -456,8 +488,7 @@ async def _stream_openai_compatible(
 
     if not config.api_key:
         logger.error("SA chat provider credentials missing for provider=%s", config.provider)
-        yield _client_facing_error(language)
-        return
+        raise ChatProviderUnavailable("missing_credentials")
 
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(config.timeout_seconds)) as client:
@@ -473,8 +504,7 @@ async def _stream_openai_compatible(
                 if response.status_code != 200:
                     await response.aread()
                     logger.error("SA chat provider HTTP error provider=%s status=%s", config.provider, response.status_code)
-                    yield _client_facing_error(language)
-                    return
+                    raise ChatProviderUnavailable(f"http_{response.status_code}")
 
                 async for line in response.aiter_lines():
                     if not line or not line.startswith("data: "):
@@ -488,12 +518,14 @@ async def _stream_openai_compatible(
                         continue
                     if content:
                         yield content
-    except httpx.ReadTimeout:
+    except httpx.ReadTimeout as exc:
         logger.warning("SA chat stream timeout provider=%s", config.provider)
-        yield _client_facing_error(language)
-    except Exception:
+        raise ChatProviderUnavailable("timeout") from exc
+    except ChatProviderUnavailable:
+        raise
+    except Exception as exc:
         logger.exception("SA chat stream error provider=%s", config.provider)
-        yield _client_facing_error(language)
+        raise ChatProviderUnavailable("stream_error") from exc
 
 
 async def _stream_gemini(
@@ -507,8 +539,7 @@ async def _stream_gemini(
 
     if not config.api_key:
         logger.error("SA chat provider credentials missing for provider=%s", config.provider)
-        yield _client_facing_error(language)
-        return
+        raise ChatProviderUnavailable("missing_credentials")
 
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(config.timeout_seconds)) as client:
@@ -524,9 +555,9 @@ async def _stream_gemini(
                 if response.status_code != 200:
                     await response.aread()
                     logger.error("SA chat provider HTTP error provider=%s status=%s", config.provider, response.status_code)
-                    yield _client_facing_error(language)
-                    return
+                    raise ChatProviderUnavailable(f"http_{response.status_code}")
 
+                buffered_lines: list[str] = []
                 async for line in response.aiter_lines():
                     if not line:
                         continue
@@ -536,15 +567,27 @@ async def _stream_gemini(
                     try:
                         content = _extract_gemini_delta(json.loads(data_str))
                     except json.JSONDecodeError:
+                        buffered_lines.append(data_str)
                         continue
                     if content:
                         yield content
-    except httpx.ReadTimeout:
+
+                if buffered_lines:
+                    try:
+                        content = _extract_gemini_delta(json.loads("\n".join(buffered_lines)))
+                    except json.JSONDecodeError as exc:
+                        logger.warning("SA chat provider returned unparsable Gemini stream provider=%s", config.provider)
+                        raise ChatProviderUnavailable("parse_error") from exc
+                    if content:
+                        yield content
+    except httpx.ReadTimeout as exc:
         logger.warning("SA chat stream timeout provider=%s", config.provider)
-        yield _client_facing_error(language)
-    except Exception:
+        raise ChatProviderUnavailable("timeout") from exc
+    except ChatProviderUnavailable:
+        raise
+    except Exception as exc:
         logger.exception("SA chat stream error provider=%s", config.provider)
-        yield _client_facing_error(language)
+        raise ChatProviderUnavailable("stream_error") from exc
 
 
 async def stream_chat_engine(
@@ -553,15 +596,44 @@ async def stream_chat_engine(
     *,
     language: str = "ja",
 ) -> AsyncGenerator[str, None]:
-    """Stream tokens from the configured chat provider."""
-    config = _chat_engine_config()
-    if config.provider == "gemini":
-        async for token in _stream_gemini(config, system_prompt, user_prompt, language=language):
-            yield token
-        return
+    """Stream tokens from the configured chat provider with failover.
 
-    async for token in _stream_openai_compatible(config, system_prompt, user_prompt, language=language):
-        yield token
+    A billing/rate-limit outage on the primary provider must not surface as the
+    generic "temporarily unavailable" message when another configured provider
+    can answer. This is especially important for the production chat widget.
+    """
+    primary = _normalize_provider(_default_provider())
+    providers = [primary] + _fallback_providers(primary)
+    last_error: Optional[Exception] = None
+
+    for index, provider in enumerate(providers):
+        config = _config_for_attempt(provider, is_primary=(index == 0))
+        try:
+            yielded_any = False
+            if config.provider == "gemini":
+                async for token in _stream_gemini(config, system_prompt, user_prompt, language=language):
+                    yielded_any = True
+                    yield token
+            else:
+                async for token in _stream_openai_compatible(config, system_prompt, user_prompt, language=language):
+                    yielded_any = True
+                    yield token
+            if not yielded_any:
+                raise ChatProviderUnavailable("empty_response")
+            return
+        except ChatProviderUnavailable as exc:
+            last_error = exc
+            logger.warning(
+                "SA chat provider unavailable provider=%s reason=%s fallback_remaining=%s",
+                config.provider,
+                exc,
+                len(providers) - index - 1,
+            )
+            continue
+
+    if last_error:
+        logger.error("All SA chat providers unavailable; returning client-facing fallback")
+    yield _client_facing_error(language)
 
 async def stream_deepseek(
     system_prompt: str,
@@ -585,8 +657,11 @@ async def stream_deepseek(
         temperature=temperature,
         timeout_seconds=config.timeout_seconds,
     )
-    async for token in _stream_openai_compatible(config, system_prompt, user_prompt):
-        yield token
+    try:
+        async for token in _stream_openai_compatible(config, system_prompt, user_prompt):
+            yield token
+    except ChatProviderUnavailable:
+        yield _client_facing_error("ja")
 
 
 async def stream_ai_response(

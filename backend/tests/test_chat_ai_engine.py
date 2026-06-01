@@ -59,6 +59,47 @@ class _GeminiStyleResponse:
         yield json.dumps({"candidates": [{"content": {"parts": [{"text": "konnichiwa"}]}}]})
 
 
+class _PrettyGeminiStyleResponse:
+    """Gemini streamGenerateContent returns a pretty-printed JSON array in production."""
+
+    status_code = 200
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def aread(self) -> bytes:
+        return b""
+
+    async def aiter_lines(self):
+        body = json.dumps(
+            [{"candidates": [{"content": {"parts": [{"text": "konnichiwa"}]}}]}],
+            indent=2,
+        )
+        for line in body.splitlines():
+            yield line
+
+
+class _HttpErrorResponse:
+    def __init__(self, status_code: int = 402):
+        self.status_code = status_code
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def aread(self) -> bytes:
+        return b'{"error":"[REDACTED]"}'
+
+    async def aiter_lines(self):
+        if False:
+            yield ""
+
+
 class _CapturingClient:
     def __init__(self, capture: dict[str, Any], response):
         self.capture = capture
@@ -128,7 +169,7 @@ def test_gemini_provider_uses_configured_model_and_endpoint(monkeypatch: pytest.
     capture: dict[str, Any] = {}
     _patch_httpx(monkeypatch, capture, _GeminiStyleResponse())
     monkeypatch.setenv("SA_CHAT_PROVIDER", "gemini")
-    monkeypatch.setenv("SA_CHAT_MODEL", "gemini-1.5-flash")
+    monkeypatch.setenv("SA_CHAT_MODEL", "gemini-2.5-flash")
     monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
 
@@ -136,14 +177,55 @@ def test_gemini_provider_uses_configured_model_and_endpoint(monkeypatch: pytest.
 
     assert tokens == ["konnichiwa"]
     assert "generativelanguage.googleapis.com" in capture["url"]
-    assert "gemini-1.5-flash" in capture["url"]
+    assert "gemini-2.5-flash" in capture["url"]
+    assert capture["json"]["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 0}
     assert "test-gemini-key" not in json.dumps(capture["json"])
+
+
+def test_deepseek_billing_error_falls_back_to_gemini(monkeypatch: pytest.MonkeyPatch):
+    """DeepSeek billing/rate-limit failures must not make the chat unavailable when Gemini is configured."""
+    import httpx  # type: ignore[import-not-found]
+
+    calls: list[dict[str, Any]] = []
+    responses = [_HttpErrorResponse(402), _PrettyGeminiStyleResponse()]
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def stream(self, method: str, url: str, *, headers=None, json=None):
+            calls.append({"method": method, "url": url, "headers": headers or {}, "json": json or {}})
+            return responses.pop(0)
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setenv("SA_CHAT_PROVIDER", "deepseek")
+    monkeypatch.setenv("SA_CHAT_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-deepseek-key")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    tokens = _collect(chat_ai.stream_ai_response("hello", language="en"))
+
+    assert tokens == ["konnichiwa"]
+    assert calls[0]["url"] == "https://api.deepseek.com/v1/chat/completions"
+    assert "generativelanguage.googleapis.com" in calls[1]["url"]
+    assert "gemini-2.5-flash" in calls[1]["url"]
+    assert calls[1]["json"]["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 0}
+    assert "deepseek-v4-flash" not in calls[1]["url"]
 
 
 def test_missing_provider_credentials_do_not_leak_provider_details(monkeypatch: pytest.MonkeyPatch):
     """RED: client-facing chat must not expose provider names, keys, or raw [ERROR] markers."""
     monkeypatch.setenv("SA_CHAT_PROVIDER", "deepseek")
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     text = "".join(_collect(chat_ai.stream_ai_response("hello", language="ja")))
 
