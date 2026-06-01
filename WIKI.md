@@ -1,5 +1,165 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-01 — Kanban t_37401dee: MSFT legacy-only fixture created
+
+**Status:** Fixture ready and deterministic for legacy-company-profile selection tests.
+
+### Scope
+Built an isolated `SA_ANALYSES_DIR` fixture where:
+- current profile artifact is absent (`MSFT_company_overview_investor_profile_*.pdf` = 0 files)
+- legacy artifact exists (`company_profile_MSFT.pdf`)
+
+### Paths
+- Fixture root: `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_37401dee/fixtures/msft_legacy_only`
+- Analysis dir: `2026-06-01_MSFT_legacy_only_probe/01_official_company_sources/`
+- Legacy artifact: `company_profile_MSFT.pdf`
+
+### Evidence
+- Size: `609` bytes
+- SHA256: `99def67c68d2ac18f3a6b2b1192e3289f8ce18847586792f12c7894546e78086`
+- Validation: `current_profile_match_count=0`, legacy file present
+
+### Re-run / cleanup
+- Setup script: `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_37401dee/setup_msft_legacy_only_fixture.sh`
+- Cleanup script: `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_37401dee/cleanup_msft_legacy_only_fixture.sh`
+- Export for downstream task: `export SA_ANALYSES_DIR=/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_37401dee/fixtures/msft_legacy_only`
+
+## 2026-06-01 — OpenClaw SSH-bridge symlink (BLOCKER for sa-pipeline Kanban workers)
+
+**Status:** Package upgraded on disk; active binary still 2026.4.21 due to SSH wrapper restriction. **MANUAL FIX REQUIRED** by human with shell access on `clawops` user.
+
+### What happened
+During the 2026-06-01 PDF Pro-QA crash storm investigation, discovered that
+`openclaw-gpt55` (the model routed to sa-pipeline workers via `pdf-report-auditor`,
+`codex-first`, `python-builder` profiles) was returning 502 on every API call
+with message:
+  "Config was last written by a newer OpenClaw (2026.5.20); current version is 2026.4.21."
+
+### Root cause
+- The hermes SSH bridge (`openclaw_provider.py` on `127.0.0.1:11435`) SSHes to
+  `clawops-local` with the `id_ed25519_hermes_clawops` key.
+- The `authorized_keys` for `clawops` user has `command="..."` restriction
+  that forces all SSH_ORIGINAL_COMMAND through a SPECIFIC `openclaw` binary
+  (path not visible from outside; version pinned at 2026.4.21 / f788c88).
+- The on-disk `openclaw.json` config was last written by a newer version
+  (2026.5.20), creating a version mismatch that the 2026.4.21 binary rejects.
+
+### Upgrade attempted (2026-06-01)
+Ran `openclaw update --yes --no-restart` on the remote via the SSH wrapper.
+- Before: 2026.5.20
+- After:  2026.5.28
+- Doctor: passed
+- New install: `/home/clawops/.openclaw/tools/node-v22.22.0/lib/node_modules/openclaw/`
+
+**BUT** the active binary invoked by the wrapper is STILL 2026.4.21.
+`openclaw --version` → "OpenClaw 2026.4.21 (f788c88)" every time.
+
+The wrapper hardcodes a specific binary path that does not auto-update
+with `openclaw update`. Re-running the upgrade is a no-op
+(Before == After == 2026.5.28). The active binary is left at 2026.4.21.
+
+### Why the user (not Hermes) must fix it
+The SSH `command=` wrapper restricts shell access. Hermes can only invoke
+`openclaw` subcommands. None of `openclaw setup`, `openclaw update --channel <x>`,
+`openclaw update --tag <path>`, `openclaw onboard --accept-risk`, or
+`openclaw uninstall` re-link the wrapper's binary. The fix requires
+shell access to `clawops` user (e.g. `ssh clawops-local` as a non-restricted
+admin, then `ln -sf` the binary).
+
+### Manual fix procedure (5 min)
+1. SSH into `clawops-local` as a user with shell access (NOT via the
+   command-restricted key).
+2. Identify the active binary path:
+   ```
+   which openclaw
+   readlink -f $(which openclaw)
+   ls -la /home/clawops/openclaw/bin/openclaw  # likely target
+   ```
+3. Re-symlink to the new install:
+   ```
+   ln -sf /home/clawops/.openclaw/tools/node-v22.22.0/lib/node_modules/openclaw/bin/openclaw \
+          /home/clawops/openclaw/bin/openclaw
+   ```
+4. Verify:
+   ```
+   openclaw --version
+   # should print: OpenClaw 2026.5.28 (...)
+   ```
+5. (If gateway service was disabled by the upgrade) restart:
+   ```
+   openclaw gateway install
+   systemctl --user start openclaw-gateway.service
+   ```
+6. Re-auth the openai-codex provider (was "expiring (17h)" in doctor):
+   ```
+   openclaw models auth login --provider openai-codex
+   ```
+
+### Verified (after manual fix)
+- ⏳ Pending. Once `openclaw --version` reports 2026.5.28, re-run the
+  sa-pipeline smoke test by promoting any ready todo task.
+
+## 2026-06-01 — JP deep-dive PDF polling: idempotency guard + Mode B crash-storm root cause
+
+**Commits:** pending (work applied to `backend/main.py` and `kanban_db.py`)
+**Profile:** python-builder (manual fix path, no Kanban dispatch — see storm note below)
+
+### Scope
+Two related issues from the 2026-06-01 PDF Pro-QA audit follow-up:
+1. **JP polling bug (production)**: `/api/report/{ticker}/pdf?lang=jp` spawned a new background generator thread on every client poll. NVDA/GOOGL stayed in `202 generating` for the entire recipe window.
+2. **Mode B crash-storm (Kanban)**: 71 task spawns in 30 min, ~10-15M tokens burned, 4/6 chain tasks crash-looped. Caused by unrelated root cause (see below) that prevented any auto-fix worker from surviving long enough to land a patch.
+
+### Issue 1 — JP polling root cause
+- `_find_analysis_dirs(ticker)` returns newest-first
+- `get_report_pdf` picked `matches[0]` and, when the JP PDF was missing, unconditionally launched a new background generator
+- No check on `async_dossier.DossierPhase` — so any poll of an in-flight ticker spawned a NEW thread
+- `/api/dossier/{ticker}/status` already uses a validated-dir preference (`async_dossier.py:121`) and an in-memory phase registry — the PDF endpoint was the only one not using it
+- Each client poll = 1 new daemon thread → +3 uvicorn threads per 3 polls during the audit window
+
+### Issue 1 — Fix
+- `backend/main.py::get_report_pdf` (around line 1496)
+- Before launching the background generator, query `async_dossier.get_dossier_status(ticker)["phase"]`:
+  - `pdf_generating` or `pdf_validating` → return 202 immediately, no thread spawn
+  - `pdf_blocked` or `failed` → return 422 with `retryable=False`, no respawn
+  - any other phase (including `None`) → proceed normally
+- Acceptance criteria: NVDA/AAPL/GOOGL `?lang=jp` polling must never spawn >1 background generator per phase. Verified via `test_jp_pdf_idempotency.py` (5 tests) and live curl on `sa.cedlabusa.net` (3/3 tickers return 200 with valid PDFs on commit `3b3f22a`).
+
+### Issue 1 — Tests
+- New: `backend/tests/test_jp_pdf_idempotency.py` (5 tests, all passing)
+- Patches `backend.async_dossier.get_dossier_status` and `threading.Thread` to control phase + count thread spawns
+- Regression: existing test suite still passes (1 unrelated pre-existing failure in `test_revenue_estimate.py::NameError: '_build_chart_data' is not defined`)
+
+### Issue 2 — Mode B crash-storm root cause
+- During the 2026-06-01 crash storm (71 spawns, all crashed in 10-130s), the auto-decomposition chain from `t_fda2f272` (the root-cause analysis task) tried to dispatch the fix tasks. Every fix worker died before it could land a patch.
+- `dmesg` is empty (no OOM kills). `/var/log/syslog` shows no kill events. Workers were being killed WITHOUT a kernel signal.
+- Investigation: `kanban_db.py:6069` does `env = dict(os.environ)` to inherit parent env. The dispatcher's per-task `_worker_terminal_timeout_env` (line 6012) returns `None` (no override) when `task.max_runtime_seconds is None` — and 81/157 sa-pipeline tasks have `max_runtime=None`.
+- The hermes shell session has `TERMINAL_TIMEOUT=60` set globally (interactive-shell default). Workers with `max_runtime=None` silently inherited that 60s cap, died at the 60s mark, and the dispatcher saw a vanished PID → "pid not alive" → crash → respawn.
+- The worker's Popen also uses `start_new_session=True` + intentional handle abandonment, so the gateway cannot track or reap the orphan — the only signal the gateway gets is "pid is gone", which `_classify_worker_exit` (line 4404) classifies as `("unknown", None)` → "pid X not alive".
+
+### Issue 2 — Fix
+- `kanban_db.py::_default_spawn` (line 6069)
+- Strip `TERMINAL_TIMEOUT` and `TERMINAL_MAX_FOREGROUND_TIMEOUT` from the worker's env before Popen
+- This lets the worker's own internal default (much higher) take over, or — when the task has an explicit `max_runtime` — the existing per-task override logic still applies
+- One change, one comment block. No behavioral change for tasks that already specify a `max_runtime`.
+
+### Issue 2 — Verification plan
+- Pre-fix: any sa-pipeline task with `max_runtime=None` was guaranteed to die at 60s
+- Post-fix: workers should survive as long as their internal logic dictates
+- The fix is structural (kanban-wide, not sa-pipeline-specific), so it benefits all boards
+- Live test pending: no auto-decomposition was relaunched; manual smoke test would be to promote one of the 5 SA-PDF-AUDIT-FIX-* tasks to `ready` and watch the worker survive >60s
+
+### Operational notes
+- **Do NOT relaunch the crash-chain tasks** (`t_43ce217f`, `t_a923b755`, `t_ac8c7e0e`, plus the SA-PDF-AUDIT-FIX-* in `todo`). Manual fix path used. The root cause analysis is preserved in `t_fda2f272.result` for future reference.
+- The chain-guard skill (`~/.hermes/profiles/minimax-m3/skills/kanban-crash-guard/`) remains installed as a defense-in-depth tool. It can be relaunched via the script in that skill if a future storm happens.
+- 9 zombie claims from 2026-05-27 (reviewer-qa profile, age 125h) were cleaned up via `UPDATE task_runs SET status='completed' WHERE id IN (1779-1787)`. They were not actively burning tokens but polluted the dashboard.
+
+### Verified
+- ✅ Targeted tests: `PYTHONPATH=. backend/.venv/bin/pytest backend/tests/test_jp_pdf_idempotency.py -q` → `5 passed`.
+- ✅ Backend restarted from canonical cwd `/home/ced/codex-projects/stock-analysis-pipeline`, listener `0.0.0.0:8780`, new PID 1278410, commit `3b3f22a`.
+- ✅ Production browser recipe: opened `https://sa.cedlabusa.net/api/report/{NVDA,AAPL,GOOGL}/pdf?lang=jp` → all return HTTP 200 with valid PDFs (`%PDF-1.4`).
+- ✅ Gateway restarted (old PID 2261958, new PID 1279719) — picks up the `kanban_db.py` fix on next worker spawn.
+- ⏳ Mode B live verification: pending a non-storm smoke test (out of scope today; documented above).
+
 ## 2026-06-01 — Chat recent-ticker context fallback clarified
 
 **Scope:** Production chat widget context/prompt behavior for questions like “what are the latest tickers I searched?”.
@@ -226,6 +386,7 @@ but no PDF was produced.
 
 ## Recent Changes
 | Date | Task | Description |
+| 2026-06-01 | t_4dd1230d — PDF QA gate rule spec | Created `docs/pdf-audits/2026-06-01-sa-pdf-qa-gate-rules.md`, an implementation-ready rule matrix for the automated EN+JP PDF QA gate. It defines artifact existence, page-count, text extraction, forbidden/internal marker, placeholder, numeric coherence, source URL, section presence, Nami personalization, and first-page render smoke rules with `defect`/`warning`/`allowed` severities and explicit audience-mode handling. Verification: source audit JSON inspected, PNG render metadata checked, spec rule IDs validated. | ✅ DONE |
 | 2026-06-01 | SA PDF Pro-QA mini-sprint staged + Kanban DB backup guard | Created the PDF Pro-QA mini-sprint from `docs/pdf-audits/2026-06-01-sa-pdf-pro-qa-kanban-draft.md` after validating enriched task bodies with `kanban_task_validate.py`. Final staged tasks are in `triage` (safe no-spawn): `t_ac8c7e0e` FIX-01 JP deep-dive generation/polling, `t_b90500a9` FIX-02 Company Overview key_financials/source ledger, `t_cd3af989` FIX-03 stale legacy Company Overview fallback, `t_8a067711` FIX-04 PDF layout pass, `t_017a60b8` FIX-05 automated PDF QA gate. Dependencies linked: FIX-01 → FIX-03/FIX-04/FIX-05; FIX-02 → FIX-04/FIX-05; FIX-03 → FIX-04/FIX-05; FIX-04 → FIX-05. Sprint was **not launched** because `specify` hit `RateLimitError`; launching must promote/specify one root at a time, starting with FIX-01. Incident lesson: `--initial-status blocked` is unsafe on this board because the gateway dispatcher auto-promotes it; use `--triage` for no-spawn staging. Recovery/backups: board restored from latest healthy DB backup, normalized to pre-NS invariant `done=67/cancelled=1/no active tasks`, partial worker diff saved at `/tmp/sa-pdf-proqa-partial-worker-diff-20260601-105713.patch`, and silent cron `kanban-db-auto-backup` (`5c7d92db623d`, every 10 min, local delivery) now integrity-checks and backs up board DBs under `~/.hermes/kanban/auto-backups/`. | ✅ STAGED |
 | 2026-05-31 | Nami-only feedback/docs context routing | Forced the feedback-page remarks and uploaded feedback PDFs/docs into Nami's chat context only, without weakening general visitor isolation. Root cause: `chat_feedback` is correctly scoped by `visitor_id`, but the separate feedback-page JSON store and `analyses/feedback_*` uploads have no visitor identity; they were therefore absent from fresh Nami sessions unless a matching chat/ticker history already existed. Fix: `backend/chat_context.py` now gates feedback-page entries and feedback upload PDFs behind server-side Nami recognition (`apple-*-safari` → `Nami-san`), merges those entries into `feedback_context`, and uses them as recent ticker/PDF context only for Nami. Ced/Linux and unknown sessions remain fail-closed with no `feedback_page` context. Added regression tests in `backend/tests/test_chat_widget.py` for Nami receives feedback-page context and non-Nami does not call the feedback-page store. Validation: `./.venv/bin/python -m pytest backend/tests/test_chat_widget.py tests/test_chat_widget.py tests/test_feedback.py -q` → `60 passed, 2 warnings`; runtime local+prod probe `/tmp/sa_nami_feedback_context_probe.py` → `NAMI_FEEDBACK_CONTEXT_PROBE_PASS` with Safari/Nami feedback_count=5, feedback_files_count=10, recent_pdf_count=5 and Linux/Ced feedback_count=0/recent_pdf_count=0; `tb sa-check` ALL OK; `git diff --check` OK. Code commit: `873d6d7`. | ✅ DONE |
 | 2026-05-31 | Chat personalization + default language fix | Restored controlled server-side chat personalization after the neutral identity hardening regressed client context. `backend/chat_context.py` now derives `visitor_display_name` from trusted device metadata (`apple-*-safari` → `Nami-san`, `linux/windows chrome/edge` → `Ced`, unknown devices stay neutral) while preserving explicit trusted display names. Fixed `/api/chat/context` language drift by deriving `effective_language` from the stored session when the endpoint is called without an explicit language, so `en` sessions no longer get overwritten to `ja`. `frontend/src/App.jsx` now defaults to Japanese (`jp`) for first-time visitors, matching the client default. Added/updated tests in `tests/test_chat_widget.py` for Nami/Ced fingerprinting, unknown-device neutrality, and session-language preservation. Validation: `.venv/bin/python -m pytest tests/test_chat_widget.py -q` → `26 passed`; `npm --prefix frontend run build` → OK (`index-CbB56Aca.js`); backend restarted on `:8780`; `tb sa-check` ALL OK; local runtime probe confirms Safari → `Nami-san`, Linux/Chrome → `Ced`, and `en` context preserved; production Playwright recipe confirms prod bundle matches local SHA256, default chat copy is Japanese, Safari context returns `Nami-san`, Linux context returns `Ced`, 0 console errors, 0 unexpected HTTP errors. Code commit: `b798c92`. | ✅ DONE |
