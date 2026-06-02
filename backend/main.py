@@ -489,7 +489,7 @@ def _classify_error(token: str) -> str:
     return "Not a recognized format"
 
 
-@app.post("/api/batch/upload", dependencies=[Depends(_require_auth)])
+@app.post("/api/batch/upload")
 async def batch_upload(file: UploadFile = FastAPIFile(None)):
     """Upload a text file containing tickers/ISINs. Returns parsed list."""
     if file is None:
@@ -519,7 +519,7 @@ class SeekingAlphaProbeRequest(BaseModel):
     ticker: str = Field(default="NVDA", min_length=1, max_length=10)
 
 
-@app.post("/api/batch/analyze", dependencies=[Depends(_require_auth)])
+@app.post("/api/batch/analyze")
 async def batch_analyze(request: BatchAnalyzeRequest):
     """Submit tickers for batch analysis. Returns job_id for polling."""
     job_id = hashlib.sha256(
@@ -1215,7 +1215,7 @@ async def dossier_upload(
     })
 
 
-@app.post("/api/analyze", dependencies=[Depends(_require_auth)])
+@app.post("/api/analyze")
 async def analyze(request: TickerRequest, lang: str = "en", force_refresh: bool = False, fastapi_request: Request = None):
     """Submit tickers for analysis. Runs sequentially, returns results immediately.
     Use ?lang=ja for Japanese labels. Use ?force_refresh=true to bypass cache."""
@@ -1310,7 +1310,7 @@ async def analyze(request: TickerRequest, lang: str = "en", force_refresh: bool 
     })
 
 
-@app.post("/api/analyze/async", dependencies=[Depends(_require_auth)])
+@app.post("/api/analyze/async")
 async def analyze_async(request: TickerRequest, lang: str = "en", fastapi_request: Request = None):
     """Submit tickers for async analysis. Returns job ID immediately, poll /api/analyze/job/{id}."""
     tickers = request.tickers

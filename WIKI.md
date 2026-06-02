@@ -1,5 +1,40 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-02 — Production 403 recovery for public client analysis
+
+**Status:** Recovered production client workflow after Nami hit `Async analysis error: 403` on the public Stock Analysis page.
+
+### Root cause
+- `POST /api/analyze/async`, `POST /api/analyze`, `POST /api/batch/upload`, and `POST /api/batch/analyze` were protected by `_require_auth`.
+- The static public frontend cannot embed `CED_CONTROL_KEY`, so remote browser traffic without `X-API-Key` was rejected with 403.
+- Admin/debug/internal endpoints remain protected; the fix only removed auth from rate-limited user-facing analysis endpoints.
+
+### Changes
+- `backend/main.py` — removed `_require_auth` dependency from the public analysis/parser endpoints:
+  - `/api/batch/upload`
+  - `/api/batch/analyze`
+  - `/api/analyze`
+  - `/api/analyze/async`
+- `tests/test_public_client_auth.py` — added remote-browser regression tests proving public client workflows work without API key while `/api/admin/recent-searches` remains 403.
+
+### Verification
+- Browser production repro before fix: `https://sa.cedlabusa.net/stock-analysis/` + `NVDA` → `Async analysis error: 403`.
+- Test RED before patch: `PYTHONPATH=. backend/.venv/bin/pytest tests/test_public_client_auth.py -q` → `3 failed, 1 passed`.
+- Test GREEN after patch: `PYTHONPATH=. backend/.venv/bin/pytest tests/test_public_client_auth.py -q` → `4 passed`.
+- Regression suite: `PYTHONPATH=. backend/.venv/bin/pytest tests/test_batch.py tests/test_seeking_alpha_access.py -q` → `33 passed`.
+- Production endpoint checks after backend reload:
+  - `POST https://sa.cedlabusa.net/api/analyze/async?lang=jp` without API key → HTTP 200, job pending.
+  - `POST https://sa.cedlabusa.net/api/batch/upload` without API key → HTTP 200, ticker parsed.
+  - `GET https://sa.cedlabusa.net/api/admin/recent-searches` without API key → HTTP 403, admin still protected.
+- Browser production verification after fix: `NVDA` quick analysis enters `分析中…` progress state with no JS errors and no 403.
+- `tb sa-check` → **ALL OK**; backend PID `1568402`, started `08:54`, prod/local health OK, tunnel OK.
+
+### Admin DB clarification
+- Canonical admin/search DB: `backend/logs/searches.db`.
+- It is not empty: `727` total rows, `657` completed, `70` failed; size `241,664` bytes.
+- Production `#admin` page displays `727` searches, success `90.4%`, and recent rows.
+- A stale/non-canonical `searches.db` path can appear empty/missing and should not be used for admin state.
+
 ## 2026-06-02 — SA repo cleanup checkpoint
 
 **Status:** Repo cleaned into a single local commit after classifying all dirty files from the PDF/Kanban workstream.
