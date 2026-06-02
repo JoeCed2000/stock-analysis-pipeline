@@ -27,22 +27,53 @@ def _format_scoring_breakdown(scoring) -> str:
     return " ".join(parts) + f" = {s.total}/40"
 
 
+def _await_future_with_progress(future: concurrent.futures.Future, ticker: str) -> AnalysisResult:
+    """Wait for an analysis future without recording false failures.
+
+    Python cannot cancel a running ThreadPoolExecutor worker. The previous
+    implementation treated ``future.result(timeout=...)`` as a hard deadline,
+    but the worker continued building PDFs and artifacts after the admin log had
+    already recorded a failed timeout. This helper uses PER_TICKER_TIMEOUT as a
+    progress-warning interval: if the analysis is still alive, log that fact and
+    keep waiting for the real result or real exception.
+    """
+    warned = False
+    while True:
+        try:
+            return future.result(timeout=PER_TICKER_TIMEOUT)
+        except concurrent.futures.TimeoutError:
+            if not warned:
+                logger.warning(
+                    "%s: still running after %ss; waiting for completion instead of marking failed",
+                    ticker,
+                    PER_TICKER_TIMEOUT,
+                )
+                warned = True
+            else:
+                logger.warning(
+                    "%s: still running; analysis worker is alive and remains the source of truth",
+                    ticker,
+                )
+
+
 def run_analysis_sequential(tickers: List[str], output_base: str = "analyses") -> Dict[str, Any]:
-    """Run analysis for multiple tickers sequentially with per-ticker timeout."""
+    """Run analysis for multiple tickers sequentially.
+
+    PER_TICKER_TIMEOUT is a progress-warning interval, not a false failure
+    deadline. A running analysis may legitimately exceed it while the PDF/LLM
+    pipeline is still producing artifacts.
+    """
     results: Dict[str, AnalysisResult] = {}
     errors: Dict[str, str] = {}
 
     for ticker in tickers:
         try:
-            logger.info(f"Analyzing {ticker} (fast, timeout={PER_TICKER_TIMEOUT}s)...")
+            logger.info(f"Analyzing {ticker} (fast, progress_timeout={PER_TICKER_TIMEOUT}s)...")
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(analyze_ticker_fast, ticker, output_base)
-                result = future.result(timeout=PER_TICKER_TIMEOUT)
+                result = _await_future_with_progress(future, ticker)
             results[ticker] = result
             logger.info(f"{ticker}: {result.decision} | {_format_scoring_breakdown(result.scoring)}")
-        except concurrent.futures.TimeoutError:
-            logger.error(f"{ticker}: TIMEOUT after {PER_TICKER_TIMEOUT}s")
-            errors[ticker] = f"Analysis timed out after {PER_TICKER_TIMEOUT}s"
         except Exception as e:
             logger.error(f"{ticker}: {e}")
             errors[ticker] = str(e)
@@ -57,7 +88,14 @@ def run_analysis_parallel(
     language: str = "en",
     force_refresh: bool = False,
 ) -> Dict[str, Any]:
-    """Run multiple ticker analyses concurrently with per-ticker timeout."""
+    """Run multiple ticker analyses concurrently.
+
+    PER_TICKER_TIMEOUT is treated as a progress-warning interval. A running
+    ThreadPoolExecutor future cannot be safely killed, so recording a timeout as
+    a final admin failure while the pipeline continues creates contradictory
+    state: admin says failed, but PDFs/artifacts are later generated. Only real
+    exceptions become errors.
+    """
     results: Dict[str, AnalysisResult] = {}
     errors: Dict[str, str] = {}
     if not tickers:
@@ -73,6 +111,7 @@ def run_analysis_parallel(
             for ticker in tickers
         }
         pending = set(futures)
+        warned: set[concurrent.futures.Future] = set()
         while pending:
             done, pending = concurrent.futures.wait(
                 pending,
@@ -80,13 +119,21 @@ def run_analysis_parallel(
                 return_when=concurrent.futures.FIRST_COMPLETED,
             )
             if not done:
-                for future in list(pending):
+                for future in pending:
                     ticker = futures[future]
-                    future.cancel()
-                    logger.error(f"{ticker}: TIMEOUT after {PER_TICKER_TIMEOUT}s")
-                    errors[ticker] = f"Analysis timed out after {PER_TICKER_TIMEOUT}s"
-                    pending.remove(future)
-                break
+                    if future not in warned:
+                        logger.warning(
+                            "%s: still running after %ss; waiting for completion instead of marking failed",
+                            ticker,
+                            PER_TICKER_TIMEOUT,
+                        )
+                        warned.add(future)
+                    else:
+                        logger.warning(
+                            "%s: still running; analysis worker is alive and remains the source of truth",
+                            ticker,
+                        )
+                continue
 
             for future in done:
                 ticker = futures[future]

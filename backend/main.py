@@ -1300,8 +1300,8 @@ async def analyze(request: TickerRequest, lang: str = "en", force_refresh: bool 
     client_ip = fastapi_request.client.host if fastapi_request and fastapi_request.client else "unknown"
     for r_item in results_list:
         log_search(r_item["ticker"], "completed", duration_ms, user_agent=ua, client_ip=client_ip)
-    for ticker_err in errors_list:
-        log_search(ticker_err, "failed", duration_ms, error=ticker_err, user_agent=ua, client_ip=client_ip)
+    for ticker_err, error_msg in batch["errors"].items():
+        log_search(ticker_err, "failed", duration_ms, error=error_msg, user_agent=ua, client_ip=client_ip)
     
     return JSONResponse({
         "status": "completed" if not batch["errors"] else "partial",

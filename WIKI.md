@@ -828,6 +828,33 @@ but no PDF was produced.
 ### Code changes
 - None. This was a production/runtime diagnosis and verification pass only.
 
+## 2026-06-02 — SA admin + timeout false-failure fixes + PDFQA gate
+
+**Status:** In progress — code/tests OK locally; backend restarted; production admin browser verification OK; commit/push still required before final done.
+
+### Root cause / technical fixes
+- Admin “empty DB” symptom: SQLite can be recreated empty while durable `searches.jsonl` still contains production history. `backend/search_db.py` now falls back to JSONL for recent searches and aggregate stats when SQLite has no rows, and filters exception-text pollution from top tickers.
+- False failed runs: `backend/orchestrator.py` no longer treats `PER_TICKER_TIMEOUT` as a terminal deadline for running `ThreadPoolExecutor` workers. It logs progress warnings and waits for actual completion/exception, preventing admin rows marked failed while artifacts continue building.
+- Failed error logging: `backend/main.py` now logs the actual error message from `batch["errors"]` instead of reusing the ticker string as the error.
+
+### PDF quality gate mapping
+- Added cartography: `docs/pdf-audits/2026-06-02-pdf-quality-gates-map.md`.
+- Added post-render module: `backend/earnings_deep_dive/pdf_quality_gate.py`.
+- Added tests: `tests/spec_v27_pdf_quality_gate.py`.
+- Gate covers final-artifact checks not covered by `pre_render_validator.py`: real PDF vs JSON/invalid file, page count, EN/JP language ratio, Nami personalization mode, NaN/null/debug markers, raw provider labels (`source: yfinance`, `S1`), missing sections, insufficient source links, rendered-page smoke screenshots, and key-financial mismatch vs canonical Yahoo snapshot.
+
+### Verification so far
+- `PYTHONPATH=. ./.venv/bin/pytest tests/spec_v27_pdf_quality_gate.py -q -s` → `10 passed`, real saved audit blocks with `REAL_AUDIT_DEFECTS=44 WARNINGS=14`.
+- `PYTHONPATH=. ./.venv/bin/pytest tests/spec_v27_*.py -q` → `390 passed in 13.97s`.
+- `PYTHONPATH=. ./.venv/bin/pytest tests/test_orchestrator.py tests/test_search_db_fallback.py tests/spec_v27_pdf_quality_gate.py -q -s` → `16 passed in 2.43s`.
+- Backend restarted on PID `1636704`; local and production health both returned `status=ok`, commit `085d9e4`.
+- Production admin browser check on `https://sa.cedlabusa.net/stock-analysis/#admin`: `SEARCHES=733`, `SUCCESS=90%`, table populated, console JS errors `0`.
+- Real PDFQA audit coverage: saved audit `2026-06-01-sa-pdf-pro-qa-raw.json` contains `NVDA`, `AAPL`, `GOOGL`; regression test confirms gate blocks known real defects (`PDFQA-003`, `PDFQA-007`, `PDFQA-008`, `PDFQA-013`).
+
+### Remaining before final done
+- Commit and push code + WIKI.
+- Optional next hardening: wire `pdf_quality_gate.py` into runtime delivery once a fresh post-render audit object is produced during PDF generation.
+
 ## Non-Regression Playbooks
 - **When modifying ValuationGroup**: run `node chartUtils.test.cjs` (68 tests), rebuild frontend, test NVDA and MSFT
 - **When modifying PeerBenchmarkGroup**: run `npm run build`, verify browser console 0 errors, test NVDA/AAPL/TSLA
