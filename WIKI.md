@@ -808,6 +808,26 @@ but no PDF was produced.
 - Final listing contains only:
   - `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_c7645016/fixtures/msft_legacy_only/2026-06-01_MSFT_legacy_only_fixture/01_official_company_sources/company_profile_MSFT.pdf`
 
+## 2026-06-02 — SA prod/admin restore check + NVDA/AAPL timeout diagnosis
+
+**Status:** Production was restored/healthy after backend restart; admin DB is **not empty**.
+
+### Evidence
+- `tb sa-check` returned **ALL OK**: local API OK, prod API OK, backend PID `1624325`, tunnel running.
+- Production health: `GET https://sa.cedlabusa.net/api/health` → `200`, commit `095c899`.
+- Admin data verified via API: `GET /api/recent-searches?limit=1` → `total=733`.
+- Admin data verified via browser on `https://sa.cedlabusa.net/#admin`: counters `SEARCHES=733`, `SUCCESS=90%`, table populated, console errors `0`.
+- Feedback API verified: `GET /api/feedback` → `total=6`, `unprocessed=1`.
+
+### Root cause found
+- NVDA/AAPL failures were not an empty admin DB. They were timeout rows inserted by the analysis orchestration layer.
+- Exact log evidence: `backend.orchestrator` emitted `NVDA: TIMEOUT after 1200s` at `2026-06-02 09:16:11` and `09:17:18`, and `AAPL: TIMEOUT after 1200s` at `09:22:15`.
+- Surrounding logs show the long PDF/deep-dive pipeline continued after those timeout rows and later completed generated artifacts (`Earnings deep-dive PDF built successfully`, `Deep-dive validation PASSED`, Excel saved).
+- Provider symptoms during the same window: Codex CLI repeated `hung — no output after 300s`, Gemini returned `403/503`, DeepSeek returned `402 Insufficient Balance`. These delays pushed full runs past the 1200s orchestrator timeout.
+
+### Code changes
+- None. This was a production/runtime diagnosis and verification pass only.
+
 ## Non-Regression Playbooks
 - **When modifying ValuationGroup**: run `node chartUtils.test.cjs` (68 tests), rebuild frontend, test NVDA and MSFT
 - **When modifying PeerBenchmarkGroup**: run `npm run build`, verify browser console 0 errors, test NVDA/AAPL/TSLA
