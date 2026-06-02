@@ -1,5 +1,29 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-02 — Kanban t_e84a33e6 recovered manually: key_financials contract persisted
+
+**Status:** Manual recovery completed for the blocked Kanban task `t_e84a33e6` (`Define canonical key_financials sourcing contract`). The previous worker output was blocked because the claimed workspace artifact disappeared; the contract is now persisted in the repo.
+
+### Deliverable
+- Contract: `docs/pdf-audits/2026-06-02-company-overview-key-financials-contract.md`
+- Size: `467` lines, `18,849` bytes.
+
+### Root cause of blocked task
+- The worker claimed a spec artifact at `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_e84a33e6/company_overview_key_financials_contract.md`.
+- Reviewer evidence showed the workspace was empty and the worker log only contained a truncated diff, so acceptance criteria could not be audited.
+- Recovery fix: re-deliver the full contract in a persistent, reviewable repo path.
+
+### Contract summary
+- Defines canonical `key_financials` selection upstream of the PDF renderer.
+- Requires field-level `key_financials_provenance` schema.
+- Sets ledger vs Yahoo snapshot priority, numeric normalization, tolerance, reason codes, and >10% `mismatch_blocked` behavior.
+- Explicitly forbids LLM numeric output and PDF-time hidden fallbacks as source-of-truth.
+- Specifies tests for NVDA/AAPL/GOOGL and renderer behavior.
+
+### Verification
+- `tb stat docs/pdf-audits/2026-06-02-company-overview-key-financials-contract.md && tb lines docs/pdf-audits/2026-06-02-company-overview-key-financials-contract.md` → `18,849 bytes`, `467 lines`.
+- Code evidence collected via Serena symbol inspection on `backend/company_overview.py`, `backend/pipeline.py`, and `backend/company_overview_pdf.py`; GBrain CodeGraph returned 0 hits, so documented Triad fallback was used.
+
 ## 2026-06-02 — Nami 403 incident traced in Feedback page
 
 **Status:** Added Nami's production failure report to the canonical Feedback page before resuming PDF anomaly work.
