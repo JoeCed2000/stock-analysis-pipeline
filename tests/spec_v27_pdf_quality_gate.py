@@ -86,6 +86,19 @@ def test_internal_source_labels_block_generic_pdf():
     assert len(defects) == 2
 
 
+def test_raw_metric_keys_block_generic_pdf():
+    """Real PDF defect: raw snake_case provider metric keys are internal labels."""
+    result = validate_pdf_audit(
+        _audit(
+            deep_en={"forbidden_counts": {"eps_actual": 15, "eps_estimate": 10}},
+            deep_jp={"forbidden_counts": {"revenue_yoy": 7}},
+        )
+    )
+    defects = _defects(result, "PDFQA-008")
+    observed = {marker for defect in defects for marker in (defect.observed or {})}
+    assert {"eps_actual", "eps_estimate", "revenue_yoy"} <= observed
+
+
 def test_nami_personalization_blocks_generic_but_allowed_in_personalized_mode():
     generic = validate_pdf_audit(_audit(deep_en={"forbidden_counts": {"Nami-san": 12}}), audience_mode="generic")
     personalized = validate_pdf_audit(_audit(deep_en={"forbidden_counts": {"Nami-san": 12}}), audience_mode="nami_personalized")

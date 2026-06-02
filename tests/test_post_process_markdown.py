@@ -61,6 +61,39 @@ class TestPostProcessMarkdown:
         assert "yfinance ($2.14)" in result
         assert "company metrics" in result
 
+    def test_source_parenthetical_provider_fields_stripped(self):
+        """Real PDF defect: '(source: yfinance eps_actual; ...)' must not leak raw provider keys."""
+        original = (
+            "EPS was $1.65 vs $1.62 "
+            "(source: yfinance eps_actual; yfinance eps_estimate; formula: eps_actual - eps_estimate)."
+        )
+        result = post_process_markdown(original)
+        assert "source: yfinance" not in result
+        assert "eps_actual" not in result
+        assert "eps_estimate" not in result
+        assert "source: company metrics" in result
+        assert "formula" in result
+
+    def test_competitor_row_ids_stripped(self):
+        """Real PDF defect: S1/S2 row IDs should not appear in prose or tables."""
+        original = "| S1 Apple (AAPL) | iPhone ecosystem |\nS2 Microsoft appears as a competitor."
+        result = post_process_markdown(original)
+        assert "S1 Apple" not in result
+        assert "S2 Microsoft" not in result
+        assert "Apple (AAPL)" in result
+        assert "Microsoft appears" in result
+
+    def test_raw_metric_assignments_humanized(self):
+        """Real PDF defect: prose must not expose snake_case metric keys."""
+        original = "Apple reported eps_actual=2.01 versus eps_estimate=1.94 and revenue_yoy=16.60."
+        result = post_process_markdown(original)
+        assert "eps_actual" not in result
+        assert "eps_estimate" not in result
+        assert "revenue_yoy" not in result
+        assert "reported EPS 2.01" in result
+        assert "EPS estimate 1.94" in result
+        assert "revenue YoY 16.60" in result
+
     def test_preserves_other_content(self):
         """Non-matching markdown passes through unchanged."""
         original = "# Heading\n\nNormal paragraph with **bold** and *italic*.\n\n| Table | Without | yfinance |\n|-------|---------|----------|\n| Row   | Data    | Here     |"

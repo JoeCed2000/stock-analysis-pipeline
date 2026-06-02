@@ -880,6 +880,27 @@ but no PDF was produced.
 ### Remaining / next hardening
 - Optional next hardening: wire `pdf_quality_gate.py` into runtime delivery once a fresh post-render audit object is produced during PDF generation.
 
+## 2026-06-02 — SA PDF marker/source-label defect class hardening
+
+**Status:** Completed locally and deployed to the live backend process; commit pending until final user-facing PDF pass is archived.
+
+### Root cause / technical fixes
+- Real AAPL EN and NVDA JP deep-dive extracted text showed client-visible internal markers: `source: yfinance`, `S1`, `eps_actual`, `eps_estimate`.
+- Root cause was a prompt/sanitizer mismatch: the deep-dive prompt asked for exact raw provider keys for grounding, then `post_process_markdown()` only cleaned dashed `yfinance — key=value` patterns, not inline `(source: yfinance eps_actual; ...)`, competitor row IDs, or prose assignments like `eps_actual=2.01`.
+- `backend/earnings_deep_dive/prompts.py` now requests client-safe source labels (`source: company metrics`, no raw provider keys).
+- `backend/earnings_deep_dive/markdown.py` now strips raw source parentheticals, raw snake_case metric assignments, and `S1`/`S2` competitor row IDs while preserving human-readable values/provenance.
+- `backend/earnings_deep_dive/pdf_quality_gate.py` now treats raw metric keys (`eps_actual`, `eps_estimate`, `revenue_yoy`, etc.) as `PDFQA-008` internal markers.
+
+### Tests / verification
+- Sanitizer proof on real saved extracts: `AAPL_deep_en.txt` and `NVDA_deep_jp.txt` reduce `source: yfinance`, `S1`, `eps_actual`, `eps_estimate` counts to `0` after post-processing.
+- `PYTHONPATH=. backend/.venv/bin/pytest tests/spec_v27_pdf_quality_gate.py tests/test_post_process_markdown.py -q` → `22 passed`.
+- `PYTHONPATH=. backend/.venv/bin/pytest tests/spec_v27_*.py tests/test_v27_*.py tests/test_post_process_markdown.py -q` → `492 passed`.
+- Integration guardrails: `PYTHONPATH=. backend/.venv/bin/pytest tests/test_async_dossier.py tests/test_earnings_deep_dive_integration.py tests/test_pdf_generation_state.py tests/test_seeking_alpha_access.py -q` → `31 passed`.
+- Backend restarted on PID `1654872`; `tb sa-check` → **ALL OK**; prod admin browser check shows populated admin (`733` searches), visible timeout rows are historical (`2026-06-02T07:45–07:46Z`) and no JS errors.
+
+### Remaining
+- Next defect family: Company Overview source traceability / stale-minimal PDF fallback, then fresh numeric coherence verification.
+
 ## Non-Regression Playbooks
 - **When modifying ValuationGroup**: run `node chartUtils.test.cjs` (68 tests), rebuild frontend, test NVDA and MSFT
 - **When modifying PeerBenchmarkGroup**: run `npm run build`, verify browser console 0 errors, test NVDA/AAPL/TSLA
