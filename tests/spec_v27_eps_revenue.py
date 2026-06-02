@@ -232,9 +232,9 @@ class TestRule13Integration:
         # RULE 13 should pass (no issues)
         errs_13 = [e for e in result.errors if e.check.startswith("eps_revenue_")]
         assert len(errs_13) == 0
-        # RULE 3 should fire (contradiction)
-        errs_3 = _errors_for(result, "eps_direction_contradiction")
-        assert len(errs_3) >= 1
+        # RULE 3 should fire as warning (post-processing can repair/flag)
+        wrns_3 = _warnings_for(result, "eps_direction_contradiction")
+        assert len(wrns_3) >= 1
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -294,7 +294,7 @@ class TestEstimateActualProximity:
 class TestYoYWithoutPriorData:
     """RULE 13f: YoY comparison when prior-year metric is missing."""
 
-    def test_yoy_mentioned_but_no_prior_data_blocked(self):
+    def test_yoy_mentioned_but_no_prior_data_warned(self):
         from backend.earnings_deep_dive.schemas import FinancialMetrics
         metrics = FinancialMetrics(revenue_actual=111.2e9)  # No revenue_yoy!
         sections = {
@@ -303,8 +303,8 @@ class TestYoYWithoutPriorData:
             )
         }
         result = validate_pre_render("AAPL", "FY2026 Q1", metrics, sections)
-        errs = _errors_for(result, "eps_revenue_yoy_without_prior_data")
-        assert len(errs) >= 1
+        wrns = _warnings_for(result, "eps_revenue_yoy_without_prior_data")
+        assert len(wrns) >= 1
 
     def test_yoy_mentioned_with_revenue_yoy_passes(self):
         from backend.earnings_deep_dive.schemas import FinancialMetrics

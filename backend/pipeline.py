@@ -2503,7 +2503,23 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
     try:
         import asyncio
         from backend.company_overview import get_company_overview
-        company_overview = asyncio.run(get_company_overview(ticker, language=language))
+        company_overview_ledger = {
+            "market_cap": yf_data.get("market_cap"),
+            "pe_current": yf_data.get("pe_current"),
+            "pe_forward": yf_data.get("pe_forward"),
+            "peg_ratio": yf_data.get("peg_ratio"),
+            "beta": yf_data.get("beta"),
+            "52w_low": yf_data.get("52w_low"),
+            "52w_high": yf_data.get("52w_high"),
+            "price": yf_data.get("price"),
+            "financials": fin,
+        }
+        company_overview = asyncio.run(get_company_overview(
+            ticker,
+            language=language,
+            ledger=company_overview_ledger,
+            yahoo_snapshot=yf_data,
+        ))
         logger.info(f"[{ticker}] Company overview generated successfully")
         # Save to 01_official_company_sources
         overview_path = os.path.join(

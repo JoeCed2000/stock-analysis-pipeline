@@ -57,15 +57,15 @@ class TestChartEPSContradiction:
 class TestChartRevenueContradiction:
     """RULE 15: text says revenue beat but metrics say actual < estimate."""
 
-    def test_revenue_beat_text_contradicts_metrics_blocked(self):
+    def test_revenue_beat_text_contradicts_metrics_warned(self):
         from backend.earnings_deep_dive.schemas import FinancialMetrics
         metrics = FinancialMetrics(revenue_actual=21.5e9, revenue_estimate=22.0e9)
         sections = {
             "EPS & Revenue": "Revenue exceeded consensus estimates."
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", metrics, sections)
-        errs = _errors_for(result, "chart_revenue_contradiction")
-        assert len(errs) == 1
+        wrns = _warnings_for(result, "chart_revenue_contradiction")
+        assert len(wrns) == 1
 
     def test_revenue_actual_above_estimate_passes(self):
         from backend.earnings_deep_dive.schemas import FinancialMetrics

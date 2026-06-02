@@ -1,5 +1,21 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-02 — Company Overview key_financials canonical resolver + provenance implementation
+
+**Status:** Implemented the canonical `key_financials` resolver defined by the persisted contract and wired provenance into the Company Overview backend/PDF path.
+
+### Changes
+- `backend/company_overview.py`: cache version bumped to v2 and stale cache now rejected when `key_financials_provenance.schema_version != 1`; added numeric normalization, ledger/Yahoo candidate selection, mismatch blocking, field-level provenance, non-authoritative LLM numeric candidates, and compatibility aliases (`free_cashflow`).
+- `backend/pipeline.py`: Company Overview generation now receives a ledger snapshot from pipeline/yfinance data so the resolver has authoritative backend inputs.
+- `backend/company_overview_pdf.py`: renderer now consumes resolved `key_financials` display values + provenance and avoids hidden PDF-time numeric fallbacks as source-of-truth.
+- `backend/earnings_deep_dive/prompts.py`: fixed quarter-aware table headers by routing `_base_prompt()` through `_period_table_header()`.
+- Tests added/updated for resolver/provenance, NVDA/AAPL/GOOGL-like mismatch scenarios, PDF provenance rendering, and stale validator severity expectations.
+
+### Verification
+- Targeted: `./.venv/bin/python -m pytest tests/test_company_overview.py tests/test_company_overview_pdf.py tests/test_f3_f4_column_labels_and_margin_pts.py -q` → `51 passed`.
+- Broader PDF/validator suite: `./.venv/bin/python -m pytest tests/spec_v27_*.py tests/test_v27_*.py tests/test_company_overview.py tests/test_company_overview_pdf.py tests/test_f3_f4_column_labels_and_margin_pts.py -q` → `521 passed`.
+- SA readiness: `tb sa-check` → `ALL OK` (local API OK, prod API OK, backend/tunnel OK).
+
 ## 2026-06-02 — Kanban t_e84a33e6 recovered manually: key_financials contract persisted
 
 **Status:** Manual recovery completed for the blocked Kanban task `t_e84a33e6` (`Define canonical key_financials sourcing contract`). The previous worker output was blocked because the claimed workspace artifact disappeared; the contract is now persisted in the repo.

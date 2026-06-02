@@ -21,10 +21,21 @@ from backend.company_overview import (
     _overview_cache_get,
     _overview_cache_set,
     _build_yahoo_info_dict,
+    _resolve_key_financials,
+    _apply_key_financials_provenance,
     _synthesize_overview_en,
     _translate_overview_to_jp,
     get_company_overview,
 )
+
+
+def _cacheable(data=None):
+    payload = dict(data or {})
+    payload.setdefault("key_financials_provenance", {
+        "schema_version": 1,
+        "fields": {},
+    })
+    return payload
 
 
 # ── CACHE TESTS ──────────────────────────────────────────────────────────
@@ -34,18 +45,18 @@ class TestCacheLayer:
 
     def test_cache_path_uppercase(self):
         path = _overview_cache_path("aapl", "en")
-        assert path.name == "company_overview_AAPL_en_v1.json"
+        assert path.name == "company_overview_AAPL_en_v2.json"
 
     def test_cache_path_lowercase_input(self):
         path = _overview_cache_path("nvdA", "jp")
-        assert path.name == "company_overview_NVDA_jp_v1.json"
+        assert path.name == "company_overview_NVDA_jp_v2.json"
 
     def test_cache_set_and_get(self, tmp_path, monkeypatch):
         import backend.company_overview as cov
         monkeypatch.setattr(cov, "CACHE_DIR", tmp_path)
         monkeypatch.setattr(cov, "OVERVIEW_CACHE_VERSION", 99)
 
-        data = {"company_profile": {"name": "TestCo"}}
+        data = _cacheable({"company_profile": {"name": "TestCo"}})
         _overview_cache_set("TEST", "en", data)
 
         result = _overview_cache_get("TEST", "en")
@@ -63,7 +74,7 @@ class TestCacheLayer:
         monkeypatch.setattr(cov, "CACHE_DIR", tmp_path)
         monkeypatch.setattr(cov, "OVERVIEW_CACHE_VERSION", 99)
 
-        data = {"test": True}
+        data = _cacheable({"test": True})
         _overview_cache_set("OLD", "en", data)
 
         cache_path = _overview_cache_path("OLD", "en")
@@ -81,7 +92,7 @@ class TestCacheLayer:
         monkeypatch.setattr(cov, "CACHE_DIR", tmp_path)
         monkeypatch.setattr(cov, "OVERVIEW_CACHE_VERSION", 99)
 
-        data = {"test": True}
+        data = _cacheable({"test": True})
         _overview_cache_set("VER", "en", data)
 
         monkeypatch.setattr(cov, "OVERVIEW_CACHE_VERSION", 100)
@@ -94,13 +105,15 @@ class TestCacheLayer:
         monkeypatch.setattr(cov, "CACHE_DIR", tmp_path)
         monkeypatch.setattr(cov, "OVERVIEW_CACHE_VERSION", 99)
 
-        _overview_cache_set("AAPL", "en", {"lang": "en"})
-        _overview_cache_set("AAPL", "jp", {"lang": "jp"})
+        _overview_cache_set("AAPL", "en", _cacheable({"lang": "en"}))
+        _overview_cache_set("AAPL", "jp", _cacheable({"lang": "jp"}))
 
         en = _overview_cache_get("AAPL", "en")
         jp = _overview_cache_get("AAPL", "jp")
-        assert en == {"lang": "en"}
-        assert jp == {"lang": "jp"}
+        assert en is not None
+        assert jp is not None
+        assert en["lang"] == "en"
+        assert jp["lang"] == "jp"
 
 
 # ── YAHOO INFO EXTRACTION ────────────────────────────────────────────────
@@ -189,13 +202,26 @@ class TestSynthesizeOverviewEn:
             "competitive_position": "Dominant player in premium smartphones.",
         })
 
-        yf_info = {"ticker": "AAPL", "name": "Apple Inc."}
+        yf_info = {
+            "ticker": "AAPL",
+            "name": "Apple Inc.",
+            "market_cap": 3000000000000,
+            "total_revenue": 383285000000,
+            "pe_trailing": 30.5,
+            "pe_forward": 28.0,
+            "dividend_yield": 0.0052,
+            "beta": 1.25,
+            "52w_high": 199.62,
+            "52w_low": 124.17,
+        }
         tavily = [{"title": "Apple news", "url": "https://example.com", "content": "Apple launches iPhone."}]
 
         result = _synthesize_overview_en("AAPL", yf_info, tavily)
         assert result["company_profile"]["name"] == "Apple Inc."
         assert result["company_profile"]["employees"] == 164000
         assert result["key_financials"]["market_cap"] == 3000000000000
+        assert result["key_financials_provenance"]["fields"]["market_cap"]["selected_source"] == "yahoo_snapshot"
+        assert result["key_financials_provenance"]["fields"]["market_cap"]["candidates"][-1]["source"] == "llm_output"
         assert len(result["recent_developments"]) == 1
         assert "competitive_position" in result
 
@@ -230,6 +256,76 @@ class TestSynthesizeOverviewEn:
         })
         result = _synthesize_overview_en("TST", {}, [])
         assert result["company_profile"]["name"] == "Test"
+
+
+# ── CANONICAL KEY FINANCIALS RESOLVER ─────────────────────────────────────
+
+class TestCanonicalKeyFinancialsResolver:
+    """Backend resolver owns numeric key_financials and provenance once."""
+
+    @pytest.mark.parametrize(
+        "ticker,market_cap,revenue,pe,beta",
+        [
+            ("NVDA", 3_200_000_000_000, 130_000_000_000, 45.5, 1.75),
+            ("AAPL", 3_000_000_000_000, 383_285_000_000, 30.5, 1.25),
+            ("GOOGL", 2_100_000_000_000, 350_018_000_000, 24.0, 1.05),
+        ],
+    )
+    def test_selects_authoritative_yahoo_values_with_provenance(self, ticker, market_cap, revenue, pe, beta):
+        selected, provenance = _resolve_key_financials(
+            ticker,
+            yahoo_snapshot={
+                "market_cap": market_cap,
+                "total_revenue": revenue,
+                "pe_trailing": pe,
+                "beta": beta,
+                "52w_low": 100.0,
+                "52w_high": 200.0,
+            },
+            llm_financials={
+                "market_cap": market_cap * 10,
+                "revenue": revenue * 10,
+                "pe_ratio": 999,
+                "beta": 9,
+            },
+        )
+
+        assert selected["market_cap"] == market_cap
+        assert selected["revenue"] == revenue
+        assert selected["pe_ratio"] == pe
+        assert selected["beta"] == beta
+        assert provenance["schema_version"] == 1
+        assert provenance["ticker"] == ticker
+        assert provenance["fields"]["market_cap"]["selected_source"] == "yahoo_snapshot"
+        assert provenance["fields"]["market_cap"]["candidates"][-1]["source"] == "llm_output"
+        assert provenance["fields"]["market_cap"]["candidates"][-1]["non_authoritative"] is True
+
+    def test_blocks_mismatched_ledger_and_yahoo_market_cap(self):
+        selected, provenance = _resolve_key_financials(
+            "NVDA",
+            ledger={"market_cap": 3_200_000_000_000},
+            yahoo_snapshot={"market_cap": 2_000_000_000_000},
+        )
+
+        assert selected["market_cap"] is None
+        field = provenance["fields"]["market_cap"]
+        assert field["status"] == "blocked"
+        assert field["reason_code"] == "mismatch_blocked"
+        assert field["display_value"] == "Not available"
+        assert field["comparison"]["accepted"] is False
+
+    def test_apply_overlays_llm_numbers_with_canonical_backend_values(self):
+        overview = {"key_financials": {"market_cap": 1, "revenue": 2}}
+        result = _apply_key_financials_provenance(
+            overview,
+            "AAPL",
+            yahoo_snapshot={"market_cap": 3_000_000_000_000, "total_revenue": 383_285_000_000},
+        )
+
+        assert result["key_financials"]["market_cap"] == 3_000_000_000_000
+        assert result["key_financials"]["revenue"] == 383_285_000_000
+        assert result["key_financials_provenance"]["fields"]["market_cap"]["selected_source"] == "yahoo_snapshot"
+        assert result["source_snapshot_metadata"]["schema_version"] == 1
 
 
 # ── JP TRANSLATION (Step 2) ──────────────────────────────────────────────
@@ -317,10 +413,11 @@ class TestGetCompanyOverview:
         monkeypatch.setattr(cov, "CACHE_DIR", tmp_path)
         monkeypatch.setattr(cov, "OVERVIEW_CACHE_VERSION", 99)
 
-        _overview_cache_set("AAPL", "en", {"cached": True})
+        _overview_cache_set("AAPL", "en", _cacheable({"cached": True}))
 
         result = await get_company_overview("AAPL")
-        assert result == {"cached": True}
+        assert result is not None
+        assert result["cached"] is True
         mock_yf.assert_not_called()
 
     @patch("backend.company_overview._fetch_yahoo_info")
@@ -376,8 +473,10 @@ class TestGetCompanyOverview:
 
         # EN cache should exist
         en_cached = _overview_cache_get("AAPL", "en")
-        assert en_cached == en_data
+        assert en_cached is not None
+        assert en_cached["company_profile"] == en_data["company_profile"]
 
         # JP cache should exist
         jp_cached = _overview_cache_get("AAPL", "jp")
-        assert jp_cached == jp_data
+        assert jp_cached is not None
+        assert jp_cached["company_profile"] == jp_data["company_profile"]

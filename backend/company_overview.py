@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 CACHE_DIR = Path(__file__).parent / ".cache"
 OVERVIEW_CACHE_TTL = 7 * 24 * 3600  # 7 days
-OVERVIEW_CACHE_VERSION = 1  # bump to invalidate all cached overviews
+OVERVIEW_CACHE_VERSION = 2  # v2 adds canonical key_financials provenance
 
 
 def _overview_cache_path(ticker: str, language: str) -> Path:
@@ -55,8 +55,13 @@ def _overview_cache_get(ticker: str, language: str) -> Optional[Dict[str, Any]]:
         if age > OVERVIEW_CACHE_TTL:
             logger.info(f"Overview cache EXPIRED for {ticker}/{language} (age: {age/86400:.1f}d)")
             return None
+        data = entry["data"]
+        provenance = data.get("key_financials_provenance") if isinstance(data, dict) else None
+        if not isinstance(provenance, dict) or provenance.get("schema_version") != 1:
+            logger.info(f"Overview cache PROVENANCE mismatch for {ticker}/{language}")
+            return None
         logger.info(f"Overview cache HIT for {ticker}/{language} (age: {age/86400:.1f}d)")
-        return entry["data"]
+        return data
     except Exception as e:
         logger.debug(f"Overview cache read error for {ticker}/{language}: {e}")
     return None
@@ -215,6 +220,11 @@ def _build_yahoo_info_dict(ticker: str, info: Dict[str, Any]) -> Dict[str, Any]:
         "company_officers": info.get("companyOfficers", []),
         # Location
         "headquarters": _format_headquarters(info),
+        "source_snapshot_metadata": {
+            "provider": "yfinance",
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+        },
+        "_raw_info": info,
     }
 
 
@@ -226,6 +236,289 @@ def _format_headquarters(info: Dict[str, Any]) -> Optional[str]:
         if val:
             parts.append(val)
     return ", ".join(parts) if parts else None
+
+
+# ── Canonical key_financials resolver ────────────────────────────────────
+
+_PLACEHOLDER_NUMERIC_STRINGS = {"", "n/a", "na", "none", "null", "undefined", "nan", "data not available", "—", "-"}
+_MONEY_SUFFIXES = {"k": 1e3, "m": 1e6, "b": 1e9, "t": 1e12}
+
+
+def _get_path(data: Any, path: str) -> Any:
+    """Read dotted paths from nested dictionaries."""
+    cur = data
+    for part in path.split("."):
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    return cur
+
+
+def _normalize_numeric(value: Any, *, ratio: bool = False) -> tuple[Optional[float], Optional[str]]:
+    """Normalize provider numbers before comparison; returns (value, reason)."""
+    if value is None:
+        return None, "provider_missing"
+    if isinstance(value, bool):
+        return None, "malformed_source_value"
+    if isinstance(value, (int, float)):
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None, "malformed_source_value"
+    elif isinstance(value, str):
+        raw = value.strip().lower()
+        if raw in _PLACEHOLDER_NUMERIC_STRINGS:
+            return None, "provider_missing"
+        clean = raw.replace("$", "").replace(",", "").replace("%", "").strip()
+        suffix = clean[-1:] if clean else ""
+        multiplier = 1.0
+        if suffix in _MONEY_SUFFIXES:
+            multiplier = _MONEY_SUFFIXES[suffix]
+            clean = clean[:-1]
+        try:
+            number = float(clean) * multiplier
+        except (TypeError, ValueError):
+            return None, "malformed_source_value"
+    else:
+        return None, "malformed_source_value"
+    if number != number or number in (float("inf"), float("-inf")):
+        return None, "malformed_source_value"
+    note = None
+    if ratio and number > 1 and number <= 100:
+        number = number / 100
+        note = "percent_input_normalized"
+    return number, note
+
+
+def _display_money(value: Optional[float]) -> str:
+    return _format_currency(value) if value is not None else "Not available"
+
+
+def _display_ratio(value: Optional[float], *, percent: bool = False) -> str:
+    if value is None:
+        return "Not available"
+    if percent:
+        return f"{value * 100:.1f}%"
+    return f"{value:.2f}"
+
+
+def _candidate(source: str, path: str, data: Dict[str, Any], *, ratio: bool = False, unit: str = "") -> Dict[str, Any]:
+    raw = _get_path(data, path)
+    normalized, reason = _normalize_numeric(raw, ratio=ratio)
+    return {
+        "source": source,
+        "path": path,
+        "raw_value": raw,
+        "normalized_value": normalized,
+        "valid": normalized is not None,
+        "reason_code": None if normalized is not None else reason,
+        "normalization_note": reason if reason == "percent_input_normalized" else None,
+        "unit": unit,
+    }
+
+
+def _select_candidate(
+    ticker: str,
+    field: str,
+    candidates: list[Dict[str, Any]],
+    *,
+    tolerance_rel: float = 0.10,
+    tolerance_abs: float = 0.0,
+    unit: str = "",
+    period: str = "market_data",
+    display_kind: str = "number",
+    primary_source: str = "ledger",
+) -> tuple[Optional[float], Dict[str, Any]]:
+    valid = [c for c in candidates if c.get("valid")]
+    base = {
+        "status": "unavailable",
+        "reason_code": "both_sources_absent",
+        "selected_source": None,
+        "selected_path": None,
+        "raw_value": None,
+        "normalized_value": None,
+        "display_value": "Not available",
+        "unit": unit,
+        "period": period,
+        "comparison": None,
+        "candidates": candidates,
+    }
+    if not valid:
+        reasons = [c.get("reason_code") for c in candidates if c.get("reason_code")]
+        if reasons and all(r == "malformed_source_value" for r in reasons):
+            base["reason_code"] = "malformed_source_value"
+        return None, base
+
+    if len(valid) >= 2:
+        first, second = valid[0], valid[1]
+        a = first["normalized_value"]
+        b = second["normalized_value"]
+        denom = max(abs(a), abs(b), tolerance_abs or 1.0)
+        rel_delta = abs(a - b) / denom
+        abs_delta = abs(a - b)
+        accepted = rel_delta <= tolerance_rel or abs_delta <= tolerance_abs
+        comparison = {
+            "tolerance_rel": tolerance_rel,
+            "tolerance_abs": tolerance_abs,
+            "relative_delta": rel_delta,
+            "absolute_delta": abs_delta,
+            "accepted": accepted,
+        }
+        if not accepted:
+            base.update({"status": "blocked", "reason_code": "mismatch_blocked", "comparison": comparison})
+            logger.warning("[%s] key_financials.%s blocked: source mismatch %.3f", ticker, field, rel_delta)
+            return None, base
+        selected = next((c for c in valid if c.get("source") == primary_source), valid[0])
+    else:
+        selected = valid[0]
+        comparison = None
+
+    normalized = selected["normalized_value"]
+    if display_kind == "money":
+        display_value = _display_money(normalized)
+    elif display_kind == "percent":
+        display_value = _display_ratio(normalized, percent=True)
+    elif display_kind == "multiple":
+        display_value = f"{normalized:.2f}x"
+    elif display_kind == "price":
+        display_value = f"${normalized:.2f}"
+    else:
+        display_value = _display_ratio(normalized)
+    base.update({
+        "status": "selected",
+        "reason_code": None,
+        "selected_source": selected.get("source"),
+        "selected_path": selected.get("path"),
+        "raw_value": selected.get("raw_value"),
+        "normalized_value": normalized,
+        "display_value": display_value,
+        "comparison": comparison,
+    })
+    return normalized, base
+
+
+def _resolve_key_financials(
+    ticker: str,
+    yahoo_snapshot: Optional[Dict[str, Any]] = None,
+    ledger: Optional[Dict[str, Any]] = None,
+    llm_financials: Optional[Dict[str, Any]] = None,
+) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    """Select numeric Company Overview facts once and attach auditable provenance.
+
+    LLM-provided numeric key_financials are retained only as non-authoritative candidates;
+    selected values come from the internal ledger/pipeline snapshot and Yahoo snapshot.
+    """
+    yahoo_snapshot = yahoo_snapshot or {}
+    ledger = ledger or {}
+    llm_financials = llm_financials or {}
+    raw_info = yahoo_snapshot.get("_raw_info", {}) if isinstance(yahoo_snapshot.get("_raw_info"), dict) else {}
+    yahoo = dict(yahoo_snapshot)
+    yahoo["_raw_info"] = raw_info
+
+    fields: Dict[str, Any] = {}
+    selected: Dict[str, Any] = {}
+
+    def select(field: str, paths: list[tuple[str, str, Dict[str, Any]]], **kwargs):
+        candidates = [_candidate(src, p, data, ratio=kwargs.get("ratio", False), unit=kwargs.get("unit", "")) for src, p, data in paths]
+        if field in llm_financials:
+            llm_value, llm_reason = _normalize_numeric(llm_financials.get(field), ratio=kwargs.get("ratio", False))
+            candidates.append({
+                "source": "llm_output",
+                "path": f"key_financials.{field}",
+                "raw_value": llm_financials.get(field),
+                "normalized_value": llm_value,
+                "valid": llm_value is not None,
+                "reason_code": None if llm_value is not None else llm_reason,
+                "non_authoritative": True,
+                "unit": kwargs.get("unit", ""),
+            })
+        authoritative = [c for c in candidates if c.get("source") != "llm_output"]
+        value, provenance = _select_candidate(ticker, field, authoritative, **{k: v for k, v in kwargs.items() if k not in {"ratio"}})
+        provenance["candidates"] = candidates
+        fields[field] = provenance
+        selected[field] = value
+        selected[f"{field}_display"] = provenance["display_value"]
+        return value
+
+    select("market_cap", [("ledger", "market_cap", ledger), ("yahoo_snapshot", "market_cap", yahoo), ("yahoo_snapshot", "_raw_info.marketCap", yahoo)], unit="USD", period="market_data", display_kind="money", tolerance_abs=1_000_000)
+    select("revenue", [("ledger", "financials.revenue_annual", ledger), ("ledger", "financials.revenue_quarterly", ledger), ("yahoo_snapshot", "total_revenue", yahoo), ("yahoo_snapshot", "_raw_info.totalRevenue", yahoo)], unit="USD", period="annual_or_ttm", display_kind="money", tolerance_abs=1_000_000)
+    select("revenue_growth", [("ledger", "financials.revenue_yoy_growth", ledger), ("ledger", "financials.revenue_annual_growth", ledger), ("yahoo_snapshot", "revenue_growth", yahoo), ("yahoo_snapshot", "_raw_info.revenueGrowth", yahoo)], unit="ratio", period="yoy", display_kind="percent", ratio=True, tolerance_rel=0.20)
+    select("gross_margin", [("ledger", "financials.gross_margin", ledger), ("yahoo_snapshot", "gross_margins", yahoo), ("yahoo_snapshot", "_raw_info.grossMargins", yahoo)], unit="ratio", period="ttm", display_kind="percent", ratio=True, tolerance_abs=0.02)
+    select("operating_margin", [("ledger", "financials.operating_margin", ledger), ("yahoo_snapshot", "operating_margins", yahoo), ("yahoo_snapshot", "_raw_info.operatingMargins", yahoo)], unit="ratio", period="ttm", display_kind="percent", ratio=True, tolerance_abs=0.02)
+    select("net_income", [("ledger", "financials.net_income", ledger), ("yahoo_snapshot", "net_income", yahoo), ("yahoo_snapshot", "_raw_info.netIncomeToCommon", yahoo)], unit="USD", period="annual_or_ttm", display_kind="money", tolerance_abs=1_000_000)
+    fcf = select("free_cash_flow", [("ledger", "financials.free_cash_flow", ledger), ("yahoo_snapshot", "free_cashflow", yahoo), ("yahoo_snapshot", "_raw_info.freeCashflow", yahoo)], unit="USD", period="annual_or_ttm", display_kind="money", tolerance_abs=1_000_000)
+    selected["free_cashflow"] = fcf
+    select("pe_ratio", [("ledger", "pe_current", ledger), ("yahoo_snapshot", "pe_trailing", yahoo), ("yahoo_snapshot", "_raw_info.trailingPE", yahoo)], unit="multiple", period="market_data", display_kind="multiple")
+    select("pe_forward", [("ledger", "pe_forward", ledger), ("yahoo_snapshot", "pe_forward", yahoo), ("yahoo_snapshot", "_raw_info.forwardPE", yahoo)], unit="multiple", period="market_data", display_kind="multiple")
+    select("beta", [("ledger", "beta", ledger), ("yahoo_snapshot", "beta", yahoo), ("yahoo_snapshot", "_raw_info.beta", yahoo)], unit="ratio", period="market_data", display_kind="number")
+    low = select("52w_low", [("ledger", "52w_low", ledger), ("yahoo_snapshot", "52w_low", yahoo), ("yahoo_snapshot", "_raw_info.fiftyTwoWeekLow", yahoo)], unit="USD/share", period="52_week", display_kind="price", primary_source="yahoo_snapshot")
+    high = select("52w_high", [("ledger", "52w_high", ledger), ("yahoo_snapshot", "52w_high", yahoo), ("yahoo_snapshot", "_raw_info.fiftyTwoWeekHigh", yahoo)], unit="USD/share", period="52_week", display_kind="price", primary_source="yahoo_snapshot")
+    if low is not None and high is not None and low > high:
+        for field in ("52w_low", "52w_high"):
+            fields[field].update({"status": "blocked", "reason_code": "malformed_source_value", "normalized_value": None, "display_value": "Not available"})
+            selected[field] = None
+            selected[f"{field}_display"] = "Not available"
+
+    # Dividend yield: selected from components when available.
+    div_rate, div_rate_p = _select_candidate(ticker, "dividend_rate", [_candidate("yahoo_snapshot", "dividend_rate", yahoo, unit="USD/share"), _candidate("yahoo_snapshot", "_raw_info.dividendRate", yahoo, unit="USD/share")], unit="USD/share", period="market_data")
+    current_price, price_p = _select_candidate(ticker, "current_price", [_candidate("yahoo_snapshot", "current_price", yahoo, unit="USD/share"), _candidate("yahoo_snapshot", "_raw_info.currentPrice", yahoo, unit="USD/share"), _candidate("yahoo_snapshot", "_raw_info.regularMarketPrice", yahoo, unit="USD/share")], unit="USD/share", period="market_data", display_kind="price")
+    if div_rate is not None and current_price is not None and current_price > 0:
+        div_yield = div_rate / current_price
+        selected["dividend_yield"] = div_yield
+        selected["dividend_yield_display"] = _display_ratio(div_yield, percent=True)
+        fields["dividend_yield"] = {
+            "status": "selected", "reason_code": "computed_from_components", "selected_source": "computed", "selected_path": "dividend_rate/current_price", "raw_value": None, "normalized_value": div_yield, "display_value": selected["dividend_yield_display"], "unit": "ratio", "period": "market_data", "comparison": None, "candidates": [div_rate_p, price_p]
+        }
+    else:
+        select("dividend_yield", [("yahoo_snapshot", "dividend_yield", yahoo), ("yahoo_snapshot", "_raw_info.dividendYield", yahoo)], unit="ratio", period="market_data", display_kind="percent", ratio=True, primary_source="yahoo_snapshot")
+
+    pe = selected.get("pe_ratio")
+    earnings_growth = _candidate("ledger", "financials.earnings_growth", ledger, ratio=True, unit="ratio")
+    if not earnings_growth.get("valid"):
+        earnings_growth = _candidate("yahoo_snapshot", "earnings_growth", yahoo, ratio=True, unit="ratio")
+    if pe is not None and earnings_growth.get("valid") and earnings_growth["normalized_value"] > 0:
+        peg = pe / (earnings_growth["normalized_value"] * 100)
+        selected["peg_ratio"] = peg
+        selected["peg_ratio_display"] = f"{peg:.2f}x"
+        fields["peg_ratio"] = {
+            "status": "selected", "reason_code": "computed_from_components", "selected_source": "computed", "selected_path": "pe_ratio/earnings_growth", "raw_value": None, "normalized_value": peg, "display_value": selected["peg_ratio_display"], "unit": "multiple", "period": "market_data", "comparison": None, "candidates": [fields.get("pe_ratio"), earnings_growth, _candidate("yahoo_snapshot", "peg_ratio", yahoo, unit="multiple"), _candidate("yahoo_snapshot", "_raw_info.pegRatio", yahoo, unit="multiple")]
+        }
+    else:
+        select("peg_ratio", [("yahoo_snapshot", "peg_ratio", yahoo), ("yahoo_snapshot", "_raw_info.pegRatio", yahoo)], unit="multiple", period="market_data", display_kind="multiple", primary_source="yahoo_snapshot")
+
+    provenance = {
+        "schema_version": 1,
+        "ticker": ticker.upper(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "fields": fields,
+    }
+    return selected, provenance
+
+
+def _apply_key_financials_provenance(
+    overview: Dict[str, Any],
+    ticker: str,
+    yahoo_snapshot: Optional[Dict[str, Any]] = None,
+    ledger: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Overlay canonical selected key_financials onto an overview payload."""
+    if not isinstance(overview, dict):
+        return overview
+    selected, provenance = _resolve_key_financials(
+        ticker=ticker,
+        yahoo_snapshot=yahoo_snapshot or {},
+        ledger=ledger or {},
+        llm_financials=overview.get("key_financials", {}) or {},
+    )
+    overview["key_financials"] = selected
+    overview["key_financials_provenance"] = provenance
+    overview["source_snapshot_metadata"] = {
+        "schema_version": 1,
+        "yahoo_snapshot": (yahoo_snapshot or {}).get("source_snapshot_metadata", {}),
+        "ledger_present": bool(ledger),
+        "ledger_build_timestamp": datetime.now(timezone.utc).isoformat() if ledger else None,
+    }
+    return overview
 
 
 async def _search_tavily_overview(ticker: str, yf_info: Dict[str, Any]) -> List[Dict[str, str]]:
@@ -640,13 +933,8 @@ def _parse_llm_response(response: str, ticker: str, yf_info: Dict[str, Any]) -> 
         for list_key in ("business_segments", "growth_drivers", "moats", "key_kpis", "business_risks"):
             data[list_key] = _ensure_str_list(data.get(list_key))
 
-        # ── Normalize dividend_yield: LLM may output percentage (0.23) instead of decimal (0.0023) ──
-        kf = data.get("key_financials", {})
-        dy = kf.get("dividend_yield")
-        if isinstance(dy, (int, float)) and dy is not None and dy > 0.5:
-            # > 50% dividend is nearly impossible → LLM used percentage form, convert to decimal
-            logger.info(f"Normalizing dividend_yield: {dy} → {dy/100:.6f} for {ticker}")
-            kf["dividend_yield"] = round(dy / 100, 6)
+        if yf_info:
+            _apply_key_financials_provenance(data, ticker, yf_info)
         return data
     except (json.JSONDecodeError, ValueError) as e:
         logger.warning(f"LLM JSON parse failed for {ticker}: {e} | raw: {response[:200]}")
@@ -1008,7 +1296,12 @@ def _format_currency(value) -> Optional[str]:
 # ── Main public API ───────────────────────────────────────────────────────
 
 
-async def get_company_overview(ticker: str, language: str = "en") -> Dict[str, Any]:
+async def get_company_overview(
+    ticker: str,
+    language: str = "en",
+    ledger: Optional[Dict[str, Any]] = None,
+    yahoo_snapshot: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """Get structured company overview — cached for 7 days.
 
     ⚠️ LANGUAGE SEPARATION:
@@ -1030,32 +1323,39 @@ async def get_company_overview(ticker: str, language: str = "en") -> Dict[str, A
         logger.warning(f"Unsupported language '{language}', defaulting to 'en'")
         lang = "en"
 
+    use_cache = not ledger and not yahoo_snapshot
     # ── Check cache ─────────────────────────────────────────────────
-    cached = _overview_cache_get(ticker, lang)
-    if cached is not None:
-        return cached
+    if use_cache:
+        cached = _overview_cache_get(ticker, lang)
+        if cached is not None:
+            return cached
 
     logger.info(f"Fetching company overview for {ticker}/{lang}...")
 
     # ── Phase 1: Fetch raw data ─────────────────────────────────────
-    yf_info = await _fetch_yahoo_info(ticker)
+    yf_info = yahoo_snapshot or await _fetch_yahoo_info(ticker)
     tavily_results = await _search_tavily_overview(ticker, yf_info)
 
     if lang == "en":
         # ── Phase 2a: LLM synthesis (EN) ────────────────────────────
         overview = _synthesize_overview_en(ticker, yf_info, tavily_results)
+        _apply_key_financials_provenance(overview, ticker, yf_info, ledger)
     else:
         # ── Phase 2b: EN → JP translation (two-step) ─────────────────
         # Step 1: Get English overview (from cache or generate)
         en_cached = _overview_cache_get(ticker, "en")
         if en_cached is None:
             en_cached = _synthesize_overview_en(ticker, yf_info, tavily_results)
-            _overview_cache_set(ticker, "en", en_cached)
+            _apply_key_financials_provenance(en_cached, ticker, yf_info, ledger)
+            if use_cache:
+                _overview_cache_set(ticker, "en", en_cached)
 
         # Step 2: Translate EN → JP via separate LLM call
         logger.info(f"Translating overview EN→JP for {ticker}...")
         overview = _translate_overview_to_jp(en_cached, ticker)
+        _apply_key_financials_provenance(overview, ticker, yf_info, ledger)
 
     # ── Cache and return ────────────────────────────────────────────
-    _overview_cache_set(ticker, lang, overview)
+    if use_cache:
+        _overview_cache_set(ticker, lang, overview)
     return overview

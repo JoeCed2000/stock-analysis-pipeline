@@ -267,8 +267,8 @@ class TestRule12Integration:
             "Verdict": "EPS missed consensus by 3%. SELL.",
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        contradict_errors = _errors_for(result, "eps_direction_contradiction")
-        assert len(contradict_errors) >= 1, "RULE 3 should still fire"
+        contradict_warnings = _warnings_for(result, "eps_direction_contradiction")
+        assert len(contradict_warnings) >= 1, "RULE 3 should still fire"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -19,6 +19,11 @@ from backend.earnings_deep_dive.report_model import (
     KeyFinancials,
     RecentDevelopment,
 )
+from backend.company_overview_pdf import (
+    _build_styles as _co_pdf_styles,
+    _canonical_financial_metric,
+    _render_kpis as _render_company_overview_kpis,
+)
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
@@ -289,4 +294,73 @@ class TestRenderCompanyOverview:
         all_text = " ".join(str(f.__dict__) for f in result)
 
         assert "rather than primarily custom or component-level solutions" in all_text
+
+
+class TestCompanyOverviewPdfCanonicalProvenance:
+    """Current Company Overview PDF renderer consumes backend provenance only."""
+
+    def test_canonical_metric_ignores_legacy_financial_value_when_provenance_blocks(self):
+        overview = {
+            "key_financials": {"market_cap": 9_999_000_000_000, "market_cap_display": "$9.99T"},
+            "key_financials_provenance": {
+                "schema_version": 1,
+                "fields": {
+                    "market_cap": {
+                        "status": "blocked",
+                        "reason_code": "mismatch_blocked",
+                        "normalized_value": None,
+                        "display_value": "Not available",
+                        "selected_source": None,
+                        "selected_path": None,
+                    }
+                },
+            },
+        }
+
+        metric = _canonical_financial_metric(overview, "market_cap")
+
+        assert metric["status"] == "blocked"
+        assert metric["display"] == "Not available"
+        assert metric["source"] == "Blocked: mismatch_blocked"
+        assert metric["value"] is None
+
+    def test_kpi_renderer_uses_provenance_without_hidden_yahoo_fallback(self):
+        styles = _co_pdf_styles()
+        story = []
+        overview = {
+            "key_financials": {"market_cap": None, "market_cap_display": "Not available"},
+            "key_financials_provenance": {
+                "schema_version": 1,
+                "fields": {
+                    "market_cap": {
+                        "status": "blocked",
+                        "reason_code": "mismatch_blocked",
+                        "normalized_value": None,
+                        "display_value": "Not available",
+                        "selected_source": None,
+                        "selected_path": None,
+                    },
+                    "revenue": {
+                        "status": "selected",
+                        "reason_code": None,
+                        "normalized_value": 383_285_000_000,
+                        "display_value": "$383.3B",
+                        "selected_source": "yahoo_snapshot",
+                        "selected_path": "total_revenue",
+                        "period": "annual_or_ttm",
+                    },
+                },
+            },
+        }
+        yf_data = {"market_cap": 3_000_000_000_000, "total_revenue": 999_999_999_999}
+
+        _render_company_overview_kpis(story, styles, overview, yf_data, metrics_ledger=None, is_jp=False)
+        rendered = " ".join(str(flowable.__dict__) for flowable in story).replace("\\u200b", "").replace("\u200b", "")
+
+        assert "Market Cap" in rendered
+        assert "Not available" in rendered
+        assert "Blocked: mismatch_blocked" in rendered
+        assert "$383.3B" in rendered
+        assert "$3.00T" not in rendered
+        assert "$1000.0B" not in rendered
 

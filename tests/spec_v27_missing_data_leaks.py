@@ -1,44 +1,46 @@
 """§22+§23 Missing-data language + internal leaks — spec tests.
 
-Tests RULE 5 (FORBIDDEN_MARKERS now blocking) and RULE 30 (null artifacts, Reason: leaks).
+Tests RULE 5 (FORBIDDEN_MARKERS warnings) and RULE 30 (null artifacts, Reason: leaks).
 """
 
 import pytest
 from backend.earnings_deep_dive.pre_render_validator import validate_pre_render
 
 
-class TestRule5ForbiddenMarkersBlocking:
-    """RULE 5: FORBIDDEN_MARKERS now severity=error (was warning)."""
+class TestRule5ForbiddenMarkersWarnings:
+    """RULE 5: FORBIDDEN_MARKERS warn; post-processing strips/normalizes them."""
 
-    def test_not_available_blocked(self):
+    def test_not_available_warned(self):
         result = validate_pre_render(
             ticker="NVDA", quarter="Q1 FY2026", metrics=None,
             section_analysis={"Financials": "Revenue is Not available for this period."},
         )
-        assert result.passed is False
-        assert any("forbidden_marker_leak" == e.check for e in result.errors)
+        assert result.passed is True
+        assert any("forbidden_marker_leak" == w.check for w in result.warnings)
 
-    def test_section_unavailable_blocked(self):
+    def test_section_unavailable_warned(self):
         result = validate_pre_render(
             ticker="NVDA", quarter="Q1 FY2026", metrics=None,
             section_analysis={"Segments": "Section unavailable for this quarter."},
         )
-        assert result.passed is False
-        assert any("forbidden_marker_leak" == e.check for e in result.errors)
+        assert result.passed is True
+        assert any("forbidden_marker_leak" == w.check for w in result.warnings)
 
-    def test_critical_override_blocked(self):
+    def test_critical_override_warned(self):
         result = validate_pre_render(
             ticker="NVDA", quarter="Q1 FY2026", metrics=None,
             section_analysis={"EPS & Revenue": "CRITICAL OVERRIDE: EPS is $2.94."},
         )
-        assert result.passed is False
+        assert result.passed is True
+        assert any("forbidden_marker_leak" == w.check for w in result.warnings)
 
-    def test_model_example_blocked(self):
+    def test_model_example_warned(self):
         result = validate_pre_render(
             ticker="NVDA", quarter="Q1 FY2026", metrics=None,
             section_analysis={"Highlights": "Model example company figures are never reused."},
         )
-        assert result.passed is False
+        assert result.passed is True
+        assert any("forbidden_marker_leak" == w.check for w in result.warnings)
 
     def test_nami_san_allowed(self):
         """'For Nami-san:' is legitimate client-facing content, not a forbidden marker."""
@@ -46,14 +48,14 @@ class TestRule5ForbiddenMarkersBlocking:
             ticker="NVDA", quarter="Q1 FY2026", metrics=None,
             section_analysis={"Notes": "For Nami-san: this is a test."},
         )
-        assert not any("forbidden_marker_leak" == e.check for e in result.errors)
+        assert not any("forbidden_marker_leak" == w.check for w in result.warnings)
 
     def test_clean_text_passes(self):
         result = validate_pre_render(
             ticker="NVDA", quarter="Q1 FY2026", metrics=None,
             section_analysis={"Financials": "Revenue is Unavailable from reviewed sources."},
         )
-        assert not any("forbidden_marker_leak" == e.check for e in result.errors)
+        assert not any("forbidden_marker_leak" == w.check for w in result.warnings)
 
 
 class TestRule30MissingDataAndLeaks:

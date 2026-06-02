@@ -786,6 +786,29 @@ def _section_title(section: str) -> str:
     return SECTION_TITLES.get(_canonical_section(section), str(section))
 
 
+def _parse_quarter(quarter: Any) -> tuple[str, str] | None:
+    """Parse YYYYQn into current/prior-year labels for prompt table headers."""
+    if not isinstance(quarter, str) or len(quarter) != 6:
+        return None
+    year_part = quarter[:4]
+    q_marker = quarter[4]
+    q_part = quarter[5]
+    if q_marker != "Q" or not year_part.isdigit() or q_part not in {"1", "2", "3", "4"}:
+        return None
+    year = int(year_part)
+    return f"Q{q_part} {year}", f"Q{q_part} {year - 1}"
+
+
+def _period_table_header(section: str, quarter: str) -> str:
+    """Replace generic Actual/Prior Year headers with concrete quarter labels."""
+    header = TABLE_REQUIREMENTS[section]
+    labels = _parse_quarter(quarter)
+    if not labels or section not in {"Operating Metrics", "Cash Flow"}:
+        return header
+    current_label, prior_label = labels
+    return header.replace("Actual", current_label).replace("Prior Year", prior_label)
+
+
 def _format_question(section: str, language: str, ticker: str, company: str, quarter: str) -> str:
     question = SECTION_QUESTIONS[section]
     values = {"ticker": ticker, "company": company, "quarter": quarter}
@@ -834,7 +857,7 @@ def _base_prompt(
 ) -> str:
     canonical = _canonical_section(section)
     title = _section_title(section)
-    table_header = TABLE_REQUIREMENTS[canonical]
+    table_header = _period_table_header(canonical, quarter)
     is_jp = language.lower() in {"jp", "ja"}
     format_source = SECTION_FORMATS if is_jp else EN_SECTION_FORMATS
     section_format = format_source[canonical].format(table_header=table_header)

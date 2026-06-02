@@ -453,6 +453,86 @@ def _safe_ov_list(key: str, overview: dict) -> list:
     return []
 
 
+
+def _key_financials_provenance(overview: dict) -> dict:
+    """Return canonical key_financials provenance fields if available."""
+    provenance = overview.get('key_financials_provenance', {}) if isinstance(overview, dict) else {}
+    if not isinstance(provenance, dict) or provenance.get('schema_version') != 1:
+        return {}
+    fields = provenance.get('fields', {})
+    return fields if isinstance(fields, dict) else {}
+
+
+def _canonical_financial_metric(overview: dict, field: str) -> dict:
+    """Resolve one canonical financial metric for PDF rendering.
+
+    The PDF renderer must not silently fall back to yf_data/raw provider keys: backend
+    provenance is the contract. Missing or blocked provenance is rendered visibly as
+    "Not available" with the reason/source attached.
+    """
+    fields = _key_financials_provenance(overview)
+    provenance = fields.get(field) if isinstance(fields, dict) else None
+    if isinstance(provenance, dict):
+        return {
+            'field': field,
+            'status': provenance.get('status', 'unavailable'),
+            'value': provenance.get('normalized_value'),
+            'display': provenance.get('display_value') or 'Not available',
+            'period': provenance.get('period') or '—',
+            'source': _format_metric_source(provenance),
+            'reason_code': provenance.get('reason_code'),
+        }
+
+    fin = overview.get('key_financials', {}) if isinstance(overview, dict) else {}
+    value = fin.get(field) if isinstance(fin, dict) else None
+    display = fin.get(f'{field}_display') if isinstance(fin, dict) else None
+    if value is not None or display:
+        return {
+            'field': field,
+            'status': 'legacy_no_provenance',
+            'value': value,
+            'display': display or str(value),
+            'period': '—',
+            'source': 'Company overview payload (legacy, no provenance)',
+            'reason_code': 'missing_provenance',
+        }
+    return {
+        'field': field,
+        'status': 'unavailable',
+        'value': None,
+        'display': 'Not available',
+        'period': '—',
+        'source': 'Canonical provenance missing',
+        'reason_code': 'missing_provenance',
+    }
+
+
+def _format_metric_source(provenance: dict) -> str:
+    """Human-readable source label from a provenance row."""
+    status = provenance.get('status')
+    selected = provenance.get('selected_source')
+    path = provenance.get('selected_path')
+    reason = provenance.get('reason_code')
+    labels = {
+        'ledger': 'Internal financial ledger',
+        'yahoo_snapshot': 'Yahoo Finance snapshot',
+        'computed': 'Computed from canonical components',
+        'llm_output': 'LLM output (non-authoritative)',
+    }
+    if status == 'selected' and selected:
+        base = labels.get(selected, selected)
+        return f"{base} ({path})" if path else base
+    if status == 'blocked':
+        return f"Blocked: {reason or 'source mismatch'}"
+    if status == 'unavailable':
+        return f"Not available: {reason or 'source absent'}"
+    return reason or selected or 'Canonical provenance'
+
+
+def _metric_display(overview: dict, field: str) -> str:
+    """Shortcut for card display values."""
+    return _canonical_financial_metric(overview, field)['display']
+
 def _render_executive_snapshot(story, styles, ticker, company_name, overview, yf_data, is_jp):
     """Render the Executive Snapshot section with key metrics grid."""
     h = "エグゼクティブ・スナップショット" if is_jp else "Executive Snapshot"
@@ -460,7 +540,6 @@ def _render_executive_snapshot(story, styles, ticker, company_name, overview, yf
 
     # Extract data
     profile = overview.get('company_profile', {}) or {}
-    fin = overview.get('key_financials', {}) or {}
     sector = profile.get('sector') or yf_data.get('sector', '—')
     industry = profile.get('industry') or yf_data.get('industry', '—')
     hq = profile.get('headquarters') or yf_data.get('headquarters', '—')
@@ -472,7 +551,7 @@ def _render_executive_snapshot(story, styles, ticker, company_name, overview, yf
         m = _re.search(r'CEO\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)', ceo_style)
         if m:
             ceo_name = m.group(1)
-    # 2) Fall back to yfinance companyOfficers (via _raw_info)
+    # 2) Fall back to yfinance companyOfficers (via _raw_info) for identity only
     if not ceo_name:
         raw_info = yf_data.get('_raw_info', {}) or {}
         officers = raw_info.get('companyOfficers', []) or []
@@ -483,7 +562,8 @@ def _render_executive_snapshot(story, styles, ticker, company_name, overview, yf
     exchange = yf_data.get('exchange', '—')
     country = profile.get('country') or yf_data.get('country', '—')
 
-    # Build metrics card as a table
+    # Build metrics card as a table. Financial metrics intentionally consume
+    # canonical backend provenance only; no hidden yf_data fallbacks here.
     data_date = _fmt_date(yf_data)
     cards = [
         ("Company", company_name, "Name"),
@@ -494,10 +574,10 @@ def _render_executive_snapshot(story, styles, ticker, company_name, overview, yf
         ("CEO", ceo_name or "Not identified", "Leadership"),
         ("Headquarters", hq, "Location"),
         ("Country", country, "Location"),
-        ("Market Cap", _fmt_currency(fin.get('market_cap') or yf_data.get('marketCap')), "Market data"),
-        ("Revenue (TTM)", _fmt_currency(fin.get('revenue') or yf_data.get('totalRevenue')), "Annual/TTM"),
-        ("P/E (Trailing)", _fmt(fin.get('pe_ratio'), '.1f', '—'), "Market data"),
-        ("52W Range", f"{_fmt(fin.get('52w_low') or yf_data.get('fiftyTwoWeekLow'), '.2f')} — {_fmt(fin.get('52w_high') or yf_data.get('fiftyTwoWeekHigh'), '.2f')}", "Market data"),
+        ("Market Cap", _metric_display(overview, 'market_cap'), _canonical_financial_metric(overview, 'market_cap')['source']),
+        ("Revenue (TTM)", _metric_display(overview, 'revenue'), _canonical_financial_metric(overview, 'revenue')['source']),
+        ("P/E (Trailing)", _metric_display(overview, 'pe_ratio'), _canonical_financial_metric(overview, 'pe_ratio')['source']),
+        ("52W Range", f"{_metric_display(overview, '52w_low')} — {_metric_display(overview, '52w_high')}", "Canonical provenance"),
         ("Employees", _fmt(profile.get('employees') or yf_data.get('fullTimeEmployees'), ',') , "Profile"),
         ("Website", profile.get('website') or yf_data.get('website', '—'), "Profile"),
         ("Data as of", data_date, "Retrieved"),
@@ -512,11 +592,12 @@ def _render_executive_snapshot(story, styles, ticker, company_name, overview, yf
             if i + j < len(cards):
                 label, value, source = cards[i + j]
                 value_txt = _card_value_text(label, value)
+                source_txt = _clean_text(str(source), default="Canonical provenance")
                 value_size = _estimate_card_font_size(value_txt, base=9)
                 row.append(Paragraph(
                     f'<font color="#57606a" size="7"><b>{label}</b></font><br/>'
                     f'<font size="{value_size}">{html.escape(value_txt)}</font><br/>'
-                    f'<font color="#57606a" size="6">{source}</font>',
+                    f'<font color="#57606a" size="6">{html.escape(source_txt)}</font>',
                     styles['body']
                 ))
             else:
@@ -557,14 +638,15 @@ def _get_investor_summary(overview, yf_data, is_jp) -> list:
         sents = _re.split(r'(?<=[.!?])\s+', bp.replace('\n', ' '))
         sents = [s.strip() for s in sents if s.strip() and len(s.strip()) > 3]
         bullets.append(' '.join(sents[:2]))
-    fin = overview.get('key_financials', {}) or {}
-    rev = fin.get('revenue') or yf_data.get('totalRevenue')
-    rev_g = fin.get('revenue_growth') or yf_data.get('revenueGrowth')
-    if rev and rev_g:
-        bullets.append(f"Revenue of {_fmt_currency(rev)} with {_fmt_pct(rev_g)} YoY growth.")
-    mc = fin.get('market_cap') or yf_data.get('marketCap')
-    if mc:
-        bullets.append(f"Market capitalization of {_fmt_currency(mc)}.")
+
+    rev = _canonical_financial_metric(overview, 'revenue')
+    rev_g = _canonical_financial_metric(overview, 'revenue_growth')
+    if rev.get('value') is not None and rev_g.get('value') is not None:
+        bullets.append(f"Revenue of {rev['display']} with {rev_g['display']} YoY growth.")
+    mc = _canonical_financial_metric(overview, 'market_cap')
+    if mc.get('value') is not None:
+        bullets.append(f"Market capitalization of {mc['display']}.")
+
     inv_takeaway = overview.get('investor_takeaway', '')
     if inv_takeaway:
         # Truncate to first 2-3 sentences for executive summary (detailed version on page 2+)
@@ -688,77 +770,41 @@ def _render_kpis(story, styles, overview, yf_data, metrics_ledger, is_jp):
     h = "主要指標・KPI" if is_jp else "Key Metrics / KPIs"
     _section(h, story, styles)
 
-    fin = overview.get('key_financials', {}) or {}
-
-    # Build a unified metrics table from multiple sources
+    # Build a unified metrics table from canonical provenance only. This prevents
+    # hidden renderer-level fallbacks from showing values that backend provenance
+    # rejected or could not reconcile.
     rows = []
     headers = ["Metric" if not is_jp else "指標", "Value" if not is_jp else "値",
                "Period" if not is_jp else "期間", "Source" if not is_jp else "ソース"]
 
-    def _add_metric(name, value, period_type, source):
-        if value is not None:
-            rows.append([name, str(value), period_type, source])
+    metric_specs = [
+        ("Market Cap", "market_cap"),
+        ("Revenue", "revenue"),
+        ("Revenue Growth (YoY)", "revenue_growth"),
+        ("Gross Margin", "gross_margin"),
+        ("Operating Margin", "operating_margin"),
+        ("Net Income", "net_income"),
+        ("Free Cash Flow", "free_cash_flow"),
+        ("P/E (Trailing)", "pe_ratio"),
+        ("P/E (Forward)", "pe_forward"),
+        ("PEG Ratio", "peg_ratio"),
+        ("Beta", "beta"),
+        ("Dividend Yield", "dividend_yield"),
+        ("52W Low", "52w_low"),
+        ("52W High", "52w_high"),
+    ]
 
-    mc = fin.get('market_cap') or yf_data.get('marketCap')
-    _add_metric("Market Cap", _fmt_currency(mc), "Market data", "Yahoo Finance")
-
-    rev = fin.get('revenue') or yf_data.get('totalRevenue')
-    _add_metric("Revenue", _fmt_currency(rev), "Annual/TTM", "SEC Filings / Yahoo Finance")
-
-    rev_g = fin.get('revenue_growth') or yf_data.get('revenueGrowth')
-    _add_metric("Revenue Growth (YoY)", _fmt_pct(rev_g), "YoY Quarterly", "Yahoo Finance")
-
-    gm = fin.get('gross_margin') or yf_data.get('grossMargins')
-    _add_metric("Gross Margin", _fmt_pct(gm), "TTM", "Yahoo Finance")
-
-    om = fin.get('operating_margin') or yf_data.get('operatingMargins')
-    _add_metric("Operating Margin", _fmt_pct(om), "TTM", "Yahoo Finance")
-
-    ni = fin.get('net_income') or yf_data.get('_raw_info', {}).get('netIncomeToCommon')
-    _add_metric("Net Income", _fmt_currency(ni), "Annual/TTM", "Yahoo Finance")
-
-    fcf = fin.get('free_cash_flow') or yf_data.get('freeCashflow')
-    _add_metric("Free Cash Flow", _fmt_currency(fcf), "Annual/TTM", "Yahoo Finance")
-
-    pe_t = fin.get('pe_ratio') or yf_data.get('trailingPE')
-    _add_metric("P/E (Trailing)", _fmt(pe_t, '.1f'), "Market data", "Yahoo Finance")
-
-    pe_f = fin.get('pe_forward') or yf_data.get('forwardPE')
-    _add_metric("P/E (Forward)", _fmt(pe_f, '.1f'), "Market data", "Yahoo Finance")
-
-    # PEG Ratio — compute from trailing P/E + trailing EPS growth
-    # for internal consistency. Previously used yfinance pegRatio
-    # (forward-looking, 5yr expected growth) which was inconsistent.
-    pe_t = fin.get('pe_ratio') or yf_data.get('trailingPE')
-    eg = fin.get('earnings_growth') or yf_data.get('earningsGrowth')
-    if pe_t is not None and eg is not None and eg > 0:
-        peg = pe_t / (eg * 100)
-        _add_metric("PEG Ratio", _fmt(peg, '.2f'), "Market data", "Yahoo Finance")
-    else:
-        # Fallback to yfinance's own pegRatio if compute data unavailable
-        peg = fin.get('peg_ratio') or yf_data.get('pegRatio')
-        _add_metric("PEG Ratio", _fmt(peg, '.2f'), "Market data", "Yahoo Finance")
-
-    beta = yf_data.get('beta')
-    _add_metric("Beta", _fmt(beta, '.2f'), "Market data", "Yahoo Finance")
-
-    # Compute dividend yield from rate/price (avoids yfinance's inconsistent % vs ratio formatting)
-    raw_info = yf_data.get('_raw_info', {}) or {}
-    div_rate = fin.get('dividend_rate') or raw_info.get('dividendRate')
-    div_price = fin.get('current_price') or yf_data.get('price')
-    if div_rate is not None and div_price is not None and div_price > 0:
-        div_y_computed = (float(div_rate) / float(div_price)) * 100
-        _add_metric("Dividend Yield", f"{div_y_computed:.2f}%", "Market data", "Yahoo Finance")
-    else:
-        div_y = fin.get('dividend_yield') or raw_info.get('dividendYield')
-        if div_y is not None:
-            _add_metric("Dividend Yield", f"{float(div_y):.2f}%", "Market data", "Yahoo Finance")
+    for name, field in metric_specs:
+        metric = _canonical_financial_metric(overview, field)
+        value = metric.get('display') or 'Not available'
+        source = metric.get('source') or 'Canonical provenance'
+        rows.append([name, value, metric.get('period') or '—', source])
 
     if rows:
-        w_name = AVAILABLE_W * 0.30
-        w_val = AVAILABLE_W * 0.24
-        w_period = AVAILABLE_W * 0.20
-        w_source = AVAILABLE_W * 0.26
+        w_name = AVAILABLE_W * 0.26
+        w_val = AVAILABLE_W * 0.20
+        w_period = AVAILABLE_W * 0.16
+        w_source = AVAILABLE_W * 0.38
         t = _make_table(headers, rows, [w_name, w_val, w_period, w_source], styles)
         story.append(t)
     else:
