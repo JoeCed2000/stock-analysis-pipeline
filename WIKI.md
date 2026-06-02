@@ -22,10 +22,16 @@
 - `tb sa-check` → **ALL OK** (local API, prod API, dist, backend, tunnel).
 - `tb preflight -q --board sa-pipeline` → **GO** (8 checks, 0 failed, 0 warnings).
 
-### Git state
-- Cleanup commit: `1a86277 chore: preserve PDF QA fixes and evidence`.
+### Git/runtime state
+- Cleanup commit: `c6c965b chore: preserve PDF QA fixes and evidence`.
 - Branch: `kanban/spec-fonctionnelle-sa`.
-- Repo is clean after the checkpoint commit; branch is ahead of origin until pushed.
+- Commit pushed to `origin/kanban/spec-fonctionnelle-sa`.
+- Backend restarted after cleanup because `backend/company_overview_pdf.py` was newer than the previous uvicorn process.
+- Runtime verification after restart:
+  - backend PID `1546835`, started `2026-06-02 06:39 CEST`.
+  - local `/api/health` → version `v2.3-accepted-244-gc6c965b`, commit `c6c965b`.
+  - prod `/api/health` → version `v2.3-accepted-244-gc6c965b`, commit `c6c965b`.
+  - production admin browser check still shows `724` searches and 0 JS errors.
 
 ## 2026-06-01 — Kanban t_0da449db: final PDF verification package (PNG proofs + marker QA)
 
