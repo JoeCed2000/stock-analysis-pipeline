@@ -65,8 +65,34 @@ def set_dossier_phase(ticker: str, phase: str, **kwargs):
 _dossier_registry: Dict[str, dict] = {}
 _registry_lock = threading.Lock()
 
+# Transient PDF generation phases should not mask failures forever.
+# The public PDF endpoint polls every 10s; 20 minutes matches the historical
+# client-facing timeout window and prevents stale in-memory phases from
+# returning endless HTTP 202 after a background thread dies.
+PDF_TRANSIENT_STALE_SECONDS = 20 * 60
+
 # Paris timezone
 PARIS = __import__("zoneinfo").ZoneInfo("Europe/Paris")
+
+
+def _transient_phase_age_seconds(entry: dict) -> float | None:
+    """Return age in seconds for a registry phase timestamp, if parseable."""
+    raw = entry.get("phase_set_at")
+    if not raw:
+        return None
+    try:
+        stamped = datetime.fromisoformat(str(raw))
+    except (TypeError, ValueError):
+        return None
+    if stamped.tzinfo is None:
+        stamped = stamped.replace(tzinfo=PARIS)
+    return (datetime.now(PARIS) - stamped.astimezone(PARIS)).total_seconds()
+
+
+def _transient_phase_is_stale(entry: dict) -> bool:
+    """True when a PDF transient phase has exceeded the allowed poll window."""
+    age = _transient_phase_age_seconds(entry)
+    return age is None or age > PDF_TRANSIENT_STALE_SECONDS
 
 
 def _analyses_dir() -> Path:
@@ -247,11 +273,19 @@ def get_dossier_status(ticker: str) -> dict:
         reg_entry = _dossier_registry.get(ticker_clean, {})
     reg_phase = reg_entry.get("phase")
     
-    if reg_phase in (DossierPhase.PDF_GENERATING, DossierPhase.PDF_VALIDATING, DossierPhase.PDF_BLOCKED):
-        # Background thread state is authoritative for transient phases
+    if reg_phase in (DossierPhase.PDF_GENERATING, DossierPhase.PDF_VALIDATING):
+        # Background thread state is authoritative only while fresh. If the
+        # thread died or the server kept a stale registry entry, stop returning
+        # endless 202/generating and expose a terminal failure that can be fixed.
+        if _transient_phase_is_stale(reg_entry):
+            status["phase"] = DossierPhase.FAILED
+            status["error"] = reg_entry.get("error") or f"PDF generation stale for more than {PDF_TRANSIENT_STALE_SECONDS}s"
+            status["stage"] = "failed"
+        else:
+            status["phase"] = reg_phase
+    elif reg_phase == DossierPhase.PDF_BLOCKED:
         status["phase"] = reg_phase
-        if reg_phase == DossierPhase.PDF_BLOCKED:
-            status["error"] = reg_entry.get("error") or "PDF blocked — pre-render validation failed"
+        status["error"] = reg_entry.get("error") or "PDF blocked — pre-render validation failed"
     elif status.get("deep_dive_validated") is True and status.get("ready"):
         status["phase"] = DossierPhase.COMPLETE
     elif status.get("deep_dive_validated") is False:

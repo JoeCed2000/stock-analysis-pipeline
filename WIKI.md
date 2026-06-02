@@ -1,5 +1,31 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-02 — Real PDF defects inventory + P0 artifact-validity hardening
+
+**Status:** Built the real-defect inventory from saved Company Overview / Earnings Deep Dive PDFs and applied the first narrow P0 technical fix class: stop serving invalid PDF artifacts and stop infinite `202 generating` loops when PDF background generation is stale or exits without data.
+
+### Evidence inventory
+- Inventory file: `docs/pdf-audits/2026-06-02-real-pdf-defects-inventory.md`.
+- Evidence sources: `docs/pdf-audits/verification-t_0da449db-20260601T165622Z/raw/`, extracted `text/`, `qa_report.md`, and PDFQA rules/map.
+- Confirmed client-visible families: non-PDF `202 generating` Deep Dive artifacts, Company Overview tiny/legacy fallbacks, raw provider/internal labels, personalization leakage, placeholder/source-label misuse, missing Company Overview source traceability, numeric coherence requiring fresh re-check after the key-financials resolver.
+
+### Changes
+- `backend/async_dossier.py`: stale `pdf_generating` / `pdf_validating` registry phases now become terminal `failed` after the 20-minute poll window instead of masking dead background threads forever.
+- `backend/main.py`: async Deep Dive generation now records terminal failure when Yahoo data is unavailable; Company Overview download now only serves client-ready `*_company_overview_investor_profile_*.pdf` PDFs and blocks too-small/non-PDF/out-of-range-page artifacts with actionable `422`.
+- `backend/pipeline.py`: fixed two deep-dive generation regressions surfaced by integration tests: optional `company_overview` now uses a safe `getattr(...)` fallback, and `ValidationError` is available in the outer failure handler even when request construction fails early.
+- `tests/test_pdf_generation_state.py`: regression coverage for stale vs fresh PDF generation phases.
+- `tests/test_seeking_alpha_access.py`: Company Overview download tests updated to reject legacy/tiny fallback PDFs and still serve validated current investor-profile PDFs.
+
+### Verification
+- Targeted: `PYTHONPATH=. backend/.venv/bin/pytest tests/test_pdf_generation_state.py tests/test_seeking_alpha_access.py tests/spec_v27_pdf_quality_gate.py -q` → `23 passed`.
+- Integration regression: `PYTHONPATH=. backend/.venv/bin/pytest tests/test_async_dossier.py tests/test_earnings_deep_dive_integration.py tests/test_pdf_generation_state.py -q` → `20 passed`.
+- Broader PDF/validator regression: `PYTHONPATH=. backend/.venv/bin/pytest tests/spec_v27_*.py tests/test_v27_*.py tests/test_async_dossier.py tests/test_earnings_deep_dive_integration.py tests/test_pdf_generation_state.py tests/test_seeking_alpha_access.py -q` → `511 passed`.
+- Admin timeout row check: recent visible `Analysis timed out after 1200s` rows are timestamped before commit `65c2bcf` (`2026-06-02T07:45–07:46Z` vs commit `2026-06-02T09:31Z`), so they are historical evidence, not a new post-fix false-fail.
+
+### Remaining prioritized PDF work
+- Next class: raw/internal marker and source-label cleanup in Deep Dive (`source: yfinance`, `S1`, `Not disclosed` misuse), with validator/PDFQA tests before renderer/prompt patching.
+- Fresh numeric-coherence re-check must be run on newly generated NVDA + AAPL/GOOGL Company Overview PDFs before patching numbers again.
+
 ## 2026-06-02 — Company Overview key_financials canonical resolver + provenance implementation
 
 **Status:** Implemented the canonical `key_financials` resolver defined by the persisted contract and wired provenance into the Company Overview backend/PDF path.

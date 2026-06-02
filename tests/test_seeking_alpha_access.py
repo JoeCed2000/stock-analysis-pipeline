@@ -162,11 +162,12 @@ class TestCompanyOverviewDownload:
         self.sources_dir.mkdir(parents=True)
         monkeypatch.setattr("backend.main._find_analysis_dirs", lambda ticker: [self.analysis_dir])
 
-    def test_download_serves_current_investor_profile_pdf_when_present(self, client):
+    def test_download_serves_current_investor_profile_pdf_when_present(self, client, monkeypatch):
         current_pdf = self.sources_dir / "AAPL_company_overview_investor_profile_2026-05-28.pdf"
         legacy_pdf = self.sources_dir / "company_profile_AAPL.pdf"
         current_pdf.write_bytes(b"%PDF-current")
         legacy_pdf.write_bytes(b"%PDF-legacy")
+        monkeypatch.setattr("backend.main._company_overview_pdf_quality_failure", lambda path: None)
 
         resp = client.get("/api/company-overview/AAPL/download")
 
@@ -177,19 +178,27 @@ class TestCompanyOverviewDownload:
         assert "AAPL_company_overview_investor_profile_2026-05-28.pdf" in content_disposition
         assert resp.content.startswith(b"%PDF-current")
 
-    def test_download_legacy_only_is_explicitly_identifiable_in_headers_and_body(self, client):
+    def test_download_legacy_only_does_not_serve_thin_client_pdf(self, client):
         legacy_pdf = self.sources_dir / "company_profile_AAPL.pdf"
         legacy_pdf.write_bytes(b"%PDF-legacy-only")
 
-        resp = client.get("/api/company-overview/AAPL/download")
+        resp = client.get("/api/company-overview/AAPL/download?format=pdf")
 
-        assert resp.status_code == 200
-        assert resp.headers.get("content-type", "").startswith("application/pdf")
-        content_disposition = resp.headers.get("content-disposition", "")
-        assert "inline" in content_disposition
-        assert "company_profile_AAPL.pdf" in content_disposition
-        assert "investor_profile" not in content_disposition
-        assert resp.content.startswith(b"%PDF-legacy-only")
+        assert resp.status_code == 404
+        payload = resp.json()
+        assert payload["detail"] == "No company overview artifact found for AAPL"
+
+    def test_download_tiny_current_pdf_is_blocked_as_not_client_ready(self, client):
+        tiny_pdf = self.sources_dir / "AAPL_company_overview_investor_profile_2026-05-28.pdf"
+        tiny_pdf.write_bytes(b"%PDF-tiny")
+
+        resp = client.get("/api/company-overview/AAPL/download?format=pdf")
+
+        assert resp.status_code == 422
+        payload = resp.json()["detail"]
+        assert payload["status"] == "company_overview_pdf_blocked"
+        assert payload["retryable"] is True
+        assert payload["rejected_pdfs"][0]["reason"].startswith("too_small:")
 
     def test_download_no_artifact_returns_explicit_actionable_404(self, client):
         resp = client.get("/api/company-overview/AAPL/download")

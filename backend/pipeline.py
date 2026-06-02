@@ -1448,6 +1448,7 @@ def _add_earnings_deep_dive_if_transcript(
 ) -> bool:
     """Generate the optional earnings deep-dive with transcript text when available."""
     try:
+        from backend.earnings_deep_dive.errors import ValidationError
         report_language = _normalize_report_language(language)
         transcript_quarter = ""  # default
         try:
@@ -1739,7 +1740,7 @@ def _add_earnings_deep_dive_if_transcript(
             metrics=deep_dive_metrics,
             transcript_url=transcript_url,
             section_analysis=en_response.sections,
-            company_overview=result.company_overview,
+            company_overview=getattr(result, "company_overview", None),
             yf_info=yf_info,
         )
         if website:
@@ -1760,7 +1761,7 @@ def _add_earnings_deep_dive_if_transcript(
                 metrics=deep_dive_metrics,
                 transcript_url=transcript_url,
                 section_analysis=jp_response.sections,
-                company_overview=result.company_overview,
+                company_overview=getattr(result, "company_overview", None),
                 yf_info=yf_info,
             )
             if website:

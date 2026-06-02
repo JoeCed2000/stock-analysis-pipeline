@@ -1546,6 +1546,7 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                 
                 q_data = get_yahoo_data(ticker)
                 if not q_data:
+                    set_dossier_phase(ticker, DossierPhase.FAILED, error="Yahoo data unavailable for PDF generation")
                     return
                 dummy = AnalysisResult(
                     ticker=ticker,
@@ -2040,9 +2041,37 @@ async def download_feedback_file(bucket: str, filename: str):
     )
 
 
+
+def _company_overview_pdf_quality_failure(file_path: Path) -> str | None:
+    """Return a client-readiness failure reason for a company overview PDF."""
+    if not file_path.exists():
+        return "missing"
+    try:
+        size = file_path.stat().st_size
+    except OSError as exc:
+        return f"stat_failed: {exc}"
+    if size < 8_000:
+        return f"too_small:{size}"
+    try:
+        with file_path.open("rb") as handle:
+            if handle.read(4) != b"%PDF":
+                return "not_pdf"
+    except OSError as exc:
+        return f"read_failed: {exc}"
+    try:
+        import importlib
+        fitz = importlib.import_module("fitz")  # PyMuPDF
+        with fitz.open(str(file_path)) as doc:
+            pages = doc.page_count
+        if pages < 3 or pages > 12:
+            return f"page_count:{pages}"
+    except Exception as exc:
+        logger.warning(f"Company overview PDF quality probe skipped for {file_path}: {exc}")
+    return None
+
 @app.get("/api/company-overview/{ticker}/download")
 async def download_company_overview(ticker: str, format: str = "auto"):
-    """Download the best available company overview artifact for a ticker."""
+    """Download the best available client-ready company overview artifact."""
     ticker = ticker.strip().upper()
     selected_format = (format or "auto").strip().lower()
     if selected_format not in {"auto", "pdf", "md", "json"}:
@@ -2053,28 +2082,35 @@ async def download_company_overview(ticker: str, format: str = "auto"):
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
 
     order = ["pdf", "md", "json"] if selected_format == "auto" else [selected_format]
+    rejected_pdfs: list[dict[str, str]] = []
 
     for analysis_dir in analysis_dirs:
         source_dir = analysis_dir / "01_official_company_sources"
-        # New naming: {ticker}_company_overview_investor_profile_{date}.pdf
-        # Old naming: company_profile_{ticker}.pdf (backward compat)
+        # Only the investor_profile naming is considered client-ready. Legacy
+        # company_profile_{ticker}.pdf files are thin fallback artifacts and
+        # must not be served as Company Overview PDFs to clients.
         pdf_candidates = sorted(
             source_dir.glob(f"{ticker}_company_overview_investor_profile_*.pdf"),
-            reverse=True
+            reverse=True,
         )
-        legacy_pdf = source_dir / f"company_profile_{ticker}.pdf"
-        if not pdf_candidates and legacy_pdf.exists():
-            pdf_candidates = [legacy_pdf]
+
+        ready_pdf = None
+        for pdf_candidate in pdf_candidates:
+            failure = _company_overview_pdf_quality_failure(pdf_candidate)
+            if failure is None:
+                ready_pdf = pdf_candidate
+                break
+            rejected_pdfs.append({"path": str(pdf_candidate), "reason": failure})
 
         candidates = {
-            "pdf": pdf_candidates[0] if pdf_candidates else source_dir / f"company_profile_{ticker}.pdf",
+            "pdf": ready_pdf,
             "md": source_dir / f"company_profile_{ticker}.md",
             "json": source_dir / f"company_overview_{ticker}.json",
         }
 
         for kind in order:
             file_path = candidates[kind]
-            if file_path.exists():
+            if file_path and file_path.exists():
                 media_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
                 # PDF → inline (open in new tab); MD/JSON → attachment (download)
                 disposition = "inline" if media_type == "application/pdf" else "attachment"
@@ -2084,6 +2120,17 @@ async def download_company_overview(ticker: str, format: str = "auto"):
                     filename=file_path.name,
                     content_disposition_type=disposition,
                 )
+
+    if selected_format == "pdf" and rejected_pdfs:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "status": "company_overview_pdf_blocked",
+                "retryable": True,
+                "message": f"No client-ready Company Overview PDF found for {ticker}",
+                "rejected_pdfs": rejected_pdfs[:5],
+            },
+        )
 
     raise HTTPException(status_code=404, detail=f"No company overview artifact found for {ticker}")
 
