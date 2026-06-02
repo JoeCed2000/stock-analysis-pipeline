@@ -1,5 +1,23 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-02 — Nami 403 incident traced in Feedback page
+
+**Status:** Added Nami's production failure report to the canonical Feedback page before resuming PDF anomaly work.
+
+### Feedback entry
+- Bucket: `GENERAL`
+- Entry ID: `2026-06-02_090904`
+- Category: `bug`
+- Status: `pending`
+- Attachment: `2026-06-02_090904_nami-stock-analysis-403.jpg`
+- Message preserved: Nami reported that Stock Analysis did not work and showed an error; Hermes context notes the visible error `Async analysis error: 403` and the root cause fixed in the public analysis auth gate.
+
+### Verification
+- `POST https://sa.cedlabusa.net/api/feedback` with Nami's message + screenshot → HTTP 200, `files_saved=1`.
+- Attachment HEAD: `GET /api/feedback-file/GENERAL/2026-06-02_090904_nami-stock-analysis-403.jpg` → HTTP 200, `content-type: image/jpeg`, `content-length: 36319`.
+- Browser production check on `https://sa.cedlabusa.net/#feedback` shows `6` total feedback items, `1` pending, and the new Nami bug entry first with the attached file link.
+- `tb sa-check` → **ALL OK** after tracing the issue.
+
 ## 2026-06-02 — Production 403 recovery for public client analysis
 
 **Status:** Recovered production client workflow after Nami hit `Async analysis error: 403` on the public Stock Analysis page.
