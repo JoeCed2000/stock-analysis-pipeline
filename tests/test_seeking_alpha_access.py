@@ -162,24 +162,42 @@ class TestCompanyOverviewDownload:
         self.sources_dir.mkdir(parents=True)
         monkeypatch.setattr("backend.main._find_analysis_dirs", lambda ticker: [self.analysis_dir])
 
-    def test_download_prefers_pdf_when_available(self, client):
-        pdf_path = self.sources_dir / "company_profile_AAPL.pdf"
-        pdf_path.write_bytes(b"%PDF-test")
+    def test_download_serves_current_investor_profile_pdf_when_present(self, client):
+        current_pdf = self.sources_dir / "AAPL_company_overview_investor_profile_2026-05-28.pdf"
+        legacy_pdf = self.sources_dir / "company_profile_AAPL.pdf"
+        current_pdf.write_bytes(b"%PDF-current")
+        legacy_pdf.write_bytes(b"%PDF-legacy")
 
         resp = client.get("/api/company-overview/AAPL/download")
 
         assert resp.status_code == 200
-        assert resp.content == b"%PDF-test"
-        assert "company_profile_AAPL.pdf" in resp.headers.get("content-disposition", "")
+        assert resp.headers.get("content-type", "").startswith("application/pdf")
+        content_disposition = resp.headers.get("content-disposition", "")
+        assert "inline" in content_disposition
+        assert "AAPL_company_overview_investor_profile_2026-05-28.pdf" in content_disposition
+        assert resp.content.startswith(b"%PDF-current")
 
-    def test_download_auto_falls_back_to_json(self, client):
-        json_path = self.sources_dir / "company_overview_AAPL.json"
-        json_path.write_text('{"ticker":"AAPL"}', encoding="utf-8")
+    def test_download_legacy_only_is_explicitly_identifiable_in_headers_and_body(self, client):
+        legacy_pdf = self.sources_dir / "company_profile_AAPL.pdf"
+        legacy_pdf.write_bytes(b"%PDF-legacy-only")
 
         resp = client.get("/api/company-overview/AAPL/download")
 
         assert resp.status_code == 200
-        assert resp.json()["ticker"] == "AAPL"
+        assert resp.headers.get("content-type", "").startswith("application/pdf")
+        content_disposition = resp.headers.get("content-disposition", "")
+        assert "inline" in content_disposition
+        assert "company_profile_AAPL.pdf" in content_disposition
+        assert "investor_profile" not in content_disposition
+        assert resp.content.startswith(b"%PDF-legacy-only")
+
+    def test_download_no_artifact_returns_explicit_actionable_404(self, client):
+        resp = client.get("/api/company-overview/AAPL/download")
+
+        assert resp.status_code == 404
+        assert resp.headers.get("content-type", "").startswith("application/json")
+        payload = resp.json()
+        assert payload["detail"] == "No company overview artifact found for AAPL"
 
     def test_invalid_format_rejected(self, client):
         resp = client.get("/api/company-overview/AAPL/download?format=exe")

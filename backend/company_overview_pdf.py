@@ -13,6 +13,7 @@ Produces client-ready investor profiles with:
 
 import os
 import re
+import html
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
@@ -144,11 +145,13 @@ def _fmt_pct(value, default="—"):
 
 
 def _clean_text(text, default=""):
-    """Strip forbidden markers and return clean text."""
+    """Strip forbidden/internal markers and return clean client-safe text."""
     if not text or not isinstance(text, str):
         return default
+
     t = text.strip()
-    # Strip internal pipeline language
+
+    # Strip explicit internal pipeline language (legacy hard markers)
     for marker in [
         "LLM synthesis was unavailable",
         "could not be reliably synthesized",
@@ -159,7 +162,59 @@ def _clean_text(text, default=""):
         "because LLM synthesis",
     ]:
         t = t.replace(marker, "")
-    return t.strip()
+
+    # Remove control characters (except common whitespace separators)
+    t = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", " ", t)
+
+    # Remove common internal/template/debug wrappers conservatively
+    t = re.sub(r"<\|[^|\n]{1,80}\|>", " ", t)  # e.g. <|assistant|>, <|raw|>
+    t = re.sub(r"\{\{\s*(?:debug|internal|raw|template|placeholder)[^{}]{0,120}\}\}", " ", t, flags=re.IGNORECASE)
+    t = re.sub(r"\[\[\s*(?:debug|internal|raw|template|placeholder)[^\]]{0,120}\]\]", " ", t, flags=re.IGNORECASE)
+    t = re.sub(r"\[(?:DEBUG|INTERNAL|RAW|TEMPLATE)\]", " ", t)
+
+    # Normalize accidental inline source/debug prefixes while preserving payload text
+    t = re.sub(
+        r"\b(?:source|src|debug)\s*:\s*(?:yfinance|finnhub|edgar|seeking\s*alpha|tavily|alpha\s*vantage)\b",
+        "",
+        t,
+        flags=re.IGNORECASE,
+    )
+
+    # Clean separator noise left by marker removal
+    t = re.sub(r"\s*\|\s*\|\s*", " | ", t)
+    t = re.sub(r"\s{2,}", " ", t)
+    t = re.sub(r"\s+([,.;:!?])", r"\1", t)
+
+    return t.strip() or default
+
+
+def _soft_wrap_text(text: str) -> str:
+    """Insert soft-break opportunities for long tokens."""
+    if not text:
+        return ""
+    wrapped = str(text)
+    for token in ('/', '-', '_', '.', ':'):
+        wrapped = wrapped.replace(token, f"{token}\u200b")
+    return wrapped
+
+
+def _card_value_text(label: str, value: Any) -> str:
+    """Normalize and wrap card values for compact first-page rendering."""
+    raw = "—" if value is None else str(value)
+    raw = _clean_text(raw, default="—")
+    if label == "Website" and raw not in {'—', ''}:
+        raw = re.sub(r'^https?://', '', raw, flags=re.IGNORECASE)
+    return _soft_wrap_text(raw)
+
+
+def _estimate_card_font_size(text: str, base: int = 9) -> int:
+    """Reduce font size for long values to keep first-page metrics readable."""
+    length = len(text or "")
+    if length > 90:
+        return max(7, base - 2)
+    if length > 60:
+        return max(8, base - 1)
+    return base
 
 
 def _section(title: str, story: list, styles: dict, level: int = 1):
@@ -200,16 +255,24 @@ def _hr(story: list):
 
 def _make_table(headers: list, rows: list, col_widths: list = None,
                 styles: dict = None, header_bg=HEADER_BG) -> Table:
-    """Create a styled table."""
+    """Create a styled table with safer wrapping for dense cells."""
     if styles is None:
         return Table([headers] + rows)
 
     th_style = styles.get('table_header')
     tc_style = styles.get('table_cell')
+    tc_small = styles.get('table_cell_small') or tc_style
 
-    data = [[Paragraph(h, th_style) for h in headers]]
+    data = [[Paragraph(html.escape(str(h)), th_style) for h in headers]]
     for row in rows:
-        data.append([Paragraph(str(c), tc_style) for c in row])
+        row_cells = []
+        for idx, cell in enumerate(row):
+            text = _soft_wrap_text(_clean_text(str(cell), default='—'))
+            width_hint = col_widths[idx] if col_widths and idx < len(col_widths) else None
+            compact_col = width_hint is not None and width_hint < (AVAILABLE_W * 0.20)
+            style = tc_small if compact_col or len(text) > 70 else tc_style
+            row_cells.append(Paragraph(html.escape(text), style))
+        data.append(row_cells)
 
     if col_widths is None:
         available = PAGE_W - 40*mm
@@ -232,6 +295,7 @@ def _make_table(headers: list, rows: list, col_widths: list = None,
         ('LEFTPADDING', (0, 0), (-1, -1), 6),
         ('RIGHTPADDING', (0, 0), (-1, -1), 6),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('WORDWRAP', (0, 0), (-1, -1), 'CJK'),
     ]))
     return t
 
@@ -447,9 +511,11 @@ def _render_executive_snapshot(story, styles, ticker, company_name, overview, yf
         for j in range(2):
             if i + j < len(cards):
                 label, value, source = cards[i + j]
+                value_txt = _card_value_text(label, value)
+                value_size = _estimate_card_font_size(value_txt, base=9)
                 row.append(Paragraph(
                     f'<font color="#57606a" size="7"><b>{label}</b></font><br/>'
-                    f'<font size="9">{value}</font><br/>'
+                    f'<font size="{value_size}">{html.escape(value_txt)}</font><br/>'
                     f'<font color="#57606a" size="6">{source}</font>',
                     styles['body']
                 ))
@@ -461,12 +527,13 @@ def _render_executive_snapshot(story, styles, ticker, company_name, overview, yf
     t.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), CARD_BG),
         ('BACKGROUND', (0, 0), (-1, -1), CARD_BG),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('LEFTPADDING', (0, 0), (-1, -1), 8),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
         ('GRID', (0, 0), (-1, -1), 0.5, BORDER),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('WORDWRAP', (0, 0), (-1, -1), 'CJK'),
     ]))
     story.append(t)
     story.append(Spacer(1, 6))
@@ -688,10 +755,10 @@ def _render_kpis(story, styles, overview, yf_data, metrics_ledger, is_jp):
             _add_metric("Dividend Yield", f"{float(div_y):.2f}%", "Market data", "Yahoo Finance")
 
     if rows:
-        w_name = AVAILABLE_W * 0.28
-        w_val = AVAILABLE_W * 0.22
-        w_period = AVAILABLE_W * 0.25
-        w_source = AVAILABLE_W * 0.25
+        w_name = AVAILABLE_W * 0.30
+        w_val = AVAILABLE_W * 0.24
+        w_period = AVAILABLE_W * 0.20
+        w_source = AVAILABLE_W * 0.26
         t = _make_table(headers, rows, [w_name, w_val, w_period, w_source], styles)
         story.append(t)
     else:

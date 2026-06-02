@@ -1,0 +1,4 @@
+LOCAL_HEALTH
+{"status":"ok","service":"stock-analysis-pipeline","timestamp":"2026-06-01T17:06:33.975922+00:00","version":"v2.3-accepted-243-g3a92b48","commit":"3a92b48"}
+PROD_HEALTH
+{"status":"ok","service":"stock-analysis-pipeline","timestamp":"2026-06-01T17:06:34.110431+00:00","version":"v2.3-accepted-243-g3a92b48","commit":"3a92b48"}

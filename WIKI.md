@@ -1,5 +1,258 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-02 — SA repo cleanup checkpoint
+
+**Status:** Repo cleaned into a single local commit after classifying all dirty files from the PDF/Kanban workstream.
+
+### Actions
+- Preserved useful backend/test fixes instead of reverting them:
+  - `backend/company_overview_pdf.py` — renderer sanitization + dense table/card wrapping hardening.
+  - `backend/main.py` — JP deep-dive PDF idempotency guard to avoid respawning generator threads while already generating/validating or after terminal failure.
+  - `tests/test_seeking_alpha_access.py` — stronger Company Overview download contract tests.
+  - `backend/tests/test_company_overview_pdf_sanitization.py` — renderer sanitization regression tests.
+  - `backend/tests/test_jp_pdf_idempotency.py` — PDF polling/idempotency regression tests.
+- Preserved QA evidence package because it is intentionally referenced by the WIKI and documents the current failing PDF quality gate:
+  - `docs/pdf-audits/verification-t_0da449db-20260601T165622Z/`
+- Sensitive-keyword scan before commit found no secrets in the pending artifacts; only non-secret mentions such as variable names and historical `cookie_count` text.
+
+### Verification
+- `backend/.venv/bin/pytest tests/test_seeking_alpha_access.py backend/tests/test_company_overview_pdf_sanitization.py backend/tests/test_jp_pdf_idempotency.py -q` → `18 passed`.
+- `backend/.venv/bin/pytest tests/test_company_overview_pdf.py tests/test_company_overview.py tests/test_seeking_alpha_access.py backend/tests/test_company_overview_pdf_sanitization.py backend/tests/test_jp_pdf_idempotency.py -q` → `50 passed`.
+- `git diff --check` → clean.
+- `tb sa-check` → **ALL OK** (local API, prod API, dist, backend, tunnel).
+- `tb preflight -q --board sa-pipeline` → **GO** (8 checks, 0 failed, 0 warnings).
+
+### Git state
+- Cleanup commit: `1a86277 chore: preserve PDF QA fixes and evidence`.
+- Branch: `kanban/spec-fonctionnelle-sa`.
+- Repo is clean after the checkpoint commit; branch is ahead of origin until pushed.
+
+## 2026-06-01 — Kanban t_0da449db: final PDF verification package (PNG proofs + marker QA)
+
+**Status:** Verification package generated with first-page PNG proofs, extracted-text marker scans, and runtime health evidence. Quality gate is currently **failing** (internal markers still present in multiple PDFs; some EN/JP endpoints remain `202 generating`).
+
+### Deliverables (openable artifacts)
+- Verification root: `/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z`
+- QA report (human-readable): `/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/qa_report.md`
+- Raw scan JSON: `/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/verification_raw.json`
+- Summary JSON: `/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/verification_summary.json`
+- First-page PNG proofs: `/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/proofs/`
+- Extracted text corpus: `/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/text/`
+
+### Coverage achieved
+- Tickers scanned: `AAPL`, `GOOGL`, `NVDA`, `MSFT`, `TSLA`
+- PNG proofs generated: `11`
+- Deep Dive EN first-page proofs: `AAPL`, `GOOGL`, `TSLA`
+- Deep Dive JP first-page proofs (where PDF available): `AAPL`, `GOOGL`, `NVDA`
+- Company Overview first-page proofs: `AAPL`, `GOOGL`, `NVDA`, `MSFT`, `TSLA`
+
+### Reproduction commands
+- Generation script: `python3 /home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_0da449db/run_verification.py`
+- Pending EN polling script: `python3 /home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_0da449db/poll_pending_deep_en.py`
+- Extra ticker captures: `python3 /home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_0da449db/add_msft_verification.py` and `python3 /home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_0da449db/add_tsla_verification.py`
+- QA markdown build: `python3 /home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_0da449db/build_qa_report.py`
+
+### Runtime health evidence captured
+- `tb sa-check`: `/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/health_tb_sa_check.txt`
+- Local/prod `/api/health`: `/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/health_api.jsonl`
+- Backend process snapshot: `/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/health_backend_process.txt`
+
+## 2026-06-01 — Kanban t_7708beeb: baseline PDF matrix generated (NVDA/AAPL/GOOGL)
+
+**Status:** Baseline artifact matrix generated under deterministic workspace paths with full command/attempt metadata.
+
+### Matrix executed
+- Tickers: `NVDA`, `AAPL`, `GOOGL`
+- Variants per ticker: `Deep Dive EN`, `Deep Dive JP`, `Company Overview EN`
+- Matrix file: `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_7708beeb/artifacts/matrix.csv`
+
+### Output artifacts (deterministic)
+- Root: `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_7708beeb/artifacts/pdfs/`
+- Per ticker outputs:
+  - `<TICKER>_deep_dive_en.pdf`
+  - `<TICKER>_deep_dive_jp.pdf`
+  - `<TICKER>_company_overview_en.pdf`
+
+### Run metadata + reproducibility logs
+- Run metadata: `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_7708beeb/artifacts/logs/run_metadata.txt`
+- Command/status log (raw): `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_7708beeb/artifacts/logs/row_status.csv`
+- Attempt-by-attempt polling log: `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_7708beeb/artifacts/logs/attempts.log`
+- Final matrix status map: `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_7708beeb/artifacts/logs/generation_log_final.csv`
+
+### Warnings/errors captured
+- `Deep Dive EN` API endpoint returned repeated `202 application/json` for `NVDA` and `AAPL` across 24 polling attempts (`async_generation_in_progress`) and never switched to `200` during this run.
+- Deterministic fallback used for those 2 rows by copying validated PDF outputs from dossier directories into the declared matrix target paths.
+- All 9 matrix rows now have existing `%PDF` outputs and are marked `ok` in `generation_log_final.csv`.
+
+### Renderer context captured
+- Repo commit at run: `3a92b48f7826c569e11ade468e9daccbd7fbb602` (`3a92b48`)
+- Backend health version at run: `v2.3-accepted-243-g3a92b48`
+
+
+## 2026-06-01 — Kanban t_d4c1bc6e: metric enforcement map (pipeline → company_overview → PDF)
+
+**Status:** Completed read-only enforcement mapping and produced a before-state data-flow map with concrete centralization touchpoints.
+
+### Deliverable
+- `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_d4c1bc6e/company-overview-metric-enforcement-map.md`
+
+### Key findings (before-state)
+- Metric source selection is currently spread across `company_overview.py`, `company_profile.py`, `company_overview_pdf.py`, `earnings_deep_dive/mapper.py`, and `earnings_deep_dive/pdf_renderer.py`.
+- Mixed key conventions (`market_cap` vs `marketCap`, `pe_trailing` vs `trailingPE`) can cause silent fallback drift.
+- Numeric normalization policy is duplicated (notably dividend handling) across synthesis and rendering layers.
+- Investor-profile PDF rendering recomputes/selects several metrics row-by-row (`fin` vs `yf_data`) instead of consuming a single canonicalized payload.
+
+### Recommended central insertion point
+- Add canonicalizer immediately after overview synthesis/fallback in `backend/company_overview.py:get_company_overview()` and before cache/persistence.
+
+## 2026-06-01 — Kanban t_78130364: Company Overview artifact selection contract documented
+
+**Status:** Documentation update for the finalized `GET /api/company-overview/{ticker}/download` artifact-selection behavior.
+
+### Decision summary
+- **Current investor-profile PDFs are canonical.** The endpoint first searches each analysis directory for `{TICKER}_company_overview_investor_profile_*.pdf` and serves the newest lexicographic match.
+- **Legacy one-page PDFs remain backward-compatible only.** `company_profile_{TICKER}.pdf` is intentionally used only when no current investor-profile PDF exists in that same `01_official_company_sources/` directory.
+- **No silent stale substitution.** A stale one-page legacy file must never be silently served as the current investor profile when a current investor-profile artifact is available.
+- **Intentional legacy-access label:** when the fallback path is used, evidence/results must label it as `legacy_fallback_used` / `legacy_pdf`, not as a current investor profile.
+
+### Selection order and fallback rules
+
+| Step | Scope | Candidate / action | Label / policy |
+|------|-------|--------------------|----------------|
+| 1 | `_find_analysis_dirs(ticker)` | Iterate analysis directories newest-first; exact and prefix fallbacks are appended by `_find_analysis_dirs`. | Directory order decides which analysis run is considered first. |
+| 2 | PDF candidate | Search `01_official_company_sources/{TICKER}_company_overview_investor_profile_*.pdf`, sorted reverse. | `current_investor_profile_pdf`; canonical current artifact. |
+| 3 | Legacy PDF fallback | If no current PDF candidate exists in that source directory and `company_profile_{TICKER}.pdf` exists, serve it. | `legacy_pdf`; backward compatibility only. |
+| 4 | Non-PDF fallback | For `format=auto`, try `pdf`, then `md`, then `json`; explicit `format=pdf|md|json` only tries that type. | `md`/`json` remain download fallbacks, not PDF substitutes. |
+| 5 | Nothing found | Return HTTP 404 `No company overview artifact found for {ticker}`. | No fabricated or stale current artifact. |
+
+### Code pointers
+- `backend/main.py::_find_analysis_dirs` lines 254-268 — ticker directory search, newest-first primary glob, exact-dir fallback, prefix fallback.
+- `backend/main.py::download_company_overview` lines 2043-2088 — `format` validation, PDF→MD→JSON order, current PDF glob, legacy PDF fallback, `FileResponse` filename/disposition.
+
+### Evidence — required scenarios
+
+**Command/test ID:** `CO-SELECT-E2E-001`
+
+**Repo commit under proof:** `3a92b48`
+
+| Scenario ID | Ticker | Setup | HTTP / header proof | Selected artifact | Classification |
+|-------------|--------|-------|---------------------|-------------------|----------------|
+| `CO-SEL-LEGACY-ONLY` | MSFT | `current_exists=false`, `legacy_exists=true` | HTTP `200`, `content-disposition: inline; filename="company_profile_MSFT.pdf"` | `company_profile_MSFT.pdf` | `legacy_fallback_used`, `legacy_pdf` |
+| `CO-SEL-CURRENT-PREFERRED` | NVDA | `current_exists=true`, `legacy_exists=true` | HTTP `200`, `content-disposition: inline; filename="NVDA_company_overview_investor_profile_2026-06-01.pdf"` | `NVDA_company_overview_investor_profile_2026-06-01.pdf` | `current_preferred_no_legacy_fallback`, `current_investor_profile_pdf` |
+
+Proof snippets preserved from parent task `t_a7cd5305`:
+- Legacy-only: `GET /api/company-overview/MSFT/download?format=auto` served `company_profile_MSFT.pdf` with fallback decision `legacy_fallback_used`.
+- Current-preferred: `GET /api/company-overview/NVDA/download?format=auto` served `NVDA_company_overview_investor_profile_2026-06-01.pdf` even though stale legacy candidate `company_profile_NVDA.pdf` also existed.
+- Non-silent stale guard: assertion `selected != stale_legacy_candidate` returned `true` for NVDA (`selected_when_current_exists=NVDA_company_overview_investor_profile_2026-06-01.pdf`, `stale_legacy_candidate=company_profile_NVDA.pdf`).
+
+### Backward-compatibility stance
+- Keep `company_profile_{TICKER}.pdf` readable for old analyses and user links.
+- Do not promote legacy output to current status in documentation, UI, evidence, or reviewer handoffs.
+- Any future refactor must preserve the two required proof scenarios above and keep the legacy path explicitly labeled.
+
+## 2026-06-01 — Kanban t_b034a31d: endpoint download tests hardened for artifact realism
+
+**Status:** Tightened `TestCompanyOverviewDownload` in `tests/test_seeking_alpha_access.py` to explicitly cover current-artifact, legacy-only, and no-artifact states with stronger HTTP-level assertions.
+
+### What changed
+- Replaced weak/implicit checks with explicit browser-facing assertions:
+  - status code
+  - `Content-Type`
+  - `Content-Disposition` markers (`inline`, expected filename)
+  - body signature markers (`%PDF-...`) for served PDFs
+- Added deterministic current-vs-legacy precedence test by creating both files and asserting current investor-profile filename/content wins.
+- Added explicit no-artifact 404 contract assertion (`application/json` + exact `detail` message).
+- Preserved invalid-format rejection coverage (400).
+
+### Verification
+- ✅ `PYTHONPATH=. backend/.venv/bin/pytest tests/test_seeking_alpha_access.py -k "TestCompanyOverviewDownload" -q` → `4 passed`
+- ✅ `PYTHONPATH=. backend/.venv/bin/pytest tests/test_seeking_alpha_access.py -q` → `10 passed`
+
+### Notes
+- Fixture setup remains deterministic (`tmp_path` + monkeypatched `_find_analysis_dirs`), with no timing-based assumptions.
+- Assertions are intentionally user-visible (headers/body/status), avoiding implementation-leaky internals.
+
+## 2026-06-01 — Kanban t_2a5066ec: first-page metric/table fit refinement (Company Overview PDF)
+
+**Status:** Refined first-page metric/table rendering in `backend/company_overview_pdf.py` to reduce clipping/overlap risk and avoid awkward truncation artifacts for long values.
+
+### Scope
+- Executive Snapshot cards:
+  - Added value normalization/wrapping helpers (`_card_value_text`, `_soft_wrap_text`, `_estimate_card_font_size`)
+  - Applied adaptive value font size (9→8→7 based on length)
+  - Reduced card cell padding for tighter fit while preserving readability
+  - Added CJK word-wrap on card table cells to improve line breaks for long tokens
+- Generic table renderer (`_make_table`):
+  - Added soft-wrap opportunities for long tokens (URLs/slash/hyphen chains)
+  - Added compact cell style fallback for narrow/long columns
+  - Added explicit `WORDWRAP` table style and escaped rendered cell content
+- KPI table width rebalance:
+  - From `28/22/25/25` to `30/24/20/26` (Metric/Value/Period/Source) to prioritize value readability and reduce source clipping artifacts.
+
+### Verification
+- ✅ Synthetic stress render generated 3 PDFs with long labels/URLs/metrics:
+  - `/tmp/company_overview_pdf_fit_check/NVDA_company_overview_fit.pdf`
+  - `/tmp/company_overview_pdf_fit_check/TEST1_company_overview_fit.pdf`
+  - `/tmp/company_overview_pdf_fit_check/TEST2_company_overview_fit.pdf`
+- ✅ `PYTHONPATH=. backend/.venv/bin/pytest tests/test_company_overview_pdf.py -q` → `11 passed`
+
+### Notes
+- Scope kept strictly to rendering/layout behavior in `backend/company_overview_pdf.py`; no business/data logic changes.
+- Production endpoint recipe/deploy validation remains for reviewer/integration stage.
+
+## 2026-06-01 — Kanban t_4ea77dda: NVDA Company Overview backend pre-render payload traced
+
+**Status:** Read-only trace completed for the NVDA Company Overview backend/API path before rendering.
+
+### Evidence captured
+- Workspace report: `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_4ea77dda/artifacts/trace_report.md`
+- Normalized field JSON: `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_4ea77dda/artifacts/normalized_target_fields.json`
+- Direct backend payload: `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_4ea77dda/artifacts/direct_backend_payload.json`
+- API download body/headers: `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_4ea77dda/artifacts/api_download_body.json`, `api_download_headers.json`
+
+### Run details
+- Run ID: `kb-t_4ea77dda-20260601T165727Z`
+- Direct entrypoint: `backend.company_overview.get_company_overview(ticker="NVDA", language="en")`
+- Live endpoint: `GET http://127.0.0.1:8780/api/company-overview/NVDA/download?format=json` → HTTP 200
+- API body SHA256: `2f31167a8dcf987eebb784e154048c6eaec622df59d54e3df24eaa71a3a5ead6`
+
+### Key finding
+The direct backend pre-render payload and live API download agree on renderer-effective `overview.key_financials`: market cap `$3.10T`, forward P/E `35.0`, beta `1.7`, revenue `$122.0B`, gross margin `0.75`, operating margin `0.65`, FCF `$96.0B`, 52W range `124.17–199.62`. Same-run Yahoo info diverged materially: market cap `5.3848T`, forward P/E `17.56`, beta `2.244`, total revenue `253.491B`, FCF `46.336B`, 52W range `135.40–236.54`.
+
+## 2026-06-01 — Kanban t_8af76a9c: renderer-level sanitization hardening for Company Overview PDF
+
+**Status:** Added a conservative sanitization pass in `backend/company_overview_pdf.py::_clean_text` to strip internal/debug/template artifacts just before client-visible rendering, while preserving normal business text.
+
+### Scope
+- Hardened `_clean_text` to remove:
+  - legacy internal pipeline phrases (`LLM synthesis ...`, `transcript-level validation`, etc.)
+  - control-like characters
+  - common internal wrappers/tokens (`<|...|>`, `[[internal...]]`, `{{debug...}}`, `[DEBUG]`)
+  - inline source/debug prefixes like `source: yfinance`
+- Kept sanitization conservative: punctuation/business sentences are preserved; no upstream model/data logic changed.
+
+### Verification
+- ✅ `PYTHONPATH=. backend/.venv/bin/pytest backend/tests/test_company_overview_pdf_sanitization.py -q` → `3 passed`
+- ✅ `PYTHONPATH=. backend/.venv/bin/pytest tests/test_company_overview.py tests/test_company_overview_pdf.py -q` → `32 passed`
+
+## 2026-06-01 — Kanban t_aa8d2401: legacy-only fallback reproduced end-to-end
+
+**Status:** Reproduced `download_company_overview` legacy-only behavior with an isolated fixture and confirmed the selected artifact is `company_profile_MSFT.pdf` when no current investor-profile PDF exists.
+
+### Reproduction setup
+- Script: `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_aa8d2401/reproduce_legacy_overview_fixture.py`
+- Fixture root: `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_aa8d2401/fixtures/msft_legacy_only`
+- Legacy file created: `.../01_official_company_sources/company_profile_MSFT.pdf`
+- Current pattern intentionally absent: `MSFT_company_overview_investor_profile_*.pdf` (0 match)
+
+### Observed endpoint behavior
+- `GET /api/company-overview/MSFT/download?format=auto` → `200`, `content-disposition: inline; filename="company_profile_MSFT.pdf"`
+- `GET /stock-analysis/api/company-overview/MSFT/download?format=auto` → same `200` + same legacy filename
+- Response prefix `%PDF-1.4` and size `125` bytes (fixture artifact)
+
+### Important divergence noted
+Setting `SA_ANALYSES_DIR` in-process was overridden by app env loading (`.env`) in this dev path; deterministic reproduction required forcing `backend.main.ANALYSES_DIR = fixture_root` in the test script. Without this override, local tests resolve to live `analyses/` and pick a current investor-profile PDF instead of the legacy fallback case.
+
 ## 2026-06-01 — Kanban t_37401dee: MSFT legacy-only fixture created
 
 **Status:** Fixture ready and deterministic for legacy-company-profile selection tests.
@@ -386,6 +639,7 @@ but no PDF was produced.
 
 ## Recent Changes
 | Date | Task | Description |
+| 2026-06-01 | t_cfa7ab17 — NVDA Company Overview key_financials mismatch baseline | Reproduced the NVDA Company Overview mismatch end-to-end via local/prod download endpoints and preserved a reusable ground-truth artifact at `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_cfa7ab17/NVDA_company_overview_mismatch_ground_truth.md`. Local and prod JSON/PDF artifacts are byte-identical (`JSON sha256=2f31167a8dcf987eebb784e154048c6eaec622df59d54e3df24eaa71a3a5ead6`, `PDF sha256=5522605c5a31aff148bd28cec5552d9d077078bd1060407ee14cd682b756c853`), confirming the issue is not local-vs-prod drift. Baseline mismatch: rendered `key_financials` shows market cap `$3.10T`, forward P/E `35.0`, beta `1.7`, revenue `$122.0B`, FCF `$96.0B`, 52W `124.17–199.62`; same-run Yahoo trace from `t_c3732b59` captured market cap `5.381T`, forward P/E `17.554`, beta `2.244`, raw totalRevenue `253.491B`, raw FCF `46.336B`, 52W `135.4–236.54`. | ✅ BASELINE |
 | 2026-06-01 | t_4dd1230d — PDF QA gate rule spec | Created `docs/pdf-audits/2026-06-01-sa-pdf-qa-gate-rules.md`, an implementation-ready rule matrix for the automated EN+JP PDF QA gate. It defines artifact existence, page-count, text extraction, forbidden/internal marker, placeholder, numeric coherence, source URL, section presence, Nami personalization, and first-page render smoke rules with `defect`/`warning`/`allowed` severities and explicit audience-mode handling. Verification: source audit JSON inspected, PNG render metadata checked, spec rule IDs validated. | ✅ DONE |
 | 2026-06-01 | SA PDF Pro-QA mini-sprint staged + Kanban DB backup guard | Created the PDF Pro-QA mini-sprint from `docs/pdf-audits/2026-06-01-sa-pdf-pro-qa-kanban-draft.md` after validating enriched task bodies with `kanban_task_validate.py`. Final staged tasks are in `triage` (safe no-spawn): `t_ac8c7e0e` FIX-01 JP deep-dive generation/polling, `t_b90500a9` FIX-02 Company Overview key_financials/source ledger, `t_cd3af989` FIX-03 stale legacy Company Overview fallback, `t_8a067711` FIX-04 PDF layout pass, `t_017a60b8` FIX-05 automated PDF QA gate. Dependencies linked: FIX-01 → FIX-03/FIX-04/FIX-05; FIX-02 → FIX-04/FIX-05; FIX-03 → FIX-04/FIX-05; FIX-04 → FIX-05. Sprint was **not launched** because `specify` hit `RateLimitError`; launching must promote/specify one root at a time, starting with FIX-01. Incident lesson: `--initial-status blocked` is unsafe on this board because the gateway dispatcher auto-promotes it; use `--triage` for no-spawn staging. Recovery/backups: board restored from latest healthy DB backup, normalized to pre-NS invariant `done=67/cancelled=1/no active tasks`, partial worker diff saved at `/tmp/sa-pdf-proqa-partial-worker-diff-20260601-105713.patch`, and silent cron `kanban-db-auto-backup` (`5c7d92db623d`, every 10 min, local delivery) now integrity-checks and backs up board DBs under `~/.hermes/kanban/auto-backups/`. | ✅ STAGED |
 | 2026-05-31 | Nami-only feedback/docs context routing | Forced the feedback-page remarks and uploaded feedback PDFs/docs into Nami's chat context only, without weakening general visitor isolation. Root cause: `chat_feedback` is correctly scoped by `visitor_id`, but the separate feedback-page JSON store and `analyses/feedback_*` uploads have no visitor identity; they were therefore absent from fresh Nami sessions unless a matching chat/ticker history already existed. Fix: `backend/chat_context.py` now gates feedback-page entries and feedback upload PDFs behind server-side Nami recognition (`apple-*-safari` → `Nami-san`), merges those entries into `feedback_context`, and uses them as recent ticker/PDF context only for Nami. Ced/Linux and unknown sessions remain fail-closed with no `feedback_page` context. Added regression tests in `backend/tests/test_chat_widget.py` for Nami receives feedback-page context and non-Nami does not call the feedback-page store. Validation: `./.venv/bin/python -m pytest backend/tests/test_chat_widget.py tests/test_chat_widget.py tests/test_feedback.py -q` → `60 passed, 2 warnings`; runtime local+prod probe `/tmp/sa_nami_feedback_context_probe.py` → `NAMI_FEEDBACK_CONTEXT_PROBE_PASS` with Safari/Nami feedback_count=5, feedback_files_count=10, recent_pdf_count=5 and Linux/Ced feedback_count=0/recent_pdf_count=0; `tb sa-check` ALL OK; `git diff --check` OK. Code commit: `873d6d7`. | ✅ DONE |
@@ -435,6 +689,25 @@ but no PDF was produced.
 | 2026-05-25 | V2.3 | Historical valuation data feasibility (PARTIAL) |
 | 2026-05-25 | P0-F2F3 | 6-category scoring chart, deep-dive mapper |
 | 2026-05-25 | Swarm | Codebase audit: 3 largest files (pipeline.py=2447, mapper.py=2297, main.py=2010) — 165 .py files total |
+
+## 2026-06-01 — Kanban t_c7645016: deterministic MSFT legacy-only fixture setup script
+
+**Status:** Added an idempotent setup script for a controlled local fixture where only legacy Company Overview PDF exists for MSFT and current investor-profile PDFs are explicitly removed.
+
+### Deliverable
+- Setup script: `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_c7645016/setup_msft_legacy_only_fixture.sh`
+- Fixture root: `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_c7645016/fixtures/msft_legacy_only`
+
+### Enforced state
+- Removes: `MSFT_company_overview_investor_profile_*.pdf` (precondition cleanup)
+- Creates: `company_profile_MSFT.pdf`
+- Keeps fixture isolated in task workspace to avoid cross-test contamination
+
+### Proof from script run
+- `CURRENT_PROFILE_MATCH_COUNT=0`
+- `LEGACY_PDF_SHA256=15bfd519422af633e9cbafce6aeec530989096f7d9d90610ebb5371cca9ed89e`
+- Final listing contains only:
+  - `/home/ced/.hermes/kanban/boards/sa-pipeline/workspaces/t_c7645016/fixtures/msft_legacy_only/2026-06-01_MSFT_legacy_only_fixture/01_official_company_sources/company_profile_MSFT.pdf`
 
 ## Non-Regression Playbooks
 - **When modifying ValuationGroup**: run `node chartUtils.test.cjs` (68 tests), rebuild frontend, test NVDA and MSFT

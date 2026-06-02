@@ -1496,8 +1496,40 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
     # Prefer deep-dive PDF; if it doesn't exist, launch async generation
     # and return 202 Accepted so the client can poll (no 2-min timeout)
     if not deep_dive.exists():
+        # ── Idempotency guard: don't re-spawn if a generator is already
+        # in flight, and refuse to respawn after a terminal failure.
+        # Fixes t_fda2f272 root cause (sa-pipeline 2026-06-01):
+        #   /api/dossier/{ticker}/status uses validated-dir selection, while
+        #   this endpoint used to use newest-dir. Newest often lacks JP PDF,
+        #   so each poll spawned a new background thread (+3 uvicorn threads
+        #   per 3 polls). Now we check the dossier phase and short-circuit
+        #   when already generating, or return 422 on terminal failure.
+        from backend.async_dossier import get_dossier_status, DossierPhase
+        current_phase = get_dossier_status(ticker).get("phase")
+        if current_phase in (DossierPhase.PDF_GENERATING, DossierPhase.PDF_VALIDATING):
+            return JSONResponse(
+                status_code=202,
+                content={
+                    "status": "generating",
+                    "ticker": ticker,
+                    "message": "Deep-dive PDF generation already in progress. Poll this endpoint until ready.",
+                    "retry_after_seconds": 10,
+                },
+                headers={"Retry-After": "10"},
+            )
+        if current_phase in (DossierPhase.PDF_BLOCKED, DossierPhase.FAILED):
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "status": "pdf_blocked",
+                    "retryable": False,
+                    "message": f"PDF generation for {ticker} previously failed terminally (phase={current_phase}). Refusing to respawn.",
+                    "phase": current_phase,
+                },
+            )
+
         import asyncio
-        
+
         async def _generate_deep_dive_async(ticker: str, lang: str, dd_path: Path):
             """Background deep-dive generation — runs in thread to not block."""
             from backend.async_dossier import set_dossier_phase, DossierPhase

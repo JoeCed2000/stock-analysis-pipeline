@@ -1,0 +1,307 @@
+{
+  "raw_json": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/verification_raw.json",
+  "proof_dir": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/proofs",
+  "text_dir": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/text",
+  "rows": [
+    {
+      "ticker": "NVDA",
+      "artifact": "deep_en",
+      "status": "FAIL",
+      "http": 202,
+      "is_pdf": false,
+      "pages": 0,
+      "first_page_png": null,
+      "marker_counts": {
+        "NaN": 0,
+        "source: yfinance": 0,
+        "S1": 0,
+        "null": 0,
+        "undefined": 0,
+        "DATA NOT AVAILABLE": 0,
+        "Not disclosed": 0
+      },
+      "raw_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/raw/NVDA_deep_en.bin",
+      "errors": []
+    },
+    {
+      "ticker": "NVDA",
+      "artifact": "deep_jp",
+      "status": "FAIL",
+      "http": 200,
+      "is_pdf": true,
+      "pages": 22,
+      "first_page_png": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/proofs/NVDA_deep_jp_p1.png",
+      "marker_counts": {
+        "NaN": 33,
+        "source: yfinance": 12,
+        "S1": 6,
+        "null": 0,
+        "undefined": 0,
+        "DATA NOT AVAILABLE": 0,
+        "Not disclosed": 29
+      },
+      "raw_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/raw/NVDA_deep_jp.pdf",
+      "errors": []
+    },
+    {
+      "ticker": "NVDA",
+      "artifact": "company",
+      "status": "FAIL",
+      "http": 200,
+      "is_pdf": true,
+      "pages": 6,
+      "first_page_png": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/proofs/NVDA_company_p1.png",
+      "marker_counts": {
+        "NaN": 24,
+        "source: yfinance": 0,
+        "S1": 0,
+        "null": 0,
+        "undefined": 0,
+        "DATA NOT AVAILABLE": 0,
+        "Not disclosed": 0
+      },
+      "raw_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/raw/NVDA_company.pdf",
+      "errors": []
+    },
+    {
+      "ticker": "AAPL",
+      "artifact": "deep_en",
+      "status": "FAIL",
+      "http": 200,
+      "is_pdf": true,
+      "pages": 24,
+      "first_page_png": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/proofs/AAPL_deep_en_p1.png",
+      "marker_counts": {
+        "NaN": 117,
+        "source: yfinance": 53,
+        "S1": 6,
+        "null": 0,
+        "undefined": 0,
+        "DATA NOT AVAILABLE": 0,
+        "Not disclosed": 33
+      },
+      "raw_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/raw/AAPL_deep_en.pdf",
+      "errors": []
+    },
+    {
+      "ticker": "AAPL",
+      "artifact": "deep_jp",
+      "status": "FAIL",
+      "http": 200,
+      "is_pdf": true,
+      "pages": 26,
+      "first_page_png": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/proofs/AAPL_deep_jp_p1.png",
+      "marker_counts": {
+        "NaN": 63,
+        "source: yfinance": 33,
+        "S1": 6,
+        "null": 0,
+        "undefined": 0,
+        "DATA NOT AVAILABLE": 0,
+        "Not disclosed": 27
+      },
+      "raw_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/raw/AAPL_deep_jp.pdf",
+      "errors": []
+    },
+    {
+      "ticker": "AAPL",
+      "artifact": "company",
+      "status": "FAIL",
+      "http": 200,
+      "is_pdf": true,
+      "pages": 5,
+      "first_page_png": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/proofs/AAPL_company_p1.png",
+      "marker_counts": {
+        "NaN": 24,
+        "source: yfinance": 0,
+        "S1": 0,
+        "null": 0,
+        "undefined": 0,
+        "DATA NOT AVAILABLE": 0,
+        "Not disclosed": 0
+      },
+      "raw_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/raw/AAPL_company.pdf",
+      "errors": []
+    },
+    {
+      "ticker": "GOOGL",
+      "artifact": "deep_en",
+      "status": "FAIL",
+      "http": 200,
+      "is_pdf": true,
+      "pages": 25,
+      "first_page_png": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/proofs/GOOGL_deep_en_p1.png",
+      "marker_counts": {
+        "NaN": 134,
+        "source: yfinance": 53,
+        "S1": 6,
+        "null": 0,
+        "undefined": 0,
+        "DATA NOT AVAILABLE": 0,
+        "Not disclosed": 25
+      },
+      "raw_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/raw/GOOGL_deep_en.pdf",
+      "errors": []
+    },
+    {
+      "ticker": "GOOGL",
+      "artifact": "deep_jp",
+      "status": "FAIL",
+      "http": 200,
+      "is_pdf": true,
+      "pages": 26,
+      "first_page_png": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/proofs/GOOGL_deep_jp_p1.png",
+      "marker_counts": {
+        "NaN": 38,
+        "source: yfinance": 18,
+        "S1": 6,
+        "null": 0,
+        "undefined": 0,
+        "DATA NOT AVAILABLE": 0,
+        "Not disclosed": 29
+      },
+      "raw_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/raw/GOOGL_deep_jp.pdf",
+      "errors": []
+    },
+    {
+      "ticker": "GOOGL",
+      "artifact": "company",
+      "status": "FAIL",
+      "http": 200,
+      "is_pdf": true,
+      "pages": 6,
+      "first_page_png": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/proofs/GOOGL_company_p1.png",
+      "marker_counts": {
+        "NaN": 28,
+        "source: yfinance": 0,
+        "S1": 0,
+        "null": 0,
+        "undefined": 0,
+        "DATA NOT AVAILABLE": 0,
+        "Not disclosed": 0
+      },
+      "raw_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/raw/GOOGL_company.pdf",
+      "errors": []
+    },
+    {
+      "ticker": "MSFT",
+      "artifact": "deep_en",
+      "status": "FAIL",
+      "http": 202,
+      "is_pdf": false,
+      "pages": 0,
+      "first_page_png": null,
+      "marker_counts": {
+        "NaN": 0,
+        "source: yfinance": 0,
+        "S1": 0,
+        "null": 0,
+        "undefined": 0,
+        "DATA NOT AVAILABLE": 0,
+        "Not disclosed": 0
+      },
+      "raw_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/raw/MSFT_deep_en.bin",
+      "errors": []
+    },
+    {
+      "ticker": "MSFT",
+      "artifact": "deep_jp",
+      "status": "FAIL",
+      "http": 202,
+      "is_pdf": false,
+      "pages": 0,
+      "first_page_png": null,
+      "marker_counts": {
+        "NaN": 0,
+        "source: yfinance": 0,
+        "S1": 0,
+        "null": 0,
+        "undefined": 0,
+        "DATA NOT AVAILABLE": 0,
+        "Not disclosed": 0
+      },
+      "raw_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/raw/MSFT_deep_jp.bin",
+      "errors": []
+    },
+    {
+      "ticker": "MSFT",
+      "artifact": "company",
+      "status": "FAIL",
+      "http": 200,
+      "is_pdf": true,
+      "pages": 4,
+      "first_page_png": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/proofs/MSFT_company_p1.png",
+      "marker_counts": {
+        "NaN": 19,
+        "source: yfinance": 0,
+        "S1": 0,
+        "null": 0,
+        "undefined": 0,
+        "DATA NOT AVAILABLE": 0,
+        "Not disclosed": 0
+      },
+      "raw_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/raw/MSFT_company.pdf",
+      "errors": []
+    },
+    {
+      "ticker": "TSLA",
+      "artifact": "deep_en",
+      "status": "FAIL",
+      "http": 200,
+      "is_pdf": true,
+      "pages": 19,
+      "first_page_png": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/proofs/TSLA_deep_en_p1.png",
+      "marker_counts": {
+        "NaN": 35,
+        "source: yfinance": 12,
+        "S1": 0,
+        "null": 0,
+        "undefined": 0,
+        "DATA NOT AVAILABLE": 0,
+        "Not disclosed": 7
+      },
+      "raw_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/raw/TSLA_deep_en.pdf",
+      "errors": []
+    },
+    {
+      "ticker": "TSLA",
+      "artifact": "deep_jp",
+      "status": "FAIL",
+      "http": 202,
+      "is_pdf": false,
+      "pages": 0,
+      "first_page_png": null,
+      "marker_counts": {
+        "NaN": 0,
+        "source: yfinance": 0,
+        "S1": 0,
+        "null": 0,
+        "undefined": 0,
+        "DATA NOT AVAILABLE": 0,
+        "Not disclosed": 0
+      },
+      "raw_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/raw/TSLA_deep_jp.bin",
+      "errors": []
+    },
+    {
+      "ticker": "TSLA",
+      "artifact": "company",
+      "status": "FAIL",
+      "http": 200,
+      "is_pdf": true,
+      "pages": 1,
+      "first_page_png": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/proofs/TSLA_company_p1.png",
+      "marker_counts": {
+        "NaN": 2,
+        "source: yfinance": 0,
+        "S1": 0,
+        "null": 0,
+        "undefined": 0,
+        "DATA NOT AVAILABLE": 0,
+        "Not disclosed": 0
+      },
+      "raw_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/verification-t_0da449db-20260601T165622Z/raw/TSLA_company.pdf",
+      "errors": []
+    }
+  ]
+}
