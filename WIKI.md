@@ -830,7 +830,7 @@ but no PDF was produced.
 
 ## 2026-06-02 — SA admin + timeout false-failure fixes + PDFQA gate
 
-**Status:** In progress — code/tests OK locally; backend restarted; production admin browser verification OK; commit/push still required before final done.
+**Status:** Completed — code/tests OK locally; backend restarted; production admin browser verification OK; commit `bca4675` pushed to `origin/kanban/spec-fonctionnelle-sa`.
 
 ### Root cause / technical fixes
 - Admin “empty DB” symptom: SQLite can be recreated empty while durable `searches.jsonl` still contains production history. `backend/search_db.py` now falls back to JSONL for recent searches and aggregate stats when SQLite has no rows, and filters exception-text pollution from top tickers.
@@ -851,8 +851,7 @@ but no PDF was produced.
 - Production admin browser check on `https://sa.cedlabusa.net/stock-analysis/#admin`: `SEARCHES=733`, `SUCCESS=90%`, table populated, console JS errors `0`.
 - Real PDFQA audit coverage: saved audit `2026-06-01-sa-pdf-pro-qa-raw.json` contains `NVDA`, `AAPL`, `GOOGL`; regression test confirms gate blocks known real defects (`PDFQA-003`, `PDFQA-007`, `PDFQA-008`, `PDFQA-013`).
 
-### Remaining before final done
-- Commit and push code + WIKI.
+### Remaining / next hardening
 - Optional next hardening: wire `pdf_quality_gate.py` into runtime delivery once a fresh post-render audit object is produced during PDF generation.
 
 ## Non-Regression Playbooks
