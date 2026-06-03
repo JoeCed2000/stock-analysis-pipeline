@@ -133,14 +133,21 @@ def ingest_pdf(
     if pdf_id is None:
         pdf_id = f"pdf_{ticker}_{hashlib.md5(str(path).encode()).hexdigest()[:8]}"
 
-    # Extract text
-    text = _extract_text(str(path))
-    if not text:
-        logger.warning(f"No text extracted from {pdf_path}")
-        return None
-
     # Hash
     sha = _hash_file(str(path))
+
+    # ── Dedup: skip if already ingested with same SHA256 ──
+    from . import chat_store as _cs
+    conn = _cs.get_conn()
+    row = conn.execute(
+        "SELECT sha256 FROM pdf_documents WHERE id=? AND sha256=?",
+        (pdf_id, sha),
+    ).fetchone()
+    if row:
+        return pdf_id  # already ingested, no-op
+
+    # Extract text
+    text = _extract_text(str(path))
 
     # Store document
     report_date = None

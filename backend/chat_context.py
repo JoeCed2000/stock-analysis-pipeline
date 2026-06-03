@@ -35,7 +35,13 @@ def resolve_visitor_display_name(metadata: dict | None, language: str | None = "
         return display_name
 
     device = (meta.get("device") or "").strip().lower()
-    if device in {"apple-mac-safari", "apple-iphone-safari", "apple-ipad-safari"}:
+    user_agent = (meta.get("user_agent") or "").strip().lower()
+    # Nami uses Mac (Safari or Chrome). Match on UA first, fall back to fingerprint.
+    is_nami_device = (
+        "macintosh" in user_agent
+        or device in {"apple-mac-safari", "apple-iphone-safari", "apple-ipad-safari", "apple-mac-chrome"}
+    )
+    if is_nami_device:
         return "Nami-san"
     if device in {"linux-chrome", "windows-chrome", "linux-edge", "windows-edge"}:
         return "Ced"

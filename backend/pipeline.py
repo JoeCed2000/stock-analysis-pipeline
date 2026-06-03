@@ -2655,6 +2655,8 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
                     f"[{ticker}] COMPANY OVERVIEW VALIDATION FAILED — {validation.error_count} gate(s) blocked PDF export:\n"
                     f"  {error_list}"
                 )
+                # ── Telegram alert (CedLab 2026-06-03) ──
+                _send_pdf_failure_alert(ticker, "Company Overview", validation.error_count, error_list[:300])
                 # Write validation report next to the overview JSON
                 val_path = os.path.join(
                     os.path.dirname(profile_path),
@@ -2828,3 +2830,25 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
         logger.warning(f"[{ticker}] Sources manifest write failed: {e}")
     
     return result
+
+
+# ── Telegram alert on PDF generation failure (CedLab 2026-06-03) ──
+def _send_pdf_failure_alert(ticker: str, pdf_type: str, error_count: int, detail: str) -> None:
+    """Send a Telegram notification when a PDF fails validation.
+    
+    Uses the hermes CLI to deliver. Non-blocking — failures are logged but never
+    crash the pipeline.
+    """
+    import subprocess
+    try:
+        msg = (
+            f"🔴 SA PDF BLOCKED — {ticker} {pdf_type}\n"
+            f"{error_count} gate(s) failed.\n"
+            f"{detail[:400]}"
+        )
+        subprocess.Popen(
+            ["hermes", "send-message", "--target", "telegram", "--message", msg],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        logger.warning(f"Failed to send Telegram alert for {ticker} {pdf_type}")

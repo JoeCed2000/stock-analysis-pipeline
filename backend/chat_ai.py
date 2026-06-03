@@ -396,7 +396,7 @@ def _chat_engine_config(*, provider: Optional[str] = None, model: Optional[str] 
         model=resolved_model,
         api_key=_provider_api_key(resolved_provider),
         endpoint=endpoint,
-        max_tokens=_env_int("SA_CHAT_MAX_OUTPUT_TOKENS", 900),
+        max_tokens=_env_int("SA_CHAT_MAX_OUTPUT_TOKENS", 2048),
         temperature=_env_float("SA_CHAT_TEMPERATURE", 0.15),
         timeout_seconds=_env_float("SA_CHAT_TIMEOUT_SECONDS", 120.0),
     )

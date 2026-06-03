@@ -462,10 +462,20 @@ async def _generate_and_stream(
 
         # Save final response
         now = _utcnow_iso()
+        status = "completed"
+        # Detect truncation: response ending mid-word/mid-sentence
+        stripped = full_response.rstrip()
+        if stripped and not stripped[-1] in ".!?。！？)\"」\n":
+            logger.warning(
+                "Chat response may be truncated (ends with %r, length=%d chars). "
+                "Consider increasing SA_CHAT_MAX_OUTPUT_TOKENS.",
+                stripped[-10:], len(full_response),
+            )
+            status = "truncated"
         chat_store.update_message(
             assistant_message_id,
             content=full_response,
-            status="completed",
+            status=status,
             updated_at=now,
         )
 
