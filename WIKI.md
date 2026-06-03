@@ -1,5 +1,27 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-03 — Chat truncation + visitor detection + PDF alerts (Nami incident)
+
+**Status:** Diagnosed and fixed root causes of the 2026-06-02 Nami chat incident: response cut-off mid-sentence, visitor identity loss, and PDF ingestion loop. Added Telegram alerting for PDF generation failures.
+
+### Root causes from log analysis
+- **Chat truncated**: `max_tokens=900` too low for detailed responses (English or Japanese). Response ended at `（ど` — mid-sentence with no truncation detection.
+- **Visitor lost**: `resolve_visitor_display_name()` only matched `apple-mac-safari` but Nami's Chrome produced `apple-mac-chrome`. Now checks `user_agent` for `Macintosh`.
+- **Ingestion loop**: `ingest_analyses_pdfs()` called every ~12s, re-indexing the same 18 PDFs (28.5 MB DB). Now deduplicates by SHA256.
+- **PDF silent failure**: RKLB Company Overview blocked by validator (2 errors) with no alert. Now sends Telegram notification.
+
+### Changes
+- `backend/chat_ai.py` — max_tokens 900 → 2048
+- `backend/chat.py` — truncation detection (sentence-ending punctuation check → status=truncated)
+- `backend/chat_context.py` — visitor detection: check `user_agent` for `Macintosh` + keep device fingerprint fallback
+- `backend/chat_retrieval.py` — SHA256 dedup: skip already-ingested PDFs
+- `backend/pipeline.py` — `_send_pdf_failure_alert()` via hermes CLI on validation failure
+
+### Verification
+- `PYTHONPATH=. backend/.venv/bin/pytest backend/tests/test_chat_widget.py tests/test_chat_widget.py -q` → `37 passed`
+- `curl http://localhost:8780/api/health` → OK, version `v2.3-accepted-254-gc8419dc`
+- Commit: `6dfdb48`
+
 ## 2026-06-02 — Real PDF defects inventory + P0 artifact-validity hardening
 
 **Status:** Built the real-defect inventory from saved Company Overview / Earnings Deep Dive PDFs and applied the first narrow P0 technical fix class: stop serving invalid PDF artifacts and stop infinite `202 generating` loops when PDF background generation is stale or exits without data.
