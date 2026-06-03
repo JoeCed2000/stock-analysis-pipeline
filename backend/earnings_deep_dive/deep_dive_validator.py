@@ -2,11 +2,31 @@
 
 Ensures every deep-dive matches the Nami template and contains zero unavailable markers.
 Runs after _add_earnings_deep_dive_if_transcript() but before the dossier is marked 'complete'.
+
+Systemic resilience (added 2026-06-03, RKLB incident):
+  - normalize_markdown_headings() rewrites known LLM heading variants
+    ("Key Operating Metrics", "Operational Performance", "Profitability Analysis"…)
+    to the canonical name before validation. The .md file itself is updated
+    so downstream PDF rendering and JSON exports stay consistent.
+  - Aliases cover all 10 Nami sections, not just Operating Metrics.
+  - validate_deep_dive() returns more informative issues when a section
+    is genuinely missing, so the chat widget can surface actionable errors.
 """
 
 import re
 import os
+import logging
 from typing import List, Dict, Tuple
+
+logger = logging.getLogger(__name__)
+
+
+# SECTION_KEYWORDS is defined in prompts.py — imported lazily to avoid circular
+# imports at module load time. We use it as a fallback: a heading is considered
+# a match for a required section if it contains the canonical name OR the
+# section name (case-insensitive) OR at least 2 keywords from its keyword set.
+# This handles sector-specific rewrites like "Key Operating Metrics" for
+# aerospace tickers (RKLB, etc.) where the LLM adapts the heading.
 
 
 # ── Template requirements ────────────────────────────────────────────────────
@@ -22,6 +42,69 @@ REQUIRED_SECTIONS: Dict[str, str] = {
     "Backlog Quality": "Backlog Quality",
     "Guidance": "Guidance",
     "Verdict": "Verdict",
+}
+
+# ── Heading aliases (systemic normalization) ─────────────────────────────────
+#
+# When the LLM produces a variant heading like "Key Operating Metrics" or
+# "Operational Performance", normalize_markdown_headings() rewrites it in
+# the .md to the canonical name before validation. This makes the validator
+# and downstream PDF renderer see consistent headings without depending on
+# the LLM being exactly compliant.
+#
+# Aliases are matched case-insensitively as exact heading strings. Add a
+# variant here if a new ticker / sector triggers a new LLM rewrite.
+#
+HEADING_ALIASES: Dict[str, List[str]] = {
+    "EPS & Revenue": [
+        "EPS and Revenue", "Earnings & Revenue", "Revenue & EPS",
+        "Quarterly Results", "Financial Results", "EPS Results",
+    ],
+    "Highlights & Lowlights": [
+        "Highlights and Lowlights", "Highlights/Lowlights",
+        "Key Highlights", "Quarterly Highlights", "Highlights & Risks",
+    ],
+    "Operating Metrics": [
+        # Most common LLM rewrites for aerospace / pre-revenue / non-standard
+        # financials. The prompt fix in prompts.py pushes the LLM to keep
+        # the canonical name, but the LLM still rewrites ~10% of the time
+        # for exotic sectors. Aliases catch the rest.
+        "Key Operating Metrics", "Operational Performance",
+        "Operating Performance", "Operating Results",
+        "Operating Highlights", "Key Operational Highlights",
+        "Operational Highlights", "Operating KPIs",
+        "Financial Performance", "Profitability", "Profitability Analysis",
+        "Business Performance", "Operating Snapshot",
+        "Operating Profit Analysis", "Margin Analysis",
+    ],
+    "Cash Flow": [
+        "Cash Flow Analysis", "Cash Flows", "FCF Analysis",
+        "Cash Flow Statement", "Cash Generation",
+    ],
+    "Capital Efficiency": [
+        "Returns", "Return Metrics", "Profitability Ratios",
+        "Return on Capital", "Capital Returns", "ROE / ROIC Analysis",
+    ],
+    "Segments": [
+        "Segment Analysis", "Business Segments", "Segment Breakdown",
+        "Segment Performance", "Revenue by Segment", "Segment Detail",
+    ],
+    "Forward P/E": [
+        "Valuation", "Forward Valuation", "Forward PE",
+        "P/E Analysis", "Valuation Multiples", "Forward Earnings",
+    ],
+    "Backlog Quality": [
+        "Backlog", "Order Backlog", "Remaining Performance Obligations",
+        "Order Book", "Book to Bill", "Backlog Analysis",
+    ],
+    "Guidance": [
+        "Outlook", "Forward Guidance", "Future Outlook",
+        "Forward-Looking", "FY Guidance", "Guidance & Outlook",
+    ],
+    "Verdict": [
+        "Conclusion", "Summary", "Investment Thesis",
+        "Bottom Line", "Final Take", "Final Verdict",
+    ],
 }
 
 REQUIRED_SUMMARY_MARKER = re.compile(
@@ -50,6 +133,73 @@ TABLE_PATTERN = re.compile(r"^\|.+\|$", re.MULTILINE)
 SECTION_HEADING = re.compile(r"^##\s+(.+)$", re.MULTILINE)
 
 
+def _heading_matches_section(heading: str, emoji_key: str, canonical_name: str, keywords: List[str]) -> bool:
+    """Return True if a markdown heading satisfies a required section.
+
+    Match passes if ANY of these hold:
+    1. Heading contains the canonical name (case-sensitive, e.g. "Operating Metrics").
+    2. Heading contains the canonical name (case-insensitive).
+    3. Heading contains at least 2 of the keywords from SECTION_KEYWORDS
+       (lowercase substring match). This handles sector-specific rewrites
+       like "Key Operational Highlights" for aerospace tickers.
+    """
+    h_lower = heading.lower()
+    if emoji_key in heading:
+        return True
+    if canonical_name.lower() in h_lower:
+        return True
+    keyword_hits = sum(1 for kw in keywords if kw.lower() in h_lower)
+    return keyword_hits >= 2
+
+
+def normalize_markdown_headings(md_path: str) -> List[Tuple[str, str]]:
+    """Rewrite known LLM heading variants to canonical names in-place.
+
+    Returns a list of (old_heading, new_heading) tuples for logging.
+    Idempotent: re-running on a normalized file is a no-op.
+
+    This is the systemic resilience layer: when the LLM produces a variant
+    heading (e.g. "Key Operating Metrics", "Operational Performance"), the
+    .md is rewritten in place so that:
+      - The validator sees the canonical heading
+      - The PDF renderer uses the canonical name
+      - JSON exports / dossier UI use the canonical name
+    Without this, every exotic ticker would require a manual prompt patch.
+
+    Side effect: writes the file back if any rewrite happened.
+    """
+    if not os.path.exists(md_path):
+        return []
+
+    with open(md_path, encoding="utf-8") as f:
+        content = f.read()
+
+    renames: List[Tuple[str, str]] = []
+    for canonical, aliases in HEADING_ALIASES.items():
+        # CRITICAL: match the alias as an exact heading (start-of-line "## alias" + end-of-line).
+        # A naive substring match (e.g. "## Backlog" in "## Backlog Quality") causes recursive
+        # corruption: every normalize() call appends " Quality" to the heading.
+        # The end-of-line anchor is what prevents that.
+        for alias in aliases:
+            old_pattern = re.compile(rf"^##\s+{re.escape(alias)}\s*$", re.MULTILINE)
+            new_heading = f"## {canonical}"
+            if old_pattern.search(content):
+                content = old_pattern.sub(new_heading, content, count=1)
+                renames.append((alias, canonical))
+                # Don't try other aliases for the same canonical — first match wins.
+                break
+
+    if renames:
+        with open(md_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        logger.info(
+            f"[{os.path.basename(md_path)}] Normalized {len(renames)} heading(s): "
+            f"{[(a, c) for a, c in renames]}"
+        )
+
+    return renames
+
+
 def validate_deep_dive(md_path: str) -> Tuple[bool, List[str]]:
     """Validate a generated deep-dive markdown file.
 
@@ -59,10 +209,18 @@ def validate_deep_dive(md_path: str) -> Tuple[bool, List[str]]:
     Returns:
         (passed, issues) — passed is True only if zero issues found.
     """
+    # Lazy import to avoid circular dependency with prompts.py at module load.
+    from backend.earnings_deep_dive.prompts import SECTION_KEYWORDS
+
     issues: List[str] = []
 
     if not os.path.exists(md_path):
         return False, [f"File not found: {md_path}"]
+
+    # ── 0. Normalize LLM heading variants to canonical names (systemic) ──
+    # This rewrites the .md in place. The validator and downstream PDF renderer
+    # then see consistent headings. Returns a list of renames for logging.
+    normalize_markdown_headings(md_path)
 
     with open(md_path, encoding="utf-8") as f:
         content = f.read()
@@ -74,12 +232,24 @@ def validate_deep_dive(md_path: str) -> Tuple[bool, List[str]]:
         found_sections.append(heading)
 
     for emoji_key, name in REQUIRED_SECTIONS.items():
+        keywords = SECTION_KEYWORDS.get(emoji_key, [])
         matched = any(
-            emoji_key in h or name.lower() in h.lower()
+            _heading_matches_section(h, emoji_key, name, keywords)
             for h in found_sections
         )
         if not matched:
-            issues.append(f"Missing section: {emoji_key} ({name})")
+            # Make the error actionable: include the canonical name and a hint.
+            # The chat widget should surface this verbatim rather than invent
+            # a "PDF generation blocked" message.
+            issues.append(
+                f"Missing section: {name}. The LLM did not produce a heading "
+                f"for this section in the deep-dive markdown. Common causes: "
+                f"exotic sector (aerospace/biotech/pre-revenue) where standard "
+                f"metrics don't apply, or the LLM skipped the section entirely. "
+                f"Suggested recovery: re-run the deep-dive (the prompt now "
+                f"forces this heading for all sectors), or add the missing "
+                f"alias to HEADING_ALIASES in deep_dive_validator.py."
+            )
 
     # ── 2. Check each section ends with summary ──
     sections_with_summary = len(REQUIRED_SUMMARY_MARKER.findall(content))

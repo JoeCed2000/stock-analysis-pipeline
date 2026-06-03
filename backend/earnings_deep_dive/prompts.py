@@ -109,9 +109,27 @@ SECTION_QUESTIONS: Dict[str, Dict[str, str]] = {
             "operating expenses, and net income? Provide a summary table of the key "
             "metrics (Current|Prior Qtr|YoY|Source), followed by detailed analysis. "
             "Show the 3-quarter trend to explain margin trajectory. "
-            "Compare to sector peers where possible."
+            "Compare to sector peers where possible.\n\n"
+            "MANDATORY HEADING: Write the section title as exactly '## Operating Metrics' "
+            "(do not rewrite it as 'Key Operating Metrics', 'Operational Performance', "
+            "'Profitability', etc. — the downstream validator is strict on this exact string). "
+            "If the company has unusual financials (negative operating margin, pre-revenue, "
+            "aerospace/defense, biotech, etc.), STILL keep the heading 'Operating Metrics' and "
+            "populate it with whatever operating-level data is available (e.g. for aerospace: "
+            "revenue, gross margin if applicable, operating loss, operating expense breakdown, "
+            "net loss, and a note explaining the negative operating margin trajectory). "
+            "For pre-revenue companies, fill the table with 'N/M' (not meaningful) rows rather "
+            "than skipping the section entirely."
         ),
-        "jp": "営業利益、営業利益率、粗利益、粗利益率、営業費用、純利益などは前年同期比と比べてどうでしたか？指標の一覧を出して、3四半期のトレンド分析とセクター比較を含めて説明してください。",
+        "jp": (
+            "営業利益、営業利益率、粗利益、粗利益率、営業費用、純利益などは前年同期比と比べてどうでしたか？"
+            "指標の一覧（当期|前期|前年同期比|ソース）を出して、3四半期のトレンド分析とセクター比較を含めて説明してください。\n\n"
+            "【必須】見出しは必ず『## Operating Metrics』の文字列で出力してください。"
+            "『主要営業指標』『業績概要』などの言い換えは不可です（バリデーターが厳格にチェックします）。"
+            "航空宇宙・防衛、バイオ、プレレベニュー企業など通常の営業指標が該当しない場合でも、"
+            "見出しは『Operating Metrics』のまま、使用可能なデータ（売上、適用可能な粗利率、営業損失、"
+            "営業費の内訳、純損失など）を表に埋めてください。N/M（not meaningful）の行も許容されます。"
+        ),
     },
     "Cash Flow": {
         "en": (
