@@ -638,8 +638,8 @@ Return ONLY a valid JSON object (no markdown, no explanation) with EXACTLY this 
   "business_description": "A comprehensive 5-8 sentence paragraph (~10 lines) describing what the company does, its products, markets, and scale. Be specific and detailed.",
   "revenue_model": "A comprehensive 5-8 sentence paragraph (~10 lines) explaining how the company makes money — major revenue engines, monetization approach, key customer segments. Be specific and detailed.",
   "business_segments": ["Segment Name: Brief description of what this segment does and its key products", "Second Segment: Brief description", "Third Segment: Brief description (include geographic segments if available)"],
-  "growth_drivers": ["driver 1", "driver 2", "driver 3"],
-  "moats": ["moat 1", "moat 2"],
+  "growth_drivers": ["REQUIRED: at least 3 specific, company-tailored growth drivers. Each must be a full sentence with evidence.", "REQUIRED: second driver", "REQUIRED: third driver"],
+  "moats": ["REQUIRED: at least 2 specific moats. Each must name the moat and explain why it is durable.", "REQUIRED: second moat"],
   "key_kpis": ["KPI 1 with value if known", "KPI 2 with value if known"],
   "business_risks": ["risk 1", "risk 2", "risk 3"],
   "key_financials": {{
