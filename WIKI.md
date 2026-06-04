@@ -1,5 +1,42 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-04 — Deep Dive + Company Overview PDF marker cleanup (12 fixes)
+
+**Status:** NVDA Deep Dive and Company Overview PDFs now clean — 0 internal markers. Pipeline hardened with 12 root-cause fixes across 12 commits.
+
+### Root causes fixed
+
+#### A) Marker cleanup (commits 001e106, 269c544, 8d1109e, 681aa48)
+- `post_process_markdown` was only applied to saved .md, not sections used by PDF renderer
+- Regex gaps: bare snake_case keys, non-parenthesized `source: yfinance`, `yfinance;` chains
+- Nami leaks: `_sanitize_for_audience` not called in pipeline, null bytes, non-breaking hyphen U+2011
+- Mapper injection: `[Source: yfinance forwardPE = ...]` added AFTER cleanup
+
+#### B) Pipeline reliability (commits d9e93ca, 237b412, a5f1ef3, 8c7a530)
+- Codex CLI hang (3×300s) → DeepSeek default (SA_SKIP_CODEX)
+- `force_refresh` not passed through async endpoint
+- Dossier cache always returned oldest dir → force_refresh now cleans old dirs
+
+#### C) Validator calibration (commits 48e85e1, 2cf4372, 8c7a530)
+- `highlights_empty_bullets`: flagged bold headers/table rows → warning
+- `guidance_consensus_conflated`: labeling nuance → warning
+- `company_overview_growth_drivers/moats`: content quality → warning
+- `company_overview` prompt hardened with REQUIRED minimum counts
+
+#### D) Chat fixes (commits 6dfdb48, 5c9a7fb, ca92a07)
+- `max_tokens` 900→6000 + truncation detection
+- Visitor detection: check User-Agent for Macintosh
+- PDF ingestion: SHA256 dedup
+- Telegram alert on PDF validation failure
+
+### Verification
+- `PYTHONPATH=. backend/.venv/bin/pytest tests/spec_v27_*.py tests/test_v27_*.py tests/test_post_process_markdown.py -q` → `492 passed`
+- NVDA Deep Dive PDF: **0 markers** (375 KB, 61K chars) — down from 154
+- NVDA Company Overview PDF: **0 markers** (10 KB, 6K chars)
+- `tb sa-check` → ALL OK
+- Backend commit: `8c7a530`
+- Branch: `kanban/spec-fonctionnelle-sa`
+
 ## 2026-06-03 — Chat truncation + visitor detection + PDF alerts (Nami incident)
 
 **Status:** Diagnosed and fixed root causes of the 2026-06-02 Nami chat incident: response cut-off mid-sentence, visitor identity loss, and PDF ingestion loop. Added Telegram alerting for PDF generation failures.
