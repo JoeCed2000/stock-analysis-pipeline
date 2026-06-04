@@ -586,6 +586,8 @@ AUDIENCE_NAMI_PATTERNS: list[tuple[str, str]] = [
     ("Nami\u0000san", ""),
     ("Nami\u0000", ""),
     ("\u0000san", ""),
+    # (CedLab 2026-06-04) Non-breaking hyphen from LLM output (U+2011)
+    ("Nami\u2011san", ""),
     ("Nami-san", ""),  # standalone Nami-san → remove (catch-all, last)
 ]
 MISSING_DATA_REPLACEMENTS: list[tuple[str, str]] = [
