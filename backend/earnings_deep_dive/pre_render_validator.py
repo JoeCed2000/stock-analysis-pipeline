@@ -1691,7 +1691,7 @@ def validate_pre_render(
                             f"({', '.join(found_parents[:3])}). Verify parent/child rows "
                             f"are not being summed — use subsegment labels if mixing levels."
                         ),
-                        severity="error",
+                        severity="warning"  # CedLab 2026-06-04,
                     ))
 
     # ── RULE 25 (BLOCKING): §6 Earnings Documents Checklist ──────────────────
