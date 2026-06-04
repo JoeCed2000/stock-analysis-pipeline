@@ -1311,10 +1311,11 @@ async def analyze(request: TickerRequest, lang: str = "en", force_refresh: bool 
 
 
 @app.post("/api/analyze/async")
-async def analyze_async(request: TickerRequest, lang: str = "en", fastapi_request: Request = None):
-    """Submit tickers for async analysis. Returns job ID immediately, poll /api/analyze/job/{id}."""
+async def analyze_async(request: TickerRequest, lang: str = "en", force_refresh: bool = False, fastapi_request: Request = None):
+    """Submit tickers for async analysis. Returns job ID immediately, poll /api/analyze/job/{id}.
+    Use ?force_refresh=true to bypass cache."""
     tickers = request.tickers
-    logger.info(f"Async analyze request: {tickers} [lang={lang}]")
+    logger.info(f"Async analyze request: {tickers} [lang={lang}, force_refresh={force_refresh}]")
 
     # Normalize ISINs
     normalized_tickers = []
@@ -1345,7 +1346,7 @@ async def analyze_async(request: TickerRequest, lang: str = "en", fastapi_reques
             update_job(job_id, status="processing", progress="Starting analysis...")
             import asyncio as _asyncio
             batch = _asyncio.new_event_loop().run_until_complete(
-                _asyncio.to_thread(run_analysis_parallel, normalized_tickers, output_base=str(ANALYSES_DIR), language=lang)
+                _asyncio.to_thread(run_analysis_parallel, normalized_tickers, output_base=str(ANALYSES_DIR), language=lang, force_refresh=force_refresh)
             )
             results_list = []
             for ticker, result in batch["results"].items():
