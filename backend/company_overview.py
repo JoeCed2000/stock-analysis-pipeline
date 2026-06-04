@@ -714,16 +714,22 @@ Return ONLY the JSON object. No markdown fences, no explanations."""
 
     system = "You are a senior equity research analyst synthesizing company overviews. You write in English. You return ONLY valid JSON with no markdown fences."
 
-    # ── Primary: Codex GPT-5.5 (highest quality, free via ChatGPT Plus) ──
-    response = _codex_chat(prompt, system=system, max_tokens=6000)
-    if response:
-        parsed = _parse_llm_response(response, ticker, yf_info)
-        if parsed is not None:
-            logger.info(f"[{ticker}] GPT-5.5 synthesis succeeded")
-            return parsed
-        logger.warning(f"[{ticker}] GPT-5.5 response failed to parse, falling back to DeepSeek...")
+    # ── (CedLab 2026-06-04) SA_SKIP_CODEX env var bypasses Codex hang ──
+    # Set SA_SKIP_CODEX=true to go straight to DeepSeek. Codex CLI hangs on
+    # large prompts (~5KB) with 3×300s timeouts, wasting 15 min per run.
+    if not os.getenv("SA_SKIP_CODEX", "").strip().lower() in ("1", "true", "yes"):
+        # ── Primary: Codex GPT-5.5 (highest quality, free via ChatGPT Plus) ──
+        response = _codex_chat(prompt, system=system, max_tokens=6000)
+        if response:
+            parsed = _parse_llm_response(response, ticker, yf_info)
+            if parsed is not None:
+                logger.info(f"[{ticker}] GPT-5.5 synthesis succeeded")
+                return parsed
+            logger.warning(f"[{ticker}] GPT-5.5 response failed to parse, falling back to DeepSeek...")
+        else:
+            logger.warning(f"[{ticker}] GPT-5.5 unavailable, falling back to DeepSeek...")
     else:
-        logger.warning(f"[{ticker}] GPT-5.5 unavailable, falling back to DeepSeek...")
+        logger.info(f"[{ticker}] SA_SKIP_CODEX set — using DeepSeek directly")
 
     # ── Fallback 1: DeepSeek V4 Pro (paid, reliable) ──────────
     try:
