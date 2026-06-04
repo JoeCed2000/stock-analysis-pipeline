@@ -2477,7 +2477,7 @@ def build_earnings_deep_dive_report(
                             item = pe_fact + " " + item
                         analysis_items[i] = item
                     # Also append the validated source note
-                    pe_note = f"[Source: yfinance forwardPE = {pe_val}]"
+                    pe_note = f"[Validated: forward P/E = {pe_val}]"
                     if analysis_items:
                         analysis_items[-1] = analysis_items[-1] + "\n\n" + pe_note
         sections.append(
