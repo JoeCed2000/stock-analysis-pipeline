@@ -1,0 +1,213 @@
+{
+  "NVDA_deep_dive_jp": {
+    "ticker": "NVDA",
+    "variant": "deep_dive_jp",
+    "txt_chars": 53125,
+    "markers": {
+      "hard_blockers": {
+        "source_yfinance": 26,
+        "eps_actual": 7,
+        "eps_estimate": 7,
+        "revenue_yoy": 13,
+        "s1_s2_row_ids": 6
+      },
+      "persona": {},
+      "forbidden_markers": {}
+    },
+    "total_markers": 59,
+    "sections_found": {
+      "revenue": true,
+      "eps": true,
+      "guidance": true,
+      "consensus": true,
+      "competitors": true,
+      "segments": true,
+      "ceo": true,
+      "gross_margin": true,
+      "operating_margin": true,
+      "fcf": true,
+      "peg": true
+    },
+    "sections_missing": [
+      "pe_ratio",
+      "market_cap",
+      "week52"
+    ],
+    "jp_ratio": 0.27,
+    "verdict": "BLOCKED"
+  },
+  "NVDA_deep_dive_en": {
+    "ticker": "NVDA",
+    "variant": "deep_dive_en",
+    "txt_chars": 78361,
+    "markers": {
+      "hard_blockers": {
+        "source_yfinance": 42,
+        "eps_actual": 12,
+        "eps_estimate": 14,
+        "revenue_yoy": 27,
+        "s1_s2_row_ids": 6
+      },
+      "persona": {
+        "nami_leak": 31
+      },
+      "forbidden_markers": {}
+    },
+    "total_markers": 132,
+    "sections_found": {
+      "revenue": true,
+      "eps": true,
+      "guidance": true,
+      "consensus": true,
+      "competitors": true,
+      "segments": true,
+      "ceo": true,
+      "gross_margin": true,
+      "operating_margin": true,
+      "fcf": true,
+      "pe_ratio": true,
+      "peg": true,
+      "market_cap": true,
+      "week52": true
+    },
+    "sections_missing": [],
+    "jp_ratio": 0.0,
+    "verdict": "BLOCKED"
+  },
+  "NVDA_company_overview": {
+    "ticker": "NVDA",
+    "variant": "company_overview",
+    "txt_chars": 15880,
+    "markers": {
+      "hard_blockers": {},
+      "persona": {},
+      "forbidden_markers": {}
+    },
+    "total_markers": 0,
+    "sections_found": {
+      "revenue": true,
+      "competitors": true,
+      "segments": true,
+      "ceo": true,
+      "gross_margin": true,
+      "operating_margin": true,
+      "fcf": true,
+      "peg": true,
+      "market_cap": true,
+      "week52": true
+    },
+    "sections_missing": [
+      "eps",
+      "guidance",
+      "consensus",
+      "pe_ratio"
+    ],
+    "jp_ratio": 0.0,
+    "verdict": "READY"
+  },
+  "AAPL_deep_dive_jp": {
+    "ticker": "AAPL",
+    "variant": "deep_dive_jp",
+    "txt_chars": 49046,
+    "markers": {
+      "hard_blockers": {
+        "source_yfinance": 42,
+        "eps_actual": 9,
+        "eps_estimate": 8,
+        "revenue_yoy": 12,
+        "s1_s2_row_ids": 6
+      },
+      "persona": {},
+      "forbidden_markers": {}
+    },
+    "total_markers": 77,
+    "sections_found": {
+      "revenue": true,
+      "eps": true,
+      "guidance": true,
+      "consensus": true,
+      "competitors": true,
+      "segments": true,
+      "ceo": true,
+      "gross_margin": true,
+      "operating_margin": true,
+      "fcf": true,
+      "pe_ratio": true,
+      "peg": true,
+      "market_cap": true,
+      "week52": true
+    },
+    "sections_missing": [],
+    "jp_ratio": 0.355,
+    "verdict": "BLOCKED"
+  },
+  "AAPL_deep_dive_en": {
+    "ticker": "AAPL",
+    "variant": "deep_dive_en",
+    "txt_chars": 65525,
+    "markers": {
+      "hard_blockers": {
+        "source_yfinance": 61,
+        "eps_actual": 15,
+        "eps_estimate": 10,
+        "revenue_yoy": 28,
+        "s1_s2_row_ids": 6
+      },
+      "persona": {
+        "nami_leak": 34
+      },
+      "forbidden_markers": {}
+    },
+    "total_markers": 154,
+    "sections_found": {
+      "revenue": true,
+      "eps": true,
+      "guidance": true,
+      "consensus": true,
+      "competitors": true,
+      "segments": true,
+      "ceo": true,
+      "gross_margin": true,
+      "operating_margin": true,
+      "fcf": true,
+      "pe_ratio": true,
+      "peg": true,
+      "market_cap": true,
+      "week52": true
+    },
+    "sections_missing": [],
+    "jp_ratio": 0.0,
+    "verdict": "BLOCKED"
+  },
+  "AAPL_company_overview": {
+    "ticker": "AAPL",
+    "variant": "company_overview",
+    "txt_chars": 9988,
+    "markers": {
+      "hard_blockers": {},
+      "persona": {},
+      "forbidden_markers": {}
+    },
+    "total_markers": 0,
+    "sections_found": {
+      "revenue": true,
+      "eps": true,
+      "competitors": true,
+      "ceo": true,
+      "gross_margin": true,
+      "operating_margin": true,
+      "fcf": true,
+      "peg": true,
+      "market_cap": true,
+      "week52": true
+    },
+    "sections_missing": [
+      "guidance",
+      "consensus",
+      "segments",
+      "pe_ratio"
+    ],
+    "jp_ratio": 0.0,
+    "verdict": "READY"
+  }
+}

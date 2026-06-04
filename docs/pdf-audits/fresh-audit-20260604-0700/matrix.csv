@@ -1,0 +1,7 @@
+ticker,variant,path,size_kb,txt_chars,status
+NVDA,deep_dive_jp,/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-02_085553_NVDA_NVIDIA_Corp/jp/07_final_report/earnings_deep_dive.pdf,652,53125,pending
+NVDA,deep_dive_en,/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-02_085553_NVDA_NVIDIA_Corp/07_final_report/earnings_deep_dive.pdf,411,78361,pending
+NVDA,company_overview,/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-02_085553_NVDA_NVIDIA_Corp/01_official_company_sources/NVDA_company_overview_investor_profile_2026-06-02.pdf,18,15880,pending
+AAPL,deep_dive_jp,/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-02_090055_AAPL_Apple_Inc/jp/07_final_report/earnings_deep_dive.pdf,703,49046,pending
+AAPL,deep_dive_en,/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-02_090055_AAPL_Apple_Inc/07_final_report/earnings_deep_dive.pdf,398,65525,pending
+AAPL,company_overview,/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-02_090055_AAPL_Apple_Inc/01_official_company_sources/AAPL_company_overview_investor_profile_2026-06-02.pdf,14,9988,pending

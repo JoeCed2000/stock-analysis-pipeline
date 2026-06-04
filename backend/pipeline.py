@@ -1576,6 +1576,16 @@ def _add_earnings_deep_dive_if_transcript(
         )
         en_response.sections = _strip_prompt_leaks_from_sections(en_response.sections)
 
+        # ── (CedLab 2026-06-04) Clean sections before PDF rendering ──
+        # post_process_markdown runs on the saved .md file, but the PDF renderer
+        # uses the raw sections directly. Apply the same cleanup here so client
+        # PDFs are free of internal markers.
+        from backend.earnings_deep_dive.markdown import post_process_markdown
+        for section_name in list(en_response.sections.keys()):
+            raw = en_response.sections.get(section_name, "")
+            if raw:
+                en_response.sections[section_name] = post_process_markdown(raw)
+
         # ── Pre-render validation (BLOCKING — hard data contract gate) ──
         from backend.earnings_deep_dive.pre_render_validator import (
             validate_pre_render,
@@ -1685,6 +1695,13 @@ def _add_earnings_deep_dive_if_transcript(
                     )
                 )
                 jp_response.sections = _strip_prompt_leaks_from_sections(jp_response.sections)
+
+                # ── (CedLab 2026-06-04) Clean JP sections before PDF rendering ──
+                from backend.earnings_deep_dive.markdown import post_process_markdown
+                for section_name in list(jp_response.sections.keys()):
+                    raw = jp_response.sections.get(section_name, "")
+                    if raw:
+                        jp_response.sections[section_name] = post_process_markdown(raw)
             except Exception as jp_exc:
                 logger.warning(f"[{ticker}] JP deep-dive generation failed ({jp_exc}) — EN PDF will still render")
                 jp_response = None

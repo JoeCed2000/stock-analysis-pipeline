@@ -1,0 +1,50 @@
+[
+  {
+    "ticker": "NVDA",
+    "variant": "deep_dive_jp",
+    "pdf_path": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-02_085553_NVDA_NVIDIA_Corp/jp/07_final_report/earnings_deep_dive.pdf",
+    "txt_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/fresh-audit-20260604-0700/text/NVDA_deep_dive_jp.txt",
+    "size_kb": 652,
+    "txt_chars": 53125
+  },
+  {
+    "ticker": "NVDA",
+    "variant": "deep_dive_en",
+    "pdf_path": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-02_085553_NVDA_NVIDIA_Corp/07_final_report/earnings_deep_dive.pdf",
+    "txt_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/fresh-audit-20260604-0700/text/NVDA_deep_dive_en.txt",
+    "size_kb": 411,
+    "txt_chars": 78361
+  },
+  {
+    "ticker": "NVDA",
+    "variant": "company_overview",
+    "pdf_path": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-02_085553_NVDA_NVIDIA_Corp/01_official_company_sources/NVDA_company_overview_investor_profile_2026-06-02.pdf",
+    "txt_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/fresh-audit-20260604-0700/text/NVDA_company_overview.txt",
+    "size_kb": 18,
+    "txt_chars": 15880
+  },
+  {
+    "ticker": "AAPL",
+    "variant": "deep_dive_jp",
+    "pdf_path": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-02_090055_AAPL_Apple_Inc/jp/07_final_report/earnings_deep_dive.pdf",
+    "txt_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/fresh-audit-20260604-0700/text/AAPL_deep_dive_jp.txt",
+    "size_kb": 703,
+    "txt_chars": 49046
+  },
+  {
+    "ticker": "AAPL",
+    "variant": "deep_dive_en",
+    "pdf_path": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-02_090055_AAPL_Apple_Inc/07_final_report/earnings_deep_dive.pdf",
+    "txt_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/fresh-audit-20260604-0700/text/AAPL_deep_dive_en.txt",
+    "size_kb": 398,
+    "txt_chars": 65525
+  },
+  {
+    "ticker": "AAPL",
+    "variant": "company_overview",
+    "pdf_path": "/home/ced/codex-projects/stock-analysis-pipeline/analyses/2026-06-02_090055_AAPL_Apple_Inc/01_official_company_sources/AAPL_company_overview_investor_profile_2026-06-02.pdf",
+    "txt_path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/pdf-audits/fresh-audit-20260604-0700/text/AAPL_company_overview.txt",
+    "size_kb": 14,
+    "txt_chars": 9988
+  }
+]
