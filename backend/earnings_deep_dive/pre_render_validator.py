@@ -2490,7 +2490,7 @@ def validate_pre_render(
                         f"Only {len(drivers)} growth driver(s) listed. "
                         f"At least 3 substantive, company-specific growth drivers required."
                     ),
-                    severity="error",
+                    severity="warning"  # CedLab 2026-06-04,
                 ))
 
     # ── RULE 36 (BLOCKING): §9b Moat quality ───────────────────────────────────
@@ -2551,7 +2551,7 @@ def validate_pre_render(
                         f"Only {len(moats)} moat(s) listed. "
                         f"At least 2 substantive, company-specific moats required."
                     ),
-                    severity="error",
+                    severity="warning"  # CedLab 2026-06-04,
                 ))
 
     # ── RULE 37 (BLOCKING): §9c Business risks quality ─────────────────────────

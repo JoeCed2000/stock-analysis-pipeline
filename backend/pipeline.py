@@ -2356,6 +2356,20 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
     ticker_clean = ticker.replace(".", "_")
     name_clean = company_name.replace(" ", "_").replace("/", "_")[:40]
     output_dir = os.path.join(output_base, f"{date_str}_{time_str}_{ticker_clean}_{name_clean}")
+
+    # ── (CedLab 2026-06-04) force_refresh: remove old analysis dirs ──
+    # Without this, get_dossier_status picks old dirs with existing files
+    # and never surfaces the fresh PDF. Clean old dirs so the dossier sees only
+    # the new directory.
+    if force_refresh and os.path.isdir(output_base):
+        import glob as _glob, shutil as _shutil
+        for old_dir in _glob.glob(os.path.join(output_base, f"*_{ticker_clean}_*")):
+            if old_dir != output_dir:
+                try:
+                    _shutil.rmtree(old_dir, ignore_errors=True)
+                    logger.info(f"[{ticker}] force_refresh: removed old dir {os.path.basename(old_dir)}")
+                except Exception as _e:
+                    logger.warning(f"[{ticker}] force_refresh: failed to remove {old_dir}: {_e}")
     
     # Create bare directory structure (files filled by background dossier)
     for subdir in [
