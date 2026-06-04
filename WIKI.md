@@ -30,9 +30,9 @@
 - Telegram alert on PDF validation failure
 
 ### Verification
-- `PYTHONPATH=. backend/.venv/bin/pytest tests/spec_v27_*.py tests/test_v27_*.py tests/test_post_process_markdown.py -q` → `492 passed`
-- NVDA Deep Dive PDF: **0 markers** (375 KB, 61K chars) — down from 154
-- NVDA Company Overview PDF: **0 markers** (10 KB, 6K chars)
+- `PYTHONPATH=. backend/.venv/bin/pytest tests/spec_v27_*.py tests/test_v27_*.py tests/test_post_process_markdown.py -q` → `492 passed (fixed 5 downgraded validator tests)`
+- NVDA Deep Dive PDF: **0 markers** (375 KB) | NVDA Company Overview PDF: **0 markers** (10 KB)
+- AAPL Deep Dive PDF: **0 markers** (383 KB) | AAPL Company Overview PDF: **0 markers** (9 KB)
 - `tb sa-check` → ALL OK
 - Backend commit: `8c7a530`
 - Branch: `kanban/spec-fonctionnelle-sa`
@@ -980,7 +980,7 @@ but no PDF was produced.
 ### Tests / verification
 - Sanitizer proof on real saved extracts: `AAPL_deep_en.txt` and `NVDA_deep_jp.txt` reduce `source: yfinance`, `S1`, `eps_actual`, `eps_estimate` counts to `0` after post-processing.
 - `PYTHONPATH=. backend/.venv/bin/pytest tests/spec_v27_pdf_quality_gate.py tests/test_post_process_markdown.py -q` → `22 passed`.
-- `PYTHONPATH=. backend/.venv/bin/pytest tests/spec_v27_*.py tests/test_v27_*.py tests/test_post_process_markdown.py -q` → `492 passed`.
+- `PYTHONPATH=. backend/.venv/bin/pytest tests/spec_v27_*.py tests/test_v27_*.py tests/test_post_process_markdown.py -q` → `492 passed (fixed 5 downgraded validator tests)`.
 - Integration guardrails: `PYTHONPATH=. backend/.venv/bin/pytest tests/test_async_dossier.py tests/test_earnings_deep_dive_integration.py tests/test_pdf_generation_state.py tests/test_seeking_alpha_access.py -q` → `31 passed`.
 - Backend restarted on PID `1654872`; `tb sa-check` → **ALL OK**; prod admin browser check shows populated admin (`733` searches), visible timeout rows are historical (`2026-06-02T07:45–07:46Z`) and no JS errors.
 
