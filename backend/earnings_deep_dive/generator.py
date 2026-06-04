@@ -576,8 +576,12 @@ AUDIENCE_NAMI_PATTERNS: list[tuple[str, str]] = [
     ("Nami takeaway", "Investor takeaway"),
     ("For Nami-san, this is a", "For investors, this is a"),
     ("For Nami-san:", "For investors:"),
-    ("\ud83c\udfc6 Overall assessment for Nami-san", "\ud83c\udfc6 Overall assessment"),
+    ("🎖 Overall assessment for Nami-san", "🎖 Overall assessment"),
     ("Namiさん向け", "投資家向け"),
+    # (CedLab 2026-06-04) Catch bare "Nami" without -san suffix
+    ("Nami,", ""),
+    ("Nami.", ""),
+    (" Nami ", " "),
     ("Nami-san", ""),  # standalone Nami-san → remove (catch-all, last)
 ]
 MISSING_DATA_REPLACEMENTS: list[tuple[str, str]] = [

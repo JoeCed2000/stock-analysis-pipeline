@@ -34,8 +34,37 @@ _METRICS_FIELD = re.compile(r"Metrics\s*[—–-]\s*[a-z_, ]+(?=[)\]])", re.IGNO
 _SOURCE_PAREN = re.compile(r"\(source:\s*([^)]*)\)", re.IGNORECASE)
 _RAW_FIELD_TOKEN = re.compile(r"\b[a-z][a-z0-9]*_[a-z0-9_]+\b", re.IGNORECASE)
 _YFINANCE_SOURCE_TOKEN = re.compile(r"\byfinance\b", re.IGNORECASE)
+# 6. Competitor table/prose row IDs like "S1 Apple" are internal labels.
 _COMPETITOR_ROW_ID = re.compile(r"(?m)(^|[|\n]\s*)S\d+\s+(?=[A-Z0-9])")
 _RAW_METRIC_ASSIGNMENT = re.compile(r"\b([a-z][a-z0-9]*_[a-z0-9_]+)=([^\s,;).]+)", re.IGNORECASE)
+
+# 7. (CedLab 2026-06-04) Bare snake_case keys WITHOUT =value.
+#    Matches "yfinance eps_actual", "yfinance revenue_yoy", "revenue_yoy", etc.
+#    Run BEFORE source:yfinance cleanup so labelled values survive.
+_BARE_SNAKE_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\beps_actual\b", re.IGNORECASE), "reported EPS"),
+    (re.compile(r"\beps_estimate\b", re.IGNORECASE), "EPS estimate"),
+    (re.compile(r"\beps_surprise_pct\b", re.IGNORECASE), "EPS surprise"),
+    (re.compile(r"\brevenue_actual\b", re.IGNORECASE), "reported revenue"),
+    (re.compile(r"\brevenue_estimate\b", re.IGNORECASE), "revenue estimate"),
+    (re.compile(r"\brevenue_yoy\b", re.IGNORECASE), "revenue YoY"),
+    (re.compile(r"\bfree_cash_flow\b", re.IGNORECASE), "free cash flow"),
+    (re.compile(r"\bpe_forward\b", re.IGNORECASE), "forward P/E"),
+    (re.compile(r"\bpe_trailing\b", re.IGNORECASE), "trailing P/E"),
+    (re.compile(r"\bgrossMargins\b", re.IGNORECASE), "gross margin"),
+    (re.compile(r"\bfreeCashflow\b", re.IGNORECASE), "free cash flow"),
+    (re.compile(r"\boperating_margin\b", re.IGNORECASE), "operating margin"),
+    (re.compile(r"\bnet_margin\b", re.IGNORECASE), "net margin"),
+]
+
+# 8. (CedLab 2026-06-04) "source: yfinance" inline (NOT in parens).
+_SOURCE_YFINANCE_INLINE = re.compile(r"source:\s*yfinance", re.IGNORECASE)
+
+# 9. (CedLab 2026-06-04) "yfinance;" chains in table cells.
+_YFINANCE_SEMICOLON_CHAIN = re.compile(r"(?:yfinance\s*;\s*){2,}yfinance\s*;?", re.IGNORECASE)
+
+# 10. (CedLab 2026-06-04) Redundant "yfinance yfinance"
+_YFINANCE_DUP = re.compile(r"yfinance\s+yfinance", re.IGNORECASE)
 _METRIC_LABELS = {
     "eps_actual": "reported EPS",
     "eps_estimate": "EPS estimate",
@@ -119,6 +148,33 @@ def post_process_markdown(markdown: str) -> str:
 
     # 6. Competitor table/prose row IDs like "S1 Apple" are internal labels.
     cleaned = _COMPETITOR_ROW_ID.sub(lambda match: match.group(1), cleaned)
+
+    # 7. (CedLab 2026-06-04) Bare snake_case keys — keys WITHOUT =value.
+    #    "yfinance eps_actual" → "yfinance reported EPS"
+    #    "yfinance revenue_yoy" → "yfinance revenue YoY"
+    #    Run BEFORE the source:yfinance cleanup so labelled values persist.
+    for pattern, label in _BARE_SNAKE_PATTERNS:
+        cleaned = pattern.sub(label, cleaned)
+
+    # 8. (CedLab 2026-06-04) "source: yfinance" in running text / table cells.
+    #    Covers non-parenthesized instances the LLM embeds in prose or pipe tables.
+    cleaned = _SOURCE_YFINANCE_INLINE.sub("company filings (yfinance)", cleaned)
+
+    # 9. (CedLab 2026-06-04) "yfinance;" chains in table cells.
+    #    "yfinance; yfinance; yfinance; yfinance" → "yfinance"
+    cleaned = _YFINANCE_SEMICOLON_CHAIN.sub("yfinance", cleaned)
+
+    # 10. (CedLab 2026-06-04) "yfinance;" single/double (remaining after chain cleanup).
+    #    "yfinance; Earnings Call:" → "yfinance, Earnings Call:"
+    #    "yfinance; yfinance" → "yfinance"
+    cleaned = re.sub(r"yfinance\s*;\s*yfinance", "yfinance", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"yfinance\s*;\s*", "yfinance, ", cleaned, flags=re.IGNORECASE)
+
+    # 11. (CedLab 2026-06-04) Redundant "yfinance yfinance" and trailing commas
+    cleaned = _YFINANCE_DUP.sub("yfinance", cleaned)
+    cleaned = re.sub(r",\s*,\s*", ", ", cleaned)  # ", ," → ", "
+    cleaned = re.sub(r"\|\s*,\s*", "| ", cleaned)  # "| ," → "| " in table cells
+    cleaned = re.sub(r",\s*\|", " |", cleaned)     # ", |" → " |"
 
     return cleaned
 
