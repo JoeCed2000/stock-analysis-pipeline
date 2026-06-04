@@ -189,7 +189,7 @@ class TestGuidance:
             "Guidance": "Analyst consensus estimates suggest revenue guidance of $25B next quarter."
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "guidance_consensus_conflated")
+        errs = _warnings_for(result, "guidance_consensus_conflated")
         assert len(errs) == 1
 
     def test_clean_guidance_passes(self):

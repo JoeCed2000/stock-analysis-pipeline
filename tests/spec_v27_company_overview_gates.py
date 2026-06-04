@@ -271,8 +271,8 @@ class TestRule35GrowthDriversQuality:
             ticker="TEST", quarter="Q1 2026", metrics=None,
             section_analysis={}, company_overview=co,
         )
-        errors = [e for e in result.errors if "growth_drivers_insufficient" in e.check]
-        assert len(errors) >= 1
+        warnings = [w for w in result.warnings if "growth_drivers_insufficient" in w.check]
+        assert len(warnings) >= 1
 
     def test_35_substantive_drivers_pass(self):
         co = _make_minimal_co(growth_drivers=[
@@ -322,7 +322,7 @@ class TestRule36MoatQuality:
             ticker="TEST", quarter="Q1 2026", metrics=None,
             section_analysis={}, company_overview=co,
         )
-        errors = [e for e in result.errors if "moats_insufficient" in e.check]
+        errors = [e for e in result.warnings if "moats_insufficient" in e.check]
         assert len(errors) >= 1
 
     def test_36_substantive_moats_pass(self):

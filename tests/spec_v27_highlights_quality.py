@@ -40,13 +40,13 @@ class TestEmptyBullets:
     def test_empty_bullet_line_blocked(self):
         sections = _make_sections("🌟 Highlights\n\n• \n\n⚠️ Lowlights\n\nGrowth was strong.")
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "highlights_empty_bullets")
+        errs = _warnings_for(result, "highlights_empty_bullets")
         assert len(errs) == 1
 
     def test_bullet_with_one_char_blocked(self):
         sections = _make_sections("🌟 Highlights\n\n• x\n\n⚠️ Lowlights\n\nRevenue beat.")
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
-        errs = _errors_for(result, "highlights_empty_bullets")
+        errs = _warnings_for(result, "highlights_empty_bullets")
         assert len(errs) == 1
 
     def test_substantive_bullets_pass(self):
