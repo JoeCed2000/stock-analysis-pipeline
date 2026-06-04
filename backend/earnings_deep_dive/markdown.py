@@ -174,7 +174,10 @@ def post_process_markdown(markdown: str) -> str:
     cleaned = _YFINANCE_DUP.sub("yfinance", cleaned)
     cleaned = re.sub(r",\s*,\s*", ", ", cleaned)  # ", ," → ", "
     cleaned = re.sub(r"\|\s*,\s*", "| ", cleaned)  # "| ," → "| " in table cells
-    cleaned = re.sub(r",\s*\|", " |", cleaned)     # ", |" → " |"
+    cleaned = re.sub(r",\s*\|\s*", " |", cleaned)  # ", |" → " |"
+
+    # 12. (CedLab 2026-06-04) Null bytes from PDF/font rendering
+    cleaned = cleaned.replace("\x00", "")
 
     return cleaned
 

@@ -1581,10 +1581,14 @@ def _add_earnings_deep_dive_if_transcript(
         # uses the raw sections directly. Apply the same cleanup here so client
         # PDFs are free of internal markers.
         from backend.earnings_deep_dive.markdown import post_process_markdown
+        from backend.earnings_deep_dive.generator import _sanitize_for_audience
         for section_name in list(en_response.sections.keys()):
             raw = en_response.sections.get(section_name, "")
             if raw:
-                en_response.sections[section_name] = post_process_markdown(raw)
+                cleaned = post_process_markdown(raw)
+                # Also apply audience sanitizer (Nami removal)
+                cleaned = _sanitize_for_audience(cleaned, "standard")
+                en_response.sections[section_name] = cleaned
 
         # ── Pre-render validation (BLOCKING — hard data contract gate) ──
         from backend.earnings_deep_dive.pre_render_validator import (
@@ -1698,10 +1702,13 @@ def _add_earnings_deep_dive_if_transcript(
 
                 # ── (CedLab 2026-06-04) Clean JP sections before PDF rendering ──
                 from backend.earnings_deep_dive.markdown import post_process_markdown
+                from backend.earnings_deep_dive.generator import _sanitize_for_audience
                 for section_name in list(jp_response.sections.keys()):
                     raw = jp_response.sections.get(section_name, "")
                     if raw:
-                        jp_response.sections[section_name] = post_process_markdown(raw)
+                        cleaned = post_process_markdown(raw)
+                        cleaned = _sanitize_for_audience(cleaned, "standard")
+                        jp_response.sections[section_name] = cleaned
             except Exception as jp_exc:
                 logger.warning(f"[{ticker}] JP deep-dive generation failed ({jp_exc}) — EN PDF will still render")
                 jp_response = None
