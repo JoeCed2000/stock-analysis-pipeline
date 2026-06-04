@@ -1382,7 +1382,7 @@ def validate_pre_render(
                     "Consensus is NOT management guidance — they are distinct. "
                     "Label each clearly: 'Management guidance' vs 'Analyst consensus'."
                 ),
-                severity="error",
+                severity="warning",  # CedLab 2026-06-04: labeling nuance — don't block PDF
             ))
 
         # 19b. Current quarter actual presented as guidance
