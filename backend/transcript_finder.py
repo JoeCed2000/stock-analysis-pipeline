@@ -118,7 +118,7 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
                     continue
                 primary_text = sa_content
                 results.append({
-                    "source": "Seeking Alpha",  # Canonical source — StockAnalysis republishes SA transcripts verbatim
+                    "source": "Seeking Alpha via StockAnalysis",  # Transcript from SA, fetched via StockAnalysis
                     "type": "earnings_transcript",
                     "title": sa_data.get("title") or sa_result.get("title", ""),
                     "url": sa_url,
