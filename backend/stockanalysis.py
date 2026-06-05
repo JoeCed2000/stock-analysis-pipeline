@@ -147,10 +147,21 @@ def fetch_transcript(url: str) -> Optional[Dict]:
         return None
     
     logger.info(f"StockAnalysis transcript: {len(content)} chars from {url[:80]}")
+    
+    # Extract original Seeking Alpha article URL from the page
+    sa_url = ""
+    sa_link = re.search(r'<a[^>]*href="(https://seekingalpha\.com/article/\d+[^"]*)"[^>]*>', html)
+    if not sa_link:
+        sa_link = re.search(r'href="(https://seekingalpha\.com/article/\d+[^"]*)"', html)
+    if sa_link:
+        sa_url = sa_link.group(1)
+        logger.info(f"StockAnalysis: found SA original URL: {sa_url[:80]}")
+    
     return {
         "title": title,
         "content": content,
         "date": date,
-        "url": url,
+        "url": sa_url or url,  # Prefer SA original URL, fallback to StockAnalysis
+        "stockanalysis_url": url,
         "source": "Seeking Alpha",  # Canonical source — StockAnalysis republishes SA transcripts verbatim
     }
