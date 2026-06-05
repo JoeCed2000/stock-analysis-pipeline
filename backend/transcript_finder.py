@@ -22,7 +22,73 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
     results = []
     primary_text = ""  # Full transcript text from primary source
 
-    # 0. RapidAPI Seeking Alpha — primary full-text source.
+    # 0. Seeking Alpha with stored cookies — PRIMARY source (CedLab 2026-06-05).
+    # The feedback page stores + validates SA cookies. Use them first.
+    try:
+        from backend.seeking_alpha_access import _read_store
+        from backend.http_client import http
+        import re as _re
+
+        store = _read_store()
+        cookie_header = store.get("cookie_header", "")
+        if cookie_header:
+            sa_ua = store.get("user_agent") or "Mozilla/5.0"
+            listing_url = f"https://seekingalpha.com/symbol/{ticker}/earnings/transcripts"
+            resp = http.get(
+                listing_url,
+                headers={"Cookie": cookie_header, "User-Agent": sa_ua},
+                timeout=15, follow_redirects=True,
+            )
+            if resp.status_code == 200:
+                # Extract transcript links from the listing page
+                body = resp.text or ""
+                transcript_links = _re.findall(
+                    r'href="(/article/\d+[^"]*)"[^>]*>([^<]+)</a>',
+                    body, _re.IGNORECASE,
+                )
+                if transcript_links:
+                    # Fetch the first transcript
+                    first_url = "https://seekingalpha.com" + transcript_links[0][0]
+                    first_title = transcript_links[0][1].strip()
+                    resp2 = http.get(
+                        first_url,
+                        headers={"Cookie": cookie_header, "User-Agent": sa_ua},
+                        timeout=20, follow_redirects=True,
+                    )
+                    if resp2.status_code == 200:
+                        # Extract article body
+                        body2 = resp2.text or ""
+                        # Try to extract the transcript content
+                        content_match = _re.search(
+                            r'<div[^>]*class="[^"]*paywall[^"]*"[^>]*>(.*?)</div>',
+                            body2, _re.DOTALL | _re.IGNORECASE,
+                        )
+                        if not content_match:
+                            content_match = _re.search(
+                                r'<div[^>]*class="[^"]*article[^"]*"[^>]*>(.*?)</div>',
+                                body2, _re.DOTALL | _re.IGNORECASE,
+                            )
+                        if content_match:
+                            # Strip HTML tags
+                            raw = _re.sub(r'<[^>]+>', ' ', content_match.group(1))
+                            raw = _re.sub(r'\s+', ' ', raw).strip()
+                            if _is_usable(raw):
+                                primary_text = raw
+                                results.append({
+                                    "source": "Seeking Alpha",
+                                    "type": "earnings_transcript",
+                                    "title": first_title,
+                                    "url": first_url,
+                                    "text": raw,
+                                    "text_length": len(raw),
+                                })
+                                logger.info(
+                                    f"Seeking Alpha (cookie) transcript: {len(raw)} chars for {ticker}"
+                                )
+    except Exception as e:
+        logger.warning(f"Seeking Alpha (cookie) unavailable for {ticker}: {e}")
+
+    # 1. RapidAPI Seeking Alpha — primary full-text source.
     try:
         from backend.rapidapi_sa import fetch_sa_transcript, search_sa_transcripts
 
