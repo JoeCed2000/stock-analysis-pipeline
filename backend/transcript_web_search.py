@@ -12,13 +12,38 @@ import httpx
 from backend.google_search import search_google
 from backend.http_client import http
 from backend.seeking_alpha_access import build_request_headers
+from backend.storage_paths import REPO_ROOT
 
 logger = logging.getLogger(__name__)
 
-MIN_TRANSCRIPT_CHARS = 500
+MIN_TRANSCRIPT_CHARS = 10_000
 TRUSTED_TRANSCRIPT_HOSTS = (
     "seekingalpha.com",
 )
+SA_ARTICLE_CACHE_PATH = REPO_ROOT / ".state" / "seeking_alpha_article_cache.json"
+
+
+def _read_article_cache() -> dict[str, list[dict[str, str]]]:
+    try:
+        if not SA_ARTICLE_CACHE_PATH.exists():
+            return {}
+        with SA_ARTICLE_CACHE_PATH.open("r", encoding="utf-8") as f:
+            payload = json.load(f)
+        return payload if isinstance(payload, dict) else {}
+    except Exception as exc:
+        logger.warning(f"Failed to read SA article cache: {exc}")
+        return {}
+
+
+def _write_article_cache(cache: dict[str, list[dict[str, str]]]) -> None:
+    try:
+        SA_ARTICLE_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = SA_ARTICLE_CACHE_PATH.with_suffix(".tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            json.dump(cache, f, indent=2)
+        tmp.replace(SA_ARTICLE_CACHE_PATH)
+    except Exception as exc:
+        logger.warning(f"Failed to write SA article cache: {exc}")
 
 
 class _TextExtractor(HTMLParser):
@@ -122,6 +147,69 @@ def _fetch_page_text_sa(url: str, headers: dict = None) -> str:
     return text.strip()
 
 
+def _search_brave(ticker: str, company: str | None = None, limit: int = 5) -> List[Dict[str, str]]:
+    """Discover concrete Seeking Alpha article URLs through Brave's public search page.
+
+    The Seeking Alpha transcript listing route is often blocked by PerimeterX even when
+    direct transcript article URLs are readable with the stored browser cookies.  This
+    helper is discovery-only: it never returns StockAnalysis links and never fabricates
+    the generic `/symbol/.../earnings/transcripts` listing URL.
+    """
+    import urllib.parse
+
+    ticker_clean = ticker.strip().upper()
+    company_part = f" {company.strip()}" if isinstance(company, str) and company.strip() else ""
+    cache_key = f"{ticker_clean}|{company_part.strip()}"
+    cache = _read_article_cache()
+    cached_results = cache.get(cache_key) or []
+    query = f"site:seekingalpha.com/article {ticker_clean}{company_part} earnings call transcript"
+    search_url = f"https://search.brave.com/search?q={urllib.parse.quote(query)}"
+
+    try:
+        resp = http.get(
+            search_url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+                ),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Encoding": "identity",
+            },
+            timeout=20,
+            follow_redirects=True,
+        )
+    except Exception as exc:
+        logger.warning(f"[{ticker_clean}] Brave SA transcript search failed: {exc}")
+        return cached_results
+
+    if resp.status_code != 200:
+        logger.warning(f"[{ticker_clean}] Brave SA transcript search returned {resp.status_code}")
+        return cached_results
+
+    body = html.unescape(resp.text)
+    urls: list[str] = []
+    seen: set[str] = set()
+    for match in re.finditer(r"https://seekingalpha\.com/article/\d{5,8}[-\w]*", body):
+        url = match.group(0).rstrip("/.,)")
+        if url in seen:
+            continue
+        seen.add(url)
+        urls.append(url)
+        if len(urls) >= limit:
+            break
+
+    results = [{"url": url, "title": f"{ticker_clean} earnings transcript"} for url in urls]
+    if results:
+        cache[cache_key] = results
+        if company_part.strip():
+            cache.setdefault(f"{ticker_clean}|", results)
+        _write_article_cache(cache)
+    logger.info(f"[{ticker_clean}] Brave SA transcript search: {len(results)} candidate(s)")
+    return results
+
+
+
 def _search_tavily(ticker: str, company: str | None = None, limit: int = 5) -> List[Dict[str, str]]:
     """Search Seeking Alpha transcripts via Tavily API."""
     import urllib.request
@@ -200,9 +288,23 @@ def search_transcript_pages(ticker: str, company: str | None = None, limit: int 
         if len(candidates) >= limit:
             break
     
-    # Fallback: Tavily search if Google returned nothing
+    # Fallback: Brave public search if Google returned nothing.  Brave often
+    # exposes the concrete Seeking Alpha article URL even when the SA listing
+    # route itself is PerimeterX-blocked.
     if not candidates:
-        logger.info(f"[{ticker_clean}] Google Search returned 0 results, trying Tavily fallback...")
+        logger.info(f"[{ticker_clean}] Google Search returned 0 results, trying Brave fallback...")
+        brave_results = _search_brave(ticker_clean, company, limit)
+        for r in brave_results:
+            url = r.get("url", "")
+            if url and _is_candidate_url(url) and url not in seen_urls:
+                seen_urls.add(url)
+                candidates.append(r)
+                if len(candidates) >= limit:
+                    break
+
+    # Fallback: Tavily search if Google/Brave returned nothing
+    if not candidates:
+        logger.info(f"[{ticker_clean}] Google/Brave returned 0 results, trying Tavily fallback...")
         tavily_results = _search_tavily(ticker_clean, company, limit)
         for r in tavily_results:
             url = r.get("url", "")
@@ -215,7 +317,7 @@ def search_transcript_pages(ticker: str, company: str | None = None, limit: int 
     transcripts: List[Dict[str, str]] = []
     for candidate in candidates:
         url = candidate["url"]
-        text = _fetch_page_text(url)
+        text = _fetch_page_text_sa(url) if "seekingalpha.com" in url.lower() else _fetch_page_text(url)
         if not _looks_like_transcript(text, ticker_clean):
             continue
         transcripts.append(

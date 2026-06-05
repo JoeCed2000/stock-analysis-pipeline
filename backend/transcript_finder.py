@@ -56,7 +56,11 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
             from playwright.sync_api import sync_playwright
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
-                context = browser.new_context()
+                context_kwargs = {}
+                user_agent = store.get("user_agent")
+                if user_agent:
+                    context_kwargs["user_agent"] = user_agent
+                context = browser.new_context(**context_kwargs)
                 context.add_cookies(pw_cookies)
                 page = context.new_page()
 
@@ -66,7 +70,7 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
 
                 # Check if blocked by PerimeterX
                 body_text = page.inner_text("body")[:500].lower()
-                if any(m in body_text for m in ("access denied", "verify you are human", "captcha")):
+                if any(m in body_text for m in ("access denied", "access to this page has been denied", "before we continue", "press & hold", "verify you are human", "captcha")):
                     logger.warning(f"Seeking Alpha blocked by PerimeterX for {ticker} — falling back")
                     browser.close()
                 else:
@@ -101,9 +105,31 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
     except Exception as e:
         logger.warning(f"Seeking Alpha (Playwright) unavailable for {ticker}: {e}")
 
+    # 1. Seeking Alpha direct article discovery — prefer true SA article URLs before
+    # StockAnalysis. The SA listing page is often blocked, but the concrete article
+    # URL is readable with the stored cookies.
+    if not _is_usable(primary_text):
+        try:
+            from backend.transcript_web_search import search_transcript_pages
+
+            web_results = search_transcript_pages(ticker, company=company)
+            for item in web_results:
+                text = item.get("text", "")
+                url = item.get("url", "")
+                if "seekingalpha.com/article/" not in url.lower() or not _is_usable(text):
+                    continue
+                primary_text = text
+                results.append(item)
+                logger.info(f"Seeking Alpha direct article transcript: {len(primary_text)} chars for {ticker}")
+                break
+        except Exception as e:
+            logger.warning(f"Seeking Alpha direct article discovery unavailable for {ticker}: {e}")
+    else:
+        logger.info(f"Skipping SA direct article discovery: Playwright already provided {len(primary_text)} chars")
 
 
-    # 1. StockAnalysis.com — FREE full-text transcripts, no auth needed.
+
+    # 2. StockAnalysis.com — FREE full-text transcripts, no auth needed.
     if not _is_usable(primary_text):
         try:
             from backend.stockanalysis import search_transcripts as sa_search, fetch_transcript as sa_fetch
@@ -116,16 +142,20 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
                 sa_content = sa_data.get("content", "") if sa_data else ""
                 if not _is_usable(sa_content):
                     continue
+                source_name = str(sa_data.get("source") or sa_result.get("source") or "StockAnalysis").strip()
+                source_url = str(sa_data.get("url") or sa_url).strip()
                 primary_text = sa_content
                 results.append({
-                    "source": "Seeking Alpha via StockAnalysis",  # Transcript from SA, fetched via StockAnalysis
+                    "source": source_name,
                     "type": "earnings_transcript",
                     "title": sa_data.get("title") or sa_result.get("title", ""),
-                    "url": sa_url,
+                    "url": source_url,
                     "text": sa_content,
                     "text_length": len(sa_content),
                     "date": sa_data.get("date", ""),
                     "id": sa_result.get("id", ""),
+                    "stockanalysis_url": sa_data.get("stockanalysis_url", sa_url),
+                    "retrieval_provider": sa_data.get("retrieval_provider", "StockAnalysis"),
                 })
                 logger.info(f"StockAnalysis.com transcript: {len(sa_content)} chars for {ticker}")
                 break

@@ -30,7 +30,10 @@ DEFAULT_USER_AGENT = (
 STATE_DIR = REPO_ROOT / ".state"
 DENIED_MARKERS = (
     "access to this page has been denied",
+    "before we continue",
+    "press & hold",
     "please verify you are a human",
+    "verify you are human",
     "enable cookies",
     "captcha",
     "sign in",
@@ -175,10 +178,18 @@ def build_request_headers(extra_headers: dict[str, str] | None = None) -> dict[s
 
 
 async def probe_access_async(ticker: str | None = None) -> dict[str, Any]:
-    """Async version — uses Playwright async API. Called from FastAPI endpoints."""
+    """Validate stored Seeking Alpha cookies against a concrete transcript article.
+
+    The generic `/symbol/<ticker>/earnings/transcripts` listing route can be blocked
+    by PerimeterX even when direct transcript article URLs work with the same stored
+    cookies.  Treat the concrete article as the source-of-truth probe so the admin
+    badge matches the PDF pipeline behavior.
+    """
+    import asyncio
+
     status = get_access_status()
     clean_ticker = re.sub(r"[^A-Z0-9.]", "", (ticker or DEFAULT_TEST_TICKER).upper()) or DEFAULT_TEST_TICKER
-    url = f"https://seekingalpha.com/symbol/{clean_ticker}/earnings/transcripts"
+    listing_url = f"https://seekingalpha.com/symbol/{clean_ticker}/earnings/transcripts"
 
     if not status["configured"]:
         return {
@@ -187,53 +198,29 @@ async def probe_access_async(ticker: str | None = None) -> dict[str, Any]:
             "authenticated": False,
             "reachable": False,
             "ticker": clean_ticker,
-            "url": url,
+            "url": listing_url,
             "reason": "no_cookies_configured",
             "tested_at": _now_iso(),
         }
 
     try:
-        from playwright.async_api import async_playwright
-        # Parse stored cookies into Playwright format
-        pw_cookies = []
-        cookie_header = status.get("cookie_header", "") if isinstance(status, dict) else ""
-        if not cookie_header:
-            store = _read_store()
-            cookie_header = store.get("cookie_header", "")
-        for part in cookie_header.split(";"):
-            part = part.strip()
-            if "=" in part:
-                name, value = part.split("=", 1)
-                pw_cookies.append({
-                    "name": name.strip(), "value": value.strip(),
-                    "domain": ".seekingalpha.com", "path": "/",
-                })
+        from backend.transcript_web_search import search_transcript_pages
 
-        async def _probe():
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
-                context = await browser.new_context()
-                if pw_cookies:
-                    await context.add_cookies(pw_cookies)
-                page = await context.new_page()
-                await page.goto(url, timeout=15000, wait_until="domcontentloaded")
-                await page.wait_for_timeout(1500)
-                body = (await page.inner_text("body"))[:4000].lower()
-                denied = any(marker in body for marker in DENIED_MARKERS)
-                await browser.close()
-                return denied
-
-        denied = await _probe()
-        authenticated = not denied
+        results = await asyncio.to_thread(search_transcript_pages, clean_ticker, None, 5)
+        source = results[0] if results else {}
+        article_url = str(source.get("url") or "")
+        text_length = int(source.get("text_length") or len(str(source.get("text") or ""))) if source else 0
+        authenticated = bool(source) and "seekingalpha.com/article/" in article_url.lower()
         return {
             **status,
             "ok": authenticated,
             "authenticated": authenticated,
             "reachable": True,
             "ticker": clean_ticker,
-            "url": url,
-            "status_code": 403 if denied else 200,
-            "reason": "ok" if authenticated else "denied (PerimeterX)",
+            "url": article_url or listing_url,
+            "status_code": 200 if authenticated else 403,
+            "reason": "ok" if authenticated else "no_seekalpha_article_transcript_found",
+            "text_length": text_length,
             "tested_at": _now_iso(),
         }
     except Exception as exc:
@@ -244,7 +231,7 @@ async def probe_access_async(ticker: str | None = None) -> dict[str, Any]:
             "authenticated": False,
             "reachable": False,
             "ticker": clean_ticker,
-            "url": url,
+            "url": listing_url,
             "reason": "request_error",
             "error": str(exc),
             "tested_at": _now_iso(),

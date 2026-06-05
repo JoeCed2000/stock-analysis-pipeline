@@ -67,19 +67,13 @@ class TestSeekingAlphaAccessAdmin:
         assert (self.state_dir / "seeking_alpha_access.json").exists()
 
     def test_feedback_mode_probe_is_public_for_remote_browser(self, remote_client, monkeypatch):
-        captured = {}
+        async def fake_probe(ticker=None):
+            from backend.seeking_alpha_access import _read_store
+            store = _read_store()
+            assert store["cookie_header"] == "sessionid=abc123; xsrf=token456"
+            return {"ok": True, "authenticated": True, "status_code": 200, "ticker": (ticker or "").upper()}
 
-        class FakeResponse:
-            status_code = 200
-            text = "<html>transcript list</html>"
-            url = "https://seekingalpha.com/symbol/NVDA/earnings/transcripts"
-
-        def fake_get(url, headers=None, timeout=None, follow_redirects=None):
-            captured["url"] = url
-            captured["headers"] = headers or {}
-            return FakeResponse()
-
-        monkeypatch.setattr("backend.seeking_alpha_access.http.get", fake_get)
+        monkeypatch.setattr("backend.seeking_alpha_access.probe_access_async", fake_probe)
         remote_client.post(
             "/api/admin/seeking-alpha/access",
             json={"cookie_header": "sessionid=abc123; xsrf=token456"},
@@ -91,7 +85,6 @@ class TestSeekingAlphaAccessAdmin:
         payload = resp.json()
         assert payload["ok"] is True
         assert payload["ticker"] == "NVDA"
-        assert captured["headers"]["Cookie"] == "sessionid=abc123; xsrf=token456"
 
     def test_save_then_clear_roundtrip(self, client):
         save_resp = client.post(
@@ -119,19 +112,19 @@ class TestSeekingAlphaAccessAdmin:
         assert not store_path.exists()
 
     def test_probe_uses_saved_cookies(self, client, monkeypatch):
-        captured = {}
+        async def fake_probe(ticker=None):
+            from backend.seeking_alpha_access import _read_store
+            store = _read_store()
+            assert store["cookie_header"] == "sessionid=abc123; xsrf=token456"
+            return {
+                "ok": True,
+                "authenticated": True,
+                "status_code": 200,
+                "ticker": (ticker or "").upper(),
+                "url": f"https://seekingalpha.com/symbol/{(ticker or '').upper()}/earnings/transcripts",
+            }
 
-        class FakeResponse:
-            status_code = 200
-            text = "<html>transcript list</html>"
-            url = "https://seekingalpha.com/symbol/NVDA/earnings/transcripts"
-
-        def fake_get(url, headers=None, timeout=None, follow_redirects=None):
-            captured["url"] = url
-            captured["headers"] = headers or {}
-            return FakeResponse()
-
-        monkeypatch.setattr("backend.seeking_alpha_access.http.get", fake_get)
+        monkeypatch.setattr("backend.seeking_alpha_access.probe_access_async", fake_probe)
 
         client.post(
             "/api/admin/seeking-alpha/access",
@@ -150,8 +143,7 @@ class TestSeekingAlphaAccessAdmin:
         assert payload["authenticated"] is True
         assert payload["status_code"] == 200
         assert payload["ticker"] == "NVDA"
-        assert captured["url"].endswith("/symbol/NVDA/earnings/transcripts")
-        assert captured["headers"]["Cookie"] == "sessionid=abc123; xsrf=token456"
+        assert payload["url"].endswith("/symbol/NVDA/earnings/transcripts")
 
 
 class TestCompanyOverviewDownload:

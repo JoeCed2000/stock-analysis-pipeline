@@ -6,7 +6,7 @@ def test_transcript_url_canonicalizes_stockanalysis_deep_link():
         "url": "https://stockanalysis.com/stocks/nvda/transcripts/568907-q1-2027/"
     }
 
-    assert _transcript_url(source, ticker="NVDA") == "https://stockanalysis.com/stocks/nvda/transcripts/"
+    assert _transcript_url(source, ticker="NVDA") == "https://stockanalysis.com/stocks/nvda/transcripts/568907-q1-2027/"
 
 
 def test_transcript_url_keeps_seekingalpha_links():
@@ -20,7 +20,7 @@ def test_transcript_url_uses_source_path_when_ticker_hint_missing():
         "url": "https://stockanalysis.com/stocks/msft/transcripts/547930-q3-2026/"
     }
 
-    assert _transcript_url(source) == "https://stockanalysis.com/stocks/msft/transcripts/"
+    assert _transcript_url(source) == "https://stockanalysis.com/stocks/msft/transcripts/547930-q3-2026/"
 
 
 def test_transcript_url_demotes_investor_relations_portal():
@@ -28,18 +28,15 @@ def test_transcript_url_demotes_investor_relations_portal():
     source = {
         "url": "https://investor.nvidia.com/home/default.aspx"
     }
-    # Without all_sources, and with ticker known, fall back to stockanalysis.com
     result = _transcript_url(source, ticker="NVDA")
-    assert "stockanalysis.com" in result
-    assert "investor.nvidia.com" not in result
+    assert result is None
 
 
-def test_transcript_url_falls_back_to_stockanalysis_for_any_ticker():
-    """Any ticker should get a stockanalysis.com listing URL as fallback."""
+def test_transcript_url_does_not_fabricate_listing_for_any_ticker():
+    """A generic listing page is not a transcript citation."""
     for ticker in ("AAPL", "GOOGL", "TSLA", "BRK.B"):
         source = {"url": "https://investor.example.com/"}
-        result = _transcript_url(source, ticker=ticker)
-        assert f"stocks/{ticker.strip().lower()}" in result.lower()
+        assert _transcript_url(source, ticker=ticker) is None
 
 
 def test_transcript_url_prefers_stockanalysis_in_all_sources():
@@ -47,11 +44,28 @@ def test_transcript_url_prefers_stockanalysis_in_all_sources():
     primary = {"url": "https://investor.nvidia.com/home/default.aspx"}
     all_srcs = [
         primary,
-        {"source": "Public search", "url": "https://stockanalysis.com/stocks/nvda/transcripts/"},
+        {"source": "StockAnalysis", "url": "https://stockanalysis.com/stocks/nvda/transcripts/568907-q1-2027/"},
     ]
     result = _transcript_url(primary, ticker="NVDA", all_sources=all_srcs)
-    assert "stockanalysis.com/stocks/nvda/transcripts/" in result
+    assert result is not None
+    assert "stockanalysis.com/stocks/nvda/transcripts/568907-q1-2027/" in result
     assert "investor.nvidia.com" not in result
+
+
+def test_transcript_url_rejects_generic_seeking_alpha_listing():
+    source = {"url": "https://seekingalpha.com/symbol/NVDA/earnings/transcripts"}
+
+    assert _transcript_url(source, ticker="NVDA") is None
+
+
+def test_transcript_url_prefers_true_seeking_alpha_article_over_stockanalysis():
+    stockanalysis = {"url": "https://stockanalysis.com/stocks/nvda/transcripts/568907-q1-2027/"}
+    sources = [
+        stockanalysis,
+        {"url": "https://seekingalpha.com/article/4700000-nvidia-q1-2027-earnings-call-transcript"},
+    ]
+
+    assert _transcript_url(stockanalysis, ticker="NVDA", all_sources=sources) == "https://seekingalpha.com/article/4700000-nvidia-q1-2027-earnings-call-transcript"
 
 
 def test_transcript_url_no_source_no_ticker_returns_none():

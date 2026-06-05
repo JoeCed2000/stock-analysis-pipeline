@@ -167,8 +167,8 @@ def test_mapper_documents_target_company_earnings_sources():
 
     text = report.model_dump_json()
 
-    assert "Candidate Transcript Source - Seeking Alpha" in text
-    assert "https://seekingalpha.com/symbol/MSFT/earnings/transcripts" in text
+    assert "Candidate Transcript Source - Seeking Alpha" not in text
+    assert "https://seekingalpha.com/symbol/MSFT/earnings/transcripts" not in text
     assert "Transcript - Google Search Transcript" in text
     assert "https://www.microsoft.com/en-us/investor/events/fy-2026/earnings-fy-2026-q1" in text
     assert "Official Investor Relations" in text

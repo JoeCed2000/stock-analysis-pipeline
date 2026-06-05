@@ -87,18 +87,17 @@ def _best_transcript_source(sources: List[Dict[str, Any]]) -> tuple[str, Dict[st
 
 def _transcript_url(source: Dict[str, Any], ticker: str | None = None,
                     all_sources: list | None = None) -> Optional[str]:
-    """Return a stable transcript citation URL.
+    """Return a transcript citation URL that points to a real transcript.
 
-    Priority:
-    1) StockAnalysis listing page (most stable, no link rot)
-    2) Seeking Alpha transcript URL
-    3) Source-provided URL
-    4) Fallback to stockanalysis.com listing for known tickers
-
-    For StockAnalysis deep links, normalize to the listing page
-    `/stocks/{ticker}/transcripts/` to avoid link rot on transcript IDs.
-    Investor-relations URLs (investor.*.com) are never returned when a
-    better alternative exists.
+    Policy:
+    1) Prefer a concrete Seeking Alpha article URL (`/article/...`) when cookies
+       made the primary source accessible.
+    2) If cookies are unavailable/expired and StockAnalysis is used as fallback,
+       keep the concrete StockAnalysis transcript deep link.
+    3) Never replace a fallback transcript with a generic Seeking Alpha ticker
+       listing (`/symbol/{ticker}/earnings/transcripts`) — that page is not the
+       cited transcript and can be stale or unusable in PDFs.
+    4) Investor-relations portals are not transcript citations.
     """
     from urllib.parse import urlparse
 
@@ -107,56 +106,59 @@ def _transcript_url(source: Dict[str, Any], ticker: str | None = None,
         return bool(re.match(r"^investor\.", host))
 
     def _extract_url(src: Dict[str, Any]) -> Optional[str]:
-        for key in ("url", "link", "source_url"):
+        for key in ("url", "link", "source_url", "stockanalysis_url"):
             value = src.get(key)
             if isinstance(value, str) and value.strip():
                 return value.strip()
         return None
 
-    # Collect candidate URLs from this source and all available sources
-    candidates: list[tuple[int, str]] = []  # (priority, url)
+    def _is_sa_article(path: str) -> bool:
+        return bool(re.match(r"^/article/\d+", path))
 
-    all_candidate_sources = [source]
-    if all_sources:
-        all_candidate_sources = list(all_sources)
+    def _is_transcript_listing(host: str, path: str) -> bool:
+        if host == "stockanalysis.com":
+            return bool(re.match(r"^/stocks/[^/]+/transcripts/?$", path))
+        if "seekingalpha.com" in host:
+            return bool(re.match(r"^/symbol/[^/]+/earnings/transcripts/?$", path))
+        return False
+
+    candidates: list[tuple[int, str]] = []  # (priority, url)
+    all_candidate_sources = list(all_sources) if all_sources else [source]
 
     for src in all_candidate_sources:
+        if not isinstance(src, dict):
+            continue
         url = _extract_url(src)
         if not url:
             continue
         try:
             parsed = urlparse(url)
             host = parsed.netloc.lower().replace("www.", "")
-            path = parsed.path.strip("/")
+            path = parsed.path
 
-            if host == "stockanalysis.com":
-                # StockAnalysis specific article URLs are unstable (HTTP 400).
-                # Use the Seeking Alpha listing page — shows transcripts for this
-                # ticker with the latest quarter first. Nami has SA cookies to
-                # click through to the full article.
-                if ticker:
-                    candidates.append((350, f"https://seekingalpha.com/symbol/{ticker.strip().upper()}/earnings/transcripts"))
-            elif "seekingalpha.com" in host:
-                candidates.append((400, url))
-            elif _is_ir_portal(host):
-                candidates.append((50, url))  # Low priority — investor relations portal
+            if _is_ir_portal(host):
+                candidates.append((10, url))
+            elif "seekingalpha.com" in host and _is_sa_article(path):
+                candidates.append((500, url))
+            elif host == "stockanalysis.com" and re.search(r"/stocks/[^/]+/transcripts/\d+-", path):
+                candidates.append((350, url))
+            elif _is_transcript_listing(host, path):
+                # Listing pages are discovery aids, not transcript citations.
+                candidates.append((50, url))
+            elif "transcript" in path.lower():
+                candidates.append((200, url))
             else:
                 candidates.append((100, url))
         except Exception:
             pass
 
-    if candidates:
-        best = max(candidates, key=lambda x: x[0])
-        # Never return an investor-relations portal URL when we have a ticker
-        if best[0] <= 50 and ticker:
-            return f"https://seekingalpha.com/symbol/{ticker.strip().upper()}/earnings/transcripts"
-        return best[1]
+    if not candidates:
+        return None
 
-    # Fallback: return None — no URL is better than a generic listing page
-    if ticker:
-        return f"https://seekingalpha.com/symbol/{ticker.strip().upper()}/earnings/transcripts"
-
-    return None
+    best = max(candidates, key=lambda x: x[0])
+    if best[0] <= 50:
+        return None
+    return best[1]
 
 
 def _parse_date(value: Any) -> Optional[datetime]:

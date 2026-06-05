@@ -1,156 +1,135 @@
 from backend import transcript_finder
 
 
-def test_find_transcripts_uses_rapidapi_as_primary(monkeypatch):
-    def fake_search_sa_transcripts(ticker):
-        assert ticker == "NVDA"
-        return [{"id": "sa-1", "title": "NVDA Q1 2026 Earnings Call", "date": "2026-02-20", "quarter": "2026Q1"}]
+LONG = "Revenue and EPS improved. " * 120
 
-    def fake_fetch_sa_transcript(transcript_id):
-        assert transcript_id == "sa-1"
-        return {
-            "id": "sa-1",
-            "title": "NVDA Q1 2026 Earnings Call",
-            "date": "2026-02-20",
-            "quarter": "2026Q1",
-            "url": "https://seekingalpha.com/article/sa-1",
-            "content": "Revenue accelerated. " * 20,
-        }
 
-    def fail_lower_source(*args, **kwargs):
-        raise AssertionError("lower-priority source should not be called")
+def _disable_sa_cookies(monkeypatch):
+    monkeypatch.setattr("backend.seeking_alpha_access._read_store", lambda: {})
 
-    monkeypatch.setattr("backend.rapidapi_sa.search_sa_transcripts", fake_search_sa_transcripts)
-    monkeypatch.setattr("backend.rapidapi_sa.fetch_sa_transcript", fake_fetch_sa_transcript)
-    monkeypatch.setattr("backend.alpha_vantage.fetch_transcript", fail_lower_source)
-    monkeypatch.setattr("backend.seeking_alpha.search_transcript_web", fail_lower_source)
+
+def _disable_stockanalysis(monkeypatch):
+    monkeypatch.setattr("backend.stockanalysis.search_transcripts", lambda ticker, limit=3: [])
+    monkeypatch.setattr("backend.stockanalysis.fetch_transcript", lambda url: None)
+
+
+def test_find_transcripts_uses_stockanalysis_as_first_cookie_fallback(monkeypatch):
+    _disable_sa_cookies(monkeypatch)
+    monkeypatch.setattr(
+        "backend.stockanalysis.search_transcripts",
+        lambda ticker, limit=3: [{"id": "568907", "url": "https://stockanalysis.com/stocks/nvda/transcripts/568907-q1-2027/"}],
+    )
+    monkeypatch.setattr(
+        "backend.stockanalysis.fetch_transcript",
+        lambda url: {
+            "source": "StockAnalysis",
+            "title": "NVDA Q1 2027 Earnings Call Transcript",
+            "url": url,
+            "stockanalysis_url": url,
+            "content": LONG,
+            "date": "2026-05-28",
+            "retrieval_provider": "StockAnalysis",
+        },
+    )
+    monkeypatch.setattr("backend.alpha_vantage.fetch_transcript", lambda ticker: None)
 
     result = transcript_finder.find_transcripts("NVDA")
 
     assert result["found"] is True
-    assert result["sources"][0]["source"] == "RapidAPI Seeking Alpha"
-    assert result["sources"][0]["text"] == "Revenue accelerated. " * 20
-    assert result["sources"][0]["text_length"] == len("Revenue accelerated. " * 20)
-    assert result["sources"][0]["quarter"] == "2026Q1"
+    assert result["sources"][0]["source"] == "StockAnalysis"
+    assert result["sources"][0]["url"] == "https://stockanalysis.com/stocks/nvda/transcripts/568907-q1-2027/"
+    assert "Seeking Alpha via StockAnalysis" not in result["sources"][0]["source"]
 
 
-def test_find_transcripts_falls_back_to_alpha_vantage_when_rapidapi_empty(monkeypatch):
-    def fake_av(ticker):
-        assert ticker == "MSFT"
-        return {
-            "content": "Cloud revenue and EPS improved. " * 20,
-            "quarter": "2026Q3",
-            "date": "2026-04-25",
-        }
+def test_find_transcripts_preserves_original_seeking_alpha_url_from_stockanalysis(monkeypatch):
+    _disable_sa_cookies(monkeypatch)
+    monkeypatch.setattr(
+        "backend.stockanalysis.search_transcripts",
+        lambda ticker, limit=3: [{"id": "568907", "url": "https://stockanalysis.com/stocks/nvda/transcripts/568907-q1-2027/"}],
+    )
+    monkeypatch.setattr(
+        "backend.stockanalysis.fetch_transcript",
+        lambda url: {
+            "source": "Seeking Alpha",
+            "title": "NVDA Q1 2027 Earnings Call Transcript",
+            "url": "https://seekingalpha.com/article/4700000-nvidia-q1-2027-earnings-call-transcript",
+            "stockanalysis_url": url,
+            "content": LONG,
+            "date": "2026-05-28",
+            "retrieval_provider": "StockAnalysis",
+        },
+    )
 
-    def fail_fool(*args, **kwargs):
-        raise AssertionError("Fool.com should not be called when Alpha Vantage succeeds")
+    result = transcript_finder.find_transcripts("NVDA")
 
-    monkeypatch.setattr("backend.rapidapi_sa.search_sa_transcripts", lambda ticker: [])
-    monkeypatch.setattr("backend.rapidapi_sa.fetch_sa_transcript", fail_fool)
-    monkeypatch.setattr("backend.alpha_vantage.fetch_transcript", fake_av)
-    monkeypatch.setattr("backend.seeking_alpha.search_transcript_web", fail_fool)
+    assert result["found"] is True
+    assert result["sources"][0]["source"] == "Seeking Alpha"
+    assert result["sources"][0]["url"] == "https://seekingalpha.com/article/4700000-nvidia-q1-2027-earnings-call-transcript"
+    assert result["sources"][0]["stockanalysis_url"] == "https://stockanalysis.com/stocks/nvda/transcripts/568907-q1-2027/"
+
+
+def test_find_transcripts_falls_back_to_alpha_vantage_when_stockanalysis_empty(monkeypatch):
+    _disable_sa_cookies(monkeypatch)
+    _disable_stockanalysis(monkeypatch)
+    monkeypatch.setattr(
+        "backend.alpha_vantage.fetch_transcript",
+        lambda ticker: {"content": LONG, "quarter": "2026Q3", "date": "2026-04-25"},
+    )
+    monkeypatch.setattr("backend.seeking_alpha.search_transcript_web", lambda ticker: [])
 
     result = transcript_finder.find_transcripts("MSFT")
 
     assert result["found"] is True
     assert result["sources"][0]["source"] == "Alpha Vantage API"
-    assert result["sources"][0]["text"] == "Cloud revenue and EPS improved. " * 20
+    assert result["sources"][0]["text"] == LONG
 
 
 def test_find_transcripts_falls_back_to_fool_when_structured_sources_fail(monkeypatch):
-    def raise_unavailable(*args, **kwargs):
-        raise RuntimeError("source unavailable")
-
-    monkeypatch.setattr("backend.rapidapi_sa.search_sa_transcripts", raise_unavailable)
-    monkeypatch.setattr("backend.alpha_vantage.fetch_transcript", raise_unavailable)
+    _disable_sa_cookies(monkeypatch)
+    _disable_stockanalysis(monkeypatch)
+    monkeypatch.setattr("backend.alpha_vantage.fetch_transcript", lambda ticker: None)
     monkeypatch.setattr(
-        "backend.seeking_alpha.search_transcript_web",
-        lambda ticker: [
-            {
-                "source": "The Motley Fool",
-                "title": "AMD Earnings Call Transcript",
-                "url": "https://www.fool.com/earnings/call-transcripts/amd/",
-                "text": "Data center demand improved. " * 20,
-                "free": True,
-            }
-        ],
+        "backend.sources.motleyfool.get_transcript",
+        lambda ticker: {
+            "url": "https://www.fool.com/earnings/call-transcripts/amd/",
+            "text": LONG,
+            "date": "2026-04-30",
+        },
     )
 
     result = transcript_finder.find_transcripts("AMD")
 
     assert result["found"] is True
     assert result["sources"][0]["source"] == "The Motley Fool"
-    assert result["sources"][0]["text"] == "Data center demand improved. " * 20
+    assert result["sources"][0]["text"] == LONG
     assert result["sources"][0]["quarter"] == ""
 
 
-def test_find_transcripts_falls_back_to_google_discovered_web_source(monkeypatch):
-    def empty(*args, **kwargs):
-        return []
-
-    def none(*args, **kwargs):
-        return None
-
-    monkeypatch.setattr("backend.rapidapi_sa.search_sa_transcripts", empty)
-    monkeypatch.setattr("backend.alpha_vantage.fetch_transcript", none)
-    monkeypatch.setattr("backend.sources.motleyfool.get_transcript", none)
-    monkeypatch.setattr("backend.ddg_transcript_search.search_transcripts_ddg", empty)
+def test_find_transcripts_falls_back_to_public_search(monkeypatch):
+    _disable_sa_cookies(monkeypatch)
+    _disable_stockanalysis(monkeypatch)
+    monkeypatch.setattr("backend.alpha_vantage.fetch_transcript", lambda ticker: None)
+    monkeypatch.setattr("backend.sources.motleyfool.get_transcript", lambda ticker: None)
     monkeypatch.setattr(
-        "backend.transcript_web_search.search_transcript_pages",
-        lambda ticker, company=None, limit=5: [
+        "backend.seeking_alpha.search_transcript_web",
+        lambda ticker: [
             {
-                "source": "Google Search Transcript",
-                "title": "Microsoft FY26 Q1 Earnings Call Transcript",
-                "url": "https://www.microsoft.com/en-us/investor/events/fy-2026/earnings-fy-2026-q1",
-                "text": "Revenue was $77.7 billion and EPS was $4.13. " * 20,
+                "source": "Public transcript search",
+                "title": "MSFT Earnings Call Transcript",
+                "url": "https://example.com/msft-transcript",
+                "text": LONG,
                 "quarter": "FY2026 Q1",
                 "date": "2025-10-29",
-                "text_length": len("Revenue was $77.7 billion and EPS was $4.13. " * 20),
             }
         ],
+    )
+    monkeypatch.setattr(
+        "backend.transcript_web_search.search_transcript_pages",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("web discovery should not run when public search succeeds")),
     )
 
     result = transcript_finder.find_transcripts("MSFT", company="Microsoft Corporation")
 
     assert result["found"] is True
-    assert result["sources"][0]["source"] == "Google Search Transcript"
-    assert "EPS was $4.13" in result["sources"][0]["text"]
-    assert result["sources"][0]["quarter"] == "FY2026 Q1"
-
-
-def test_find_transcripts_falls_back_to_duckduckgo_before_google(monkeypatch):
-    def empty(*args, **kwargs):
-        return []
-
-    def none(*args, **kwargs):
-        return None
-
-    def fail_google(*args, **kwargs):
-        raise AssertionError("Google fallback should not be called when DuckDuckGo succeeds")
-
-    monkeypatch.setattr("backend.rapidapi_sa.search_sa_transcripts", empty)
-    monkeypatch.setattr("backend.alpha_vantage.fetch_transcript", none)
-    monkeypatch.setattr("backend.sources.motleyfool.get_transcript", none)
-    monkeypatch.setattr("backend.seeking_alpha.search_transcript_web", empty)
-    monkeypatch.setattr(
-        "backend.ddg_transcript_search.search_transcripts_ddg",
-        lambda ticker, company=None: [
-            {
-                "source": "DuckDuckGo Transcript Search",
-                "title": "AMD Earnings Call Transcript",
-                "url": "https://example.com/amd-transcript",
-                "text": "Revenue and EPS improved. " * 120,
-                "quarter": "FY2026 Q1",
-                "date": "2026-04-30",
-                "text_length": len("Revenue and EPS improved. " * 120),
-            }
-        ],
-    )
-    monkeypatch.setattr("backend.transcript_web_search.search_transcript_pages", fail_google)
-
-    result = transcript_finder.find_transcripts("AMD", company="Advanced Micro Devices")
-
-    assert result["found"] is True
-    assert result["sources"][0]["source"] == "DuckDuckGo Transcript Search"
-    assert result["sources"][0]["url"] == "https://example.com/amd-transcript"
+    assert result["sources"][0]["source"] == "Public transcript search"
+    assert result["sources"][0]["url"] == "https://example.com/msft-transcript"

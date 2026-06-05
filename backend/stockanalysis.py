@@ -161,7 +161,8 @@ def fetch_transcript(url: str) -> Optional[Dict]:
         "title": title,
         "content": content,
         "date": date,
-        "url": sa_url or url,  # Prefer SA original URL, fallback to StockAnalysis
+        "url": sa_url or url,  # Prefer the concrete SA article; otherwise cite StockAnalysis fallback.
         "stockanalysis_url": url,
-        "source": "Seeking Alpha",  # Canonical source — StockAnalysis republishes SA transcripts verbatim
+        "source": "Seeking Alpha" if sa_url else "StockAnalysis",
+        "retrieval_provider": "StockAnalysis",
     }

@@ -2596,15 +2596,6 @@ def build_earnings_deep_dive_report(
             note="Real-time estimates, transcripts, and SEC filings index"
         ))
 
-    # Always keep the canonical Seeking Alpha candidate source visible,
-    # even when the effective transcript came from another domain.
-    sources.append(SourceRef(
-        source_id=_next_sid(), source_type="seeking_alpha",
-        label="Candidate Transcript Source - Seeking Alpha",
-        url=f"https://seekingalpha.com/symbol/{ticker_clean}/earnings/transcripts",
-        note="Fallback transcript source"
-    ))
-
     # Filter: skip Geographic Segments (never reported in quarterly filings)
     # and any truly empty sections
     def _skip_section(section) -> bool:
