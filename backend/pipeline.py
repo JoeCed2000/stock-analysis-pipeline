@@ -130,11 +130,11 @@ def _transcript_url(source: Dict[str, Any], ticker: str | None = None,
             path = parsed.path.strip("/")
 
             if host == "stockanalysis.com":
-                # Real StockAnalysis transcript URL — keep it as-is.
-                # The source label already says "Seeking Alpha" because StockAnalysis
-                # republishes SA content verbatim. The URL should point to the actual
-                # transcript page, not a generic listing.
-                candidates.append((350, url))
+                # StockAnalysis specific article URLs are unstable (HTTP 400 after fetch).
+                # Use the ticker-specific listing page instead — it shows the exact
+                # transcripts for this ticker and is stable.
+                if ticker:
+                    candidates.append((350, f"https://stockanalysis.com/stocks/{ticker.strip().lower()}/transcripts/"))
             elif "seekingalpha.com" in host:
                 candidates.append((400, url))
             elif _is_ir_portal(host):
@@ -153,7 +153,7 @@ def _transcript_url(source: Dict[str, Any], ticker: str | None = None,
 
     # Fallback: return None — no URL is better than a generic listing page
     if ticker:
-        return None
+        return f"https://stockanalysis.com/stocks/{ticker.strip().lower()}/transcripts/"
 
     return None
 
