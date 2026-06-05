@@ -130,16 +130,9 @@ def _transcript_url(source: Dict[str, Any], ticker: str | None = None,
             path = parsed.path.strip("/")
 
             if host == "stockanalysis.com":
-                # StockAnalysis republishes Seeking Alpha transcripts.
-                # When we have a ticker, use the canonical SA URL instead.
-                match = re.match(
-                    r"stocks/([^/]+)/transcripts(?:/[^/]+)?/?$",
-                    path,
-                    re.IGNORECASE,
-                )
-                canonical_ticker = (ticker or (match.group(1) if match else "")).strip().upper()
-                if canonical_ticker:
-                    candidates.append((350, f"https://seekingalpha.com/symbol/{canonical_ticker}/earnings/transcripts"))
+                # Keep the actual transcript URL — it's more useful than a listing page.
+                # StockAnalysis deep links are stable and point to the real article.
+                candidates.append((300, url))
             elif "seekingalpha.com" in host:
                 candidates.append((400, url))
             elif _is_ir_portal(host):
