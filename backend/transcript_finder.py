@@ -45,6 +45,14 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
                         "path": "/",
                     })
 
+            import asyncio as _asyncio
+            try:
+                _asyncio.get_running_loop()
+                # Running inside async context — create a fresh loop for sync Playwright
+                _loop = _asyncio.new_event_loop()
+                _asyncio.set_event_loop(_loop)
+            except RuntimeError:
+                pass  # No running loop — sync Playwright will work fine
             from playwright.sync_api import sync_playwright
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
