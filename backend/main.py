@@ -2179,10 +2179,10 @@ async def test_seeking_alpha_access(payload: SeekingAlphaProbeRequest | None = N
     admin API key. The endpoint only accepts a ticker and returns probe status;
     it never returns the stored Cookie header.
     """
-    from backend.seeking_alpha_access import probe_access
+    from backend.seeking_alpha_access import probe_access_async
 
     ticker = payload.ticker if payload else "NVDA"
-    return JSONResponse(probe_access(ticker))
+    return JSONResponse(await probe_access_async(ticker))
 
 
 # ── Cache transparency ──────────────────────────────────────────────────

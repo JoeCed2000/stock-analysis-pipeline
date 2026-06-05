@@ -174,7 +174,8 @@ def build_request_headers(extra_headers: dict[str, str] | None = None) -> dict[s
     return headers
 
 
-def probe_access(ticker: str | None = None) -> dict[str, Any]:
+async def probe_access_async(ticker: str | None = None) -> dict[str, Any]:
+    """Async version — uses Playwright async API. Called from FastAPI endpoints."""
     status = get_access_status()
     clean_ticker = re.sub(r"[^A-Z0-9.]", "", (ticker or DEFAULT_TEST_TICKER).upper()) or DEFAULT_TEST_TICKER
     url = f"https://seekingalpha.com/symbol/{clean_ticker}/earnings/transcripts"
@@ -192,8 +193,7 @@ def probe_access(ticker: str | None = None) -> dict[str, Any]:
         }
 
     try:
-        from playwright.sync_api import sync_playwright
-
+        from playwright.async_api import async_playwright
         # Parse stored cookies into Playwright format
         pw_cookies = []
         cookie_header = status.get("cookie_header", "") if isinstance(status, dict) else ""
@@ -209,30 +209,33 @@ def probe_access(ticker: str | None = None) -> dict[str, Any]:
                     "domain": ".seekingalpha.com", "path": "/",
                 })
 
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context()
-            if pw_cookies:
-                context.add_cookies(pw_cookies)
-            page = context.new_page()
-            page.goto(url, timeout=15000, wait_until="domcontentloaded")
-            page.wait_for_timeout(1500)
-            body = page.inner_text("body")[:4000].lower()
-            denied = any(marker in body for marker in DENIED_MARKERS)
-            status_code = 200  # Playwright reached the page
-            browser.close()
-            authenticated = not denied
-            return {
-                **status,
-                "ok": authenticated,
-                "authenticated": authenticated,
-                "reachable": True,
-                "ticker": clean_ticker,
-                "url": url,
-                "status_code": 403 if denied else 200,
-                "reason": "ok" if authenticated else "denied (PerimeterX)",
-                "tested_at": _now_iso(),
-            }
+        async def _probe():
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                context = await browser.new_context()
+                if pw_cookies:
+                    await context.add_cookies(pw_cookies)
+                page = await context.new_page()
+                await page.goto(url, timeout=15000, wait_until="domcontentloaded")
+                await page.wait_for_timeout(1500)
+                body = (await page.inner_text("body"))[:4000].lower()
+                denied = any(marker in body for marker in DENIED_MARKERS)
+                await browser.close()
+                return denied
+
+        denied = await _probe()
+        authenticated = not denied
+        return {
+            **status,
+            "ok": authenticated,
+            "authenticated": authenticated,
+            "reachable": True,
+            "ticker": clean_ticker,
+            "url": url,
+            "status_code": 403 if denied else 200,
+            "reason": "ok" if authenticated else "denied (PerimeterX)",
+            "tested_at": _now_iso(),
+        }
     except Exception as exc:
         logger.warning("Seeking Alpha probe failed for %s: %s", clean_ticker, exc)
         return {
