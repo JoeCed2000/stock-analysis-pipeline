@@ -22,71 +22,76 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
     results = []
     primary_text = ""  # Full transcript text from primary source
 
-    # 0. Seeking Alpha with stored cookies — PRIMARY source (CedLab 2026-06-05).
-    # The feedback page stores + validates SA cookies. Use them first.
+    # 0. Seeking Alpha with stored cookies via Playwright — PRIMARY source (CedLab 2026-06-05).
+    # Playwright (real browser) bypasses PerimeterX where httpx gets 403.
+    # Falls back to StockAnalysis.com if cookies are missing/expired.
     try:
         from backend.seeking_alpha_access import _read_store
-        from backend.http_client import http
         import re as _re
 
         store = _read_store()
         cookie_header = store.get("cookie_header", "")
         if cookie_header:
-            sa_ua = store.get("user_agent") or "Mozilla/5.0"
-            listing_url = f"https://seekingalpha.com/symbol/{ticker}/earnings/transcripts"
-            resp = http.get(
-                listing_url,
-                headers={"Cookie": cookie_header, "User-Agent": sa_ua},
-                timeout=15, follow_redirects=True,
-            )
-            if resp.status_code == 200:
-                # Extract transcript links from the listing page
-                body = resp.text or ""
-                transcript_links = _re.findall(
-                    r'href="(/article/\d+[^"]*)"[^>]*>([^<]+)</a>',
-                    body, _re.IGNORECASE,
-                )
-                if transcript_links:
-                    # Fetch the first transcript
-                    first_url = "https://seekingalpha.com" + transcript_links[0][0]
-                    first_title = transcript_links[0][1].strip()
-                    resp2 = http.get(
-                        first_url,
-                        headers={"Cookie": cookie_header, "User-Agent": sa_ua},
-                        timeout=20, follow_redirects=True,
-                    )
-                    if resp2.status_code == 200:
-                        # Extract article body
-                        body2 = resp2.text or ""
-                        # Try to extract the transcript content
-                        content_match = _re.search(
-                            r'<div[^>]*class="[^"]*paywall[^"]*"[^>]*>(.*?)</div>',
-                            body2, _re.DOTALL | _re.IGNORECASE,
-                        )
-                        if not content_match:
-                            content_match = _re.search(
-                                r'<div[^>]*class="[^"]*article[^"]*"[^>]*>(.*?)</div>',
-                                body2, _re.DOTALL | _re.IGNORECASE,
-                            )
-                        if content_match:
-                            # Strip HTML tags
-                            raw = _re.sub(r'<[^>]+>', ' ', content_match.group(1))
-                            raw = _re.sub(r'\s+', ' ', raw).strip()
+            # Parse cookies into Playwright format: [{name, value, domain, path}]
+            pw_cookies = []
+            for part in cookie_header.split(";"):
+                part = part.strip()
+                if "=" in part:
+                    name, value = part.split("=", 1)
+                    pw_cookies.append({
+                        "name": name.strip(),
+                        "value": value.strip(),
+                        "domain": ".seekingalpha.com",
+                        "path": "/",
+                    })
+
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context()
+                context.add_cookies(pw_cookies)
+                page = context.new_page()
+
+                # Navigate to transcript listing
+                listing_url = f"https://seekingalpha.com/symbol/{ticker}/earnings/transcripts"
+                page.goto(listing_url, timeout=20000, wait_until="domcontentloaded")
+
+                # Check if blocked by PerimeterX
+                body_text = page.inner_text("body")[:500].lower()
+                if any(m in body_text for m in ("access denied", "verify you are human", "captcha")):
+                    logger.warning(f"Seeking Alpha blocked by PerimeterX for {ticker} — falling back")
+                    browser.close()
+                else:
+                    # Find transcript links
+                    links = page.query_selector_all('a[href*="/article/"]')
+                    if links:
+                        first_href = links[0].get_attribute("href")
+                        if first_href and first_href.startswith("/"):
+                            first_url = "https://seekingalpha.com" + first_href
+                        else:
+                            first_url = first_href
+
+                        if first_url:
+                            page.goto(first_url, timeout=20000, wait_until="domcontentloaded")
+                            # Extract all visible text — the transcript body
+                            page.wait_for_timeout(2000)  # let JS render
+                            raw = page.inner_text("body")
+                            # Remove navigation/header noise
+                            raw = _re.sub(r'\n{3,}', '\n\n', raw)
                             if _is_usable(raw):
                                 primary_text = raw
                                 results.append({
                                     "source": "Seeking Alpha",
                                     "type": "earnings_transcript",
-                                    "title": first_title,
-                                    "url": first_url,
+                                    "title": f"{ticker} Earnings Call",
+                                    "url": first_url or listing_url,
                                     "text": raw,
                                     "text_length": len(raw),
                                 })
-                                logger.info(
-                                    f"Seeking Alpha (cookie) transcript: {len(raw)} chars for {ticker}"
-                                )
+                                logger.info(f"Seeking Alpha (Playwright+cookie): {len(raw)} chars for {ticker}")
+                    browser.close()
     except Exception as e:
-        logger.warning(f"Seeking Alpha (cookie) unavailable for {ticker}: {e}")
+        logger.warning(f"Seeking Alpha (Playwright) unavailable for {ticker}: {e}")
 
     # 1. RapidAPI Seeking Alpha — primary full-text source.
     try:
