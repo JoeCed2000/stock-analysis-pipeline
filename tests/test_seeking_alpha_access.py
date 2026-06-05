@@ -111,6 +111,39 @@ class TestSeekingAlphaAccessAdmin:
         assert cleared["configured"] is False
         assert not store_path.exists()
 
+    def test_status_flags_analytics_only_cookie_header(self, client):
+        save_resp = client.post(
+            "/api/admin/seeking-alpha/access",
+            json={"cookie_header": "__hssc=1; _ga=GA1.1.1; _hjSession_65666=abc"},
+            headers={"X-API-Key": TEST_KEY},
+        )
+
+        assert save_resp.status_code == 200
+        diagnostics = save_resp.json()["cookie_diagnostics"]
+        assert diagnostics["quality"] == "analytics_only_or_incomplete"
+        assert diagnostics["has_auth_cookie"] is False
+        assert diagnostics["has_antibot_cookie"] is False
+
+    def test_probe_reports_missing_auth_or_antibot_before_network(self, client):
+        client.post(
+            "/api/admin/seeking-alpha/access",
+            json={"cookie_header": "__hssc=1; _ga=GA1.1.1; _hjSession_65666=abc"},
+            headers={"X-API-Key": TEST_KEY},
+        )
+
+        resp = client.post(
+            "/api/admin/seeking-alpha/test",
+            json={"ticker": "nvda"},
+            headers={"X-API-Key": TEST_KEY},
+        )
+
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["ok"] is False
+        assert payload["authenticated"] is False
+        assert payload["reason"] == "missing_auth_or_antibot_cookies"
+        assert payload["cookie_diagnostics"]["quality"] == "analytics_only_or_incomplete"
+
     def test_probe_uses_saved_cookies(self, client, monkeypatch):
         async def fake_probe(ticker=None):
             from backend.seeking_alpha_access import _read_store

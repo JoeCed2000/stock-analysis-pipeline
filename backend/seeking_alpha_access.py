@@ -38,7 +38,16 @@ DENIED_MARKERS = (
     "captcha",
     "sign in",
 )
-
+AUTH_COOKIE_NAMES = {
+    "slireg",
+    "user_id",
+    "user_nick",
+    "remember_user_token",
+    "gk_user_access",
+    "gk_user_access_sign",
+    "session_id",
+}
+ANTIBOT_COOKIE_NAMES = {"pxcts", "_px3", "_pxvid", "cf_clearance"}
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -95,6 +104,42 @@ def _cookie_count(header: str) -> int:
     return sum(1 for part in header.split(";") if "=" in part)
 
 
+def _cookie_names(header: str) -> set[str]:
+    names: set[str] = set()
+    for part in (header or "").split(";"):
+        if "=" not in part:
+            continue
+        name = part.split("=", 1)[0].strip()
+        if name:
+            names.add(name)
+    return names
+
+
+def _cookie_diagnostics(header: str) -> dict[str, Any]:
+    names = _cookie_names(header)
+    has_auth_cookie = bool(names & AUTH_COOKIE_NAMES)
+    has_antibot_cookie = bool(names & ANTIBOT_COOKIE_NAMES)
+    configured = bool(header)
+
+    if not configured:
+        quality = "not_configured"
+    elif not has_auth_cookie and not has_antibot_cookie:
+        quality = "analytics_only_or_incomplete"
+    elif not has_auth_cookie:
+        quality = "missing_auth_cookie"
+    elif not has_antibot_cookie:
+        quality = "missing_antibot_cookie"
+    else:
+        quality = "browser_session_like"
+
+    return {
+        "quality": quality,
+        "has_auth_cookie": has_auth_cookie,
+        "has_antibot_cookie": has_antibot_cookie,
+        "required_categories": ["auth", "antibot"],
+    }
+
+
 def _read_store() -> dict[str, Any]:
     path = _storage_path()
     if not path.exists():
@@ -131,6 +176,7 @@ def get_access_status() -> dict[str, Any]:
         "created_at": payload.get("created_at"),
         "updated_at": payload.get("updated_at"),
         "user_agent_configured": bool(payload.get("user_agent")),
+        "cookie_diagnostics": _cookie_diagnostics(cookie_header),
         "server_side_only": True,
         "test_ticker_default": DEFAULT_TEST_TICKER,
     }
@@ -200,6 +246,21 @@ async def probe_access_async(ticker: str | None = None) -> dict[str, Any]:
             "ticker": clean_ticker,
             "url": listing_url,
             "reason": "no_cookies_configured",
+            "tested_at": _now_iso(),
+        }
+
+    cookie_quality = status.get("cookie_diagnostics", {}).get("quality")
+    if cookie_quality == "analytics_only_or_incomplete":
+        return {
+            **status,
+            "ok": False,
+            "authenticated": False,
+            "reachable": False,
+            "ticker": clean_ticker,
+            "url": listing_url,
+            "status_code": 403,
+            "reason": "missing_auth_or_antibot_cookies",
+            "text_length": 0,
             "tested_at": _now_iso(),
         }
 
