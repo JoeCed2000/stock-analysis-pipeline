@@ -130,11 +130,12 @@ def _transcript_url(source: Dict[str, Any], ticker: str | None = None,
             path = parsed.path.strip("/")
 
             if host == "stockanalysis.com":
-                # StockAnalysis specific article URLs are unstable (HTTP 400 after fetch).
-                # Use the ticker-specific listing page instead — it shows the exact
-                # transcripts for this ticker and is stable.
+                # StockAnalysis specific article URLs are unstable (HTTP 400).
+                # Use the Seeking Alpha listing page — shows transcripts for this
+                # ticker with the latest quarter first. Nami has SA cookies to
+                # click through to the full article.
                 if ticker:
-                    candidates.append((350, f"https://stockanalysis.com/stocks/{ticker.strip().lower()}/transcripts/"))
+                    candidates.append((350, f"https://seekingalpha.com/symbol/{ticker.strip().upper()}/earnings/transcripts"))
             elif "seekingalpha.com" in host:
                 candidates.append((400, url))
             elif _is_ir_portal(host):
@@ -153,7 +154,7 @@ def _transcript_url(source: Dict[str, Any], ticker: str | None = None,
 
     # Fallback: return None — no URL is better than a generic listing page
     if ticker:
-        return f"https://stockanalysis.com/stocks/{ticker.strip().lower()}/transcripts/"
+        return f"https://seekingalpha.com/symbol/{ticker.strip().upper()}/earnings/transcripts"
 
     return None
 
