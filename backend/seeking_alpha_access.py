@@ -192,24 +192,49 @@ def probe_access(ticker: str | None = None) -> dict[str, Any]:
         }
 
     try:
-        response = http.get(url, headers=build_request_headers(), timeout=15, follow_redirects=True)
-        body = (response.text or "")[:4000].lower()
-        denied = response.status_code in {401, 403} or any(marker in body for marker in DENIED_MARKERS)
-        authenticated = response.status_code == 200 and not denied
-        return {
-            **status,
-            "ok": authenticated,
-            "authenticated": authenticated,
-            "reachable": True,
-            "ticker": clean_ticker,
-            "url": url,
-            "response_url": str(response.url),
-            "status_code": response.status_code,
-            "reason": "ok" if authenticated else "denied",
-            "tested_at": _now_iso(),
-        }
+        from playwright.sync_api import sync_playwright
+
+        # Parse stored cookies into Playwright format
+        pw_cookies = []
+        cookie_header = status.get("cookie_header", "") if isinstance(status, dict) else ""
+        if not cookie_header:
+            store = _read_store()
+            cookie_header = store.get("cookie_header", "")
+        for part in cookie_header.split(";"):
+            part = part.strip()
+            if "=" in part:
+                name, value = part.split("=", 1)
+                pw_cookies.append({
+                    "name": name.strip(), "value": value.strip(),
+                    "domain": ".seekingalpha.com", "path": "/",
+                })
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context()
+            if pw_cookies:
+                context.add_cookies(pw_cookies)
+            page = context.new_page()
+            page.goto(url, timeout=15000, wait_until="domcontentloaded")
+            page.wait_for_timeout(1500)
+            body = page.inner_text("body")[:4000].lower()
+            denied = any(marker in body for marker in DENIED_MARKERS)
+            status_code = 200  # Playwright reached the page
+            browser.close()
+            authenticated = not denied
+            return {
+                **status,
+                "ok": authenticated,
+                "authenticated": authenticated,
+                "reachable": True,
+                "ticker": clean_ticker,
+                "url": url,
+                "status_code": 403 if denied else 200,
+                "reason": "ok" if authenticated else "denied (PerimeterX)",
+                "tested_at": _now_iso(),
+            }
     except Exception as exc:
-        logger.warning("Seeking Alpha connectivity probe failed for %s: %s", clean_ticker, exc)
+        logger.warning("Seeking Alpha probe failed for %s: %s", clean_ticker, exc)
         return {
             **status,
             "ok": False,

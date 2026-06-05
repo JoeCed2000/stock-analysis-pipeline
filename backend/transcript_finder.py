@@ -1,4 +1,4 @@
-"""Transcript source integration — RapidAPI Seeking Alpha + Alpha Vantage + Fool.com."""
+"""Transcript source integration — SA cookies → StockAnalysis.com → Alpha Vantage."""
 import os
 import json
 import logging
@@ -93,38 +93,9 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
     except Exception as e:
         logger.warning(f"Seeking Alpha (Playwright) unavailable for {ticker}: {e}")
 
-    # 1. RapidAPI Seeking Alpha — primary full-text source.
-    try:
-        from backend.rapidapi_sa import fetch_sa_transcript, search_sa_transcripts
 
-        for transcript in search_sa_transcripts(ticker)[:3]:
-            transcript_id = transcript.get("id", "")
-            if not transcript_id:
-                continue
 
-            details = fetch_sa_transcript(transcript_id)
-            content = details.get("content", "") if details else ""
-            if not content:
-                continue
-
-            primary_text = content
-            results.append({
-                "source": "RapidAPI Seeking Alpha",
-                "type": "earnings_transcript",
-                "title": details.get("title") or transcript.get("title", ""),
-                "url": details.get("url") or transcript.get("url", ""),
-                "text": content,
-                "text_length": len(content),
-                "quarter": details.get("quarter") or transcript.get("quarter", ""),
-                "date": details.get("date") or transcript.get("date", ""),
-                "id": details.get("id") or transcript_id,
-            })
-            logger.info(f"RapidAPI Seeking Alpha transcript: {len(content)} chars for {ticker}")
-            break
-    except Exception as e:
-        logger.warning(f"RapidAPI Seeking Alpha unavailable for {ticker}: {e}")
-
-    # 0.5. StockAnalysis.com — FREE full-text transcripts, no auth needed.
+    # 1. StockAnalysis.com — FREE full-text transcripts, no auth needed.
     if not _is_usable(primary_text):
         try:
             from backend.stockanalysis import search_transcripts as sa_search, fetch_transcript as sa_fetch
@@ -153,7 +124,7 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
         except Exception as e:
             logger.warning(f"StockAnalysis.com unavailable for {ticker}: {e}")
 
-    # 1. Alpha Vantage API — fallback (structured JSON, 25 req/day free).
+    # 2. Alpha Vantage API — fallback (structured JSON, 25 req/day free).
     if not _is_usable(primary_text):
         try:
             from backend.alpha_vantage import fetch_transcript
@@ -230,20 +201,7 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
     else:
         logger.info(f"Skipping public transcript search: higher-priority source already provided {len(primary_text)} chars")
 
-    # 3.5 DuckDuckGo transcript search — free, no API key.
-    if not _is_usable(primary_text):
-        try:
-            from backend.ddg_transcript_search import search_transcripts_ddg
 
-            ddg_results = search_transcripts_ddg(ticker, company=company)
-            if ddg_results:
-                primary_text = ddg_results[0].get("text", "")
-                results.extend(ddg_results)
-                logger.info(f"DuckDuckGo transcript: {len(primary_text)} chars for {ticker}")
-        except Exception as e:
-            logger.warning(f"DuckDuckGo transcript search unavailable for {ticker}: {e}")
-    else:
-        logger.info(f"Skipping DuckDuckGo: higher-priority source already provided {len(primary_text)} chars")
 
     # 4. Google-discovered public transcript pages.
     if not _is_usable(primary_text):
