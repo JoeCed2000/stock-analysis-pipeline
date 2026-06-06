@@ -66,10 +66,8 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
                 pass  # No running loop — sync Playwright will work fine
             from playwright.sync_api import sync_playwright
             with sync_playwright() as p:
-                browser = p.chromium.launch(
-                    headless=True,
-                    args=['--disable-blink-features=AutomationControlled', '--no-sandbox'],
-                )
+                # Firefox bypasses PerimeterX where Chromium gets detected (2026-06-06)
+                browser = p.firefox.launch(headless=True)
                 context_kwargs: dict = {
                     "viewport": {"width": 1920, "height": 1080},
                     "locale": "en-US",
@@ -80,11 +78,6 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
                 context = browser.new_context(**context_kwargs)
                 context.add_cookies(pw_cookies)
                 page = context.new_page()
-                # Anti-detection: hide WebDriver to avoid SA bot-blocking
-                page.add_init_script("""
-                    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-                    Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3,4,5]});
-                """)
 
                 # Navigate to transcript listing
                 listing_url = f"https://seekingalpha.com/symbol/{ticker}/earnings/transcripts"
