@@ -987,6 +987,26 @@ but no PDF was produced.
 ### Remaining
 - Next defect family: Company Overview source traceability / stale-minimal PDF fallback, then fresh numeric coherence verification.
 
+
+## 2026-06-06 — Company Overview routed through Codex Spark medium
+
+**Status:** Completed locally; backend restarted and health confirmed on runtime commit `5c2f0e4`. Implementation commit: `5c2f0e4 fix: route company overview through Codex Spark`.
+
+### Root cause / technical fixes
+- Company Overview routing was configured for Codex Spark, but `backend/codex_provider.py` still used a fragile PTY/argument prompt path. On large Spark prompts, Codex could exit `rc=0` while leaving the output file empty, causing downstream fallback behavior.
+- `backend/codex_provider.py` now sends the prompt through `stdin` using `codex exec ... -o <file> -`, then verifies the output file contains usable text.
+- `backend/company_overview.py` now parses the first valid JSON object from Spark output. This prevents valid JSON followed by extra commentary/object text from failing with `Extra data` and falling back to another provider.
+
+### Verification
+- Direct Codex Spark provider test: `OK_SPARK_PROVIDER` with `gpt-5.3-codex-spark` and reasoning effort `medium`.
+- Real Company Overview generation confirmed provider `codex_cli`, model `gpt-5.3-codex-spark`, effort `medium`.
+- Generated PDF audit confirmed expected Company Overview sections are present.
+- Targeted test suite: `131 passed in 1.92s`.
+- Backend runtime health: `GET /api/health` returned `status=ok`, version `v2.3-accepted-293-g5c2f0e4`, commit `5c2f0e4`.
+
+### Remaining caveat
+- Ced Agent Kernel final gate was attempted but blocked by the approval system timeout, so Kernel verdict remains **non-READY / non vérifié** until rerun.
+
 ## Non-Regression Playbooks
 - **When modifying ValuationGroup**: run `node chartUtils.test.cjs` (68 tests), rebuild frontend, test NVDA and MSFT
 - **When modifying PeerBenchmarkGroup**: run `npm run build`, verify browser console 0 errors, test NVDA/AAPL/TSLA
