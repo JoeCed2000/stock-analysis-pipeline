@@ -94,6 +94,21 @@ class TestPostProcessMarkdown:
         assert "EPS estimate 1.94" in result
         assert "revenue YoY 16.60" in result
 
+    def test_audience_personalization_leakage_stripped(self):
+        """Client PDFs must not expose Nami personalization tokens."""
+        original = (
+            "Nami-san should monitor margins. "
+            "Namiさん向け解釈: ビートは高品質です。"
+            "NamiさんにとってはEPSサプライズが重要です。"
+            "Nami さんはセグメント調整に惑わされるべきではありません。"
+        )
+        result = post_process_markdown(original)
+        assert "Nami" not in result
+        assert "Namiさん" not in result
+        assert "the investor should monitor margins" in result
+        assert "投資家向け解釈" in result
+        assert "投資家にとってはEPSサプライズ" in result
+
     def test_preserves_other_content(self):
         """Non-matching markdown passes through unchanged."""
         original = "# Heading\n\nNormal paragraph with **bold** and *italic*.\n\n| Table | Without | yfinance |\n|-------|---------|----------|\n| Row   | Data    | Here     |"

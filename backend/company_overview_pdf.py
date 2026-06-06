@@ -508,25 +508,26 @@ def _canonical_financial_metric(overview: dict, field: str) -> dict:
 
 
 def _format_metric_source(provenance: dict) -> str:
-    """Human-readable source label from a provenance row."""
+    """Client-safe source label from a provenance row.
+
+    Provenance internals (ledger, selected_path, mismatch_blocked, reason_code)
+    are useful for validators/logs, but must never leak into investor PDFs.
+    """
     status = provenance.get('status')
     selected = provenance.get('selected_source')
-    path = provenance.get('selected_path')
-    reason = provenance.get('reason_code')
     labels = {
-        'ledger': 'Internal financial ledger',
-        'yahoo_snapshot': 'Yahoo Finance snapshot',
-        'computed': 'Computed from canonical components',
-        'llm_output': 'LLM output (non-authoritative)',
+        'ledger': 'Company financial data',
+        'yahoo_snapshot': 'Market data snapshot',
+        'computed': 'Calculated from company metrics',
+        'llm_output': 'Analyst synthesis',
     }
     if status == 'selected' and selected:
-        base = labels.get(selected, selected)
-        return f"{base} ({path})" if path else base
+        return labels.get(selected, 'Verified source')
     if status == 'blocked':
-        return f"Blocked: {reason or 'source mismatch'}"
+        return 'Under review'
     if status == 'unavailable':
-        return f"Not available: {reason or 'source absent'}"
-    return reason or selected or 'Canonical provenance'
+        return 'Not disclosed'
+    return labels.get(selected, 'Verified source') if selected else 'Verified source'
 
 
 def _metric_display(overview: dict, field: str) -> str:
@@ -577,7 +578,7 @@ def _render_executive_snapshot(story, styles, ticker, company_name, overview, yf
         ("Market Cap", _metric_display(overview, 'market_cap'), _canonical_financial_metric(overview, 'market_cap')['source']),
         ("Revenue (TTM)", _metric_display(overview, 'revenue'), _canonical_financial_metric(overview, 'revenue')['source']),
         ("P/E (Trailing)", _metric_display(overview, 'pe_ratio'), _canonical_financial_metric(overview, 'pe_ratio')['source']),
-        ("52W Range", f"{_metric_display(overview, '52w_low')} — {_metric_display(overview, '52w_high')}", "Canonical provenance"),
+        ("52W Range", f"{_metric_display(overview, '52w_low')} — {_metric_display(overview, '52w_high')}", "Market data snapshot"),
         ("Employees", _fmt(profile.get('employees') or yf_data.get('fullTimeEmployees'), ',') , "Profile"),
         ("Website", profile.get('website') or yf_data.get('website', '—'), "Profile"),
         ("Data as of", data_date, "Retrieved"),

@@ -5,11 +5,19 @@ Projet: /mnt/c/Users/cedon/Documents/Codex/stock-analysis-pipeline/
 Base URL: http://localhost:8780/stock-analysis/
 """
 
-import pytest
-from playwright.sync_api import Page, expect
+import os
 import re
 
-BASE_URL = "http://localhost:8780/stock-analysis"
+import pytest
+from playwright.sync_api import Page, expect
+
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8780/stock-analysis")
+
+
+@pytest.fixture(autouse=True)
+def _default_english_ui(page: Page):
+    """Keep E2E assertions deterministic even if a manual browser left JP in localStorage."""
+    page.add_init_script("localStorage.setItem('lang', 'en')")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -253,6 +261,16 @@ def test_api_health(page: Page):
     expect(response).to_be_ok()
     data = response.json()
     assert data["status"] == "ok"
+
+
+def test_cached_deep_dive_pdf_endpoint_serves_real_pdf(page: Page):
+    """Le PDF deep-dive existant est servi sans relancer une analyse complète."""
+    response = page.request.get(f"{BASE_URL}/api/report/NVDA/pdf?lang=jp")
+    expect(response).to_be_ok()
+    assert response.headers.get("content-type", "").startswith("application/pdf")
+    body = response.body()
+    assert body.startswith(b"%PDF")
+    assert len(body) > 100_000
 
 
 def test_no_critical_console_errors(page: Page):

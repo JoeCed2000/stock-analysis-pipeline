@@ -1189,43 +1189,43 @@ def validate_pre_render(
     if isinstance(op_metrics_text, str) and op_metrics_text.strip():
         om = op_metrics_text
 
-        # 16a. Table shows metric but text says "not retrieved/available"
-        # Check BOTH table rows (|...| lines) AND prose for contradiction
+        # 16a. A specific metric row must not say "not retrieved/available"
+        # when that same metric is present in the source metrics. Do not hard-fail
+        # the whole section for unrelated missing prior-period values (for example:
+        # "Operating margin for prior quarters is not available").
         om_table_lines = [l for l in om.split("\n") if l.strip().startswith("|")]
-        om_table = "\n".join(om_table_lines)
-        has_table_not_avail = bool(re.search(
-            r'Not\s+(available|retrieved)|DATA\s+NOT\s+AVAILABLE|\bN/A\b', om_table, re.IGNORECASE
-        ))
-        has_prose_not_avail = bool(re.search(
-            r'Not\s+(available|retrieved)|DATA\s+NOT\s+AVAILABLE|\bN/A\b', om, re.IGNORECASE
-        ))
-        has_not_avail = has_table_not_avail or has_prose_not_avail
-        if has_not_avail:
-            gross_margin_m = metric_map.get("gross_margin")
-            op_margin_m = metric_map.get("operating_margin")
-            op_income_m = metric_map.get("operating_income")
-            net_income_m = metric_map.get("net_income_quarterly") or metric_map.get("net_income")
-            if gross_margin_m is not None or op_margin_m is not None:
-                warnings.append(ValidationWarning(
-                    check="operating_metrics_not_available_contradiction",
-                    section="Operating Metrics",
-                    detail=(
-                        "Operating Metrics says 'Not available' but metrics contain "
-                        "gross_margin, operating_margin, or other values. "
-                        "If the value is in the table, text cannot say it was not retrieved."
-                    ),
-                    severity="error",
-                ))
-            elif op_income_m is not None or net_income_m is not None:
-                warnings.append(ValidationWarning(
-                    check="operating_metrics_not_available_contradiction",
-                    section="Operating Metrics",
-                    detail=(
-                        "Operating Metrics says 'Not available' but metrics contain "
-                        "operating_income or net_income values. Table/text must agree."
-                    ),
-                    severity="error",
-                ))
+        not_available_re = re.compile(
+            r'Not\s+(available|retrieved)|DATA\s+NOT\s+AVAILABLE|\bN/A\b', re.IGNORECASE
+        )
+
+        def _row_has_not_available(labels: tuple[str, ...]) -> bool:
+            for line in om_table_lines:
+                if any(re.search(label, line, re.IGNORECASE) for label in labels):
+                    if not_available_re.search(line):
+                        return True
+            return False
+
+        metric_row_checks = [
+            (("gross\\s+margin",), metric_map.get("gross_margin"), "gross_margin"),
+            (("operating\\s+margin",), metric_map.get("operating_margin"), "operating_margin"),
+            (("operating\\s+income",), metric_map.get("operating_income"), "operating_income"),
+            (("net\\s+income",), metric_map.get("net_income_quarterly"), "net_income_quarterly"),
+        ]
+        contradicted_metrics = [
+            metric_name
+            for labels, metric_value, metric_name in metric_row_checks
+            if metric_value is not None and _row_has_not_available(labels)
+        ]
+        if contradicted_metrics:
+            warnings.append(ValidationWarning(
+                check="operating_metrics_not_available_contradiction",
+                section="Operating Metrics",
+                detail=(
+                    "Operating Metrics says 'Not available' on row(s) for available metric(s): "
+                    f"{', '.join(contradicted_metrics)}. Table/text must show available values."
+                ),
+                severity="error",
+            ))
 
         # 16b. Margin changes labeled as % growth instead of bps/pp
         margin_pct_growth = bool(re.search(

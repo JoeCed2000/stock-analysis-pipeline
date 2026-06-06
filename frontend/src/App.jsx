@@ -240,8 +240,9 @@ export default function App() {
         percent: Math.max(p.percent, 20),
       }));
 
-      // Poll until done (max 10 min)
-      const MAX_POLLS = 200; // 200 * 3s = 10 min
+      // Poll until done (max 20 min). JP deep-dive dossiers can exceed 10 min
+      // because the pipeline generates EN + JP reports and validates both.
+      const MAX_POLLS = 400; // 400 * 3s = 20 min
       let timedOut = true;
       for (let i = 0; i < MAX_POLLS; i += 1) {
         await new Promise((r) => setTimeout(r, 3000));
@@ -375,7 +376,7 @@ export default function App() {
           phaseText: 'Analysis timed out',
           percent: 100,
         }));
-        setError('Analysis timed out after 10 minutes. The data may still be processing — try again or check back later.');
+        setError('Analysis timed out after 20 minutes. The data may still be processing — try again or check back later.');
       }
     } catch (e) {
       setProgress((p) => ({

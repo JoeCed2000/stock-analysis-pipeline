@@ -1342,11 +1342,17 @@ async def analyze_async(request: TickerRequest, lang: str = "en", force_refresh:
     do_deep_dive = request.deep_dive  # capture for closure
 
     def _run():
+        def _progress(message: str):
+            update_job(job_id, status="processing", progress=message)
+
         try:
-            update_job(job_id, status="processing", progress="Starting analysis...")
-            import asyncio as _asyncio
-            batch = _asyncio.new_event_loop().run_until_complete(
-                _asyncio.to_thread(run_analysis_parallel, normalized_tickers, output_base=str(ANALYSES_DIR), language=lang, force_refresh=force_refresh)
+            _progress("Starting analysis...")
+            batch = run_analysis_parallel(
+                normalized_tickers,
+                output_base=str(ANALYSES_DIR),
+                language=lang,
+                force_refresh=force_refresh,
+                progress_callback=_progress,
             )
             results_list = []
             for ticker, result in batch["results"].items():
@@ -1372,51 +1378,35 @@ async def analyze_async(request: TickerRequest, lang: str = "en", force_refresh:
 
             errors_list = list(batch["errors"].values())
 
-            # ── Deep-dive generation (if requested) ──
+            # ── Deep-dive status (if requested) ──
+            # run_analysis_parallel() already generates and validates the deep-dive dossier.
+            # Do NOT call generate_deep_dive() again here: that duplicates expensive work,
+            # can hang the async job in "processing", and leaves the browser stuck at 42%.
             deep_dive_pdfs = {}
             if do_deep_dive:
-                update_job(job_id, status="processing", progress="Generating deep-dive PDFs...")
-                from backend.earnings_deep_dive.generator import generate_deep_dive
-                from backend.earnings_deep_dive.schemas import DeepDiveRequest
-                from backend.sources_collector import get_yahoo_data_for_quarter
-                from backend.pipeline import _deep_dive_metrics
-                from backend.models import AnalysisResult
-                from datetime import datetime, timezone
-                import os as _os
-                for ticker_name, result in batch["results"].items():
+                for ticker_name in batch["results"]:
                     try:
                         matches = _find_analysis_dirs(ticker_name)
                         if not matches:
+                            deep_dive_pdfs[ticker_name] = {"error": "analysis directory not found"}
                             continue
-                        out_dir = str(matches[0])
-                        q_data = get_yahoo_data_for_quarter(ticker_name, "2026Q1")
-                        if not q_data:
-                            continue
-                        dummy = AnalysisResult(
-                            ticker=ticker_name,
-                            company_name=q_data.get("company_name", ticker_name),
-                            retrieved_at=datetime.now(timezone.utc).isoformat(),
-                            price=q_data.get("price"),
-                            currency=q_data.get("currency", "USD"),
-                        )
-                        metrics = _deep_dive_metrics(dummy, q_data)
-                        dd_req = DeepDiveRequest(
-                            ticker=ticker_name,
-                            company=q_data.get("company_name", ticker_name),
-                            quarter="2026Q1",
-                            language=lang,
-                            output_dir=out_dir,
-                            metrics=metrics.model_dump(),
-                        )
-                        dd_resp = generate_deep_dive(dd_req)
-                        if dd_resp and dd_resp.markdown_path:
+                        analysis_dir = matches[0]
+                        if lang == "jp":
+                            markdown_path = analysis_dir / "jp" / "07_final_report" / "earnings_deep_dive.md"
+                            pdf_path = analysis_dir / "jp" / "07_final_report" / "earnings_deep_dive.pdf"
+                        else:
+                            markdown_path = analysis_dir / "07_final_report" / "earnings_deep_dive.md"
+                            pdf_path = analysis_dir / "07_final_report" / "earnings_deep_dive.pdf"
+                        if pdf_path.exists():
                             deep_dive_pdfs[ticker_name] = {
-                                "markdown": dd_resp.markdown_path,
-                                "sections": len(dd_resp.sections),
+                                "markdown": str(markdown_path) if markdown_path.exists() else None,
+                                "pdf": str(pdf_path),
                             }
-                            logger.info(f"[{job_id}] Deep-dive PDF generated for {ticker_name}")
+                            logger.info(f"[{job_id}] Deep-dive PDF already available for {ticker_name}")
+                        else:
+                            deep_dive_pdfs[ticker_name] = {"error": f"missing PDF: {pdf_path}"}
                     except Exception as dd_err:
-                        logger.warning(f"[{job_id}] Deep-dive failed for {ticker_name}: {dd_err}")
+                        logger.warning(f"[{job_id}] Deep-dive status lookup failed for {ticker_name}: {dd_err}")
                         deep_dive_pdfs[ticker_name] = {"error": str(dd_err)}
 
             # Log searches for admin dashboard
@@ -1461,13 +1451,34 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
     if not matches:
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
 
-    # Language-specific path
+    # Language-specific path. Prefer the newest dossier that already has the
+    # requested PDF instead of blindly using matches[0]. A newer partial dossier
+    # can exist after a restart/failed async generation and would otherwise make
+    # this endpoint return an endless 202 even though a client-ready PDF exists
+    # in the previous completed dossier.
+    wants_jp = lang in ("jp", "ja")
     analysis_dir = matches[0]
-    if lang == "jp":
-        deep_dive = analysis_dir / "jp" / "07_final_report" / "earnings_deep_dive.pdf"
-    else:
-        deep_dive = analysis_dir / "07_final_report" / "earnings_deep_dive.pdf"
-    report_pdf = analysis_dir / "07_final_report" / "report.pdf"
+    deep_dive = None
+    report_pdf = None
+    for candidate in matches:
+        candidate_deep_dive = (
+            candidate / "jp" / "07_final_report" / "earnings_deep_dive.pdf"
+            if wants_jp
+            else candidate / "07_final_report" / "earnings_deep_dive.pdf"
+        )
+        candidate_report_pdf = candidate / "07_final_report" / "report.pdf"
+        if candidate_deep_dive.exists() or (not wants_jp and candidate_report_pdf.exists()):
+            analysis_dir = candidate
+            deep_dive = candidate_deep_dive
+            report_pdf = candidate_report_pdf
+            break
+    if deep_dive is None or report_pdf is None:
+        deep_dive = (
+            analysis_dir / "jp" / "07_final_report" / "earnings_deep_dive.pdf"
+            if wants_jp
+            else analysis_dir / "07_final_report" / "earnings_deep_dive.pdf"
+        )
+        report_pdf = analysis_dir / "07_final_report" / "report.pdf"
 
     # Validator-blocked dossiers are terminal until the underlying content issue
     # is fixed. Do not keep retrying PDF generation: that creates an infinite

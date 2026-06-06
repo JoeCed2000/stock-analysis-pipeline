@@ -1711,6 +1711,7 @@ def _add_earnings_deep_dive_if_transcript(
                         language="jp",
                         output_dir=jp_output_dir,
                         metrics=deep_dive_metrics,
+                        transcript_text=transcript_text,
                         transcript_url=transcript_url,
                     )
                 )
@@ -1765,12 +1766,14 @@ def _add_earnings_deep_dive_if_transcript(
                     jp_response = None
 
         # Render EN PDF (default location)
-        # ── Fetch raw yfinance info for V2.7 ValuationContextSection ──
-        yf_info = None
-        try:
-            yf_info = _yf_ticker_safe(ticker).info
-        except Exception as yf_exc:
-            logger.debug(f"[{ticker}] yfinance info fetch failed ({yf_exc}) — ValuationContext will be empty")
+        # ── Reuse already-collected raw yfinance info for V2.7 ValuationContextSection ──
+        # Do not call ``Ticker.info`` again here: this path runs after the expensive
+        # LLM/validation phase and an unbounded Yahoo fetch can leave the async job
+        # stuck in ``processing`` with dossier phase ``PDF_VALIDATING`` even though
+        # the markdown artifact was already produced.
+        yf_info = yf_data.get("_raw_info") if isinstance(yf_data, dict) else None
+        if not yf_info:
+            logger.debug(f"[{ticker}] raw yfinance info unavailable in pipeline snapshot — ValuationContext will use normalized fields only")
         en_pdf_path = os.path.join(en_output_dir, "07_final_report", "earnings_deep_dive.pdf")
         en_report_model = build_earnings_deep_dive_report(
             ticker=ticker,

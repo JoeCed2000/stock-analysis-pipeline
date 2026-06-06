@@ -99,6 +99,7 @@ def test_pipeline_adds_earnings_deep_dive_when_transcript_text_exists(tmp_path, 
     assert generated_requests[0].metrics.eps_actual == 1.25
     # Pipeline now always generates bilingual (EN + JP)
     assert [request.language for request in generated_requests] == ["en", "jp"]
+    assert generated_requests[1].transcript_text == transcript
     # EN path: output_dir/07_final_report/..., JP path: output_dir/jp/07_final_report/...
     en_pdf_path = str(Path(out_dir) / "07_final_report" / "earnings_deep_dive.pdf")
     jp_pdf_path = str(Path(out_dir) / "jp" / "07_final_report" / "earnings_deep_dive.pdf")

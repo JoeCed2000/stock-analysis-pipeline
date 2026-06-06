@@ -65,6 +65,15 @@ _YFINANCE_SEMICOLON_CHAIN = re.compile(r"(?:yfinance\s*;\s*){2,}yfinance\s*;?", 
 
 # 10. (CedLab 2026-06-04) Redundant "yfinance yfinance"
 _YFINANCE_DUP = re.compile(r"yfinance\s+yfinance", re.IGNORECASE)
+# 13. Client/audience personalization leakage. Prompts may ask for Nami-oriented
+# explanations, but generated client PDFs must stay anonymized/general.
+_AUDIENCE_NAMI_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"Nami[\-\u2011]?san", re.IGNORECASE), "the investor"),
+    (re.compile(r"Nami\s*さん向け"), "投資家向け"),
+    (re.compile(r"Nami\s*さんにとっては"), "投資家にとっては"),
+    (re.compile(r"Nami\s*さんにとって"), "投資家にとって"),
+    (re.compile(r"Nami\s*さん"), "投資家"),
+]
 _METRIC_LABELS = {
     "eps_actual": "reported EPS",
     "eps_estimate": "EPS estimate",
@@ -178,6 +187,10 @@ def post_process_markdown(markdown: str) -> str:
 
     # 12. (CedLab 2026-06-04) Null bytes from PDF/font rendering
     cleaned = cleaned.replace("\x00", "")
+
+    # 13. Client/audience personalization leakage.
+    for pattern, replacement in _AUDIENCE_NAMI_PATTERNS:
+        cleaned = pattern.sub(replacement, cleaned)
 
     return cleaned
 

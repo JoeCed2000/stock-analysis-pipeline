@@ -1,7 +1,7 @@
 """Orchestrator - runs analysis sequentially or in parallel."""
 import concurrent.futures
 import logging
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List
 
 from backend.pipeline import AnalysisResult, analyze_ticker_fast
 
@@ -87,6 +87,7 @@ def run_analysis_parallel(
     max_workers: int | None = None,
     language: str = "en",
     force_refresh: bool = False,
+    progress_callback: Callable[[str], None] | None = None,
 ) -> Dict[str, Any]:
     """Run multiple ticker analyses concurrently.
 
@@ -104,12 +105,15 @@ def run_analysis_parallel(
     worker_count = max_workers or min(len(tickers), 4)
     worker_count = max(1, min(worker_count, len(tickers)))
     logger.info(f"Analyzing {len(tickers)} tickers in parallel (workers={worker_count}, lang={language}, force_refresh={force_refresh})")
+    if progress_callback:
+        progress_callback(f"Analyzing {len(tickers)} ticker(s) with {worker_count} worker(s)…")
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
-        futures = {
-            executor.submit(analyze_ticker_fast, ticker, output_base, language, force_refresh): ticker
-            for ticker in tickers
-        }
+        futures = {}
+        for ticker in tickers:
+            if progress_callback:
+                progress_callback(f"Analyzing {ticker}: financial data, SEC filings, scoring…")
+            futures[executor.submit(analyze_ticker_fast, ticker, output_base, language, force_refresh)] = ticker
         pending = set(futures)
         warned: set[concurrent.futures.Future] = set()
         while pending:
@@ -128,11 +132,15 @@ def run_analysis_parallel(
                             PER_TICKER_TIMEOUT,
                         )
                         warned.add(future)
+                        if progress_callback:
+                            progress_callback(f"{ticker}: still running after {PER_TICKER_TIMEOUT}s…")
                     else:
                         logger.warning(
                             "%s: still running; analysis worker is alive and remains the source of truth",
                             ticker,
                         )
+                        if progress_callback:
+                            progress_callback(f"{ticker}: still running; waiting for completion…")
                 continue
 
             for future in done:
@@ -141,6 +149,8 @@ def run_analysis_parallel(
                     result = future.result()
                     results[ticker] = result
                     logger.info(f"{ticker}: {result.decision} | {_format_scoring_breakdown(result.scoring)}")
+                    if progress_callback:
+                        progress_callback(f"{ticker}: analysis complete")
                 except Exception as e:
                     logger.error(f"{ticker}: {e}")
                     errors[ticker] = str(e)

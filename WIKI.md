@@ -1,5 +1,30 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-06 — Async Deep-Dive PDF completion + JP PDF endpoint recette
+
+**Status:** Fixed the async deep-dive flow that left the browser stuck after PDF validation and hardened the cached PDF endpoint so a valid JP PDF is served instead of returning `202 generating` when a newer partial dossier exists.
+
+### Root causes fixed
+- `analyze_async()` was duplicating deep-dive generation after `run_analysis_parallel()` had already produced/validated the dossier, which could leave the browser stuck around the deep-dive step.
+- `_add_earnings_deep_dive_if_transcript()` fetched `Ticker.info` again after validation; an unbounded Yahoo call at this late stage could block completion even though the markdown/PDF work was already mostly done.
+- `/api/report/{ticker}/pdf?lang=jp` selected `matches[0]` blindly; if the newest dossier was partial, it returned `202 generating` even when an older completed dossier had a client-ready JP PDF.
+- JP post-processing missed audience-personalization variants like `Namiさん` / `Nami さん`, allowing a client PDF leak.
+
+### Changes
+- `backend/main.py`: async analysis now reports the deep-dive artifacts already produced by the pipeline instead of launching a second generation pass; PDF endpoint now selects the newest dossier that already contains the requested language PDF.
+- `backend/pipeline.py`: EN PDF rendering now reuses `yf_data['_raw_info']` instead of making a second `yfinance.info` call after validation.
+- `backend/earnings_deep_dive/markdown.py`: audience leakage sanitizer for `Nami-san`, `Namiさん`, and spaced `Nami さん` JP variants.
+- `tests/test_post_process_markdown.py`: regression test for audience-personalization cleanup.
+- `tests_e2e/test_sa_recette.py`: `BASE_URL` env override + cached JP deep-dive PDF endpoint recipe test.
+
+### Verification
+- Backend restarted on port `8780`; health: `200 OK`, version `v2.3-accepted-296-g885d41a`, commit `885d41a`.
+- JP PDF endpoint: `GET /stock-analysis/api/report/NVDA/pdf?lang=jp` → `200 OK`, `application/pdf`, `741366` bytes, `22` pages.
+- PDF text audit on served JP PDF: `source: yfinance=0`, `eps_actual=0`, `eps_estimate=0`, `revenue_yoy=0`, `Nami=0`, `DATA NOT AVAILABLE=0`.
+- Browser/Playwright recette targeted: `5 passed in 10.88s`.
+- Targeted markdown/PDF validator tests: `63 passed in 0.17s`.
+- Earlier targeted validator suite: `51 passed in 0.15s`.
+
 ## 2026-06-04 — Deep Dive + Company Overview PDF marker cleanup (12 fixes)
 
 **Status:** NVDA Deep Dive and Company Overview PDFs now clean — 0 internal markers. Pipeline hardened with 12 root-cause fixes across 12 commits.

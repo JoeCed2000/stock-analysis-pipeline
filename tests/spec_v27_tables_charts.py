@@ -121,3 +121,46 @@ class TestRules1415Integration:
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
         provider_wrns = _warnings_for(result, "eps_revenue_raw_provider_key")
         assert len(provider_wrns) >= 1
+
+
+class TestOperatingMetricsNotAvailableContradiction:
+    """RULE 16a: only the same metric row should trigger hard failure."""
+
+    def test_unrelated_prior_period_not_available_does_not_block(self):
+        from backend.earnings_deep_dive.schemas import FinancialMetrics
+
+        metrics = FinancialMetrics(
+            gross_margin=74.93,
+            operating_margin=65.60,
+            operating_income=53.54e9,
+        )
+        sections = {
+            "Operating Metrics": (
+                "| Metric | Actual | Prior Year | YoY | Source |\n"
+                "|---|---|---|---|---|\n"
+                "| Gross Margin | 74.93% | — | — | company metrics |\n"
+                "| Operating Income | $53.54B | — | — | SEC XBRL |\n"
+                "| Operating Margin | 65.60% | — | — | company metrics |\n\n"
+                "Operating margin for prior quarters is not available from supplied metrics."
+            )
+        }
+
+        result = validate_pre_render("NVDA", "FY2026 Q1", metrics, sections)
+        errs = _errors_for(result, "operating_metrics_not_available_contradiction")
+        assert len(errs) == 0
+
+    def test_same_available_metric_row_not_available_is_blocked(self):
+        from backend.earnings_deep_dive.schemas import FinancialMetrics
+
+        metrics = FinancialMetrics(gross_margin=74.93)
+        sections = {
+            "Operating Metrics": (
+                "| Metric | Actual | Prior Year | YoY | Source |\n"
+                "|---|---|---|---|---|\n"
+                "| Gross Margin | Not available | — | — | company metrics |"
+            )
+        }
+
+        result = validate_pre_render("NVDA", "FY2026 Q1", metrics, sections)
+        errs = _errors_for(result, "operating_metrics_not_available_contradiction")
+        assert len(errs) == 1
