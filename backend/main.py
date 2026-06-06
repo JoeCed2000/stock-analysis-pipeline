@@ -1948,6 +1948,29 @@ async def search_stats():
     return JSONResponse(_search_stats_payload())
 
 
+# ── Seeking Alpha Admin Probe ─────────────────────────────────────────
+@app.get("/api/admin/seeking-alpha/probe", dependencies=[Depends(_require_auth)])
+async def seeking_alpha_probe(ticker: str = "NVDA"):
+    """Test Seeking Alpha connectivity with stored cookies.
+    
+    Returns probe result: {ok, authenticated, reachable, ticker, url, reason, cookie_count, ...}
+    Protected under /api/admin/* — requires CED_CONTROL_KEY.
+    """
+    from backend.seeking_alpha_access import probe_access_async as _probe
+    result = await _probe(ticker=ticker)
+    return JSONResponse(_sanitize_json(result))
+
+
+@app.get("/api/admin/seeking-alpha/status", dependencies=[Depends(_require_auth)])
+async def seeking_alpha_status():
+    """Get Seeking Alpha cookie storage status (no network probe).
+    
+    Returns: {configured, cookie_count, cookie_diagnostics, updated_at, ...}
+    """
+    from backend.seeking_alpha_access import get_access_status as _status
+    return JSONResponse(_sanitize_json(_status()))
+
+
 # ── Nami Feedback System ──────────────────────────────────────────────
 @app.post("/api/feedback")
 async def submit_feedback(
