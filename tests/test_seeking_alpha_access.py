@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.main import app
+from backend.seeking_alpha_access import _is_earnings_call_transcript_link
 
 TEST_KEY = "test-seeking-alpha-key"
 
@@ -177,6 +178,20 @@ class TestSeekingAlphaAccessAdmin:
         assert payload["status_code"] == 200
         assert payload["ticker"] == "NVDA"
         assert payload["url"].endswith("/symbol/NVDA/earnings/transcripts")
+
+    def test_probe_link_filter_rejects_conference_and_accepts_earnings_call(self):
+        assert not _is_earnings_call_transcript_link(
+            "NVIDIA Corporation (NVDA) Presents at Bank of America 2026 Global Technology Conference Transcript",
+            "/article/4912081-nvidia-corporation-nvda-presents-at-bank-of-america-2026-global-technology-conference",
+        )
+        assert not _is_earnings_call_transcript_link(
+            "NVIDIA Corporation 2027 Q1 - Results - Earnings Call Presentation",
+            "/article/4907285-nvidia-corporation-2027-q1-results-earnings-call-presentation",
+        )
+        assert _is_earnings_call_transcript_link(
+            "NVIDIA Corporation (NVDA) Q1 2027 Earnings Call Transcript",
+            "/article/4907259-nvidia-corporation-nvda-q1-2027-earnings-call-transcript",
+        )
 
 
 class TestCompanyOverviewDownload:

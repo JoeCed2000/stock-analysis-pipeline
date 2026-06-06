@@ -49,6 +49,22 @@ AUTH_COOKIE_NAMES = {
 }
 ANTIBOT_COOKIE_NAMES = {"pxcts", "_px3", "_pxvid", "cf_clearance"}
 
+
+def _is_earnings_call_transcript_link(label: str, href: str) -> bool:
+    """Return True only for actual earnings-call transcript articles.
+
+    Seeking Alpha's `/earnings/transcripts` listing mixes conference transcripts,
+    presentations, comment anchors, and real earnings calls. A generic
+    `/article/` link is not sufficient proof that the cookie probe can access the
+    earnings transcript flow.
+    """
+    text = f"{label or ''} {href or ''}".lower()
+    if "/article/" not in text:
+        return False
+    if "#scroll_comments" in text or "presentation" in text or "conference" in text:
+        return False
+    return "earnings call transcript" in text or re.search(r"\bq[1-4]\b.*earnings.*call", text) is not None
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -358,17 +374,24 @@ async def probe_access_async(ticker: str | None = None) -> dict[str, Any]:
                         "reason": "blocked_by_perimeterx", "text_length": 0,
                     }
 
-                # Find first article link
+                # Find the first real earnings-call transcript link. The listing
+                # also contains conference transcripts, presentations, and
+                # comment anchors; those must not make the probe green.
                 links = page.query_selector_all('a[href*="/article/"]')
                 article_url = ""
+                article_title = ""
                 text_length = 0
-                if links:
-                    first_href = links[0].get_attribute("href")
-                    if first_href:
-                        if first_href.startswith("/"):
-                            article_url = "https://seekingalpha.com" + first_href
-                        else:
-                            article_url = first_href
+                for link in links:
+                    href = link.get_attribute("href") or ""
+                    label = (link.inner_text() or "").strip()
+                    if not _is_earnings_call_transcript_link(label, href):
+                        continue
+                    article_title = label
+                    if href.startswith("/"):
+                        article_url = "https://seekingalpha.com" + href
+                    else:
+                        article_url = href
+                    break
 
                 if article_url:
                     page.goto(article_url, timeout=30000, wait_until="domcontentloaded")
@@ -383,7 +406,8 @@ async def probe_access_async(ticker: str | None = None) -> dict[str, Any]:
                     "authenticated": authenticated, "reachable": True, "blocked": False,
                     "url": article_url or listing_url,
                     "status_code": 200 if authenticated else 200,
-                    "reason": "ok" if authenticated else "no_article_link_found",
+                    "reason": "ok" if authenticated else "no_earnings_call_transcript_link_found",
+                    "article_title": article_title,
                     "text_length": text_length,
                 }
 

@@ -26,7 +26,7 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
     # Playwright (real browser) bypasses PerimeterX where httpx gets 403.
     # Falls back to StockAnalysis.com if cookies are missing/expired.
     try:
-        from backend.seeking_alpha_access import _read_store
+        from backend.seeking_alpha_access import _is_earnings_call_transcript_link, _read_store
         import re as _re
 
         store = _read_store()
@@ -89,14 +89,19 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
                     logger.warning(f"Seeking Alpha blocked by PerimeterX for {ticker} — falling back")
                     browser.close()
                 else:
-                    # Find transcript links
+                    # Find the first real earnings-call transcript link. The listing
+                    # also includes conference transcripts, presentations, and
+                    # comment anchors that are not suitable transcript sources.
                     links = page.query_selector_all('a[href*="/article/"]')
-                    if links:
-                        first_href = links[0].get_attribute("href")
-                        if first_href and first_href.startswith("/"):
-                            first_url = "https://seekingalpha.com" + first_href
+                    for link in links:
+                        href = link.get_attribute("href") or ""
+                        label = (link.inner_text() or "").strip()
+                        if not _is_earnings_call_transcript_link(label, href):
+                            continue
+                        if href.startswith("/"):
+                            first_url = "https://seekingalpha.com" + href
                         else:
-                            first_url = first_href
+                            first_url = href
 
                         if first_url:
                             page.goto(first_url, timeout=30000, wait_until="domcontentloaded")
@@ -110,12 +115,13 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
                                 results.append({
                                     "source": "Seeking Alpha",
                                     "type": "earnings_transcript",
-                                    "title": f"{ticker} Earnings Call",
+                                    "title": label or f"{ticker} Earnings Call",
                                     "url": first_url or listing_url,
                                     "text": raw,
                                     "text_length": len(raw),
                                 })
                                 logger.info(f"Seeking Alpha (Playwright+cookie): {len(raw)} chars for {ticker}")
+                                break
                     browser.close()
     except Exception as e:
         logger.warning(f"Seeking Alpha (Playwright) unavailable for {ticker}: {e}")
