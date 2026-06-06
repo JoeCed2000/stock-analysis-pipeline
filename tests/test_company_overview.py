@@ -23,6 +23,7 @@ from backend.company_overview import (
     _build_yahoo_info_dict,
     _resolve_key_financials,
     _apply_key_financials_provenance,
+    _parse_llm_response,
     _synthesize_overview_en,
     _translate_overview_to_jp,
     get_company_overview,
@@ -246,17 +247,35 @@ class TestSynthesizeOverviewEn:
         assert kwargs["model"] == "gpt-5.3-codex-spark"
         assert kwargs["reasoning_effort"] == "medium"
 
+    def test_parse_llm_response_accepts_first_json_with_trailing_object(self):
+        first = json.dumps({
+            "company_profile": {"name": "SparkCo"},
+            "business_description": "Detailed investor overview.",
+            "key_financials": {"market_cap": 1000},
+            "recent_developments": [],
+            "competitive_position": "Strong niche position.",
+        })
+        second = json.dumps({"debug": "duplicate object that Spark may append"})
+        result = _parse_llm_response(first + "\n" + second, "SPRK", {})
+        assert result is not None
+        assert result["company_profile"]["name"] == "SparkCo"
+        assert "debug" not in result
+
+    @patch("backend.kimi_provider._deepseek_chat")
     @patch("backend.codex_provider._codex_chat")
-    def test_llm_failure_fallback(self, mock_codex):
+    def test_llm_failure_fallback(self, mock_codex, mock_deepseek):
         mock_codex.return_value = None
+        mock_deepseek.return_value = None
         yf_info = {"ticker": "AAPL", "name": "Apple Inc.", "sector": "Technology"}
         result = _synthesize_overview_en("AAPL", yf_info, [])
         assert result["company_profile"]["name"] == "Apple Inc."
         assert result["company_profile"]["sector"] == "Technology"
 
+    @patch("backend.kimi_provider._deepseek_chat")
     @patch("backend.codex_provider._codex_chat")
-    def test_llm_invalid_json_fallback(self, mock_codex):
+    def test_llm_invalid_json_fallback(self, mock_codex, mock_deepseek):
         mock_codex.return_value = "Sorry, I cannot do that right now."
+        mock_deepseek.return_value = None
         yf_info = {"ticker": "MSFT", "name": "Microsoft Corp."}
         result = _synthesize_overview_en("MSFT", yf_info, [])
         assert result["company_profile"]["name"] == "Microsoft Corp."

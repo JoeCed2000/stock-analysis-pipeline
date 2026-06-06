@@ -890,9 +890,11 @@ def _wrap_jp_fallback(en_overview: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _parse_llm_response(response: str, ticker: str, yf_info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Parse LLM JSON response, stripping markdown fences if present.
+    """Parse LLM JSON response, stripping markdown fences and trailing chatter.
 
-    Returns None if parsing fails (caller should use fallback).
+    Returns None if parsing fails (caller should use fallback). Spark sometimes
+    returns a valid JSON object followed by a second object or commentary; decode
+    the first valid object instead of rejecting the whole response as Extra data.
     """
     text = response.strip()
     for fence in ("```json", "```"):
@@ -901,11 +903,11 @@ def _parse_llm_response(response: str, ticker: str, yf_info: Dict[str, Any]) -> 
         if text.endswith("```"):
             text = text[:-3].strip()
 
-    # Extract JSON object bounds
+    # Start at the first JSON object. Do NOT trim to the last brace first: when
+    # Codex emits two JSON objects, json.loads(first...last) fails with Extra data.
     start = text.find("{")
-    end = text.rfind("}") + 1
-    if start >= 0 and end > start:
-        text = text[start:end]
+    if start >= 0:
+        text = text[start:]
 
     def _ensure_str_list(value: Any) -> list[str]:
         if value is None:
@@ -929,7 +931,10 @@ def _parse_llm_response(response: str, ticker: str, yf_info: Dict[str, Any]) -> 
         return [str(value)]
 
     try:
-        data = json.loads(text)
+        decoder = json.JSONDecoder()
+        data, _ = decoder.raw_decode(text)
+        if not isinstance(data, dict):
+            raise ValueError("LLM JSON root is not an object")
         data.setdefault("company_profile", {})
         data.setdefault("business_description", "")
         data.setdefault("revenue_model", "")

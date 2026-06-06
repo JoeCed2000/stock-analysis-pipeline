@@ -46,22 +46,27 @@ def _codex_chat(
     model: Optional[str] = "gpt-5.5",
     reasoning_effort: str = "low",
 ) -> Optional[str]:
-    """Send a prompt to Codex CLI via PTY and return the response text.
-    
-    Retries up to CODEX_MAX_RETRIES times with exponential backoff on timeout/failure.
-    Serializes subprocess launches via a global lock to avoid Cloudflare rate-limiting
-    when EN and JP deep-dive generations run in parallel.
-    
+    """Send a prompt to Codex CLI and return the response text.
+
+    Uses stdin + ``-o`` instead of passing the full prompt as an argv value. The
+    previous PTY path could exit rc=0 with an empty output file on Spark medium
+    prompts; stdin is the Codex CLI's documented non-interactive path and avoids
+    the zero-byte output failure.
+
     Args:
         model: Optional model override (e.g. 'gpt-5.5' for highest quality).
                When None, uses the default Codex model.
-        reasoning_effort: Codex reasoning effort (low|medium|high). Company Overview
+        reasoning_effort: Codex reasoning effort (minimal|low|medium|high). Company Overview
                uses medium for the Spark model; legacy calls keep low.
     """
     if not os.path.exists(CODEX_BIN):
         logger.warning("Codex CLI not found at %s", CODEX_BIN)
         return None
 
+    safe_effort = reasoning_effort if reasoning_effort in {"minimal", "low", "medium", "high"} else "low"
+    full_prompt = f"{system}\n\n{prompt}\n\nReturn ONLY the requested output. No explanations."
+    env = os.environ.copy()
+    env["HOME"] = _REAL_HOME
     last_error = None
 
     for attempt in range(CODEX_MAX_RETRIES + 1):
@@ -74,88 +79,66 @@ def _codex_chat(
 
         fd, output_file = tempfile.mkstemp(suffix=".txt")
         os.close(fd)
-        full_prompt = f"{system}\n\n{prompt}\n\nReturn ONLY the requested output. No explanations."
-
-        master_fd = None
         try:
-            # Serialize launches to avoid Cloudflare rate-limit on parallel EN+JP
-            with _codex_launch_lock:
-                master_fd, slave_fd = os.openpty()
-                
-                args = [CODEX_BIN, "exec",
-                        "--ephemeral",
-                        "--skip-git-repo-check",
-                        "--json"]
-                if model:
-                    args.extend(["-m", model])
-                safe_effort = reasoning_effort if reasoning_effort in {"minimal", "low", "medium", "high"} else "low"
-                args.extend(["-c", f"model_reasoning_effort={safe_effort}",
-                             "-o", output_file,
-                             full_prompt])
-                
-                # Build environment with real HOME so Codex finds auth.json
-                env = os.environ.copy()
-                env["HOME"] = _REAL_HOME
+            args = [
+                CODEX_BIN,
+                "exec",
+                "--ephemeral",
+                "--skip-git-repo-check",
+                "--json",
+            ]
+            if model:
+                args.extend(["-m", model])
+            args.extend([
+                "-c", f"model_reasoning_effort={safe_effort}",
+                "-o", output_file,
+                "-",
+            ])
 
-                proc = subprocess.Popen(
-                    args,
-                    stdin=slave_fd,
-                    stdout=slave_fd,
-                    stderr=slave_fd,
-                    close_fds=True,
-                    env=env,
-                )
-                
-                os.close(slave_fd)
-            
-            # Wait with timeout — check output file for early progress signal
             timeout = CODEX_TIMEOUT_FIRST if attempt == 0 else CODEX_TIMEOUT
-            start = time.time()
-            while proc.poll() is None:
-                elapsed = time.time() - start
-                # If output file is still empty after 120s, Spark is truly hung (not slow)
-                output_size = os.path.exists(output_file) and os.path.getsize(output_file) or 0
-                if elapsed > CODEX_TIMEOUT_FIRST and output_size == 0:
-                    proc.kill()
-                    logger.warning("Codex CLI hung — no output after %ds (attempt %d/%d)",
-                                   int(elapsed), attempt + 1, CODEX_MAX_RETRIES + 1)
-                    os.close(master_fd)
-                    last_error = "hung"
-                    break
-                if elapsed > timeout:
-                    proc.kill()
-                    logger.warning("Codex CLI timeout after %ds (attempt %d/%d, output=%d bytes)",
-                                   int(elapsed), attempt + 1, CODEX_MAX_RETRIES + 1, output_size)
-                    os.close(master_fd)
-                    last_error = "timeout"
-                    break  # will retry
-                time.sleep(0.5)
-            else:
-                # Process exited normally
-                os.close(master_fd)
-                
-                # Read output file
-                if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
-                    with open(output_file) as f:
-                        response = f.read().strip()
-                    if response:
-                        if attempt > 0:
-                            logger.info("Codex succeeded on retry %d", attempt)
-                        return response
-                
-                logger.warning("Codex: no output (rc=%d, attempt %d)", proc.returncode, attempt + 1)
-                last_error = f"no_output(rc={proc.returncode})"
+            with _codex_launch_lock:
+                proc = subprocess.run(
+                    args,
+                    input=full_prompt,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=env,
+                    timeout=timeout,
+                )
 
+            if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
+                with open(output_file) as f:
+                    response = f.read().strip()
+                if response:
+                    if attempt > 0:
+                        logger.info("Codex succeeded on retry %d", attempt)
+                    return response
+
+            stdout_tail = (proc.stdout or "")[-500:]
+            stderr_tail = (proc.stderr or "")[-500:]
+            logger.warning(
+                "Codex: no output (rc=%d, attempt %d, stdout_tail=%r, stderr_tail=%r)",
+                proc.returncode,
+                attempt + 1,
+                stdout_tail,
+                stderr_tail,
+            )
+            last_error = f"no_output(rc={proc.returncode})"
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "Codex CLI timeout after %ds (attempt %d/%d, model=%s, effort=%s)",
+                timeout,
+                attempt + 1,
+                CODEX_MAX_RETRIES + 1,
+                model,
+                safe_effort,
+            )
+            last_error = "timeout"
         except FileNotFoundError:
-            if master_fd is not None:
-                try: os.close(master_fd)
-                except OSError: pass
             logger.warning("Codex binary not found at %s", CODEX_BIN)
             return None
         except Exception as e:
-            if master_fd is not None:
-                try: os.close(master_fd)
-                except OSError: pass
             logger.warning("Codex CLI exception (attempt %d): %s", attempt + 1, e)
             last_error = str(e)
         finally:
@@ -164,8 +147,7 @@ def _codex_chat(
             except OSError:
                 pass
 
-    logger.error("Codex CLI: all %d attempts failed. Last error: %s",
-                 CODEX_MAX_RETRIES + 1, last_error)
+    logger.error("Codex CLI: all %d attempts failed. Last error: %s", CODEX_MAX_RETRIES + 1, last_error)
     return None
 
 
