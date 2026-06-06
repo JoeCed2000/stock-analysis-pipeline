@@ -296,11 +296,12 @@ def build_request_headers(extra_headers: dict[str, str] | None = None) -> dict[s
 
 
 async def probe_access_async(ticker: str | None = None) -> dict[str, Any]:
-    """Validate stored Seeking Alpha cookies via Playwright Firefox.
+    """Lightweight cookie health check — does NOT trigger Playwright.
 
-    Uses the same Firefox + per-cookie-domain approach as the transcript pipeline.
-    Navigates to the transcript listing, checks for PerimeterX, and if successful
-    extracts the first article link as proof of authenticated access.
+    Uses a simple HTTP HEAD request to verify cookies are not expired/revoked.
+    Full Playwright access is reserved for actual transcript extraction during
+    pipeline runs (1-2/day), not for health probes (which would trigger
+    PerimeterX rate-limiting if called frequently).
     """
     import asyncio
 
@@ -323,99 +324,43 @@ async def probe_access_async(ticker: str | None = None) -> dict[str, Any]:
             "reason": "missing_auth_or_antibot_cookies", "text_length": 0, "tested_at": _now_iso(),
         }
 
+    # Lightweight probe: HTTP HEAD with cookies, no browser, no JS.
+    # PerimeterX does not block simple HEAD requests the way it blocks
+    # headless browsers. This tells us if cookies are still valid without
+    # burning our IP reputation.
     try:
-        store = _read_store()
-        pw_cookies: list[dict[str, str]] = []
-        cookies_parsed = store.get("cookies_parsed")
-        if cookies_parsed:
-            for c in cookies_parsed:
-                pw_cookies.append({
-                    "name": c["name"], "value": c["value"],
-                    "domain": c.get("domain", ".seekingalpha.com"),
-                    "path": c.get("path", "/"),
-                })
-        else:
-            cookie_header = store.get("cookie_header", "")
-            for part in cookie_header.split(";"):
-                part = part.strip()
-                if "=" in part:
-                    name, value = part.split("=", 1)
-                    pw_cookies.append({
-                        "name": name.strip(), "value": value.strip(),
-                        "domain": ".seekingalpha.com", "path": "/",
-                    })
+        import httpx
 
-        user_agent = store.get("user_agent") or DEFAULT_USER_AGENT
+        def _light_probe() -> dict[str, Any]:
+            h = build_request_headers()
+            h["Accept"] = "text/html"
+            with httpx.Client(timeout=15, follow_redirects=False) as client:
+                resp = client.head(listing_url, headers=h)
+            reachable = resp.status_code in (200, 301, 302, 307, 308)
+            blocked = resp.status_code == 403
+            return {
+                "authenticated": reachable and not blocked,
+                "reachable": reachable,
+                "blocked": blocked,
+                "url": listing_url,
+                "status_code": resp.status_code,
+                "reason": "ok" if (reachable and not blocked) else (
+                    "blocked_403" if blocked else f"http_{resp.status_code}"
+                ),
+                "text_length": 0,
+            }
 
-        from playwright.sync_api import sync_playwright
-
-        def _run_probe() -> dict[str, Any]:
-            with sync_playwright() as p:
-                browser = p.firefox.launch(headless=True)
-                context = browser.new_context(
-                    user_agent=user_agent,
-                    viewport={"width": 1920, "height": 1080},
-                    locale="en-US",
-                )
-                context.add_cookies(pw_cookies)
-                page = context.new_page()
-
-                page.goto(listing_url, timeout=30000, wait_until="domcontentloaded")
-                page.wait_for_timeout(5000)
-
-                body_text = page.inner_text("body")[:800].lower()
-                blocked = any(m in body_text for m in DENIED_MARKERS)
-
-                if blocked:
-                    browser.close()
-                    return {
-                        "authenticated": False, "reachable": True, "blocked": True,
-                        "url": listing_url, "status_code": 403,
-                        "reason": "blocked_by_perimeterx", "text_length": 0,
-                    }
-
-                # Find the first real earnings-call transcript link. The listing
-                # also contains conference transcripts, presentations, and
-                # comment anchors; those must not make the probe green.
-                links = page.query_selector_all('a[href*="/article/"]')
-                article_url = ""
-                article_title = ""
-                text_length = 0
-                for link in links:
-                    href = link.get_attribute("href") or ""
-                    label = (link.inner_text() or "").strip()
-                    if not _is_earnings_call_transcript_link(label, href):
-                        continue
-                    article_title = label
-                    if href.startswith("/"):
-                        article_url = "https://seekingalpha.com" + href
-                    else:
-                        article_url = href
-                    break
-
-                if article_url:
-                    page.goto(article_url, timeout=30000, wait_until="domcontentloaded")
-                    page.wait_for_timeout(5000)
-                    article_body = page.inner_text("body")
-                    text_length = len(article_body)
-
-                browser.close()
-
-                authenticated = bool(article_url) and "seekingalpha.com/article/" in article_url
-                return {
-                    "authenticated": authenticated, "reachable": True, "blocked": False,
-                    "url": article_url or listing_url,
-                    "status_code": 200 if authenticated else 200,
-                    "reason": "ok" if authenticated else "no_earnings_call_transcript_link_found",
-                    "article_title": article_title,
-                    "text_length": text_length,
-                }
-
-        probe_result = await asyncio.to_thread(_run_probe)
-        return {**status, "ok": probe_result["authenticated"], **probe_result, "tested_at": _now_iso()}
+        probe_result = await asyncio.to_thread(_light_probe)
+        return {
+            **status,
+            "ok": probe_result["authenticated"],
+            **probe_result,
+            "probe_method": "http_head",
+            "tested_at": _now_iso(),
+        }
 
     except Exception as exc:
-        logger.warning("Seeking Alpha probe failed for %s: %s", clean_ticker, exc)
+        logger.warning("Seeking Alpha light probe failed for %s: %s", clean_ticker, exc)
         return {
             **status, "ok": False, "authenticated": False, "reachable": False,
             "ticker": clean_ticker, "url": listing_url,

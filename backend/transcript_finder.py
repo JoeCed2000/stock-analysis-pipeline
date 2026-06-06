@@ -126,62 +126,58 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
     except Exception as e:
         logger.warning(f"Seeking Alpha (Playwright) unavailable for {ticker}: {e}")
 
-    # 1. Seeking Alpha direct article discovery — prefer true SA article URLs before
-    # StockAnalysis. The SA listing page is often blocked, but the concrete article
-    # URL is readable with the stored cookies.
-    if not _is_usable(primary_text):
-        try:
-            from backend.transcript_web_search import search_transcript_pages
+    # 1. Seeking Alpha direct article discovery — always try alongside Playwright.
+    # Both SA paths can find different articles; _best_transcript_source picks the
+    # longest usable text regardless of source priority.
+    try:
+        from backend.transcript_web_search import search_transcript_pages
 
-            web_results = search_transcript_pages(ticker, company=company)
-            for item in web_results:
-                text = item.get("text", "")
-                url = item.get("url", "")
-                if "seekingalpha.com/article/" not in url.lower() or not _is_usable(text):
-                    continue
-                primary_text = text
-                results.append(item)
-                logger.info(f"Seeking Alpha direct article transcript: {len(primary_text)} chars for {ticker}")
-                break
-        except Exception as e:
-            logger.warning(f"Seeking Alpha direct article discovery unavailable for {ticker}: {e}")
-    else:
-        logger.info(f"Skipping SA direct article discovery: Playwright already provided {len(primary_text)} chars")
+        web_results = search_transcript_pages(ticker, company=company)
+        for item in web_results:
+            text = item.get("text", "")
+            url = item.get("url", "")
+            if "seekingalpha.com/article/" not in url.lower() or not _is_usable(text):
+                continue
+            results.append(item)
+            logger.info(f"Seeking Alpha direct article transcript: {len(text)} chars for {ticker}")
+            break
+    except Exception as e:
+        logger.warning(f"Seeking Alpha direct article discovery unavailable for {ticker}: {e}")
 
 
 
     # 2. StockAnalysis.com — FREE full-text transcripts, no auth needed.
-    if not _is_usable(primary_text):
-        try:
-            from backend.stockanalysis import search_transcripts as sa_search, fetch_transcript as sa_fetch
-            sa_results = sa_search(ticker, limit=3)
-            for sa_result in sa_results:
-                sa_url = sa_result.get("url", "")
-                if not sa_url:
-                    continue
-                sa_data = sa_fetch(sa_url)
-                sa_content = sa_data.get("content", "") if sa_data else ""
-                if not _is_usable(sa_content):
-                    continue
-                source_name = str(sa_data.get("source") or sa_result.get("source") or "StockAnalysis").strip()
-                source_url = str(sa_data.get("url") or sa_url).strip()
-                primary_text = sa_content
-                results.append({
-                    "source": source_name,
-                    "type": "earnings_transcript",
-                    "title": sa_data.get("title") or sa_result.get("title", ""),
-                    "url": source_url,
-                    "text": sa_content,
-                    "text_length": len(sa_content),
-                    "date": sa_data.get("date", ""),
-                    "id": sa_result.get("id", ""),
-                    "stockanalysis_url": sa_data.get("stockanalysis_url", sa_url),
-                    "retrieval_provider": sa_data.get("retrieval_provider", "StockAnalysis"),
-                })
-                logger.info(f"StockAnalysis.com transcript: {len(sa_content)} chars for {ticker}")
-                break
-        except Exception as e:
-            logger.warning(f"StockAnalysis.com unavailable for {ticker}: {e}")
+    # Always try — _best_transcript_source will pick the longest usable text.
+    try:
+        from backend.stockanalysis import search_transcripts as sa_search, fetch_transcript as sa_fetch
+        sa_results = sa_search(ticker, limit=3)
+        for sa_result in sa_results:
+            sa_url = sa_result.get("url", "")
+            if not sa_url:
+                continue
+            sa_data = sa_fetch(sa_url)
+            sa_content = sa_data.get("content", "") if sa_data else ""
+            if not _is_usable(sa_content):
+                continue
+            source_name = str(sa_data.get("source") or sa_result.get("source") or "StockAnalysis").strip()
+            source_url = str(sa_data.get("url") or sa_url).strip()
+            primary_text = sa_content
+            results.append({
+                "source": source_name,
+                "type": "earnings_transcript",
+                "title": sa_data.get("title") or sa_result.get("title", ""),
+                "url": source_url,
+                "text": sa_content,
+                "text_length": len(sa_content),
+                "date": sa_data.get("date", ""),
+                "id": sa_result.get("id", ""),
+                "stockanalysis_url": sa_data.get("stockanalysis_url", sa_url),
+                "retrieval_provider": sa_data.get("retrieval_provider", "StockAnalysis"),
+            })
+            logger.info(f"StockAnalysis.com transcript: {len(sa_content)} chars for {ticker}")
+            break
+    except Exception as e:
+        logger.warning(f"StockAnalysis.com unavailable for {ticker}: {e}")
 
     # 2. Alpha Vantage API — fallback (structured JSON, 25 req/day free).
     if not _is_usable(primary_text):

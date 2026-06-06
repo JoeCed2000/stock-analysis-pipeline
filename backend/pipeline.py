@@ -79,6 +79,24 @@ def _best_transcript_source(sources: List[Dict[str, Any]]) -> tuple[str, Dict[st
             usable_candidates.append((_priority(source), len(cleaned), cleaned, source))
 
     if usable_candidates:
+        # Prefer the longest usable transcript.
+        # SA often returns truncated MPW previews (~4-8K chars) while
+        # StockAnalysis provides full transcripts (30-50K chars).
+        # Only prefer SA on priority tie when lengths are comparable.
+        sa_candidates = [(p, l, t, s) for (p, l, t, s) in usable_candidates if p >= 400]
+        sa_longest = max(sa_candidates, key=lambda x: x[1]) if sa_candidates else None
+        overall_longest = max(usable_candidates, key=lambda x: x[1])
+
+        # If SA content is clearly truncated (<10K) and another source has
+        # significantly more content (2x+), prefer the longer source.
+        if sa_longest and overall_longest[0] < 400:
+            if sa_longest[1] < 10000 and overall_longest[1] > sa_longest[1] * 2:
+                return overall_longest[2], overall_longest[3]
+
+        # Otherwise, prefer the longest overall (handles priority tie-break)
+        if overall_longest[1] > sa_longest[1] * 1.2 if sa_longest else True:
+            return overall_longest[2], overall_longest[3]
+
         best = max(usable_candidates, key=lambda item: (item[0], item[1]))
         return best[2], best[3]
 
