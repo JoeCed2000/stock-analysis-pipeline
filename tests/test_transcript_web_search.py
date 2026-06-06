@@ -28,6 +28,21 @@ def test_brave_discovers_concrete_seeking_alpha_article_and_never_listing(monkey
     assert all("/symbol/" not in item["url"] for item in results)
 
 
+def test_extract_sa_escaped_transcript_text_from_ssr_payload():
+    raw = r'''
+    <script>window.SSR_DATA={"body":"\u003Cdiv class=\"transcript-presentation-section\"\u003E
+    \u003Cp class=\"transcript-presentation-section-title\"\u003E\u003Cstrong\u003EOperator\u003C\u002Fstrong\u003E\u003C\u002Fp\u003E
+    \u003Cp\u003EGood afternoon. Welcome to NVIDIA NVDA earnings call transcript. Revenue and EPS were discussed.\u003C\u002Fp\u003E
+    \u003C\u002Fdiv\u003E"}</script>
+    '''
+
+    text = tws._extract_sa_escaped_transcript_text(raw)
+
+    assert "Operator" in text
+    assert "NVIDIA NVDA earnings call transcript" in text
+    assert "Revenue and EPS" in text
+
+
 def test_search_pages_fetches_seeking_alpha_candidates_with_cookie_headers(monkeypatch, tmp_path):
     monkeypatch.setattr(tws, "SA_ARTICLE_CACHE_PATH", tmp_path / "sa_article_cache.json")
     monkeypatch.setattr(tws, "_search_sa_direct", lambda ticker, company=None, limit=5: [])

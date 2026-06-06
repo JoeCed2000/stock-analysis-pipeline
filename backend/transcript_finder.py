@@ -32,18 +32,29 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
         store = _read_store()
         cookie_header = store.get("cookie_header", "")
         if cookie_header:
-            # Parse cookies into Playwright format: [{name, value, domain, path}]
+            # Prefer cookies_parsed (with correct per-cookie domains from Netscape export).
+            # Fall back to parsing cookie_header with hardcoded domain for backward compat.
             pw_cookies = []
-            for part in cookie_header.split(";"):
-                part = part.strip()
-                if "=" in part:
-                    name, value = part.split("=", 1)
+            cookies_parsed = store.get("cookies_parsed")
+            if cookies_parsed:
+                for c in cookies_parsed:
                     pw_cookies.append({
-                        "name": name.strip(),
-                        "value": value.strip(),
-                        "domain": ".seekingalpha.com",
-                        "path": "/",
+                        "name": c["name"],
+                        "value": c["value"],
+                        "domain": c.get("domain", ".seekingalpha.com"),
+                        "path": c.get("path", "/"),
                     })
+            else:
+                for part in cookie_header.split(";"):
+                    part = part.strip()
+                    if "=" in part:
+                        name, value = part.split("=", 1)
+                        pw_cookies.append({
+                            "name": name.strip(),
+                            "value": value.strip(),
+                            "domain": ".seekingalpha.com",
+                            "path": "/",
+                        })
 
             import asyncio as _asyncio
             try:
@@ -55,14 +66,25 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
                 pass  # No running loop — sync Playwright will work fine
             from playwright.sync_api import sync_playwright
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                context_kwargs = {}
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=['--disable-blink-features=AutomationControlled', '--no-sandbox'],
+                )
+                context_kwargs: dict = {
+                    "viewport": {"width": 1920, "height": 1080},
+                    "locale": "en-US",
+                }
                 user_agent = store.get("user_agent")
                 if user_agent:
                     context_kwargs["user_agent"] = user_agent
                 context = browser.new_context(**context_kwargs)
                 context.add_cookies(pw_cookies)
                 page = context.new_page()
+                # Anti-detection: hide WebDriver to avoid SA bot-blocking
+                page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                    Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3,4,5]});
+                """)
 
                 # Navigate to transcript listing
                 listing_url = f"https://seekingalpha.com/symbol/{ticker}/earnings/transcripts"
@@ -84,9 +106,9 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
                             first_url = first_href
 
                         if first_url:
-                            page.goto(first_url, timeout=20000, wait_until="domcontentloaded")
+                            page.goto(first_url, timeout=30000, wait_until="domcontentloaded")
                             # Extract all visible text — the transcript body
-                            page.wait_for_timeout(2000)  # let JS render
+                            page.wait_for_timeout(8000)  # let JS render and bypass MPW
                             raw = page.inner_text("body")
                             # Remove navigation/header noise
                             raw = _re.sub(r'\n{3,}', '\n\n', raw)

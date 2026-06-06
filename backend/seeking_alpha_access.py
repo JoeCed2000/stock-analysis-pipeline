@@ -191,8 +191,64 @@ def save_access(cookie_header: str, user_agent: str | None = None) -> dict[str, 
         "created_at": existing.get("created_at") or _now_iso(),
         "updated_at": _now_iso(),
     }
+    # Preserve cookies_parsed if already present (from Netscape import)
+    if existing.get("cookies_parsed"):
+        payload["cookies_parsed"] = existing["cookies_parsed"]
     _write_store(payload)
     logger.info("Seeking Alpha cookies saved server-side (%s cookies)", _cookie_count(normalized))
+    return get_access_status()
+
+
+def import_netscape_cookies(file_path: str | Path) -> dict[str, Any]:
+    """Import cookies from a Netscape-format cookie file (browser export).
+    
+    Parses the tab-separated format preserving per-cookie domain/path,
+    which is critical for Seeking Alpha PerimeterX bypass via Playwright.
+    """
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Cookie file not found: {file_path}")
+    
+    lines = path.read_text().splitlines()
+    cookies_parsed: list[dict[str, str]] = []
+    cookie_parts: list[str] = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        parts = line.split('\t')
+        if len(parts) >= 2:
+            name = parts[0].strip()
+            value = parts[1].strip()
+            if name and value:
+                domain = parts[2].strip() if len(parts) > 2 else "seekingalpha.com"
+                path = parts[3].strip() if len(parts) > 3 else "/"
+                cookies_parsed.append({
+                    "name": name,
+                    "value": value,
+                    "domain": domain,
+                    "path": path,
+                })
+                cookie_parts.append(f"{name}={value}")
+    
+    if not cookie_parts:
+        raise ValueError("No valid cookies found in Netscape file")
+    
+    cookie_header = "; ".join(cookie_parts)
+    existing = _read_store()
+    payload = {
+        "cookie_header": cookie_header,
+        "cookies_parsed": cookies_parsed,
+        "user_agent": existing.get("user_agent") or DEFAULT_USER_AGENT,
+        "created_at": existing.get("created_at") or _now_iso(),
+        "updated_at": _now_iso(),
+    }
+    _write_store(payload)
+    logger.info(
+        "Imported %d Seeking Alpha cookies from Netscape file (%d with domain info)",
+        len(cookies_parsed), sum(1 for c in cookies_parsed if c.get("domain")),
+    )
     return get_access_status()
 
 

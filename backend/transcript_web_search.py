@@ -128,6 +128,42 @@ def _search_sa_direct(ticker: str, company: str | None = None, limit: int = 5) -
     return results
 
 
+def _clean_extracted_text(text: str) -> str:
+    text = html.unescape(text or "")
+    text = re.sub(r"[ \t\r\f\v]+", " ", text)
+    text = re.sub(r"\n\s+", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _extract_sa_escaped_transcript_text(raw_html: str) -> str:
+    """Extract transcript body from Seeking Alpha's escaped SSR payload.
+
+    Seeking Alpha often serves the article body as escaped HTML inside
+    `window.SSR_DATA` (for example `\\u003Cdiv class=\\"transcript-...`).
+    A normal HTMLParser skips that content because it lives inside a script tag,
+    so decode the escaped fragments and parse only transcript sections.
+    """
+    decoded = (
+        (raw_html or "")
+        .replace("\\u003C", "<")
+        .replace("\\u003E", ">")
+        .replace("\\u002F", "/")
+        .replace("\\u0026", "&")
+        .replace('\\"', '"')
+    )
+    fragments = re.findall(
+        r'<(?:div|section)[^>]+class="[^"]*transcript[^"]*"[^>]*>.*?</(?:div|section)>',
+        decoded,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not fragments:
+        return ""
+    extractor = _TextExtractor()
+    extractor.feed("\n".join(fragments))
+    return _clean_extracted_text(" ".join(extractor.parts))
+
+
 def _fetch_page_text_sa(url: str, headers: dict = None) -> str:
     """Fetch and extract text from an SA page using cookie auth."""
     try:
@@ -138,13 +174,14 @@ def _fetch_page_text_sa(url: str, headers: dict = None) -> str:
         return ""
     if response.status_code != 200:
         return ""
-    
+
+    escaped_text = _extract_sa_escaped_transcript_text(response.text)
+    if escaped_text:
+        return escaped_text
+
     extractor = _TextExtractor()
     extractor.feed(response.text)
-    text = html.unescape(" ".join(extractor.parts))
-    text = re.sub(r"[ \t\r\f\v]+", " ", text)
-    text = re.sub(r"\n\s+", "\n", text)
-    return text.strip()
+    return _clean_extracted_text(" ".join(extractor.parts))
 
 
 def _search_brave(ticker: str, company: str | None = None, limit: int = 5) -> List[Dict[str, str]]:
