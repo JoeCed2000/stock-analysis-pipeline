@@ -232,6 +232,21 @@ class TestSynthesizeOverviewEn:
         assert result["company_profile"]["name"] == "TestCo"
 
     @patch("backend.codex_provider._codex_chat")
+    def test_company_overview_uses_codex_spark_medium_by_default(self, mock_codex):
+        mock_codex.return_value = json.dumps({
+            "company_profile": {"name": "SparkCo"},
+            "business_description": "Detailed investor overview.",
+            "key_financials": {"market_cap": 1000},
+            "recent_developments": [],
+            "competitive_position": "Strong niche position.",
+        })
+        result = _synthesize_overview_en("SPRK", {}, [])
+        assert result["company_profile"]["name"] == "SparkCo"
+        _, kwargs = mock_codex.call_args
+        assert kwargs["model"] == "gpt-5.3-codex-spark"
+        assert kwargs["reasoning_effort"] == "medium"
+
+    @patch("backend.codex_provider._codex_chat")
     def test_llm_failure_fallback(self, mock_codex):
         mock_codex.return_value = None
         yf_info = {"ticker": "AAPL", "name": "Apple Inc.", "sector": "Technology"}

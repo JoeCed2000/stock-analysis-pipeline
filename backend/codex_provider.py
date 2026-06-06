@@ -39,7 +39,13 @@ CODEX_RETRY_BACKOFF = [2.0, 4.0]  # seconds between retries (jittered ±50%)
 _codex_launch_lock = __import__("threading").Lock()
 
 
-def _codex_chat(prompt: str, system: str = "", max_tokens: int = 1000, model: Optional[str] = "gpt-5.5") -> Optional[str]:
+def _codex_chat(
+    prompt: str,
+    system: str = "",
+    max_tokens: int = 1000,
+    model: Optional[str] = "gpt-5.5",
+    reasoning_effort: str = "low",
+) -> Optional[str]:
     """Send a prompt to Codex CLI via PTY and return the response text.
     
     Retries up to CODEX_MAX_RETRIES times with exponential backoff on timeout/failure.
@@ -49,6 +55,8 @@ def _codex_chat(prompt: str, system: str = "", max_tokens: int = 1000, model: Op
     Args:
         model: Optional model override (e.g. 'gpt-5.5' for highest quality).
                When None, uses the default Codex model.
+        reasoning_effort: Codex reasoning effort (low|medium|high). Company Overview
+               uses medium for the Spark model; legacy calls keep low.
     """
     if not os.path.exists(CODEX_BIN):
         logger.warning("Codex CLI not found at %s", CODEX_BIN)
@@ -80,7 +88,8 @@ def _codex_chat(prompt: str, system: str = "", max_tokens: int = 1000, model: Op
                         "--json"]
                 if model:
                     args.extend(["-m", model])
-                args.extend(["-c", "model_reasoning_effort=low",
+                safe_effort = reasoning_effort if reasoning_effort in {"minimal", "low", "medium", "high"} else "low"
+                args.extend(["-c", f"model_reasoning_effort={safe_effort}",
                              "-o", output_file,
                              full_prompt])
                 

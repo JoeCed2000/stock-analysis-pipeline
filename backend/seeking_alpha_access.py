@@ -280,12 +280,11 @@ def build_request_headers(extra_headers: dict[str, str] | None = None) -> dict[s
 
 
 async def probe_access_async(ticker: str | None = None) -> dict[str, Any]:
-    """Validate stored Seeking Alpha cookies against a concrete transcript article.
+    """Validate stored Seeking Alpha cookies via Playwright Firefox.
 
-    The generic `/symbol/<ticker>/earnings/transcripts` listing route can be blocked
-    by PerimeterX even when direct transcript article URLs work with the same stored
-    cookies.  Treat the concrete article as the source-of-truth probe so the admin
-    badge matches the PDF pipeline behavior.
+    Uses the same Firefox + per-cookie-domain approach as the transcript pipeline.
+    Navigates to the transcript listing, checks for PerimeterX, and if successful
+    extracts the first article link as proof of authenticated access.
     """
     import asyncio
 
@@ -295,61 +294,106 @@ async def probe_access_async(ticker: str | None = None) -> dict[str, Any]:
 
     if not status["configured"]:
         return {
-            **status,
-            "ok": False,
-            "authenticated": False,
-            "reachable": False,
-            "ticker": clean_ticker,
-            "url": listing_url,
-            "reason": "no_cookies_configured",
-            "tested_at": _now_iso(),
+            **status, "ok": False, "authenticated": False, "reachable": False,
+            "ticker": clean_ticker, "url": listing_url,
+            "reason": "no_cookies_configured", "tested_at": _now_iso(),
         }
 
     cookie_quality = status.get("cookie_diagnostics", {}).get("quality")
     if cookie_quality == "analytics_only_or_incomplete":
         return {
-            **status,
-            "ok": False,
-            "authenticated": False,
-            "reachable": False,
-            "ticker": clean_ticker,
-            "url": listing_url,
-            "status_code": 403,
-            "reason": "missing_auth_or_antibot_cookies",
-            "text_length": 0,
-            "tested_at": _now_iso(),
+            **status, "ok": False, "authenticated": False, "reachable": False,
+            "ticker": clean_ticker, "url": listing_url, "status_code": 403,
+            "reason": "missing_auth_or_antibot_cookies", "text_length": 0, "tested_at": _now_iso(),
         }
 
     try:
-        from backend.transcript_web_search import search_transcript_pages
+        store = _read_store()
+        pw_cookies: list[dict[str, str]] = []
+        cookies_parsed = store.get("cookies_parsed")
+        if cookies_parsed:
+            for c in cookies_parsed:
+                pw_cookies.append({
+                    "name": c["name"], "value": c["value"],
+                    "domain": c.get("domain", ".seekingalpha.com"),
+                    "path": c.get("path", "/"),
+                })
+        else:
+            cookie_header = store.get("cookie_header", "")
+            for part in cookie_header.split(";"):
+                part = part.strip()
+                if "=" in part:
+                    name, value = part.split("=", 1)
+                    pw_cookies.append({
+                        "name": name.strip(), "value": value.strip(),
+                        "domain": ".seekingalpha.com", "path": "/",
+                    })
 
-        results = await asyncio.to_thread(search_transcript_pages, clean_ticker, None, 5)
-        source = results[0] if results else {}
-        article_url = str(source.get("url") or "")
-        text_length = int(source.get("text_length") or len(str(source.get("text") or ""))) if source else 0
-        authenticated = bool(source) and "seekingalpha.com/article/" in article_url.lower()
-        return {
-            **status,
-            "ok": authenticated,
-            "authenticated": authenticated,
-            "reachable": True,
-            "ticker": clean_ticker,
-            "url": article_url or listing_url,
-            "status_code": 200 if authenticated else 403,
-            "reason": "ok" if authenticated else "no_seekalpha_article_transcript_found",
-            "text_length": text_length,
-            "tested_at": _now_iso(),
-        }
+        user_agent = store.get("user_agent") or DEFAULT_USER_AGENT
+
+        from playwright.sync_api import sync_playwright
+
+        def _run_probe() -> dict[str, Any]:
+            with sync_playwright() as p:
+                browser = p.firefox.launch(headless=True)
+                context = browser.new_context(
+                    user_agent=user_agent,
+                    viewport={"width": 1920, "height": 1080},
+                    locale="en-US",
+                )
+                context.add_cookies(pw_cookies)
+                page = context.new_page()
+
+                page.goto(listing_url, timeout=30000, wait_until="domcontentloaded")
+                page.wait_for_timeout(5000)
+
+                body_text = page.inner_text("body")[:800].lower()
+                blocked = any(m in body_text for m in DENIED_MARKERS)
+
+                if blocked:
+                    browser.close()
+                    return {
+                        "authenticated": False, "reachable": True, "blocked": True,
+                        "url": listing_url, "status_code": 403,
+                        "reason": "blocked_by_perimeterx", "text_length": 0,
+                    }
+
+                # Find first article link
+                links = page.query_selector_all('a[href*="/article/"]')
+                article_url = ""
+                text_length = 0
+                if links:
+                    first_href = links[0].get_attribute("href")
+                    if first_href:
+                        if first_href.startswith("/"):
+                            article_url = "https://seekingalpha.com" + first_href
+                        else:
+                            article_url = first_href
+
+                if article_url:
+                    page.goto(article_url, timeout=30000, wait_until="domcontentloaded")
+                    page.wait_for_timeout(5000)
+                    article_body = page.inner_text("body")
+                    text_length = len(article_body)
+
+                browser.close()
+
+                authenticated = bool(article_url) and "seekingalpha.com/article/" in article_url
+                return {
+                    "authenticated": authenticated, "reachable": True, "blocked": False,
+                    "url": article_url or listing_url,
+                    "status_code": 200 if authenticated else 200,
+                    "reason": "ok" if authenticated else "no_article_link_found",
+                    "text_length": text_length,
+                }
+
+        probe_result = await asyncio.to_thread(_run_probe)
+        return {**status, "ok": probe_result["authenticated"], **probe_result, "tested_at": _now_iso()}
+
     except Exception as exc:
         logger.warning("Seeking Alpha probe failed for %s: %s", clean_ticker, exc)
         return {
-            **status,
-            "ok": False,
-            "authenticated": False,
-            "reachable": False,
-            "ticker": clean_ticker,
-            "url": listing_url,
-            "reason": "request_error",
-            "error": str(exc),
-            "tested_at": _now_iso(),
+            **status, "ok": False, "authenticated": False, "reachable": False,
+            "ticker": clean_ticker, "url": listing_url,
+            "reason": "request_error", "error": str(exc), "tested_at": _now_iso(),
         }

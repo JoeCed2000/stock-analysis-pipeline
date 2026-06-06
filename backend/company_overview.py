@@ -714,22 +714,34 @@ Return ONLY the JSON object. No markdown fences, no explanations."""
 
     system = "You are a senior equity research analyst synthesizing company overviews. You write in English. You return ONLY valid JSON with no markdown fences."
 
-    # ── (CedLab 2026-06-04) Codex hangs on large prompts — use DeepSeek directly ──
-    # Codex CLI hangs on ~5KB prompts with 3×300s timeouts, wasting 15 min/run.
-    # Use DeepSeek directly. Re-enable Codex with SA_SKIP_CODEX=false env var.
-    skip_codex = os.getenv("SA_SKIP_CODEX", "true").strip().lower() in ("1", "true", "yes")
-    if not skip_codex:
-        response = _codex_chat(prompt, system=system, max_tokens=6000)
+    # ── CedLab 2026-06-06: Company Overview must use Codex Spark quality path ──
+    # SA_SKIP_CODEX still protects the broader Deep Dive flow, but Company Overview
+    # is a client-facing downloadable investor profile and should use Ced's Plus
+    # subscription by default. Override only with SA_COMPANY_OVERVIEW_SKIP_CODEX=true.
+    co_skip_codex = os.getenv("SA_COMPANY_OVERVIEW_SKIP_CODEX", "false").strip().lower() in ("1", "true", "yes")
+    co_codex_model = os.getenv("SA_COMPANY_OVERVIEW_CODEX_MODEL", "gpt-5.3-codex-spark").strip() or "gpt-5.3-codex-spark"
+    co_reasoning_effort = os.getenv("SA_COMPANY_OVERVIEW_CODEX_REASONING_EFFORT", "medium").strip().lower() or "medium"
+    if not co_skip_codex:
+        response = _codex_chat(
+            prompt,
+            system=system,
+            max_tokens=6000,
+            model=co_codex_model,
+            reasoning_effort=co_reasoning_effort,
+        )
         if response:
             parsed = _parse_llm_response(response, ticker, yf_info)
             if parsed is not None:
-                logger.info(f"[{ticker}] GPT-5.5 synthesis succeeded")
+                parsed.setdefault("generation_provider", "codex_cli")
+                parsed.setdefault("generation_model", co_codex_model)
+                parsed.setdefault("generation_reasoning_effort", co_reasoning_effort)
+                logger.info(f"[{ticker}] Company Overview synthesis succeeded via {co_codex_model}/{co_reasoning_effort}")
                 return parsed
-            logger.warning(f"[{ticker}] GPT-5.5 response failed to parse, falling back to DeepSeek...")
+            logger.warning(f"[{ticker}] {co_codex_model} response failed to parse, falling back to DeepSeek...")
         else:
-            logger.warning(f"[{ticker}] GPT-5.5 unavailable, falling back to DeepSeek...")
+            logger.warning(f"[{ticker}] {co_codex_model} unavailable, falling back to DeepSeek...")
     else:
-        logger.info(f"[{ticker}] Codex skipped (SA_SKIP_CODEX) — using DeepSeek directly")
+        logger.info(f"[{ticker}] Company Overview Codex skipped (SA_COMPANY_OVERVIEW_SKIP_CODEX) — using DeepSeek fallback")
 
     # ── Fallback 1: DeepSeek V4 Pro (paid, reliable) ──────────
     try:
