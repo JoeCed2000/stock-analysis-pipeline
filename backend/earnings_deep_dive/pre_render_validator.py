@@ -221,9 +221,11 @@ def _detect_revenue_direction(text: str) -> Optional[str]:
 
 
 def _extract_segment_revenues(metrics: Any) -> Dict[str, float]:
-    """Extract individual segment revenues from metrics.segments dict.
+    """Extract individual revenue-bearing business segments.
 
-    Returns {segment_name: revenue_float}.
+    The raw SEC/press-release extraction can contain balance-sheet rows with
+    numeric fields named like revenue, for example "Additional paid-in capital".
+    Those are not operating segments and must not trip the PDF quality gate.
     """
     segments = {}
     try:
@@ -233,19 +235,63 @@ def _extract_segment_revenues(metrics: Any) -> Dict[str, float]:
     except Exception:
         return segments
 
+    def _record(name: Any, rev: Any) -> None:
+        if rev is None:
+            return
+        try:
+            value = float(rev)
+        except (TypeError, ValueError):
+            return
+        if value <= 0:
+            return
+        clean_name = str(name).strip()
+        if not clean_name or _is_non_segment_balance_sheet_label(clean_name):
+            return
+        segments[clean_name] = value
+
+    # Prefer the curated product_segments list when present; it is the path used
+    # by prompts/mapper and avoids unrelated raw rows from the filing parser.
+    product_segments = raw.get("product_segments")
+    if isinstance(product_segments, list):
+        for item in product_segments:
+            if not isinstance(item, dict):
+                continue
+            _record(item.get("name"), item.get("revenue_quarterly") or item.get("revenue"))
+        if segments:
+            return segments
+
     _META_KEYS = {"product_segments", "total_revenue_quarterly", "deferred_revenue_1yr_pct",
                   "source", "filing_date", "period", "source_form", "_annual_context_only"}
     for key, value in raw.items():
         if key in _META_KEYS:
             continue
         if isinstance(value, dict):
-            rev = value.get("revenue") or value.get("revenue_quarterly")
-            if rev is not None:
-                try:
-                    segments[str(key)] = float(rev)
-                except (TypeError, ValueError):
-                    pass
+            _record(key, value.get("revenue") or value.get("revenue_quarterly"))
     return segments
+
+
+def _is_non_segment_balance_sheet_label(label: str) -> bool:
+    """Return True for filing rows that are clearly not revenue segments."""
+    text = label.lower()
+    blocked_terms = (
+        "paid-in capital",
+        "additional paid",
+        "shareholder",
+        "stockholder",
+        "equity",
+        "treasury stock",
+        "retained earnings",
+        "accumulated",
+        "cash and cash equivalents",
+        "accounts payable",
+        "accounts receivable",
+        "debt",
+        "assets",
+        "liabilities",
+        "goodwill",
+        "intangible",
+    )
+    return any(term in text for term in blocked_terms)
 
 
 def _extract_total_quarterly_revenue(metrics: Any) -> Optional[float]:
@@ -2938,23 +2984,66 @@ def _cross_check_revenue_consistency(
     if not eps_text or not opm_text:
         return
 
-    # Extract revenue figures: look for "Revenue | $XX.XB |" patterns
-    def _extract_rev_table_value(text: str, section_label: str) -> Optional[float]:
-        m = re.search(
-            r'Revenue\s*\|\s*\$?([\d,.]+)\s*([BMKT])',
-            text, re.IGNORECASE
-        )
+    # Extract revenue figures from markdown tables. If the row has an "Actual"
+    # column, use it; EPS & Revenue tables often put Estimate before Actual.
+    def _parse_money_cell(cell: str) -> Optional[float]:
+        m = re.search(r'\$?\s*([\d,.]+)\s*([BMKT])', cell or "", re.IGNORECASE)
         if not m:
             return None
         num = float(m.group(1).replace(",", ""))
         unit = m.group(2).upper()
         if unit == "B":
             return num
-        elif unit == "M":
+        if unit == "M":
             return num / 1000
-        elif unit == "T":
+        if unit == "T":
             return num * 1000
         return num
+
+    def _split_md_row(line: str) -> List[str]:
+        return [cell.strip() for cell in line.strip().strip("|").split("|")]
+
+    def _extract_rev_table_value(text: str, section_label: str) -> Optional[float]:
+        header: Optional[List[str]] = None
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line.startswith("|") or "|" not in line[1:]:
+                continue
+            cells = _split_md_row(line)
+            if not cells:
+                continue
+            first = cells[0].strip().lower()
+            if first == "metric":
+                header = cells
+                continue
+            if first != "revenue":
+                continue
+
+            if header:
+                actual_idx = next(
+                    (i for i, name in enumerate(header) if name.strip().lower() == "actual"),
+                    None,
+                )
+                if actual_idx is not None and actual_idx < len(cells):
+                    parsed = _parse_money_cell(cells[actual_idx])
+                    if parsed is not None:
+                        return parsed
+
+            # Fallback for simple tables like Operating Metrics where the first
+            # value after "Revenue" is the actual value.
+            for cell in cells[1:]:
+                parsed = _parse_money_cell(cell)
+                if parsed is not None:
+                    return parsed
+
+        # Final fallback for non-table prose / legacy formatting.
+        m = re.search(
+            r'Revenue\s*\|\s*\$?([\d,.]+)\s*([BMKT])',
+            text, re.IGNORECASE
+        )
+        if not m:
+            return None
+        return _parse_money_cell(f"{m.group(1)}{m.group(2)}")
 
     eps_rev = _extract_rev_table_value(eps_text, "EPS & Revenue")
     opm_rev = _extract_rev_table_value(opm_text, "Operating Metrics")

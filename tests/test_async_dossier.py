@@ -207,3 +207,25 @@ def test_set_dossier_phase_scored(tmp_path, monkeypatch):
     async_dossier.set_dossier_phase("NVDA", async_dossier.DossierPhase.SCORED)
     reg = async_dossier._dossier_registry.get("NVDA", {})
     assert reg["phase"] == "scored"
+
+
+def test_set_dossier_phase_logs_error_context(caplog):
+    async_dossier._dossier_registry.clear()
+
+    async_dossier.set_dossier_phase("NVDA", async_dossier.DossierPhase.PDF_GENERATING)
+    with caplog.at_level("INFO", logger="backend.async_dossier"):
+        async_dossier.set_dossier_phase(
+            "NVDA",
+            async_dossier.DossierPhase.FAILED,
+            error="renderer exploded\nstack line",
+            pdf_path="/tmp/NVDA/earnings_deep_dive.pdf",
+            validation_path="/tmp/NVDA/deep_dive_validation.json",
+            directory="/tmp/NVDA",
+        )
+
+    messages = "\n".join(record.getMessage() for record in caplog.records)
+    assert "Phase pdf_generating → failed" in messages
+    assert "error=renderer exploded | stack line" in messages
+    assert "pdf_path=/tmp/NVDA/earnings_deep_dive.pdf" in messages
+    assert "validation_path=/tmp/NVDA/deep_dive_validation.json" in messages
+    assert "directory=/tmp/NVDA" in messages

@@ -39,6 +39,17 @@ class DossierPhase(str, Enum):
     FAILED = "failed"              # Terminal failure
 
 
+def _log_preview(value: object, *, max_len: int = 500) -> str:
+    """Return a single-line preview suitable for phase/error logs."""
+    text = str(value).replace("\n", " | ")
+    return text if len(text) <= max_len else text[: max_len - 3] + "..."
+
+
+def _phase_value(phase: object) -> str:
+    """Return the stable wire value for DossierPhase enum/string logs."""
+    return getattr(phase, "value", str(phase))
+
+
 def set_dossier_phase(ticker: str, phase: str, **kwargs):
     """Set the phase for a ticker's dossier generation in the in-memory registry.
     
@@ -54,11 +65,26 @@ def set_dossier_phase(ticker: str, phase: str, **kwargs):
     ticker_clean = ticker.replace(".", "_").upper()
     with _registry_lock:
         entry = _dossier_registry.get(ticker_clean, {})
+        previous_phase = entry.get("phase")
         entry["phase"] = phase
         entry["phase_set_at"] = datetime.now(PARIS).isoformat()
         entry.update(kwargs)
         _dossier_registry[ticker_clean] = entry
-        logger.info(f"[{ticker_clean}] Phase → {phase}" + (f" ({list(kwargs.keys())})" if kwargs else ""))
+
+    log_parts = [
+        f"[{ticker_clean}] Phase {_phase_value(previous_phase) if previous_phase else '-'} → {_phase_value(phase)}",
+    ]
+    if "error" in kwargs:
+        log_parts.append(f"error={_log_preview(kwargs.get('error'))}")
+    if "progress_pct" in kwargs:
+        log_parts.append(f"progress_pct={kwargs.get('progress_pct')}")
+    if "directory" in kwargs:
+        log_parts.append(f"directory={kwargs.get('directory')}")
+    if "pdf_path" in kwargs:
+        log_parts.append(f"pdf_path={kwargs.get('pdf_path')}")
+    if "validation_path" in kwargs:
+        log_parts.append(f"validation_path={kwargs.get('validation_path')}")
+    logger.info(" | ".join(log_parts))
 
 # In-memory registry: ticker → dossier status
 # Survives between requests, lost on server restart (acceptable — files on disk)

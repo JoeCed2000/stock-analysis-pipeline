@@ -32,8 +32,8 @@ class TestOperatingMetrics:
             "Operating Metrics": "Gross margin: Not available. Operating margin: data not retrieved."
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", metrics, sections)
-        errs = _errors_for(result, "operating_metrics_not_available_contradiction")
-        assert len(errs) == 1
+        warns = _warnings_for(result, "forbidden_marker_leak")
+        assert len(warns) == 1
 
     def test_not_available_with_income_in_metrics_blocked(self):
         from backend.earnings_deep_dive.schemas import FinancialMetrics
@@ -42,8 +42,8 @@ class TestOperatingMetrics:
             "Operating Metrics": "Operating income: Not available."
         }
         result = validate_pre_render("NVDA", "FY2026 Q1", metrics, sections)
-        errs = _errors_for(result, "operating_metrics_not_available_contradiction")
-        assert len(errs) == 1
+        warns = _warnings_for(result, "forbidden_marker_leak")
+        assert len(warns) == 1
 
     def test_clean_metrics_passes(self):
         from backend.earnings_deep_dive.schemas import FinancialMetrics

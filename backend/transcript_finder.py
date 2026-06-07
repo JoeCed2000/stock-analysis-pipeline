@@ -64,10 +64,10 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
                 _asyncio.set_event_loop(_loop)
             except RuntimeError:
                 pass  # No running loop — sync Playwright will work fine
-            from playwright.sync_api import sync_playwright
+            from patchright.sync_api import sync_playwright
             with sync_playwright() as p:
-                # Firefox bypasses PerimeterX where Chromium gets detected (2026-06-06)
-                browser = p.firefox.launch(headless=True)
+                # Patchright Chromium with anti-detection patches bypasses PerimeterX
+                browser = p.chromium.launch(headless=True)
                 context_kwargs: dict = {
                     "viewport": {"width": 1920, "height": 1080},
                     "locale": "en-US",

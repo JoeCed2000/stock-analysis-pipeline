@@ -87,7 +87,7 @@ from backend.routes.valuation_context import router as valuation_context_router
 from backend.routes.peer_benchmark import router as peer_benchmark_router
 
 # Setup logging with our custom configuration
-from backend.logging_config import setup_logging, get_logger
+from backend.logging_config import setup_logging, get_logger, log_context
 setup_logging()
 logger = get_logger(__name__)
 
@@ -1065,8 +1065,27 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str | None = 
     from backend.async_dossier import get_dossier_status
 
     status = get_dossier_status(ticker)
+    logger.info(
+        "[%s] Dossier download request | lang=%s | quarter=%s | ready=%s | download_enabled=%s | phase=%s | stage=%s | directory=%s | issues=%s",
+        ticker,
+        dossier_language,
+        quarter or "latest",
+        status.get("ready"),
+        status.get("download_enabled"),
+        status.get("phase"),
+        status.get("stage"),
+        status.get("directory"),
+        len(status.get("verification_issues") or []),
+    )
     if not status.get("ready"):
-        logger.info("[%s] Dossier download refused — no verified dossier ready", ticker)
+        logger.info(
+            "[%s] Dossier download refused — no verified dossier ready | phase=%s | stage=%s | error=%s | issues=%s",
+            ticker,
+            status.get("phase"),
+            status.get("stage"),
+            status.get("error"),
+            status.get("verification_issues"),
+        )
         raise HTTPException(status_code=404, detail=f"No verified dossier ready for {ticker}")
 
     matches = _find_analysis_dirs(ticker)
@@ -1074,6 +1093,13 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str | None = 
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
 
     if not status.get("download_enabled", status.get("ready", False)):
+        logger.warning(
+            "[%s] Dossier download blocked by verification gate | deep_dive_validated=%s | issues=%s | directory=%s",
+            ticker,
+            status.get("deep_dive_validated"),
+            status.get("verification_issues", []),
+            status.get("directory"),
+        )
         raise HTTPException(
             status_code=409,
             detail={
@@ -1083,7 +1109,10 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str | None = 
             },
         )
 
-    source_dir = matches[0]
+    status_dir = status.get("directory")
+    source_dir = Path(status_dir) if status_dir else matches[0]
+    if not source_dir.exists():
+        source_dir = matches[0]
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         included_dirs = set()
@@ -1134,6 +1163,14 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str | None = 
 
     lang_suffix = f"_{dossier_language}" if dossier_language != "en" else ""
     buf.seek(0)
+    zip_size = len(buf.getbuffer())
+    logger.info(
+        "[%s] Dossier download serving ZIP | source_dir=%s | lang=%s | size_bytes=%s",
+        ticker,
+        source_dir,
+        dossier_language,
+        zip_size,
+    )
     return StreamingResponse(
         buf,
         media_type="application/zip",
@@ -1447,8 +1484,16 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
     Use ?lang=ja or ?lang=jp for Japanese, ?quarter=2026Q1 for specific quarter,
     ?audience_mode=client_report for client-ready output. Defaults to English, nami_personal."""
     ticker = ticker.strip().upper()
+    with log_context(ticker=ticker):
+        logger.info(
+            "PDF endpoint request | lang=%s | quarter=%s | audience_mode=%s",
+            lang,
+            quarter,
+            audience_mode,
+        )
     matches = _find_analysis_dirs(ticker)
     if not matches:
+        logger.warning("[%s] PDF endpoint: no analysis directory found", ticker)
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
 
     # Language-specific path. Prefer the newest dossier that already has the
@@ -1460,25 +1505,43 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
     analysis_dir = matches[0]
     deep_dive = None
     report_pdf = None
+
+    # Prefer a dossier with a real validated deep-dive PDF. Do NOT select a
+    # newer partial dossier just because report.pdf exists: report.pdf is the
+    # lightweight analysis report, not the client-facing earnings deep dive. That
+    # regression made AVGO/Broadcom ignore the completed 2026-06-04 dossier and
+    # repeatedly launch async generation on a newer failed/partial 2026-06-07
+    # dossier, leaving the direct PDF endpoint stuck at 202/422.
     for candidate in matches:
         candidate_deep_dive = (
             candidate / "jp" / "07_final_report" / "earnings_deep_dive.pdf"
             if wants_jp
             else candidate / "07_final_report" / "earnings_deep_dive.pdf"
         )
-        candidate_report_pdf = candidate / "07_final_report" / "report.pdf"
-        if candidate_deep_dive.exists() or (not wants_jp and candidate_report_pdf.exists()):
+        if candidate_deep_dive.exists():
             analysis_dir = candidate
             deep_dive = candidate_deep_dive
-            report_pdf = candidate_report_pdf
+            report_pdf = candidate / "07_final_report" / "report.pdf"
             break
-    if deep_dive is None or report_pdf is None:
+
+    if deep_dive is None:
         deep_dive = (
             analysis_dir / "jp" / "07_final_report" / "earnings_deep_dive.pdf"
             if wants_jp
             else analysis_dir / "07_final_report" / "earnings_deep_dive.pdf"
         )
         report_pdf = analysis_dir / "07_final_report" / "report.pdf"
+
+    logger.info(
+        "[%s] PDF endpoint resolved paths | analysis_dir=%s | deep_dive=%s | deep_dive_exists=%s | report_pdf=%s | report_exists=%s | matches=%s",
+        ticker,
+        analysis_dir,
+        deep_dive,
+        deep_dive.exists() if deep_dive else None,
+        report_pdf,
+        report_pdf.exists() if report_pdf else None,
+        len(matches),
+    )
 
     # Validator-blocked dossiers are terminal until the underlying content issue
     # is fixed. Do not keep retrying PDF generation: that creates an infinite
@@ -1488,13 +1551,32 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
         try:
             validation = json.loads(validation_path.read_text(encoding="utf-8"))
         except Exception:
+            logger.exception(
+                "[%s] PDF endpoint: failed to read validation file | validation_path=%s",
+                ticker,
+                validation_path,
+            )
             validation = {}
         if validation.get("passed") is False:
             issues = validation.get("issues") or validation.get("errors") or []
             if not isinstance(issues, list):
                 issues = [str(issues)]
             from backend.async_dossier import set_dossier_phase, DossierPhase
-            set_dossier_phase(ticker, DossierPhase.PDF_BLOCKED, error="Deep-dive validation failed")
+            logger.error(
+                "[%s] PDF endpoint blocked by validation file | validation_path=%s | issue_count=%s | first_issue=%s",
+                ticker,
+                validation_path,
+                len(issues),
+                issues[0] if issues else "-",
+            )
+            set_dossier_phase(
+                ticker,
+                DossierPhase.PDF_BLOCKED,
+                error="Deep-dive validation failed",
+                validation_path=str(validation_path),
+                pdf_path=str(deep_dive),
+                directory=str(analysis_dir),
+            )
             raise HTTPException(
                 status_code=422,
                 detail={
@@ -1518,6 +1600,14 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
         #   when already generating, or return 422 on terminal failure.
         from backend.async_dossier import get_dossier_status, DossierPhase
         current_phase = get_dossier_status(ticker).get("phase")
+        logger.info(
+            "[%s] PDF generation decision | current_phase=%s | deep_dive=%s | validation_path=%s | analysis_dir=%s",
+            ticker,
+            current_phase,
+            deep_dive,
+            validation_path,
+            analysis_dir,
+        )
         if current_phase in (DossierPhase.PDF_GENERATING, DossierPhase.PDF_VALIDATING):
             return JSONResponse(
                 status_code=202,
@@ -1530,6 +1620,13 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                 headers={"Retry-After": "10"},
             )
         if current_phase in (DossierPhase.PDF_BLOCKED, DossierPhase.FAILED):
+            logger.error(
+                "[%s] PDF generation refused after terminal phase | phase=%s | deep_dive=%s | validation_path=%s",
+                ticker,
+                current_phase,
+                deep_dive,
+                validation_path,
+            )
             raise HTTPException(
                 status_code=422,
                 detail={
@@ -1546,7 +1643,20 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
             """Background deep-dive generation — runs in thread to not block."""
             from backend.async_dossier import set_dossier_phase, DossierPhase
             from backend.earnings_deep_dive.errors import ValidationError
-            set_dossier_phase(ticker, DossierPhase.PDF_GENERATING)
+            set_dossier_phase(
+                ticker,
+                DossierPhase.PDF_GENERATING,
+                directory=str(dd_path.parent.parent),
+                pdf_path=str(dd_path),
+            )
+            logger.info(
+                "[%s/%s] Background deep-dive PDF generation started | output_pdf=%s | quarter=%s | audience_mode=%s",
+                ticker,
+                lang,
+                dd_path,
+                quarter,
+                audience_mode,
+            )
             try:
                 from backend.earnings_deep_dive.generator import generate_deep_dive
                 from backend.earnings_deep_dive.schemas import DeepDiveRequest
@@ -1558,7 +1668,19 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                 
                 q_data = get_yahoo_data(ticker)
                 if not q_data:
-                    set_dossier_phase(ticker, DossierPhase.FAILED, error="Yahoo data unavailable for PDF generation")
+                    logger.error(
+                        "[%s/%s] PDF generation failed before validation | reason=yahoo_data_unavailable | output_pdf=%s",
+                        ticker,
+                        lang,
+                        dd_path,
+                    )
+                    set_dossier_phase(
+                        ticker,
+                        DossierPhase.FAILED,
+                        error="Yahoo data unavailable for PDF generation",
+                        pdf_path=str(dd_path),
+                        directory=str(dd_path.parent.parent),
+                    )
                     return
                 dummy = AnalysisResult(
                     ticker=ticker,
@@ -1593,7 +1715,13 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                     company_overview = await get_company_overview(ticker, language=lang)
                     logger.info(f"[{ticker}/{lang}] Company overview generated for deep-dive PDF")
                 except Exception as e:
-                    logger.warning(f"[{ticker}/{lang}] Company overview skipped: {e}")
+                    logger.warning(
+                        "[%s/%s] Company overview skipped during PDF generation: %s",
+                        ticker,
+                        lang,
+                        e,
+                        exc_info=True,
+                    )
                 
                 # Find analysis directory for output_dir (required by schema)
                 # dd_path is .../07_final_report/earnings_deep_dive.pdf, parent.parent = analysis_dir
@@ -1604,7 +1732,14 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                 dd_response = generate_deep_dive(dd_req)
                 
                 # ── Pre-render validation (BLOCKING — hard data contract gate) ──
-                set_dossier_phase(ticker, DossierPhase.PDF_VALIDATING)
+                validation_log_path = dd_path.parent / "deep_dive_validation.json"
+                set_dossier_phase(
+                    ticker,
+                    DossierPhase.PDF_VALIDATING,
+                    validation_path=str(validation_log_path),
+                    pdf_path=str(dd_path),
+                    directory=str(dd_path.parent.parent),
+                )
                 from backend.earnings_deep_dive.pre_render_validator import (
                     validate_pre_render,
                     annotate_sections_with_warnings,
@@ -1619,6 +1754,15 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                 )
                 if pre_val.errors:
                     error_msg = format_validation_error(pre_val, ticker)
+                    logger.error(
+                        "[%s/%s] Pre-render validation BLOCKED PDF | errors=%s | warnings=%s | validation_path=%s | first_error=%s",
+                        ticker,
+                        lang,
+                        pre_val.error_count,
+                        pre_val.warning_count,
+                        validation_log_path,
+                        pre_val.errors[0].detail if pre_val.errors else "-",
+                    )
                     logger.error(error_msg)
                     raise ValidationError(
                         ticker=ticker,
@@ -1626,8 +1770,23 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                         message=error_msg,
                     )
                 elif pre_val.warnings:
+                    logger.warning(
+                        "[%s/%s] Pre-render validation warnings | warnings=%s | errors=0 | validation_path=%s | first_warning=%s",
+                        ticker,
+                        lang,
+                        pre_val.warning_count,
+                        validation_log_path,
+                        pre_val.warnings[0].detail if pre_val.warnings else "-",
+                    )
                     sections = annotate_sections_with_warnings(
                         sections or {}, pre_val,
+                    )
+                else:
+                    logger.info(
+                        "[%s/%s] Pre-render validation passed cleanly | validation_path=%s",
+                        ticker,
+                        lang,
+                        validation_log_path,
                     )
                 
                 from backend.earnings_deep_dive.mapper import build_earnings_deep_dive_report
@@ -1645,25 +1804,56 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                 )
                 os.makedirs(dd_path.parent, exist_ok=True)
                 render_earnings_deep_dive_pdf(report_model, str(dd_path))
-                set_dossier_phase(ticker, DossierPhase.COMPLETE)
+                set_dossier_phase(
+                    ticker,
+                    DossierPhase.COMPLETE,
+                    pdf_path=str(dd_path),
+                    directory=str(dd_path.parent.parent),
+                )
+                logger.info(
+                    "[%s/%s] Background deep-dive PDF generation complete | output_pdf=%s | size_bytes=%s",
+                    ticker,
+                    lang,
+                    dd_path,
+                    dd_path.stat().st_size if dd_path.exists() else None,
+                )
             except ValidationError as ve:
-                set_dossier_phase(ticker, DossierPhase.PDF_BLOCKED, error=str(ve))
-                import logging
-                logging.getLogger("uvicorn.error").error(
-                    f"Data contract violation for {ticker}: {ve}"
+                set_dossier_phase(
+                    ticker,
+                    DossierPhase.PDF_BLOCKED,
+                    error=str(ve),
+                    pdf_path=str(dd_path),
+                    directory=str(dd_path.parent.parent),
+                    validation_path=str(dd_path.parent / "deep_dive_validation.json"),
                 )
-                # Return 422 immediately — don't launch async, data is bad
-                raise HTTPException(
-                    status_code=422,
-                    detail={
-                        "message": f"PDF build blocked — data contract violation for {ticker}",
-                        "errors": [{"check": e.check, "detail": e.detail} for e in (ve.errors or [])],
-                    }
+                logger.error(
+                    "[%s/%s] PDF build blocked by pre-render validator | errors=%s | output_pdf=%s | validation_path=%s | error=%s",
+                    ticker,
+                    lang,
+                    len(ve.errors or []),
+                    dd_path,
+                    dd_path.parent / "deep_dive_validation.json",
+                    ve,
+                    exc_info=True,
                 )
+                return
             except Exception as e:
-                set_dossier_phase(ticker, DossierPhase.FAILED, error=str(e))
-                import logging
-                logging.getLogger("uvicorn.error").error(f"Deep-dive generation failed for {ticker}: {e}")
+                set_dossier_phase(
+                    ticker,
+                    DossierPhase.FAILED,
+                    error=str(e),
+                    pdf_path=str(dd_path),
+                    directory=str(dd_path.parent.parent),
+                )
+                logger.exception(
+                    "[%s/%s] Background deep-dive PDF generation FAILED | output_pdf=%s | error=%s",
+                    ticker,
+                    lang,
+                    dd_path,
+                    e,
+                )
+                import traceback
+                print(traceback.format_exc(), file=sys.stderr)
         
         # Launch async — use thread for reliability (BackgroundTasks can be flaky with --workers)
         import threading
@@ -1685,12 +1875,28 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
             headers={"Retry-After": "10"},
         )
     
+    if deep_dive is None:
+        raise HTTPException(status_code=404, detail=f"No deep-dive PDF path resolved for {ticker}")
     pdf_path = deep_dive if deep_dive.exists() else report_pdf
-    if not pdf_path.exists():
+    if pdf_path is None or not pdf_path.exists():
+        logger.error(
+            "[%s] PDF endpoint could not find final PDF | deep_dive=%s | report_pdf=%s | analysis_dir=%s",
+            ticker,
+            deep_dive,
+            report_pdf,
+            analysis_dir,
+        )
         raise HTTPException(status_code=404, detail=f"No PDF found for {ticker}")
 
     # Generate ticker-aware filename for browser save dialog: MSFT_deep_dive.pdf
     pdf_filename = f"{ticker}_deep_dive.pdf"
+    logger.info(
+        "[%s] PDF endpoint serving file | pdf_path=%s | filename=%s | size_bytes=%s",
+        ticker,
+        pdf_path,
+        pdf_filename,
+        pdf_path.stat().st_size,
+    )
     return FileResponse(
         pdf_path,
         media_type="application/pdf",
