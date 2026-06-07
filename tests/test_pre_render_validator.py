@@ -368,3 +368,61 @@ def test_segment_individual_revenue_above_total_still_blocks():
     assert result.passed is False
     assert errors
 
+
+def test_cross_section_revenue_mismatch_updates_passed_after_post_loop_check():
+    """Post-loop cross-section errors must make result.passed False.
+
+    Regression for AVGO/Broadcom: passed was computed before
+    _cross_check_revenue_consistency appended its error, producing
+    errors != [] with passed=True and an empty API error message.
+    """
+    from backend.earnings_deep_dive.pre_render_validator import validate_pre_render
+
+    result = validate_pre_render(
+        ticker="AVGO",
+        quarter="FY2026 Q2",
+        metrics=FinancialMetrics(),
+        section_analysis={
+            "EPS & Revenue": (
+                "| Metric | Estimate | Actual | Source |\n"
+                "|---|---|---|---|\n"
+                "| Revenue | — | $22.2B | Earnings call |"
+            ),
+            "Operating Metrics": (
+                "| Metric | Actual | Source |\n"
+                "|---|---|---|\n"
+                "| Revenue | $19,311M | SEC XBRL |"
+            ),
+        },
+    )
+
+    errors = [w for w in result.errors if w.check == "cross_section_revenue_mismatch"]
+    assert errors
+    assert result.passed is False
+
+
+def test_format_validation_error_does_not_hide_inconsistent_result_state():
+    """Formatter should use validation.errors, not only validation.passed."""
+    from backend.earnings_deep_dive.pre_render_validator import (
+        ValidationResult,
+        ValidationWarning,
+        format_validation_error,
+    )
+
+    result = ValidationResult(
+        passed=True,
+        warnings=[
+            ValidationWarning(
+                check="cross_section_revenue_mismatch",
+                section="(cross-section)",
+                detail="Revenue differs across sections: EPS & Revenue = $22.2B, Operating Metrics = $19.31B.",
+                severity="error",
+            )
+        ],
+    )
+
+    message = format_validation_error(result, "AVGO")
+    assert "PDF build blocked for AVGO" in message
+    assert "cross_section_revenue_mismatch" in message
+    assert "Revenue differs across sections" in message
+

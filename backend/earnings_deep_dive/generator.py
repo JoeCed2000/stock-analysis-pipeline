@@ -31,19 +31,40 @@ logger = logging.getLogger(__name__)
 MAX_CODEX_TOKENS = 16000
 
 def _llm_chat(prompt: str, system: str = "", max_tokens: int = MAX_CODEX_TOKENS) -> str | None:
-    """DeepSeek V4 Pro (primary, best at following numerical instructions) → Codex GPT-5.5 (fallback) → Gemini Flash Lite."""
-    # 1. DeepSeek V4 Pro — paid, best at following data contract instructions
-    from backend.kimi_provider import _deepseek_chat
-    result = _deepseek_chat(prompt, system, max_tokens)
+    """Codex Spark primary for Deep Dive sections; optional DeepSeek/Gemini fallback.
+
+    Default is stable, quota-independent Codex Spark low-effort routing. DeepSeek is
+    available only when explicitly enabled with ``SA_ENABLE_DEEPSEEK_FALLBACK=true``.
+    """
+    model = (os.getenv("SA_CODEX_MODEL") or "gpt-5.3-codex-spark").strip()
+    effort = (os.getenv("SA_CODEX_DEFAULT_EFFORT") or "low").strip().lower()
+    result = codex_chat(prompt, system=system, max_tokens=max_tokens, model=model, reasoning_effort=effort)
     if result:
         return result
-    # 2. Codex GPT-5.5 — free via ChatGPT Plus, high quality but prone to hallucinating transcript numbers
-    result = codex_chat(prompt, system=system, max_tokens=max_tokens)
-    if result:
-        return result
-    # 3. Gemini Flash Lite — free, last resort (may 429/503 under load)
-    from backend.gemini_provider import gemini_chat as _gemini
-    return _gemini(prompt, system=system, max_tokens=max_tokens)
+
+    enable_deepseek = os.getenv("SA_ENABLE_DEEPSEEK_FALLBACK", "false").strip().lower() in {"1", "true", "yes"}
+    if enable_deepseek:
+        try:
+            from backend.kimi_provider import _deepseek_chat
+            result = _deepseek_chat(prompt, system, max_tokens)
+            if result:
+                logger.info("llm_call fallback_success provider=deepseek model=deepseek-v4-pro")
+                return result
+        except Exception as exc:
+            logger.warning("llm_call fallback_failed provider=deepseek error=%s", exc, exc_info=True)
+
+    enable_gemini = os.getenv("SA_ENABLE_GEMINI_FALLBACK", "false").strip().lower() in {"1", "true", "yes"}
+    if enable_gemini:
+        try:
+            from backend.gemini_provider import gemini_chat as _gemini
+            result = _gemini(prompt, system=system, max_tokens=max_tokens)
+            if result:
+                logger.info("llm_call fallback_success provider=gemini")
+                return result
+        except Exception as exc:
+            logger.warning("llm_call fallback_failed provider=gemini error=%s", exc, exc_info=True)
+
+    return None
 
 primary_chat = _llm_chat
 SECTION_MAX_CHARS = 6000
@@ -168,6 +189,8 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
     warnings: List[str] = []
     sections: Dict[str, str] = {}
     statuses: List[SectionStatus] = []
+    llm_trace: List[Dict[str, Any]] = []
+    llm_trace_lock = __import__("threading").Lock()
 
     try:
         transcript_text, transcript_meta = _load_transcript(request)
@@ -205,6 +228,8 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
             industry = str(metrics.get("industry", "") or "")
             sys_prompt = system_prompt(request.language, sector, industry)
             last_error = ""
+            provider_model = os.getenv("SA_CODEX_MODEL", "gpt-5.3-codex-spark") if provider_name == "primary" else provider_name
+            provider_effort = os.getenv("SA_CODEX_DEFAULT_EFFORT", "low") if provider_name == "primary" else "default"
             
             for attempt in (1, 2):
                 prompt = build_prompt(
@@ -221,11 +246,24 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
                         "and follow table requirements.\n"
                     )
                 
+                started = datetime.now(timezone.utc)
+                logger.info(
+                    "llm_section start ticker=%s language=%s section=%r provider=%s model=%s effort=%s attempt=%d max_tokens=%d",
+                    request.ticker,
+                    request.language,
+                    section,
+                    provider_name,
+                    provider_model,
+                    provider_effort,
+                    attempt,
+                    MAX_CODEX_TOKENS,
+                )
                 try:
                     try:
                         output = chat_fn(prompt, system=sys_prompt, max_tokens=MAX_CODEX_TOKENS, temperature=0.3)
                     except TypeError:
                         output = chat_fn(prompt, system=sys_prompt, max_tokens=MAX_CODEX_TOKENS)
+                    duration_ms = int((datetime.now(timezone.utc) - started).total_seconds() * 1000)
                     if not output:
                         raise KimiFailureError(f"{provider_name} returned no content")
                     
@@ -234,13 +272,66 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
                         cleaned, section, request.language,
                         request.max_section_chars, require_table=has_tx,
                     )
+                    with llm_trace_lock:
+                        llm_trace.append({
+                            "ticker": request.ticker,
+                            "language": request.language,
+                            "phase": "earnings_deep_dive",
+                            "section": section,
+                            "provider": provider_name,
+                            "model": provider_model,
+                            "effort": provider_effort,
+                            "attempt": attempt,
+                            "status": "ok" if attempt == 1 else "retry_ok",
+                            "duration_ms": duration_ms,
+                            "output_chars": len(output),
+                        })
+                    logger.info(
+                        "llm_section success ticker=%s language=%s section=%r provider=%s model=%s effort=%s attempt=%d duration_ms=%d output_chars=%d",
+                        request.ticker,
+                        request.language,
+                        section,
+                        provider_name,
+                        provider_model,
+                        provider_effort,
+                        attempt,
+                        duration_ms,
+                        len(output),
+                    )
                     return cleaned, SectionStatus(
                         name=section,
                         status="ok" if attempt == 1 else "retry_ok",
                         attempts=attempt,
                     ), None
                 except (KimiFailureError, ValidationError) as exc:
+                    duration_ms = int((datetime.now(timezone.utc) - started).total_seconds() * 1000)
                     last_error = str(exc)
+                    with llm_trace_lock:
+                        llm_trace.append({
+                            "ticker": request.ticker,
+                            "language": request.language,
+                            "phase": "earnings_deep_dive",
+                            "section": section,
+                            "provider": provider_name,
+                            "model": provider_model,
+                            "effort": provider_effort,
+                            "attempt": attempt,
+                            "status": "failed",
+                            "duration_ms": duration_ms,
+                            "error": last_error,
+                        })
+                    logger.warning(
+                        "llm_section failed ticker=%s language=%s section=%r provider=%s model=%s effort=%s attempt=%d duration_ms=%d error=%s",
+                        request.ticker,
+                        request.language,
+                        section,
+                        provider_name,
+                        provider_model,
+                        provider_effort,
+                        attempt,
+                        duration_ms,
+                        last_error,
+                    )
             
             # Failed after retries
             return _placeholder_section(section, last_error), SectionStatus(
@@ -300,6 +391,7 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
         transcript_meta=transcript_meta,
         transcript_url=transcript_url,
         transcript_text=transcript_text,
+        llm_trace=llm_trace,
     )
 
     return DeepDiveResponse(
@@ -668,15 +760,21 @@ def _save_outputs(
     transcript_meta: Dict[str, Any],
     transcript_url: str | None,
     transcript_text: str = "",
+    llm_trace: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[str, str]:
     report_dir = os.path.join(output_dir, "07_final_report")
     os.makedirs(report_dir, exist_ok=True)
 
     markdown_path = os.path.join(report_dir, "earnings_deep_dive.md")
     meta_path = os.path.join(report_dir, "earnings_deep_dive_meta.json")
+    trace_path = os.path.join(report_dir, "earnings_deep_dive_llm_trace.json")
 
     with open(markdown_path, "w", encoding="utf-8") as f:
         f.write(report_markdown)
+
+    llm_trace = llm_trace or []
+    with open(trace_path, "w", encoding="utf-8") as f:
+        json.dump(llm_trace, f, indent=2, ensure_ascii=False, default=str)
 
     meta = {
         "ticker": request.ticker,
@@ -685,7 +783,17 @@ def _save_outputs(
         "language": request.language,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "provider": "Codex CLI local",
+        "generation_provider": "codex_cli",
+        "generation_model": os.getenv("SA_CODEX_MODEL", "gpt-5.3-codex-spark"),
+        "generation_reasoning_effort": os.getenv("SA_CODEX_DEFAULT_EFFORT", "low"),
+        "deepseek_fallback_enabled": os.getenv("SA_ENABLE_DEEPSEEK_FALLBACK", "false").strip().lower() in {"1", "true", "yes"},
         "max_tokens_per_call": MAX_CODEX_TOKENS,
+        "llm_trace_path": trace_path,
+        "llm_trace_summary": {
+            "total_calls": len(llm_trace),
+            "success_calls": sum(1 for item in llm_trace if item.get("status") in {"ok", "retry_ok"}),
+            "failed_calls": sum(1 for item in llm_trace if item.get("status") == "failed"),
+        },
         "sections": {status.name: status.model_dump() for status in statuses},
         "warnings": warnings,
         "transcript_url": transcript_url,
@@ -693,6 +801,7 @@ def _save_outputs(
         "output_files": {
             "markdown": markdown_path,
             "meta": meta_path,
+            "llm_trace": trace_path,
         },
     }
     with open(meta_path, "w", encoding="utf-8") as f:

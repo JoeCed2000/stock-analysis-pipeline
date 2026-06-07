@@ -2942,8 +2942,19 @@ def validate_pre_render(
     # (No additional code needed — the ValidationResult.passed computed below
     #  already aggregates all error-severity rules into a single pass/fail.)
 
-    # ── Determine pass/fail ────────────────────────────────────────────
+    # ── CROSS-SECTION RECONCILIATION (post-loop) ──────────────────────────
+    # These gates require comparing values ACROSS sections after all
+    # per-section rules have run. They live here to avoid ordering dependencies.
 
+    # CROSS-1: Revenue consistency (EPS & Revenue vs Operating Metrics)
+    _cross_check_revenue_consistency(_sec, metric_map, warnings)
+
+    # CROSS-2: EPS direction consistency (EPS section vs Highlights/Verdict)
+
+    # ── Determine pass/fail ────────────────────────────────────────────
+    # Must happen AFTER all post-loop cross-checks. Otherwise a late error can
+    # make ``validation.errors`` non-empty while ``validation.passed`` remains
+    # True, which causes empty PDF_BLOCKED messages downstream.
     errors = [w for w in warnings if w.severity == "error"]
     passed = len(errors) == 0
 
@@ -2960,15 +2971,6 @@ def validate_pre_render(
             f"in {len({w.section for w in warnings})} section(s) — "
             f"build proceeds with ⚠️ flags"
         )
-
-    # ── CROSS-SECTION RECONCILIATION (post-loop) ──────────────────────────
-    # These gates require comparing values ACROSS sections after all
-    # per-section rules have run. They live here to avoid ordering dependencies.
-
-    # CROSS-1: Revenue consistency (EPS & Revenue vs Operating Metrics)
-    _cross_check_revenue_consistency(_sec, metric_map, warnings)
-
-    # CROSS-2: EPS direction consistency (EPS section vs Highlights/Verdict)
 
     return ValidationResult(passed=passed, warnings=warnings)
 
@@ -3093,12 +3095,13 @@ def annotate_sections_with_warnings(
 
 def format_validation_error(validation: ValidationResult, ticker: str) -> str:
     """Format blocking validation errors as a human-readable message for API response."""
-    if validation.passed:
+    errors = validation.errors
+    if not errors:
         return ""
     lines = [
-        f"🚫 PDF build blocked for {ticker} — {validation.error_count} data contract violation(s):",
+        f"🚫 PDF build blocked for {ticker} — {len(errors)} data contract violation(s):",
         "",
     ]
-    for i, err in enumerate(validation.errors, 1):
+    for i, err in enumerate(errors, 1):
         lines.append(f"  {i}. [{err.check}] {err.detail}")
     return "\n".join(lines)

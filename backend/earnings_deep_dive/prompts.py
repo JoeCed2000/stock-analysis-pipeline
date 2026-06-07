@@ -805,12 +805,15 @@ def _section_title(section: str) -> str:
 
 
 def _parse_quarter(quarter: Any) -> tuple[str, str] | None:
-    """Parse YYYYQn into current/prior-year labels for prompt table headers."""
-    if not isinstance(quarter, str) or len(quarter) != 6:
+    """Parse YYYYQn or YYYY Qn into current/prior-year labels for prompt table headers."""
+    if not isinstance(quarter, str):
         return None
-    year_part = quarter[:4]
-    q_marker = quarter[4]
-    q_part = quarter[5]
+    normalized = quarter.strip().upper().replace(" ", "")
+    if len(normalized) != 6:
+        return None
+    year_part = normalized[:4]
+    q_marker = normalized[4]
+    q_part = normalized[5]
     if q_marker != "Q" or not year_part.isdigit() or q_part not in {"1", "2", "3", "4"}:
         return None
     year = int(year_part)
@@ -818,13 +821,23 @@ def _parse_quarter(quarter: Any) -> tuple[str, str] | None:
 
 
 def _period_table_header(section: str, quarter: str) -> str:
-    """Replace generic Actual/Prior Year headers with concrete quarter labels."""
+    """Replace generic period columns with concrete quarter labels."""
     header = TABLE_REQUIREMENTS[section]
     labels = _parse_quarter(quarter)
-    if not labels or section not in {"Operating Metrics", "Cash Flow"}:
+    if not labels:
         return header
     current_label, prior_label = labels
-    return header.replace("Actual", current_label).replace("Prior Year", prior_label)
+    if section == "EPS & Revenue":
+        estimate_label = f"{current_label} Est"
+        return (
+            header
+            .replace("| Estimate |", f"| {estimate_label} |")
+            .replace("vs Estimate", f"vs {estimate_label}")
+            .replace("Actual", current_label)
+        )
+    if section in {"Operating Metrics", "Cash Flow"}:
+        return header.replace("Actual", current_label).replace("Prior Year", prior_label)
+    return header
 
 
 def _format_question(section: str, language: str, ticker: str, company: str, quarter: str) -> str:
@@ -1003,6 +1016,15 @@ def eps_revenue_prompt(language: str, ticker: str, company: str, quarter: str, m
     if rev_actual is None and rev_q is not None:
         try: extra += f"\n⚠️  Revenue (quarterly) = ${float(rev_q)/1e9:.2f}B. Use in Revenue row."
         except (TypeError, ValueError): pass
+    elif rev_actual is None and rev_q is None:
+        extra += (
+            "\n🔴 CRITICAL OVERRIDE — Revenue Actual is not present in supplied_metrics. "
+            "In the Revenue row, the Actual cell MUST be —. Do NOT copy a transcript revenue "
+            "number (for example '$22.2B') into the Actual cell unless it also appears as "
+            "supplied_metrics.revenue_actual or supplied_metrics.revenue_quarterly. You may "
+            "mention transcript revenue only in prose, explicitly labeled as Earnings Call evidence, "
+            "and it must not contradict the Operating Metrics table."
+        )
     # Revenue YoY
     if rev_yoy is not None:
         try: extra += f"\n⚠️  Revenue YoY change = {float(rev_yoy):+.1f}%. Use in YoY Change column."

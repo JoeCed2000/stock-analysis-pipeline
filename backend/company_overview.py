@@ -719,8 +719,8 @@ Return ONLY the JSON object. No markdown fences, no explanations."""
     # is a client-facing downloadable investor profile and should use Ced's Plus
     # subscription by default. Override only with SA_COMPANY_OVERVIEW_SKIP_CODEX=true.
     co_skip_codex = os.getenv("SA_COMPANY_OVERVIEW_SKIP_CODEX", "false").strip().lower() in ("1", "true", "yes")
-    co_codex_model = os.getenv("SA_COMPANY_OVERVIEW_CODEX_MODEL", "gpt-5.3-codex-spark").strip() or "gpt-5.3-codex-spark"
-    co_reasoning_effort = os.getenv("SA_COMPANY_OVERVIEW_CODEX_REASONING_EFFORT", "medium").strip().lower() or "medium"
+    co_codex_model = os.getenv("SA_COMPANY_OVERVIEW_CODEX_MODEL", os.getenv("SA_CODEX_MODEL", "gpt-5.3-codex-spark")).strip() or "gpt-5.3-codex-spark"
+    co_reasoning_effort = os.getenv("SA_COMPANY_OVERVIEW_CODEX_REASONING_EFFORT", os.getenv("SA_CODEX_SYNTHESIS_EFFORT", "medium")).strip().lower() or "medium"
     if not co_skip_codex:
         response = _codex_chat(
             prompt,
@@ -743,17 +743,23 @@ Return ONLY the JSON object. No markdown fences, no explanations."""
     else:
         logger.info(f"[{ticker}] Company Overview Codex skipped (SA_COMPANY_OVERVIEW_SKIP_CODEX) — using DeepSeek fallback")
 
-    # ── Fallback 1: DeepSeek V4 Pro (paid, reliable) ──────────
-    try:
-        from backend.kimi_provider import _deepseek_chat
-        ds_response = _deepseek_chat(prompt, system=system, max_tokens=6000, temperature=0.0)
-        if ds_response:
-            parsed = _parse_llm_response(ds_response, ticker, yf_info)
-            if parsed is not None:
-                logger.info(f"[{ticker}] DeepSeek synthesis succeeded")
-                return parsed
-    except Exception as ds_e:
-        logger.warning(f"[{ticker}] DeepSeek fallback failed: {ds_e}")
+    # ── Optional fallback: DeepSeek V4 Pro ──────────
+    enable_deepseek = os.getenv("SA_ENABLE_DEEPSEEK_FALLBACK", "false").strip().lower() in ("1", "true", "yes")
+    if enable_deepseek:
+        try:
+            from backend.kimi_provider import _deepseek_chat
+            ds_response = _deepseek_chat(prompt, system=system, max_tokens=6000, temperature=0.0)
+            if ds_response:
+                parsed = _parse_llm_response(ds_response, ticker, yf_info)
+                if parsed is not None:
+                    parsed.setdefault("generation_provider", "deepseek")
+                    parsed.setdefault("generation_model", "deepseek-v4-pro")
+                    logger.info(f"[{ticker}] DeepSeek synthesis succeeded")
+                    return parsed
+        except Exception as ds_e:
+            logger.warning(f"[{ticker}] DeepSeek fallback failed: {ds_e}", exc_info=True)
+    else:
+        logger.info(f"[{ticker}] DeepSeek fallback disabled (SA_ENABLE_DEEPSEEK_FALLBACK=false)")
 
     # ── Fallback 2: Deterministic (yfinance + regex) ─────────
     return _fallback_overview(ticker, yf_info)
@@ -827,7 +833,15 @@ Return ONLY the JSON object."""
 
     system = "You are a professional financial translator specializing in English→Japanese. You return ONLY valid JSON with translated fields. Natural Japanese, no machine-translation feel."
 
-    response = _codex_chat(prompt, system=system, max_tokens=2400)
+    jp_codex_model = os.getenv("SA_COMPANY_OVERVIEW_CODEX_MODEL", os.getenv("SA_CODEX_MODEL", "gpt-5.3-codex-spark")).strip() or "gpt-5.3-codex-spark"
+    jp_reasoning_effort = os.getenv("SA_COMPANY_OVERVIEW_CODEX_REASONING_EFFORT", os.getenv("SA_CODEX_SYNTHESIS_EFFORT", "medium")).strip().lower() or "medium"
+    response = _codex_chat(
+        prompt,
+        system=system,
+        max_tokens=2400,
+        model=jp_codex_model,
+        reasoning_effort=jp_reasoning_effort,
+    )
 
     if not response:
         logger.warning(f"JP translation LLM unavailable for {ticker} — returning EN content")

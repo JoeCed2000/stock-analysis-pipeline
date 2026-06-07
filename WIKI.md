@@ -1,5 +1,30 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-07 — Codex Spark routing + LLM trace observability
+
+**Status:** Deep Dive and Company Overview LLM calls now route through Codex Spark by default, with DeepSeek/Gemini fallbacks disabled unless explicitly enabled. Deep Dive generation writes structured per-section LLM traces next to the markdown/meta outputs so failures are inspectable from disk/logs.
+
+### Root causes fixed
+- Deep Dive `_llm_chat()` still tried DeepSeek first, creating avoidable paid/API dependency despite Ced's Codex-first preference.
+- Codex provider logs did not consistently expose provider/model/effort/attempt/duration/output length, making hangs and empty outputs harder to diagnose.
+- Deep Dive section retries surfaced only as section statuses/warnings; no durable per-call trace file was saved with the generated dossier.
+- Prompt table labels did not parse spaced quarters like `2026 Q1` and EPS/Revenue kept generic `Estimate/Actual` labels instead of concrete quarter labels.
+- Pre-render cross-section errors were appended after `passed` had already been computed, allowing `errors != []` with `passed=True` and hiding API error messages.
+
+### Changes
+- `backend/codex_provider.py`: default model is `gpt-5.3-codex-spark`, default effort `low`, configurable via `SA_CODEX_MODEL` and `SA_CODEX_DEFAULT_EFFORT`; structured `llm_call` logs added for start/success/empty/timeout/retry/failure.
+- `backend/earnings_deep_dive/generator.py`: Codex Spark primary route, optional `SA_ENABLE_DEEPSEEK_FALLBACK` / `SA_ENABLE_GEMINI_FALLBACK`, section-level trace collection, and `earnings_deep_dive_llm_trace.json` output with meta summary.
+- `backend/company_overview.py`: Company Overview and JP translation now inherit the unified Codex model unless `SA_COMPANY_OVERVIEW_CODEX_MODEL` overrides; DeepSeek fallback is opt-in.
+- `backend/earnings_deep_dive/prompts.py`: quarter parser now supports `YYYYQn` and `YYYY Qn`; EPS/Revenue headers become `Qn YYYY Est`, `Qn YYYY`, `vs Qn YYYY Est`.
+- `backend/earnings_deep_dive/pre_render_validator.py`: cross-section validation now computes `passed` after post-loop checks, and `format_validation_error()` formats actual error rows even if an inconsistent result object is passed in.
+- `tests/test_codex_provider.py` and `tests/test_earnings_deep_dive.py`: regression coverage for Spark/low defaults, trace/meta output, current prompt language, sanitized placeholders, and dynamic quarter labels.
+
+### Verification
+- `backend/.venv/bin/python -m pytest tests/test_codex_provider.py tests/test_earnings_deep_dive.py tests/test_pre_render_validator.py tests/test_earnings_deep_dive_prompts.py -q` → `24 passed in 1.51s`.
+- `backend/.venv/bin/python -m py_compile backend/codex_provider.py backend/company_overview.py backend/earnings_deep_dive/generator.py backend/earnings_deep_dive/prompts.py backend/earnings_deep_dive/pre_render_validator.py` → pass.
+- Backend restarted on port `8780`; `GET /api/health` → `status=ok`, commit reported by runtime before this commit: `bf0134d`.
+- CodeGraph returned no structural edges for these Python symbols, so fallback repository search mapped integration points: `_codex_chat` callers in Deep Dive, Company Overview, translator, and codex_provider helper functions; `_save_outputs` called from `generate_deep_dive`.
+
 ## 2026-06-06 — Async Deep-Dive PDF completion + JP PDF endpoint recette
 
 **Status:** Fixed the async deep-dive flow that left the browser stuck after PDF validation and hardened the cached PDF endpoint so a valid JP PDF is served instead of returning `202 generating` when a newer partial dossier exists.

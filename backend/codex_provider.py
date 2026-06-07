@@ -43,27 +43,23 @@ def _codex_chat(
     prompt: str,
     system: str = "",
     max_tokens: int = 1000,
-    model: Optional[str] = "gpt-5.5",
-    reasoning_effort: str = "low",
+    model: Optional[str] = None,
+    reasoning_effort: Optional[str] = None,
 ) -> Optional[str]:
     """Send a prompt to Codex CLI and return the response text.
 
-    Uses stdin + ``-o`` instead of passing the full prompt as an argv value. The
-    previous PTY path could exit rc=0 with an empty output file on Spark medium
-    prompts; stdin is the Codex CLI's documented non-interactive path and avoids
-    the zero-byte output failure.
-
-    Args:
-        model: Optional model override (e.g. 'gpt-5.5' for highest quality).
-               When None, uses the default Codex model.
-        reasoning_effort: Codex reasoning effort (minimal|low|medium|high). Company Overview
-               uses medium for the Spark model; legacy calls keep low.
+    Default routing is intentionally Codex Spark-first for SA pipeline stability:
+    ``SA_CODEX_MODEL`` defaults to ``gpt-5.3-codex-spark`` and
+    ``SA_CODEX_DEFAULT_EFFORT`` defaults to ``low``. Callers may still pass an
+    explicit model/effort for higher-synthesis steps such as Company Overview.
     """
     if not os.path.exists(CODEX_BIN):
         logger.warning("Codex CLI not found at %s", CODEX_BIN)
         return None
 
-    safe_effort = reasoning_effort if reasoning_effort in {"minimal", "low", "medium", "high"} else "low"
+    selected_model = (model or os.getenv("SA_CODEX_MODEL") or "gpt-5.3-codex-spark").strip()
+    selected_effort = (reasoning_effort or os.getenv("SA_CODEX_DEFAULT_EFFORT") or "low").strip().lower()
+    safe_effort = selected_effort if selected_effort in {"minimal", "low", "medium", "high"} else "low"
     full_prompt = f"{system}\n\n{prompt}\n\nReturn ONLY the requested output. No explanations."
     env = os.environ.copy()
     env["HOME"] = _REAL_HOME
@@ -74,11 +70,20 @@ def _codex_chat(
             backoff = CODEX_RETRY_BACKOFF[min(attempt - 1, len(CODEX_RETRY_BACKOFF) - 1)]
             jitter = backoff * 0.5 * (__import__("random").random())
             wait = backoff + jitter
-            logger.info("Codex retry %d/%d after %.1fs…", attempt, CODEX_MAX_RETRIES, wait)
+            logger.info(
+                "llm_call retry provider=codex_cli model=%s effort=%s attempt=%d/%d wait_seconds=%.1f",
+                selected_model,
+                safe_effort,
+                attempt + 1,
+                CODEX_MAX_RETRIES + 1,
+                wait,
+            )
             time.sleep(wait)
 
         fd, output_file = tempfile.mkstemp(suffix=".txt")
         os.close(fd)
+        timeout = CODEX_TIMEOUT_FIRST if attempt == 0 else CODEX_TIMEOUT
+        started = time.monotonic()
         try:
             args = [
                 CODEX_BIN,
@@ -86,16 +91,25 @@ def _codex_chat(
                 "--ephemeral",
                 "--skip-git-repo-check",
                 "--json",
-            ]
-            if model:
-                args.extend(["-m", model])
-            args.extend([
-                "-c", f"model_reasoning_effort={safe_effort}",
-                "-o", output_file,
+                "-m",
+                selected_model,
+                "-c",
+                f"model_reasoning_effort={safe_effort}",
+                "-o",
+                output_file,
                 "-",
-            ])
+            ]
 
-            timeout = CODEX_TIMEOUT_FIRST if attempt == 0 else CODEX_TIMEOUT
+            logger.info(
+                "llm_call start provider=codex_cli model=%s effort=%s attempt=%d/%d max_tokens=%d prompt_chars=%d timeout_seconds=%d",
+                selected_model,
+                safe_effort,
+                attempt + 1,
+                CODEX_MAX_RETRIES + 1,
+                max_tokens,
+                len(full_prompt),
+                timeout,
+            )
             with _codex_launch_lock:
                 proc = subprocess.run(
                     args,
@@ -106,40 +120,62 @@ def _codex_chat(
                     env=env,
                     timeout=timeout,
                 )
+            duration_ms = int((time.monotonic() - started) * 1000)
 
             if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
                 with open(output_file) as f:
                     response = f.read().strip()
                 if response:
-                    if attempt > 0:
-                        logger.info("Codex succeeded on retry %d", attempt)
+                    logger.info(
+                        "llm_call success provider=codex_cli model=%s effort=%s attempt=%d/%d duration_ms=%d output_chars=%d",
+                        selected_model,
+                        safe_effort,
+                        attempt + 1,
+                        CODEX_MAX_RETRIES + 1,
+                        duration_ms,
+                        len(response),
+                    )
                     return response
 
             stdout_tail = (proc.stdout or "")[-500:]
             stderr_tail = (proc.stderr or "")[-500:]
             logger.warning(
-                "Codex: no output (rc=%d, attempt %d, stdout_tail=%r, stderr_tail=%r)",
-                proc.returncode,
+                "llm_call empty provider=codex_cli model=%s effort=%s attempt=%d/%d duration_ms=%d rc=%d stdout_tail=%r stderr_tail=%r",
+                selected_model,
+                safe_effort,
                 attempt + 1,
+                CODEX_MAX_RETRIES + 1,
+                duration_ms,
+                proc.returncode,
                 stdout_tail,
                 stderr_tail,
             )
             last_error = f"no_output(rc={proc.returncode})"
         except subprocess.TimeoutExpired:
+            duration_ms = int((time.monotonic() - started) * 1000)
             logger.warning(
-                "Codex CLI timeout after %ds (attempt %d/%d, model=%s, effort=%s)",
-                timeout,
+                "llm_call timeout provider=codex_cli model=%s effort=%s attempt=%d/%d duration_ms=%d timeout_seconds=%d",
+                selected_model,
+                safe_effort,
                 attempt + 1,
                 CODEX_MAX_RETRIES + 1,
-                model,
-                safe_effort,
+                duration_ms,
+                timeout,
+                exc_info=True,
             )
             last_error = "timeout"
         except FileNotFoundError:
-            logger.warning("Codex binary not found at %s", CODEX_BIN)
+            logger.exception("llm_call missing_binary provider=codex_cli binary=%s", CODEX_BIN)
             return None
         except Exception as e:
-            logger.warning("Codex CLI exception (attempt %d): %s", attempt + 1, e)
+            logger.exception(
+                "llm_call exception provider=codex_cli model=%s effort=%s attempt=%d/%d error=%s",
+                selected_model,
+                safe_effort,
+                attempt + 1,
+                CODEX_MAX_RETRIES + 1,
+                e,
+            )
             last_error = str(e)
         finally:
             try:
@@ -147,7 +183,13 @@ def _codex_chat(
             except OSError:
                 pass
 
-    logger.error("Codex CLI: all %d attempts failed. Last error: %s", CODEX_MAX_RETRIES + 1, last_error)
+    logger.error(
+        "llm_call failed provider=codex_cli model=%s effort=%s attempts=%d last_error=%s",
+        selected_model,
+        safe_effort,
+        CODEX_MAX_RETRIES + 1,
+        last_error,
+    )
     return None
 
 

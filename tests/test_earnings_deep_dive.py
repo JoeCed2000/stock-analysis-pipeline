@@ -45,8 +45,8 @@ def test_pdf_aligned_prompts_require_nami_template_shape():
     )
 
     assert len(SECTION_ORDER) == 10
-    assert "機関投資家" in system_prompt("jp")
-    assert "sourced: (Transcript" in system_prompt("en")
+    assert "バイサイド" in system_prompt("jp")
+    assert "(Earnings Call)" in system_prompt("en")
     assert "DATA RULES" in system_prompt("en")
 
     for section in SECTION_ORDER:
@@ -63,7 +63,7 @@ def test_pdf_aligned_prompts_require_nami_template_shape():
         assert "Question (EN):" in prompt
         assert "Question (JP):" in prompt
         assert "①" in prompt and "②" in prompt and "③" in prompt
-        assert "投資家向け" in prompt
+        assert "Namiさん向け" in prompt
         assert "> 一言まとめ:" in prompt
         # F3: Dynamic column labels — for sections with "Actual"/"Prior Year" or "Estimate",
         # the table_header now uses quarter-specific labels ("Q1 2026", "Q1 2025", "Q1 2026 Est")
@@ -160,8 +160,10 @@ def test_generate_deep_dive_writes_report_and_meta(tmp_path, monkeypatch):
 
     md_path = Path(out_dir) / "07_final_report" / "earnings_deep_dive.md"
     meta_path = Path(out_dir) / "07_final_report" / "earnings_deep_dive_meta.json"
+    trace_path = Path(out_dir) / "07_final_report" / "earnings_deep_dive_llm_trace.json"
     assert md_path.exists()
     assert meta_path.exists()
+    assert trace_path.exists()
     assert response.markdown_path == str(md_path)
     assert len(response.sections) == 10
     # at least one section succeeded (mock may not satisfy all new validators)
@@ -171,8 +173,15 @@ def test_generate_deep_dive_writes_report_and_meta(tmp_path, monkeypatch):
     assert "## Sources" in response.report_markdown
     assert "https://example.com/nvda-transcript" in response.report_markdown
     meta = json.loads(meta_path.read_text())
+    trace = json.loads(trace_path.read_text())
     assert meta["ticker"] == "NVDA"
     assert meta["provider"] == "Codex CLI local"
+    assert meta["generation_provider"] == "codex_cli"
+    assert meta["generation_model"] == "gpt-5.3-codex-spark"
+    assert meta["generation_reasoning_effort"] == "low"
+    assert meta["llm_trace_path"] == str(trace_path)
+    assert meta["llm_trace_summary"]["total_calls"] == len(trace)
+    assert trace and all(item["phase"] == "earnings_deep_dive" for item in trace)
     assert meta["transcript_url"] == "https://example.com/nvda-transcript"
     assert response.transcript_url == "https://example.com/nvda-transcript"
 
@@ -245,7 +254,7 @@ def test_generate_deep_dive_retries_then_degrades_to_placeholder(tmp_path, monke
 
     assert attempts["EPS & Revenue"] == 2
     assert "## EPS & Revenue" in response.sections["EPS & Revenue"]
-    assert "Section unavailable" in response.sections["EPS & Revenue"]
+    assert "Unavailable from reviewed sources" in response.sections["EPS & Revenue"]
     assert response.sections["Guidance"].startswith("##")
     assert any(status.status == "failed" for status in response.statuses)
     assert response.warnings
