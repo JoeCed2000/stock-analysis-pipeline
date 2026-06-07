@@ -233,6 +233,29 @@ class TestPeriodConsistencyGate:
         errors = [e for e in result.errors if e.check == "guidance_not_forward_looking"]
         assert len(errors) == 1
 
+    def test_guidance_issued_before_current_release_blocked(self):
+        """11f: Forward guidance cannot be stale/recycled from before current earnings release."""
+        from backend.earnings_deep_dive.pre_render_validator import validate_pre_render
+        ctx = _make_ok_ctx()
+        ctx.guidance_period = "FY2026 Q2"
+        ctx.earnings_release_date = "2026-05-22"
+        ctx.guidance_issued_date = "2026-02-21"
+        result = validate_pre_render("NVDA", "FY2026 Q1", None, {}, period_context=ctx)
+        errors = [e for e in result.errors if e.check == "guidance_stale_issue_date"]
+        assert len(errors) == 1
+        assert "2026-02-21" in errors[0].detail
+        assert "2026-05-22" in errors[0].detail
+
+    def test_guidance_issued_on_current_release_passes(self):
+        """11f: Guidance issued on/after the current earnings release is fresh enough."""
+        from backend.earnings_deep_dive.pre_render_validator import validate_pre_render
+        ctx = _make_ok_ctx()
+        ctx.guidance_period = "FY2026 Q2"
+        ctx.earnings_release_date = "2026-05-22"
+        ctx.guidance_issued_date = "2026-05-22"
+        result = validate_pre_render("NVDA", "FY2026 Q1", None, {}, period_context=ctx)
+        assert not any(e.check == "guidance_stale_issue_date" for e in result.errors)
+
     def test_transcript_filing_mismatch_blocked(self):
         """11c: Transcript period differs from filing period."""
         from backend.earnings_deep_dive.pre_render_validator import validate_pre_render

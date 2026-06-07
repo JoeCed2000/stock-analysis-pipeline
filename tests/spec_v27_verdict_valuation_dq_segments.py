@@ -57,6 +57,35 @@ class TestVerdict:
         errs = _errors_for(result, "verdict_no_red_flags_paradox")
         assert len(errs) == 1
 
+    def test_verdict_missing_explicit_recommendation_blocked(self):
+        sections = {"Verdict": "Score: 7/10. Strong quarter with some valuation concerns."}
+        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
+        errs = _errors_for(result, "verdict_missing_recommendation")
+        assert len(errs) == 1
+
+    def test_verdict_multiple_recommendations_blocked(self):
+        sections = {"Verdict": "Score: 6/10. BUY for momentum, but HOLD until valuation improves."}
+        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
+        errs = _errors_for(result, "verdict_multiple_recommendations")
+        assert len(errs) == 1
+
+    def test_high_score_sell_recommendation_blocked(self):
+        sections = {"Verdict": "Score: 8/10. Strong quarter and improving margins. SELL."}
+        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
+        errs = _errors_for(result, "verdict_recommendation_score_mismatch")
+        assert len(errs) == 1
+
+    def test_low_score_buy_recommendation_blocked(self):
+        sections = {"Verdict": "Score: 2/10. Revenue missed and leverage worsened. BUY."}
+        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
+        errs = _errors_for(result, "verdict_recommendation_score_mismatch")
+        assert len(errs) == 1
+
+    def test_hold_policy_score_band_passes(self):
+        sections = {"Verdict": "Score: 5/10. Mixed quarter, valuation risk offsets growth. HOLD."}
+        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
+        assert not any(e.check.startswith("verdict_") for e in result.errors)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # RULE 22 — §19 Valuation sanity

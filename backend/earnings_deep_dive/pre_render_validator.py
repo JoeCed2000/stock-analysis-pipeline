@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -118,9 +119,10 @@ FY_REFERENCE_RE = re.compile(
     re.IGNORECASE,
 )
 
-# ── Score extraction pattern ───────────────────────────────────────────────
+# ── Score / recommendation extraction patterns ────────────────────────────
 
 SCORE_RE = re.compile(r'[Ss]core\s*:\s*(\d+)\s*/\s*10')
+RECOMMENDATION_RE = re.compile(r'\b(BUY|HOLD|SELL)\b', re.IGNORECASE)
 
 
 @dataclass
@@ -359,6 +361,19 @@ def _try_parse_quarter(label: str) -> tuple[int | None, int | None]:
         else:
             return int(a), int(b)
     return None, None
+
+
+def _try_parse_iso_date(value: str | None) -> date | None:
+    """Parse YYYY-MM-DD from ISO-like strings; return None on missing/unparseable input."""
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except (TypeError, ValueError):
+        return None
 
 
 def validate_pre_render(
@@ -793,6 +808,22 @@ def validate_pre_render(
                             ),
                             severity="error",
                         ))
+
+            # 11f. Guidance issue date must be fresh for the current earnings release
+            guidance_issued = _try_parse_iso_date(getattr(pc, 'guidance_issued_date', None))
+            release_date = _try_parse_iso_date(getattr(pc, 'earnings_release_date', None))
+            if pc.guidance_period and guidance_issued and release_date and guidance_issued < release_date:
+                warnings.append(ValidationWarning(
+                    check="guidance_stale_issue_date",
+                    section="Guidance",
+                    detail=(
+                        f"FATAL: Guidance for '{pc.guidance_period}' was issued on "
+                        f"'{getattr(pc, 'guidance_issued_date', None)}', before the current earnings release "
+                        f"'{getattr(pc, 'earnings_release_date', None)}'. Do not recycle stale guidance "
+                        f"from a prior quarter."
+                    ),
+                    severity="error",
+                ))
 
             # 11c. Transcript period must match filing period
             if pc.transcript_period and pc.filing_period:
@@ -1579,6 +1610,44 @@ def validate_pre_render(
                     severity="error",
                 ))
 
+        # 21d. Verdict policy: exactly one explicit BUY/HOLD/SELL and no score-band contradiction
+        recommendations = [m.group(1).upper() for m in RECOMMENDATION_RE.finditer(vd)]
+        unique_recommendations = sorted(set(recommendations))
+        if not unique_recommendations:
+            warnings.append(ValidationWarning(
+                check="verdict_missing_recommendation",
+                section="Verdict",
+                detail=(
+                    "Verdict must contain exactly one explicit recommendation: BUY, HOLD, or SELL. "
+                    "Do not leave the client-facing action implicit."
+                ),
+                severity="error",
+            ))
+        elif len(unique_recommendations) > 1:
+            warnings.append(ValidationWarning(
+                check="verdict_multiple_recommendations",
+                section="Verdict",
+                detail=(
+                    f"Verdict contains multiple recommendations ({', '.join(unique_recommendations)}). "
+                    "Choose one client-facing action: BUY, HOLD, or SELL."
+                ),
+                severity="error",
+            ))
+        elif score_match:
+            recommendation = unique_recommendations[0]
+            score = int(score_match.group(1))
+            score_mismatch = (score >= 7 and recommendation == "SELL") or (score <= 3 and recommendation == "BUY")
+            if score_mismatch:
+                warnings.append(ValidationWarning(
+                    check="verdict_recommendation_score_mismatch",
+                    section="Verdict",
+                    detail=(
+                        f"Verdict recommendation '{recommendation}' contradicts score {score}/10. "
+                        "Use BUY/HOLD/SELL consistently with the score band or revise the score."
+                    ),
+                    severity="error",
+                ))
+
     # ── RULE 22 (BLOCKING): §19 Valuation sanity ─────────────────────────────
     #
     # FCF yield below 2% must be flagged. High P/FCF must be flagged.
@@ -2012,6 +2081,75 @@ def validate_pre_render(
                     detail=(
                         f"{name} = {val:.1f}% exceeds 100%. "
                         f"Margins cannot exceed 100% in standard business; verify the value."
+                    ),
+                    severity="error",
+                ))
+
+        # 27d. Metric/source capability reconciliation
+        if source_registry is not None:
+            for entry in ledger_entries:
+                source_id = getattr(entry, 'source_id', None)
+                family = getattr(entry, 'metric_family', None)
+                if not source_id or not family:
+                    continue
+                source_supports = getattr(source_registry, 'source_supports', None)
+                if callable(source_supports):
+                    supported = source_supports(source_id, family)
+                else:
+                    supported = False
+                if not supported:
+                    warnings.append(ValidationWarning(
+                        check="metrics_ledger_metric_source_capability_mismatch",
+                        section="Data Quality",
+                        detail=(
+                            f"Metric '{getattr(entry, 'canonical_metric_name', '')}' uses source '{source_id}' "
+                            f"for metric family '{family}', but the source registry does not declare support for that family. "
+                            f"Use a supported source or change the metric attribution before rendering."
+                        ),
+                        severity="error",
+                    ))
+
+        # 27e. Calculated metric formula reconciliation
+        for entry in ledger_entries:
+            period_type = getattr(entry, 'period_type', None)
+            basis = getattr(entry, 'basis', None)
+            source_type = getattr(entry, 'source_type', None)
+            if not (period_type == "Calculated" or basis == "calculated" or source_type == "calculated"):
+                continue
+            val = getattr(entry, 'value', None)
+            numerator = getattr(entry, 'numerator', None)
+            denominator = getattr(entry, 'denominator', None)
+            formula = getattr(entry, 'formula', None)
+            if val is None or numerator is None or denominator is None or not formula:
+                continue
+            try:
+                val_f = float(val)
+                numerator_f = float(numerator)
+                denominator_f = float(denominator)
+            except (TypeError, ValueError):
+                continue
+            if denominator_f == 0:
+                warnings.append(ValidationWarning(
+                    check="metrics_ledger_calculated_formula_divide_by_zero",
+                    section="Data Quality",
+                    detail=(
+                        f"Calculated metric '{getattr(entry, 'canonical_metric_name', '')}' has denominator=0 "
+                        f"for formula '{formula}'."
+                    ),
+                    severity="error",
+                ))
+                continue
+            expected = numerator_f / denominator_f
+            abs_delta = abs(val_f - expected)
+            rel_delta = abs_delta / max(abs(expected), 1e-9)
+            if abs_delta > 0.01 and rel_delta > 0.01:
+                warnings.append(ValidationWarning(
+                    check="metrics_ledger_calculated_formula_mismatch",
+                    section="Data Quality",
+                    detail=(
+                        f"Calculated metric '{getattr(entry, 'canonical_metric_name', '')}' value={val_f:.4g} "
+                        f"does not match formula '{formula}' expected={expected:.4g} "
+                        f"from numerator/denominator."
                     ),
                     severity="error",
                 ))

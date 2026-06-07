@@ -8,6 +8,8 @@ from backend.earnings_deep_dive.report_model import (
     MetricsLedger,
     MetricsLedgerEntry,
     EarningsDeepDiveReport,
+    SourceRegistry,
+    SourceRegistryEntry,
 )
 from backend.earnings_deep_dive.pre_render_validator import validate_pre_render
 
@@ -51,6 +53,50 @@ class TestMetricsLedgerModel:
         assert e.formula is not None
         assert e.numerator == 10e9
         assert e.denominator == 2.85e9
+        assert e.period_type == "Calculated"
+        assert e.basis == "calculated"
+        assert e.source_status == "used"
+        assert e.inputs == []
+
+    def test_period_type_is_normalized_to_public_label(self):
+        e = MetricsLedgerEntry(
+            metric_id="MKT-001",
+            canonical_metric_name="market_cap",
+            display_name="Market Cap",
+            value=5.22e12,
+            unit="USD",
+            period_type="market_data",
+            basis="market",
+            source_type="yfinance",
+        )
+        assert e.period_type == "Market Snapshot"
+
+    def test_unresolved_internal_period_is_blocked(self):
+        with pytest.raises(ValueError, match="annual_or_ttm"):
+            MetricsLedgerEntry(
+                metric_id="REV-AMBIG",
+                canonical_metric_name="revenue",
+                display_name="Revenue",
+                value=22.4e9,
+                unit="USD",
+                period_type="annual_or_ttm",
+                basis="provider_supplied",
+                source_type="yfinance",
+            )
+
+    def test_calculated_metric_requires_formula(self):
+        with pytest.raises(ValueError, match="formula"):
+            MetricsLedgerEntry(
+                metric_id="PEG-001",
+                canonical_metric_name="peg_ratio",
+                display_name="PEG Ratio",
+                value=0.66,
+                unit="ratio",
+                period_type="calculated",
+                basis="calculated",
+                source_type="calculated",
+                inputs=["PE-001", "GRW-001"],
+            )
 
     def test_creates_empty_ledger(self):
         l = MetricsLedger()
@@ -216,6 +262,121 @@ class TestRule27MetricsLedgerGate:
             metrics_ledger=ml,
         )
         assert not any("sec_consensus_confusion" in e.check for e in result.errors)
+
+    def test_27d_metric_source_capability_mismatch_blocked(self):
+        ml = MetricsLedger(entries=[
+            MetricsLedgerEntry(
+                metric_id="GUID-001",
+                canonical_metric_name="revenue_guidance",
+                display_name="Revenue Guidance",
+                value=25.0e9,
+                unit="USD",
+                period_type="Guidance",
+                source_id="S1",
+                source_type="yfinance",
+                basis="guidance",
+                metric_family="management_guidance",
+            ),
+        ])
+        sr = SourceRegistry(entries=[
+            SourceRegistryEntry(
+                source_id="S1",
+                human_label="Yahoo Finance",
+                source_type="market_data",
+                status="used",
+                capability_families=["market_snapshot", "consensus"],
+                unsupported_metric_families=["management_guidance"],
+            ),
+        ])
+        result = validate_pre_render(
+            ticker="NVDA", quarter="Q1 FY2026", metrics=None,
+            section_analysis={},
+            metrics_ledger=ml,
+            source_registry=sr,
+        )
+        assert result.passed is False
+        assert any("metric_source_capability_mismatch" in e.check for e in result.errors)
+
+    def test_27d_supported_metric_source_no_error(self):
+        ml = MetricsLedger(entries=[
+            MetricsLedgerEntry(
+                metric_id="MKT-001",
+                canonical_metric_name="market_cap",
+                display_name="Market Cap",
+                value=5.22e12,
+                unit="USD",
+                period_type="Market Snapshot",
+                source_id="S1",
+                source_type="yfinance",
+                basis="market",
+                metric_family="market_snapshot",
+            ),
+        ])
+        sr = SourceRegistry(entries=[
+            SourceRegistryEntry(
+                source_id="S1",
+                human_label="Yahoo Finance",
+                source_type="market_data",
+                status="used",
+                capability_families=["market_snapshot", "consensus"],
+            ),
+        ])
+        result = validate_pre_render(
+            ticker="NVDA", quarter="Q1 FY2026", metrics=None,
+            section_analysis={},
+            metrics_ledger=ml,
+            source_registry=sr,
+        )
+        assert not any("metric_source_capability_mismatch" in e.check for e in result.errors)
+
+    def test_27e_calculated_metric_formula_mismatch_blocked(self):
+        ml = MetricsLedger(entries=[
+            MetricsLedgerEntry(
+                metric_id="EPS-CALC-001",
+                canonical_metric_name="eps_calculated",
+                display_name="EPS (Calculated)",
+                value=5.00,
+                unit="USD",
+                period_type="Calculated",
+                basis="calculated",
+                source_type="calculated",
+                formula="net_income / diluted_shares",
+                numerator=10_000_000_000.0,
+                denominator=2_850_000_000.0,
+                inputs=["NET-001", "SHR-001"],
+            ),
+        ])
+        result = validate_pre_render(
+            ticker="NVDA", quarter="Q1 FY2026", metrics=None,
+            section_analysis={},
+            metrics_ledger=ml,
+        )
+        assert result.passed is False
+        assert any("calculated_formula_mismatch" in e.check for e in result.errors)
+
+    def test_27e_calculated_metric_formula_match_no_error(self):
+        ml = MetricsLedger(entries=[
+            MetricsLedgerEntry(
+                metric_id="EPS-CALC-001",
+                canonical_metric_name="eps_calculated",
+                display_name="EPS (Calculated)",
+                value=3.51,
+                unit="USD",
+                period_type="Calculated",
+                basis="calculated",
+                source_type="calculated",
+                formula="net_income / diluted_shares",
+                numerator=10_000_000_000.0,
+                denominator=2_850_000_000.0,
+                inputs=["NET-001", "SHR-001"],
+            ),
+        ])
+        result = validate_pre_render(
+            ticker="NVDA", quarter="Q1 FY2026", metrics=None,
+            section_analysis={},
+            metrics_ledger=ml,
+        )
+        assert not any("calculated_formula_mismatch" in e.check for e in result.errors)
 
     def test_null_metrics_ledger_noop(self):
         result = validate_pre_render(

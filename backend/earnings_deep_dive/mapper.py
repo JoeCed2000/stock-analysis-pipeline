@@ -1859,6 +1859,9 @@ def _build_report_period_context(
 
     # Guidance period — explicitly forward-looking, only if available
     guidance_period = _metric_text(metrics, "guidance_period", "guidance_fiscal_period")
+    guidance_issued_date = _metric_text(metrics, "guidance_issued_date", "guidance_date")
+    if guidance_period and not guidance_issued_date:
+        guidance_issued_date = earnings_release_date
 
     # Comparison prior year period
     comparison_prior = prior_q
@@ -1880,6 +1883,7 @@ def _build_report_period_context(
         press_release_period=press_release_period,
         filing_period=filing_period,
         guidance_period=guidance_period if guidance_period else None,
+        guidance_issued_date=guidance_issued_date if guidance_period else None,
         comparison_prior_year_period=comparison_prior,
         report_title_period_label=report_title,
         display_period_label=display_label,
@@ -2035,6 +2039,26 @@ def _build_source_registry(
 
     entries: list[SourceRegistryEntry] = []
 
+    def _capability_families(source_type: str, label: str) -> tuple[list[str], list[str]]:
+        """Infer source capability families from the normalized source type/label."""
+        stype_l = (source_type or "").strip().lower()
+        label_l = (label or "").strip().lower()
+        text = f"{stype_l} {label_l}"
+
+        if "market_data" in text or "yfinance" in text or "yahoo" in text:
+            return ["market_snapshot", "consensus"], ["management_guidance", "filing_facts"]
+        if "consensus" in text or "estimate" in text:
+            return ["consensus"], ["management_guidance", "filing_facts"]
+        if "transcript" in text or "seeking alpha" in text:
+            return ["transcript_claims"], ["market_snapshot", "consensus"]
+        if "sec" in text or "filing" in text or "10-q" in text or "10-k" in text:
+            return ["historical_actuals", "filing_facts"], ["consensus", "management_guidance"]
+        if "press_release" in text or "press release" in text or "earnings release" in text:
+            return ["historical_actuals", "management_guidance"], ["market_snapshot"]
+        if "presentation" in text or "ir_page" in text or "investor" in text:
+            return ["management_guidance", "transcript_claims"], ["market_snapshot"]
+        return [], []
+
     for s in sources_list:
         if isinstance(s, dict):
             sid = s.get("source_id", "") or ""
@@ -2063,6 +2087,8 @@ def _build_source_registry(
             source_type=stype if stype else None,
             url=url if url else None, period_matched=True,
             status=status, fields_used=[],
+            capability_families=_capability_families(stype, label)[0],
+            unsupported_metric_families=_capability_families(stype, label)[1],
             retrieved_at=retrieved if retrieved else None,
             confidence=None, failure_reason_internal_only=None,
             public_display_label=public_label,

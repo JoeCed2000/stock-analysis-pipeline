@@ -10,6 +10,7 @@ from backend.earnings_deep_dive.report_model import (
     EarningsDeepDiveReport,
 )
 from backend.earnings_deep_dive.pre_render_validator import validate_pre_render
+from backend.earnings_deep_dive.mapper import _build_source_registry
 
 
 # ── Model tests ────────────────────────────────────────────────────────
@@ -109,6 +110,59 @@ class TestSourceRegistryModel:
     def test_get_label_unknown_returns_none(self):
         r = SourceRegistry()
         assert r.get_label("S99") is None
+
+    def test_source_capability_supports_declared_family(self):
+        e = SourceRegistryEntry(
+            source_id="S1",
+            human_label="Yahoo Finance",
+            source_type="market_data",
+            status="used",
+            capability_families=["market_snapshot", "consensus"],
+            unsupported_metric_families=["management_guidance"],
+        )
+        assert e.supports_metric_family("market_snapshot") is True
+        assert e.supports_metric_family("consensus") is True
+        assert e.supports_metric_family("management_guidance") is False
+
+    def test_failed_source_never_supports_metric_family(self):
+        e = SourceRegistryEntry(
+            source_id="S2",
+            human_label="Failed Transcript",
+            source_type="transcript",
+            status="failed",
+            capability_families=["transcript_claims"],
+        )
+        assert e.supports_metric_family("transcript_claims") is False
+
+    def test_registry_source_support_lookup(self):
+        r = SourceRegistry(entries=[
+            SourceRegistryEntry(
+                source_id="S1",
+                human_label="Consensus",
+                status="used",
+                capability_families=["consensus"],
+            )
+        ])
+        assert r.source_supports("S1", "consensus") is True
+        assert r.source_supports("S1", "management_guidance") is False
+        assert r.source_supports("S99", "consensus") is False
+
+    def test_builder_infers_market_data_capabilities(self):
+        r = _build_source_registry(
+            sources=[{"source_id": "S1", "label": "Yahoo Finance", "source_type": "market_data"}],
+            claim_sources=[{"source_id": "S1"}],
+        )
+        assert r.source_supports("S1", "market_snapshot") is True
+        assert r.source_supports("S1", "consensus") is True
+        assert r.source_supports("S1", "management_guidance") is False
+
+    def test_builder_infers_transcript_capabilities_only_for_claims(self):
+        r = _build_source_registry(
+            sources=[{"source_id": "S1", "label": "Seeking Alpha Transcript", "source_type": "transcript"}],
+            claim_sources=[{"source_id": "S1"}],
+        )
+        assert r.source_supports("S1", "transcript_claims") is True
+        assert r.source_supports("S1", "market_snapshot") is False
 
     def test_integration_in_report(self):
         reg = SourceRegistry(entries=[

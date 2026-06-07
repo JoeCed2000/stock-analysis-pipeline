@@ -1,5 +1,160 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-07 — SA PDF Structural Quality T6 verdict policy
+
+**Status:** Verdict recommendation policy gate completed in TDD.
+
+### Scope
+- Files changed:
+  - `backend/earnings_deep_dive/pre_render_validator.py`
+  - `tests/spec_v27_verdict_valuation_dq_segments.py`
+- No renderer, endpoint, worker, Kanban, or PDF generation change.
+
+### Change
+- RULE 21 now requires exactly one explicit client-facing recommendation in Verdict: `BUY`, `HOLD`, or `SELL`.
+- RULE 21 blocks ambiguous verdicts with multiple recommendations.
+- RULE 21 blocks basic score/action contradictions (`score >= 7` with `SELL`, `score <= 3` with `BUY`).
+
+### Verification
+- Red/green TDD confirmed for missing recommendation, multiple recommendations, high-score SELL, low-score BUY, and neutral HOLD pass case.
+- `backend/.venv/bin/python -m pytest tests/spec_v27_verdict_valuation_dq_segments.py -q` → `19 passed`.
+- `backend/.venv/bin/python -m pytest tests/spec_v27_period_consistency.py tests/spec_v27_metrics_ledger.py tests/spec_v27_source_registry.py tests/spec_v27_pdf_quality_gate.py tests/spec_v27_verdict_valuation_dq_segments.py -q` → `108 passed`.
+- `backend/.venv/bin/python -m py_compile backend/earnings_deep_dive/pre_render_validator.py` → OK.
+
+## 2026-06-07 — SA PDF Structural Quality T5 guidance freshness
+
+**Status:** Guidance freshness gate completed in TDD.
+
+### Scope
+- Files changed:
+  - `backend/earnings_deep_dive/report_model.py`
+  - `backend/earnings_deep_dive/mapper.py`
+  - `backend/earnings_deep_dive/pre_render_validator.py`
+  - `tests/spec_v27_period_consistency.py`
+- No renderer, endpoint, worker, Kanban, or PDF generation change.
+
+### Change
+- `ReportPeriodContext` now carries `guidance_issued_date`.
+- `_build_report_period_context()` fills `guidance_issued_date` from metrics (`guidance_issued_date`/`guidance_date`) or, when guidance exists, defaults to the current earnings release date.
+- RULE 11 blocks forward guidance that was issued before the current earnings release date, preventing stale/recycled guidance from prior quarters.
+
+### Verification
+- Red/green TDD confirmed for stale guidance issue date vs current-release guidance.
+- `backend/.venv/bin/python -m pytest tests/spec_v27_period_consistency.py -q` → `33 passed`.
+- `backend/.venv/bin/python -m pytest tests/spec_v27_period_consistency.py tests/spec_v27_metrics_ledger.py tests/spec_v27_source_registry.py tests/spec_v27_pdf_quality_gate.py -q` → `89 passed`.
+- `backend/.venv/bin/python -m py_compile backend/earnings_deep_dive/report_model.py backend/earnings_deep_dive/mapper.py backend/earnings_deep_dive/pre_render_validator.py` → OK.
+
+## 2026-06-07 — SA PDF Structural Quality T4 calculated metrics reconciliation
+
+**Status:** Derived calculation validation gate completed in TDD.
+
+### Scope
+- Files changed:
+  - `backend/earnings_deep_dive/pre_render_validator.py`
+  - `tests/spec_v27_metrics_ledger.py`
+- No renderer, endpoint, worker, Kanban, or PDF generation change.
+
+### Change
+- RULE 27 now blocks calculated ledger metrics when `value` does not match `numerator / denominator` beyond rounding tolerance.
+- Divide-by-zero calculated metrics are blocked.
+- This prevents internally inconsistent derived numbers such as EPS/PEG-style calculations before PDF rendering.
+
+### Verification
+- Red/green TDD confirmed for mismatched vs matched calculated metric formulas.
+- `backend/.venv/bin/python -m pytest tests/spec_v27_metrics_ledger.py -q` → `22 passed`.
+- `backend/.venv/bin/python -m pytest tests/spec_v27_metrics_ledger.py tests/spec_v27_source_registry.py tests/spec_v27_pdf_quality_gate.py -q` → `56 passed`.
+- `backend/.venv/bin/python -m py_compile backend/earnings_deep_dive/report_model.py backend/earnings_deep_dive/mapper.py backend/earnings_deep_dive/pre_render_validator.py` → OK.
+
+## 2026-06-07 — SA PDF Structural Quality T3 metric/source reconciliation
+
+**Status:** Metric-to-source capability reconciliation gate completed in TDD.
+
+### Scope
+- Files changed:
+  - `backend/earnings_deep_dive/report_model.py`
+  - `backend/earnings_deep_dive/pre_render_validator.py`
+  - `tests/spec_v27_metrics_ledger.py`
+- No renderer, endpoint, worker, Kanban, or PDF generation change.
+
+### Change
+- `MetricsLedgerEntry` now carries `metric_family`.
+- RULE 27 now blocks a ledger entry when its `source_id` points to a source registry entry that does not support the metric family.
+- Example blocked case: revenue guidance attributed to Yahoo/market data (`management_guidance` unsupported).
+
+### Verification
+- Red/green TDD confirmed for unsupported vs supported source capability.
+- `backend/.venv/bin/python -m pytest tests/spec_v27_metrics_ledger.py -q` → `20 passed`.
+- `backend/.venv/bin/python -m pytest tests/spec_v27_metrics_ledger.py tests/spec_v27_source_registry.py tests/spec_v27_pdf_quality_gate.py -q` → `54 passed`.
+- `backend/.venv/bin/python -m py_compile backend/earnings_deep_dive/report_model.py backend/earnings_deep_dive/mapper.py backend/earnings_deep_dive/pre_render_validator.py` → OK.
+
+## 2026-06-07 — SA PDF Structural Quality T2 source capabilities
+
+**Status:** Source capability model slice completed in TDD.
+
+### Scope
+- Files changed:
+  - `backend/earnings_deep_dive/report_model.py`
+  - `backend/earnings_deep_dive/mapper.py`
+  - `tests/spec_v27_source_registry.py`
+- No renderer, endpoint, worker, Kanban, or PDF generation change.
+
+### Change
+- `SourceRegistryEntry` now declares `capability_families` and `unsupported_metric_families`.
+- Added `supports_metric_family()` on source entries and `source_supports()` on the registry.
+- `_build_source_registry()` now infers source capability families from source type/label:
+  - market/Yahoo/yfinance → `market_snapshot`, `consensus`; not `management_guidance`/`filing_facts`
+  - transcript/Seeking Alpha → `transcript_claims`; not `market_snapshot`/`consensus`
+  - SEC/filing → `historical_actuals`, `filing_facts`; not `consensus`/`management_guidance`
+  - press release → `historical_actuals`, `management_guidance`
+
+### Verification
+- Red/green TDD confirmed for source capabilities and builder inference.
+- `backend/.venv/bin/python -m pytest tests/spec_v27_source_registry.py -q` → `23 passed`.
+- `backend/.venv/bin/python -m py_compile backend/earnings_deep_dive/report_model.py backend/earnings_deep_dive/mapper.py backend/earnings_deep_dive/pre_render_validator.py` → OK.
+
+## 2026-06-07 — SA PDF Structural Quality T1 metric truth schema
+
+**Status:** First implementation slice completed in TDD for the Metric Truth Table model.
+
+### Scope
+- Files changed:
+  - `backend/earnings_deep_dive/report_model.py`
+  - `tests/spec_v27_metrics_ledger.py`
+- No renderer, endpoint, worker, or Kanban change.
+
+### Change
+- `MetricsLedgerEntry.period_type` now normalizes provider/internal labels into client-safe labels:
+  - `quarterly` → `Quarterly`
+  - `calculated` → `Calculated`
+  - `market_data` → `Market Snapshot`
+- Ambiguous/internal periods such as `annual_or_ttm` are blocked at model construction instead of leaking toward PDF output.
+- Calculated metrics now require a formula.
+- Metric rows gained `source_status`, `inputs`, and `quality_notes` fields for later reconciliation slices.
+
+### Verification
+- Red/green TDD confirmed: the new schema tests failed before the model patch, then passed after it.
+- `backend/.venv/bin/python -m pytest tests/spec_v27_metrics_ledger.py -q` → `18 passed`.
+- `backend/.venv/bin/python -m pytest tests/spec_v27_metrics_ledger.py tests/spec_v27_source_registry.py tests/spec_v27_pdf_quality_gate.py -q` → `47 passed`.
+- `backend/.venv/bin/python -m py_compile backend/earnings_deep_dive/report_model.py backend/earnings_deep_dive/mapper.py backend/earnings_deep_dive/pre_render_validator.py` → OK.
+
+## 2026-06-07 — SA PDF Structural Quality v1 architecture spec
+
+**Status:** Architecture spec added for the next structural PDF quality pass. This is a pipeline-level correction plan, not a ticker-specific cleanup.
+
+### Scope
+- Spec file: `docs/specs/sa-pdf-structural-quality-v1.md`.
+- Target PDFs: Company Overview + Earnings Deep-Dive.
+- Execution mode: manual sequential slices only — **no Kanban task creation, no worker spawn, no dispatch** while SA Kanban remains unstable.
+
+### Architecture decision
+- Extend the existing `MetricsLedger`, `SourceRegistry`, and `ReportPeriodContext` concepts instead of creating duplicate structures.
+- Add a reconciliation layer before rendering: source capability support, period/basis separation, repeated metric consistency, derived calculation validation, guidance freshness, and verdict confidence policy.
+- Keep PDF structure mostly stable, but block export when hard quality gates fail: unresolved internal enum, missing period/source, inconsistent metric, unsupported source attribution, stale guidance, broken glyph, long URL overflow, or strong rating with LOW confidence.
+
+### Verification
+- Local health remained OK before this doc slice: `GET /api/health` reported commit `0fad64f`.
+- This slice is documentation/spec only; no production code changed.
+
 ## 2026-06-07 — Broadcom / AVGO feedback closeout discipline
 
 **Status:** Broadcom / AVGO PDF-access defect is logged in the canonical feedback store and marked `taken_into_account` with screenshot evidence, root cause, resolution, and memory/tooling follow-up.

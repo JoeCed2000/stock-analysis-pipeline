@@ -8,10 +8,50 @@ CompanyOverview itself is per-language (EN or JP from cache).
 from datetime import date as DateType
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 ReportLanguage = Literal["en", "jp"]
+MetricPeriodType = Literal[
+    "Quarterly",
+    "Annual",
+    "TTM",
+    "Market Snapshot",
+    "Guidance",
+    "Consensus",
+    "Calculated",
+]
+MetricSourceStatus = Literal[
+    "used",
+    "candidate",
+    "available_not_used",
+    "failed",
+    "fallback_used",
+    "unavailable",
+]
+MetricValidationStatus = Literal["verified", "unverified", "warning", "blocked", "unavailable", "flagged"]
+MetricConfidence = Literal["high", "medium", "low"]
+
+_METRIC_PERIOD_ALIASES: dict[str, MetricPeriodType] = {
+    "quarterly": "Quarterly",
+    "quarter": "Quarterly",
+    "q": "Quarterly",
+    "annual": "Annual",
+    "yearly": "Annual",
+    "fy": "Annual",
+    "ttm": "TTM",
+    "ltm": "TTM",
+    "market_data": "Market Snapshot",
+    "market snapshot": "Market Snapshot",
+    "market_snapshot": "Market Snapshot",
+    "market": "Market Snapshot",
+    "guidance": "Guidance",
+    "consensus": "Consensus",
+    "calculated": "Calculated",
+    "computed": "Calculated",
+}
+
+_BLOCKED_INTERNAL_PERIODS = {"annual_or_ttm", "unknown", "mixed", "provider_default"}
 
 # ── Source grounding levels ──
 GroundingLevel = Literal[
@@ -478,10 +518,11 @@ class EarningsDocumentsChecklist(BaseModel):
 
 
 class SourceRegistryEntry(BaseModel):
-    """Per-source usage tracking entry — §5 corrections.txt.
+    """Per-source usage and capability tracking entry — §5 corrections.txt.
 
     Tracks whether a source was actually used as evidence (not just available).
-    Maps source IDs to human-readable labels and prevents raw provider key leaks.
+    Declares what metric families it can support so later reconciliation can
+    block unsupported attributions before rendering.
     """
     source_id: str
     human_label: str
@@ -489,12 +530,26 @@ class SourceRegistryEntry(BaseModel):
     source_type: str | None = None             # transcript, press_release, SEC_filing, market_data, consensus
     url: str | None = None
     period_matched: bool = False               # Does the source period match the report period?
-    status: str = "candidate"                  # used | candidate | available_not_used | failed | fallback_used
+    status: MetricSourceStatus = "candidate"
     fields_used: list[str] = Field(default_factory=list)  # e.g. ["eps_actual", "revenue_estimate"]
+    capability_families: list[str] = Field(default_factory=list)
+    unsupported_metric_families: list[str] = Field(default_factory=list)
     retrieved_at: str | None = None
-    confidence: str | None = None              # high | medium | low
+    confidence: MetricConfidence | None = None
     failure_reason_internal_only: str | None = None
     public_display_label: str | None = None    # Client-ready label, never raw provider key
+    public_quality_note: str | None = None
+
+    def supports_metric_family(self, family: str) -> bool:
+        """Return True only when this source is usable evidence for a metric family."""
+        normalized = family.strip().lower()
+        if self.status != "used":
+            return False
+        unsupported = {f.strip().lower() for f in self.unsupported_metric_families}
+        if normalized in unsupported:
+            return False
+        supported = {f.strip().lower() for f in self.capability_families}
+        return normalized in supported
 
 
 class SourceRegistry(BaseModel):
@@ -531,18 +586,32 @@ class SourceRegistry(BaseModel):
 
     def get_label(self, source_id: str) -> str | None:
         """Get human-readable label for a source ID. Returns None if not found."""
+        entry = self.get_entry(source_id)
+        if entry is None:
+            return None
+        return entry.public_display_label or entry.human_label
+
+    def get_entry(self, source_id: str) -> SourceRegistryEntry | None:
+        """Return a source registry entry by ID."""
         for e in self.entries:
             if e.source_id == source_id:
-                return e.public_display_label or e.human_label
+                return e
         return None
+
+    def source_supports(self, source_id: str, metric_family: str) -> bool:
+        """Return whether a used source can support the requested metric family."""
+        entry = self.get_entry(source_id)
+        if entry is None:
+            return False
+        return entry.supports_metric_family(metric_family)
 
 
 class MetricsLedgerEntry(BaseModel):
-    """Single entry in the metrics ledger — §4 corrections.txt.
+    """Single canonical row in the PDF metric truth table — §4 corrections.txt.
 
-    Every displayed number in the PDF must derive from a ledger entry.
-    This prevents contradictions where a metric appears in a table but
-    the narrative says it was 'not retrieved'.
+    Every displayed number in the PDF must derive from a ledger entry. Public
+    period labels are normalized here so renderer layers never leak internal
+    provider enums such as ``annual_or_ttm`` or ``market_data``.
     """
     metric_id: str                          # e.g. "EPS-001", "REV-002"
     canonical_metric_name: str              # "eps_actual", "revenue_ttm"
@@ -550,19 +619,45 @@ class MetricsLedgerEntry(BaseModel):
     value: float | None = None
     unit: str | None = None                 # "USD", "shares", "ratio", "%"
     scale: str | None = None                # "billions", "millions", "units"
-    period_type: str | None = None          # quarterly | annual | TTM | LTM | guidance | consensus | market_data | calculated
+    period_type: MetricPeriodType | None = None
     fiscal_period: str | None = None        # "FY2026 Q1"
     calendar_period: str | None = None      # "2026-03-31"
     source_id: str | None = None
     source_type: str | None = None          # yfinance | sec_edgar | seeking_alpha | calculated
+    source_status: MetricSourceStatus = "used"
+    metric_family: str | None = None        # market_snapshot | consensus | management_guidance | historical_actuals | filing_facts | transcript_claims
     basis: str | None = None                # GAAP | non-GAAP | adjusted | consensus | market | calculated | provider_supplied
     formula: str | None = None              # "revenue_actual / shares_outstanding"
+    inputs: list[str] = Field(default_factory=list)
     numerator: float | None = None
     denominator: float | None = None
-    validation_status: str | None = None    # verified | unverified | flagged
-    confidence: str | None = None           # high | medium | low
+    validation_status: MetricValidationStatus | None = None
+    confidence: MetricConfidence | None = None
     allowed_sections: list[str] = Field(default_factory=list)  # ["EPS & Revenue", "Financials"]
-    display_label: str | None = None        # "$2.94" or "22.4B"
+    display_label: str | None = None
+    quality_notes: list[str] = Field(default_factory=list)
+
+    @field_validator("period_type", mode="before")
+    @classmethod
+    def _normalize_period_type(cls, value: object) -> object:
+        if value is None:
+            return None
+        key = str(value).strip()
+        normalized_key = key.lower().replace("-", "_")
+        if normalized_key in _BLOCKED_INTERNAL_PERIODS:
+            raise ValueError(f"unresolved internal period_type is not client-safe: {key}")
+        if key in _METRIC_PERIOD_ALIASES.values():
+            return key
+        if normalized_key in _METRIC_PERIOD_ALIASES:
+            return _METRIC_PERIOD_ALIASES[normalized_key]
+        raise ValueError(f"unsupported metric period_type: {key}")
+
+    @model_validator(mode="after")
+    def _validate_calculated_metric_contract(self) -> "MetricsLedgerEntry":
+        if self.period_type == "Calculated" or self.basis == "calculated" or self.source_type == "calculated":
+            if not self.formula:
+                raise ValueError("calculated metrics require formula")
+        return self
 
 
 class MetricsLedger(BaseModel):
@@ -686,6 +781,7 @@ class ReportPeriodContext(BaseModel):
     press_release_period: str | None = None      # period label from press release
     filing_period: str | None = None             # "FY2026 Q1" from SEC 10-Q
     guidance_period: str | None = None            # "FY2027 Q1" or "FY2027"
+    guidance_issued_date: str | None = None       # ISO date when guidance was issued/confirmed
     comparison_prior_year_period: str | None = None  # "FY2025 Q1"
     report_title_period_label: str | None = None   # "Q1 FY2026"
     display_period_label: str | None = None        # "FY2026 Q1 (Filed 2026-05-15)"
