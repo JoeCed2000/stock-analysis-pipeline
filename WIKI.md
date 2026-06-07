@@ -1,5 +1,26 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-07 — Broadcom / AVGO feedback closeout discipline
+
+**Status:** Broadcom / AVGO PDF-access defect is logged in the canonical feedback store and marked `taken_into_account` with screenshot evidence, root cause, resolution, and memory/tooling follow-up.
+
+### Feedback entry
+- Bucket: `AVGO` (`analyses/feedback_AVGO/index.json`).
+- Entry ID: `2026-06-07_090117`.
+- Category: `bug`.
+- Status: `taken_into_account` / `反映済み` (`processed: true`).
+- Client-provided time preserved in `submitted_at`: `2026-06-07T03:40:00+02:00`.
+- Attachment: `2026-06-07_090117_broadcom-avgo-pdf-access.jpg`.
+
+### Closeout standard captured
+- Feedback defects must be bucketed by the ticker visible in the screenshot, not by a generic bucket.
+- Client message stays in `text`; status, root cause, and resolution stay in `notes`.
+- After a non-trivial SA defect fix, update WIKI, feedback, memory tools, and reusable skill documentation in the same closeout pass.
+
+### Verification
+- Local API `GET /api/feedback/AVGO` returns the Broadcom entry with `processed=true`, `status=taken_into_account`, and the screenshot filename.
+- Local attachment URL `GET /api/feedback-file/AVGO/2026-06-07_090117_broadcom-avgo-pdf-access.jpg` returns `200 OK`, `image/jpeg`, `40754` bytes.
+
 ## 2026-06-07 — Codex Spark routing + LLM trace observability
 
 **Status:** Deep Dive and Company Overview LLM calls now route through Codex Spark by default, with DeepSeek/Gemini fallbacks disabled unless explicitly enabled. Deep Dive generation writes structured per-section LLM traces next to the markdown/meta outputs so failures are inspectable from disk/logs.
