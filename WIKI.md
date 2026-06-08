@@ -15,6 +15,7 @@
 - Existing feedback `2026-06-08_053857` was reclassified from `feedback_GENERAL` to `feedback_NVDA`, with screenshot preserved and latest NVDA Deep Dive PDF attached.
 - `/feedback` now redirects to `/#feedback`; `/admin` redirects to `/#admin`.
 - `sa_feedback_auto_intake.py` now runs the Kanban atomicity gate and creates `--triage` cards only, with no automatic worker spawn/token-burn.
+- `sa_feedback_auto_intake.py` now triggers intake from the problem description (`text`/`description`/`category`), not from ticker presence. A ticker-only note like `NVDA` does not spawn work; a concrete defect description can spawn a triage card even when the ticker is omitted.
 - The paused auto-intake cron jobs for `codex-first`, `default`, and `deepseek-first` were resumed after hardening.
 
 ### Verification
