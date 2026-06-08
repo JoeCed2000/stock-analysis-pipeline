@@ -414,7 +414,7 @@ Required analysis format:
 
 次に重要なこと: 来四半期の最も重要な2〜3のモニタリング項目。具体的で実用的なシグナル。
 
-🎯 投資視点の一言: Summarize the thesis without making buy/sell advice.
+🎯 明示的な投資アクション（必須）: Write exactly one line using this format: `Recommendation: BUY`, `Recommendation: HOLD`, or `Recommendation: SELL`. Choose one only, consistent with the score and evidence above. This is a client-facing action label, not generic investment advice.
 
 ⚠️ リスク: Cite only sourced risks from the analysis above. Not generic.
 
@@ -643,7 +643,7 @@ Integrated verdict: Explain how these dimensions interact. Strong growth + weak 
 
 What matters next: 2-3 most critical monitor items for next quarter. Specific, actionable signals.
 
-Investment takeaway: Summarize the thesis without making buy/sell advice.
+Explicit action label (mandatory): Write exactly one line using this format: `Recommendation: BUY`, `Recommendation: HOLD`, or `Recommendation: SELL`. Choose one only, consistent with the score and evidence above. This is a client-facing action label, not generic investment advice.
 
 ⚠️ Risk: Cite only sourced risks from the analysis above. Not generic.
 

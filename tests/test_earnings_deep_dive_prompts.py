@@ -1,4 +1,4 @@
-from backend.earnings_deep_dive.prompts import eps_revenue_prompt
+from backend.earnings_deep_dive.prompts import eps_revenue_prompt, verdict_prompt
 
 
 def test_eps_revenue_prompt_forbids_transcript_actual_when_supplied_revenue_missing():
@@ -38,3 +38,35 @@ def test_eps_revenue_prompt_uses_supplied_quarterly_revenue_when_present():
 
     assert "Revenue (quarterly) = $82.90B" in prompt
     assert "Revenue Actual is not present in supplied_metrics" not in prompt
+
+
+def test_verdict_prompt_requires_one_explicit_recommendation_label_en():
+    prompt = verdict_prompt(
+        language="en",
+        ticker="NVDA",
+        company="NVIDIA Corp",
+        quarter="FY2026 Q1",
+        metrics={"eps_actual": 6.5, "eps_estimate": 6.2},
+        transcript_excerpt="",
+    )
+
+    assert "Recommendation: BUY" in prompt
+    assert "Recommendation: HOLD" in prompt
+    assert "Recommendation: SELL" in prompt
+    assert "without making buy/sell advice" not in prompt
+
+
+def test_verdict_prompt_requires_one_explicit_recommendation_label_jp():
+    prompt = verdict_prompt(
+        language="jp",
+        ticker="NVDA",
+        company="NVIDIA Corp",
+        quarter="FY2026 Q1",
+        metrics={"eps_actual": 6.5, "eps_estimate": 6.2},
+        transcript_excerpt="",
+    )
+
+    assert "Recommendation: BUY" in prompt
+    assert "Recommendation: HOLD" in prompt
+    assert "Recommendation: SELL" in prompt
+    assert "without making buy/sell advice" not in prompt
