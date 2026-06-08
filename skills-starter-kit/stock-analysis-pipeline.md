@@ -238,7 +238,6 @@ Les conclusions doivent être auditables à partir du dossier de sources.
   - `test_fetch_fool_transcript_function(self)`
   - `test_search_transcript_web_with_text(self)`
 
-
 ## 🔌 APIs / Endpoints
 
 | Méthode | Path | Framework | Fichier |
