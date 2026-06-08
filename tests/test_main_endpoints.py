@@ -328,3 +328,55 @@ def test_process_pdf_failure_is_idempotent_and_creates_single_task(tmp_path, mon
     assert "Root cause analysis" in created[0][1]
     assert "client-visible PDF failure" in created[0][1]
     assert dispatched == [True]
+
+
+def test_process_pdf_failure_quarter_missing_noise_gate_skips_kanban(tmp_path, monkeypatch):
+    """quarter_missing should not create Kanban tasks — it's expected endpoint behavior."""
+    from backend import feedback_pipeline
+
+    monkeypatch.setattr(feedback_pipeline, "PDF_FAILURE_INTAKE_PATH", tmp_path / "intake.json")
+    monkeypatch.setattr(feedback_pipeline, "run_preflight_gate", lambda: (True, "GO"))
+    created = []
+    monkeypatch.setattr(
+        feedback_pipeline,
+        "_kanban_create",
+        lambda title, body, assignee="python-builder": created.append((title, body, assignee)) or "t_deadbeef",
+    )
+
+    # quarter_missing should be silently skipped — no Kanban task created
+    result = feedback_pipeline.process_pdf_failure(
+        ticker="AAPL",
+        source="dossier_download",
+        status="quarter_missing",
+        message="No pre-generated dossier found for AAPL quarter=2025Q4",
+        language="en",
+        quarter="2025Q4",
+    )
+    assert result is None, "quarter_missing should return None (skip Kanban)"
+    assert len(created) == 0, "quarter_missing should NOT create a Kanban task"
+
+
+def test_process_pdf_failure_other_statuses_still_create_tasks(tmp_path, monkeypatch):
+    """Non-noise statuses should still create Kanban tasks normally."""
+    from backend import feedback_pipeline
+
+    monkeypatch.setattr(feedback_pipeline, "PDF_FAILURE_INTAKE_PATH", tmp_path / "intake.json")
+    monkeypatch.setattr(feedback_pipeline, "run_preflight_gate", lambda: (True, "GO"))
+    created = []
+    monkeypatch.setattr(
+        feedback_pipeline,
+        "_kanban_create",
+        lambda title, body, assignee="python-builder": created.append((title, body, assignee)) or "t_deadbeef",
+    )
+    monkeypatch.setattr(feedback_pipeline, "_kanban_dispatch", lambda: True)
+
+    # pdf_blocked should still create a task
+    result = feedback_pipeline.process_pdf_failure(
+        ticker="NVDA",
+        source="report_pdf",
+        status="pdf_blocked",
+        message="PDF blocked by quality gate",
+        language="en",
+    )
+    assert result == "t_deadbeef"
+    assert len(created) == 1
