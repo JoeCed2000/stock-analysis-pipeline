@@ -169,3 +169,92 @@ def test_root_requirements_include_backend_requirements():
     backend = package_names(project_root / "backend" / "requirements.txt")
 
     assert backend <= root
+
+
+def test_record_pdf_client_failure_logs_failed_and_launches_intake(monkeypatch):
+    events = []
+    intake_calls = []
+
+    monkeypatch.setattr(main, "log_search", lambda *args, **kwargs: events.append((args, kwargs)))
+
+    class ImmediateThread:
+        def __init__(self, target, daemon=True):
+            self.target = target
+            self.daemon = daemon
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr("threading.Thread", ImmediateThread)
+
+    import backend.feedback_pipeline as feedback_pipeline
+    monkeypatch.setattr(
+        feedback_pipeline,
+        "process_pdf_failure",
+        lambda **kwargs: intake_calls.append(kwargs) or "t_pdf1234",
+    )
+
+    main._record_pdf_client_failure(
+        "avgo",
+        source="report_pdf",
+        status="pdf_blocked",
+        message="PDF blocked for client",
+        issues=["validator failed"],
+        language="jp",
+        quarter="latest",
+        directory="/tmp/analysis",
+    )
+
+    assert events[0][0][:3] == ("avgo", "failed", 0)
+    assert events[0][1]["user_agent"] == "pdf-client-failure"
+    assert "report_pdf:pdf_blocked" in events[0][1]["error"]
+    assert intake_calls == [{
+        "ticker": "avgo",
+        "source": "report_pdf",
+        "status": "pdf_blocked",
+        "message": "PDF blocked for client",
+        "issues": ["validator failed"],
+        "language": "jp",
+        "quarter": "latest",
+        "directory": "/tmp/analysis",
+    }]
+
+
+def test_process_pdf_failure_is_idempotent_and_creates_single_task(tmp_path, monkeypatch):
+    from backend import feedback_pipeline
+
+    monkeypatch.setattr(feedback_pipeline, "PDF_FAILURE_INTAKE_PATH", tmp_path / "intake.json")
+    monkeypatch.setattr(feedback_pipeline, "run_preflight_gate", lambda: (True, "GO"))
+    created = []
+    dispatched = []
+    monkeypatch.setattr(
+        feedback_pipeline,
+        "_kanban_create",
+        lambda title, body, assignee="python-builder": created.append((title, body, assignee)) or "t_deadbeef",
+    )
+    monkeypatch.setattr(feedback_pipeline, "_kanban_dispatch", lambda: dispatched.append(True) or True)
+
+    assert feedback_pipeline.process_pdf_failure(
+        ticker="AVGO",
+        source="report_pdf",
+        status="pdf_blocked",
+        message="PDF failed from the client perspective",
+        issues=["pre-render error"],
+        language="jp",
+        quarter="latest",
+        directory="/tmp/analysis",
+    ) == "t_deadbeef"
+    assert feedback_pipeline.process_pdf_failure(
+        ticker="AVGO",
+        source="report_pdf",
+        status="pdf_blocked",
+        message="PDF failed from the client perspective",
+        issues=["pre-render error"],
+        language="jp",
+        quarter="latest",
+        directory="/tmp/analysis",
+    ) is None
+    assert len(created) == 1
+    assert created[0][2] == "python-builder"
+    assert "Root cause analysis" in created[0][1]
+    assert "client-visible PDF failure" in created[0][1]
+    assert dispatched == [True]

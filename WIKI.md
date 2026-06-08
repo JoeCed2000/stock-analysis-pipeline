@@ -1,5 +1,26 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-08 — Proactive PDF failure intake + admin failure semantics
+
+**Status:** Implemented and locally verified.
+
+### Root cause
+- The admin dashboard mostly showed green OK rows because successful analysis requests were logged as `completed` when the backend HTTP call returned 200.
+- That status did not model the client-visible artifact outcome: if the Deep Dive PDF/ZIP was blocked, missing, or refused, the client still experienced a failure.
+- Existing PDF failure branches returned 404/409/422 JSON but did not systematically create a feedback-like root-cause task, so blocked PDFs could remain passive until a user reported them.
+
+### Change
+- Added `_record_pdf_client_failure()` in `backend/main.py`: every client-visible PDF/ZIP failure now logs a `failed` admin search event with `user_agent=pdf-client-failure` and the concrete PDF failure reason.
+- `backend.feedback_pipeline.process_pdf_failure()` now creates a proactive `[PDF-FAILURE]` Kanban root-cause task with explicit client-perspective acceptance criteria.
+- Added a six-hour idempotency cache (`backend/logs/pdf_failure_intake.json`) so repeated browser polls/download retries cannot create a worker/Kanban storm.
+- PDF generation failures now trigger the same intake at the time they are blocked/failed, not only when a user retries the download.
+- Terminal PDF states now include validation issues in the endpoint detail when available.
+
+### Verification
+- `backend/.venv/bin/python -m pytest tests/test_main_endpoints.py -q` → `10 passed`.
+- `backend/.venv/bin/python -m pytest tests/test_main_endpoints.py tests/test_feedback.py -q` → `36 passed`.
+- `backend/.venv/bin/python -m compileall -q backend/main.py backend/feedback_pipeline.py && git diff --check` → OK.
+
 ## 2026-06-08 — Apple / AAPL download failure root cause
 
 **Status:** Root cause confirmed and local safeguards deployed.

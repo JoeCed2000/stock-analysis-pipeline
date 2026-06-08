@@ -66,6 +66,62 @@ def _translation_language(lang: str) -> str:
     return lang
 
 
+def _record_pdf_client_failure(
+    ticker: str,
+    *,
+    source: str,
+    status: str,
+    message: str,
+    issues: list[str] | None = None,
+    language: str = "en",
+    quarter: str = "latest",
+    directory: str = "",
+) -> None:
+    """Record a client-visible PDF failure and launch one proactive RCA task.
+
+    A successful ticker analysis (HTTP 200) is not a client success if the PDF/ZIP
+    cannot be opened or downloaded. This helper writes a failed event to the admin
+    search log and triggers idempotent Kanban intake for root-cause analysis.
+    """
+    safe_issues = [str(issue) for issue in (issues or []) if str(issue).strip()]
+    error_text = message
+    if safe_issues:
+        error_text = f"{message} | first_issue={safe_issues[0]}"
+    try:
+        log_search(
+            ticker,
+            "failed",
+            0,
+            error=f"{source}:{status}: {error_text}",
+            user_agent="pdf-client-failure",
+            client_ip="server",
+        )
+    except Exception:
+        logger.exception("[%s] Failed to log PDF client failure", ticker)
+
+    def _run_intake() -> None:
+        try:
+            from backend.feedback_pipeline import process_pdf_failure
+            process_pdf_failure(
+                ticker=ticker,
+                source=source,
+                status=status,
+                message=message,
+                issues=safe_issues,
+                language=language,
+                quarter=quarter,
+                directory=directory,
+            )
+        except Exception:
+            logger.exception("[%s] Failed to process proactive PDF failure intake", ticker)
+
+    try:
+        import threading
+        threading.Thread(target=_run_intake, daemon=True).start()
+    except Exception:
+        logger.exception("[%s] Failed to start PDF failure intake thread", ticker)
+
+
 def _should_convert_dossier_text_to_pdf(fpath: Path, *, refresh_pdf: bool) -> bool:
     """Return whether a text artifact should be converted with the generic PDF renderer."""
     if fpath.name == "README.md" or fpath.name == "README.txt":
@@ -1084,7 +1140,31 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str | None = 
     ticker = ticker.strip().upper()
     dossier_language = _normalize_dossier_language(lang)
 
+    # Pre-check: non-existent tickers that have no local analysis are noise,
+    # not real pipeline failures. Return 404 without recording a proactive
+    # Kanban intake task. This prevents random/bot ticker queries from
+    # flooding the Kanban board with tasks for tickers that never existed.
+    if not _find_analysis_dirs(ticker) and not _ticker_exists(ticker):
+        logger.info(
+            "[%s] Dossier download refused — ticker not found and no local analysis; skipped intake (noise gate) | lang=%s | quarter=%s",
+            ticker,
+            dossier_language,
+            quarter or "latest",
+        )
+        raise HTTPException(
+            status_code=404,
+            detail=f"No pre-generated dossier ready for {ticker}",
+        )
+
     if quarter and quarter != "latest":
+        _record_pdf_client_failure(
+            ticker,
+            source="dossier_download",
+            status="quarter_missing",
+            message=f"No pre-generated dossier found for {ticker} quarter={quarter}",
+            language=dossier_language,
+            quarter=quarter,
+        )
         raise HTTPException(
             status_code=404,
             detail=f"No pre-generated dossier found for {ticker} quarter={quarter}",
@@ -1114,10 +1194,28 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str | None = 
             status.get("error"),
             status.get("verification_issues"),
         )
+        _record_pdf_client_failure(
+            ticker,
+            source="dossier_download",
+            status="not_ready",
+            message=f"No verified dossier ready for {ticker}",
+            issues=status.get("verification_issues") or ([status.get("error")] if status.get("error") else []),
+            language=dossier_language,
+            quarter=quarter or "latest",
+            directory=str(status.get("directory") or ""),
+        )
         raise HTTPException(status_code=404, detail=f"No verified dossier ready for {ticker}")
 
     matches = _find_analysis_dirs(ticker)
     if not matches:
+        _record_pdf_client_failure(
+            ticker,
+            source="dossier_download",
+            status="analysis_missing",
+            message=f"No analysis found for {ticker}",
+            language=dossier_language,
+            quarter=quarter or "latest",
+        )
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
 
     if not status.get("download_enabled", status.get("ready", False)):
@@ -1127,6 +1225,16 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str | None = 
             status.get("deep_dive_validated"),
             status.get("verification_issues", []),
             status.get("directory"),
+        )
+        _record_pdf_client_failure(
+            ticker,
+            source="dossier_download",
+            status="verification_blocked",
+            message="Dossier generated but not verified; download is blocked.",
+            issues=status.get("verification_issues", []),
+            language=dossier_language,
+            quarter=quarter or "latest",
+            directory=str(status.get("directory") or ""),
         )
         raise HTTPException(
             status_code=409,
@@ -1524,6 +1632,14 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
     matches = _find_analysis_dirs(ticker)
     if not matches:
         logger.warning("[%s] PDF endpoint: no analysis directory found", ticker)
+        _record_pdf_client_failure(
+            ticker,
+            source="report_pdf",
+            status="analysis_missing",
+            message=f"No analysis found for {ticker}",
+            language=lang,
+            quarter=quarter,
+        )
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
 
     # If the newest dossier is currently generating or terminally blocked, do
@@ -1551,11 +1667,34 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                 headers={"Retry-After": "10"},
             )
         if newest_phase in (DossierPhase.PDF_BLOCKED, DossierPhase.FAILED):
+            terminal_issues = [f"terminal phase: {newest_phase}"]
+            terminal_validation_path = newest_deep_dive.parent / "deep_dive_validation.json"
+            if terminal_validation_path.exists():
+                try:
+                    terminal_validation = json.loads(terminal_validation_path.read_text(encoding="utf-8"))
+                    raw_issues = terminal_validation.get("issues") or terminal_validation.get("errors") or []
+                    terminal_issues = raw_issues if isinstance(raw_issues, list) else [str(raw_issues)]
+                except Exception:
+                    logger.exception(
+                        "[%s] PDF endpoint: failed to read terminal validation file | validation_path=%s",
+                        ticker,
+                        terminal_validation_path,
+                    )
             logger.error(
                 "[%s] PDF endpoint: latest dossier has terminal phase; refusing stale PDF | phase=%s | latest_dir=%s",
                 ticker,
                 newest_phase,
                 newest_dir,
+            )
+            _record_pdf_client_failure(
+                ticker,
+                source="report_pdf",
+                status="pdf_blocked",
+                message=f"Latest PDF generation for {ticker} failed terminally (phase={newest_phase}). Refusing to serve stale PDF.",
+                issues=terminal_issues,
+                language=lang,
+                quarter=quarter,
+                directory=str(newest_dir),
             )
             raise HTTPException(
                 status_code=422,
@@ -1565,6 +1704,7 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                     "message": f"Latest PDF generation for {ticker} failed terminally (phase={newest_phase}). Refusing to serve stale PDF.",
                     "phase": newest_phase,
                     "directory": str(newest_dir),
+                    "issues": terminal_issues,
                 },
             )
         newest_markdown = newest_deep_dive.with_suffix(".md")
@@ -1576,6 +1716,16 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                 newest_dir,
                 newest_markdown.exists(),
                 newest_meta.exists(),
+            )
+            _record_pdf_client_failure(
+                ticker,
+                source="report_pdf",
+                status="pdf_missing_latest",
+                message=f"Latest analysis for {ticker} produced deep-dive artifacts but no PDF. Refusing to serve stale PDF.",
+                issues=[f"markdown_exists={newest_markdown.exists()}", f"meta_exists={newest_meta.exists()}"],
+                language=lang,
+                quarter=quarter,
+                directory=str(newest_dir),
             )
             raise HTTPException(
                 status_code=422,
@@ -1668,6 +1818,16 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                 pdf_path=str(deep_dive),
                 directory=str(analysis_dir),
             )
+            _record_pdf_client_failure(
+                ticker,
+                source="report_pdf",
+                status="pdf_blocked",
+                message=f"PDF build blocked — data contract violation for {ticker}",
+                issues=issues,
+                language=lang,
+                quarter=quarter,
+                directory=str(analysis_dir),
+            )
             raise HTTPException(
                 status_code=422,
                 detail={
@@ -1717,6 +1877,16 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                 current_phase,
                 deep_dive,
                 validation_path,
+            )
+            _record_pdf_client_failure(
+                ticker,
+                source="report_pdf",
+                status="pdf_blocked",
+                message=f"PDF generation for {ticker} previously failed terminally (phase={current_phase}). Refusing to respawn.",
+                issues=[f"terminal phase: {current_phase}"],
+                language=lang,
+                quarter=quarter,
+                directory=str(analysis_dir),
             )
             raise HTTPException(
                 status_code=422,
@@ -1770,6 +1940,15 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                         DossierPhase.FAILED,
                         error="Yahoo data unavailable for PDF generation",
                         pdf_path=str(dd_path),
+                        directory=str(dd_path.parent.parent),
+                    )
+                    _record_pdf_client_failure(
+                        ticker,
+                        source="pdf_generation",
+                        status="data_unavailable",
+                        message="Yahoo data unavailable for PDF generation",
+                        language=lang,
+                        quarter=quarter,
                         directory=str(dd_path.parent.parent),
                     )
                     return
@@ -1917,6 +2096,16 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                     directory=str(dd_path.parent.parent),
                     validation_path=str(dd_path.parent / "deep_dive_validation.json"),
                 )
+                _record_pdf_client_failure(
+                    ticker,
+                    source="pdf_generation",
+                    status="pdf_blocked",
+                    message="PDF build blocked by pre-render validator",
+                    issues=[getattr(error, "detail", str(error)) for error in (ve.errors or [])],
+                    language=lang,
+                    quarter=quarter,
+                    directory=str(dd_path.parent.parent),
+                )
                 logger.error(
                     "[%s/%s] PDF build blocked by pre-render validator | errors=%s | output_pdf=%s | validation_path=%s | error=%s",
                     ticker,
@@ -1934,6 +2123,15 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                     DossierPhase.FAILED,
                     error=str(e),
                     pdf_path=str(dd_path),
+                    directory=str(dd_path.parent.parent),
+                )
+                _record_pdf_client_failure(
+                    ticker,
+                    source="pdf_generation",
+                    status="generation_failed",
+                    message=str(e),
+                    language=lang,
+                    quarter=quarter,
                     directory=str(dd_path.parent.parent),
                 )
                 logger.exception(
@@ -1976,6 +2174,16 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
             deep_dive,
             report_pdf,
             analysis_dir,
+        )
+        _record_pdf_client_failure(
+            ticker,
+            source="report_pdf",
+            status="pdf_not_found",
+            message=f"No PDF found for {ticker}",
+            issues=[f"deep_dive={deep_dive}", f"report_pdf={report_pdf}"],
+            language=lang,
+            quarter=quarter,
+            directory=str(analysis_dir),
         )
         raise HTTPException(status_code=404, detail=f"No PDF found for {ticker}")
 

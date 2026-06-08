@@ -11,6 +11,8 @@ Flow:
 """
 
 import asyncio
+import hashlib
+import json
 import logging
 import subprocess
 import time
@@ -24,6 +26,8 @@ logger = logging.getLogger(__name__)
 KANBAN_BOARD = "sa-pipeline"
 MAX_MONITOR_SECONDS = 1800  # 30 min max before giving up
 MONITOR_INTERVAL_SECONDS = 30  # Check every 30s
+PDF_FAILURE_INTAKE_PATH = Path(__file__).parent / "logs" / "pdf_failure_intake.json"
+PDF_FAILURE_INTAKE_COOLDOWN_SECONDS = 6 * 60 * 60
 
 # ─── Pre-flight Gate ─────────────────────────────────────────────────────────
 
@@ -114,6 +118,124 @@ def _kanban_status(task_id: str) -> Optional[Dict]:
     except Exception as e:
         logger.error(f"Kanban status error: {e}")
         return None
+
+
+def _pdf_failure_key(
+    ticker: str,
+    source: str,
+    status: str,
+    language: str,
+    quarter: str,
+    issues: list[str],
+) -> str:
+    """Stable idempotency key for a user-visible PDF failure."""
+    payload = {
+        "ticker": ticker.upper(),
+        "source": source,
+        "status": status,
+        "language": language,
+        "quarter": quarter or "latest",
+        "issues": [str(issue)[:300] for issue in issues[:5]],
+    }
+    digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+    return f"pdf_failure:{ticker.upper()}:{digest}"
+
+
+def _claim_pdf_failure_intake(key: str) -> bool:
+    """Return True once per failure key/cooldown to prevent Kanban spawn storms."""
+    now = time.time()
+    PDF_FAILURE_INTAKE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    data: dict[str, float] = {}
+    if PDF_FAILURE_INTAKE_PATH.exists():
+        try:
+            raw = json.loads(PDF_FAILURE_INTAKE_PATH.read_text(encoding="utf-8"))
+            data = {str(k): float(v) for k, v in raw.items() if isinstance(v, (int, float))}
+        except Exception:
+            logger.warning("Failed to read PDF failure intake cache; rebuilding")
+            data = {}
+
+    data = {
+        k: v
+        for k, v in data.items()
+        if now - float(v) < PDF_FAILURE_INTAKE_COOLDOWN_SECONDS * 4
+    }
+    last = data.get(key)
+    if last and now - last < PDF_FAILURE_INTAKE_COOLDOWN_SECONDS:
+        return False
+
+    data[key] = now
+    PDF_FAILURE_INTAKE_PATH.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    return True
+
+
+def process_pdf_failure(
+    *,
+    ticker: str,
+    source: str,
+    status: str,
+    message: str,
+    issues: Optional[list[str]] = None,
+    language: str = "en",
+    quarter: str = "latest",
+    directory: str = "",
+) -> Optional[str]:
+    """Create one proactive root-cause task for a client-visible PDF failure.
+
+    Download/report endpoints stay read-only: this does NOT regenerate the PDF.
+    It turns a client-visible failure into the same operational signal as a
+    feedback report, with idempotency so repeated browser polls do not fan out.
+    """
+    ticker = (ticker or "").strip().upper()
+    safe_issues = [str(issue) for issue in (issues or []) if str(issue).strip()]
+    key = _pdf_failure_key(ticker, source, status, language, quarter, safe_issues or [message])
+    if not _claim_pdf_failure_intake(key):
+        logger.info("[%s] PDF failure intake skipped by idempotency key %s", ticker, key)
+        return None
+
+    preflight_ok, preflight_msg = run_preflight_gate()
+    if not preflight_ok:
+        logger.error("Pre-flight FAILED for PDF failure intake: %s", preflight_msg)
+        return None
+
+    issue_block = "\n".join(f"- {issue}" for issue in safe_issues[:10]) or "- No structured issue list was provided. Inspect logs/status files."
+    task_title = f"[PDF-FAILURE] {ticker}: {status}"
+    task_body = (
+        f"**source:** Proactive PDF failure intake ({source})\n"
+        f"**ticker:** {ticker}\n"
+        f"**language:** {language}\n"
+        f"**quarter:** {quarter or 'latest'}\n"
+        f"**failure_status:** {status}\n"
+        f"**message:** {message}\n"
+        f"**directory:** {directory or 'N/A'}\n"
+        f"**idempotency_key:** {key}\n\n"
+        f"## Root cause analysis — required first step\n\n"
+        f"A client-visible PDF failure was observed. Do not treat HTTP 200/OK from the analysis endpoint as success. "
+        f"Success means the client can open/download the requested PDF/ZIP artifact.\n\n"
+        f"## Observed issues\n\n{issue_block}\n\n"
+        f"## Scope\n\n"
+        f"**project:** stock-analysis-pipeline\n"
+        f"**read_scope:** backend/main.py, backend/async_dossier.py, backend/earnings_deep_dive/*, frontend/src/components/AdminPage.jsx, frontend/src/components/AnalysisCard.jsx, logs for this ticker\n"
+        f"**write_scope:** Minimal files needed after root cause is identified; likely backend PDF/status/admin code plus focused regression tests.\n"
+        f"**expected_tests:** Add or update a regression proving the blocked/missing PDF is logged as a failure and the admin dashboard sees it as failed from the client perspective.\n"
+        f"**risk:** Medium — PDF generation can be slow; avoid respawn loops and avoid triggering generation from read-only download endpoints.\n\n"
+        f"## Acceptance criteria\n\n"
+        f"- Root cause explains why the PDF was not served to the client.\n"
+        f"- Admin/recent-search status reflects the client-visible failure, not only the initial HTTP 200 analysis response.\n"
+        f"- Fix is idempotent and cannot create a Kanban/worker storm on repeated polls/download attempts.\n"
+        f"- Verification includes tests and, if feasible, a real endpoint/browser check.\n"
+    )
+
+    task_id = _kanban_create(task_title, task_body, assignee="python-builder")
+    if not task_id:
+        logger.error("Failed to create Kanban task for PDF failure intake")
+        return None
+    logger.info("Created Kanban task %s for PDF failure intake %s", task_id, key)
+    dispatched = _kanban_dispatch()
+    if dispatched:
+        logger.info("Dispatched PDF failure task %s", task_id)
+    else:
+        logger.warning("Dispatch returned no spawn for PDF failure task %s — may be queued", task_id)
+    return task_id
 
 
 # ─── Chat Acknowledgment ─────────────────────────────────────────────────────
