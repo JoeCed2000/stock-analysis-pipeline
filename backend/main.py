@@ -475,6 +475,34 @@ def _parse_tickers_from_text(text: str) -> List[dict]:
     return items
 
 
+def _invalid_existing_tickers(tickers: List[str]) -> List[str]:
+    """Return ticker-shaped symbols that are not confirmed by market lookup.
+
+    Format validation alone is not enough: common typo/name inputs such as APPL
+    look like valid tickers and previously reached the expensive analysis path,
+    producing partial dossiers with no client-ready PDFs. The upload parser
+    already marks those as invalid; direct /api/analyze and /api/analyze/async
+    must enforce the same gate server-side.
+    """
+    return [t for t in tickers if not _ticker_exists(t)]
+
+
+def _raise_unknown_tickers(invalid_tickers: List[str]) -> None:
+    if not invalid_tickers:
+        return
+    raise HTTPException(
+        status_code=422,
+        detail={
+            "error": "Ticker not found",
+            "invalid": invalid_tickers,
+            "message": (
+                "Ticker format is valid but the symbol was not found on Yahoo Finance. "
+                "Please select a confirmed ticker (for Apple use AAPL, not APPL/Apple)."
+            ),
+        },
+    )
+
+
 def _classify_error(token: str) -> str:
     """Classify why a token is invalid."""
     if len(token) < 2:
@@ -1283,6 +1311,7 @@ async def analyze(request: TickerRequest, lang: str = "en", force_refresh: bool 
                 "message": f"Tickers must be 1-5 uppercase letters (e.g. AAPL, NVDA, BRK.B). Invalid: {', '.join(invalid_tickers)}"
             }
         )
+    _raise_unknown_tickers(_invalid_existing_tickers(normalized_tickers))
 
     try:
         import asyncio as _asyncio
@@ -1371,6 +1400,7 @@ async def analyze_async(request: TickerRequest, lang: str = "en", force_refresh:
             "error": "Invalid ticker format",
             "invalid": invalid_tickers,
         })
+    _raise_unknown_tickers(_invalid_existing_tickers(normalized_tickers))
 
     from backend.job_store import create_job, update_job
     job_id = create_job(normalized_tickers, lang)
@@ -1495,6 +1525,67 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
     if not matches:
         logger.warning("[%s] PDF endpoint: no analysis directory found", ticker)
         raise HTTPException(status_code=404, detail=f"No analysis found for {ticker}")
+
+    # If the newest dossier is currently generating or terminally blocked, do
+    # not serve a stale older PDF. That hides exactly the failure the user needs
+    # to see and prevents a failed download from becoming an actionable state.
+    wants_jp = lang in ("jp", "ja")
+    newest_dir = matches[0]
+    newest_deep_dive = (
+        newest_dir / "jp" / "07_final_report" / "earnings_deep_dive.pdf"
+        if wants_jp
+        else newest_dir / "07_final_report" / "earnings_deep_dive.pdf"
+    )
+    if not newest_deep_dive.exists():
+        from backend.async_dossier import get_dossier_status, DossierPhase
+        newest_phase = get_dossier_status(ticker).get("phase")
+        if newest_phase in (DossierPhase.PDF_GENERATING, DossierPhase.PDF_VALIDATING):
+            return JSONResponse(
+                status_code=202,
+                content={
+                    "status": "generating",
+                    "ticker": ticker,
+                    "message": "Latest deep-dive PDF generation is in progress. Poll this endpoint until ready.",
+                    "retry_after_seconds": 10,
+                },
+                headers={"Retry-After": "10"},
+            )
+        if newest_phase in (DossierPhase.PDF_BLOCKED, DossierPhase.FAILED):
+            logger.error(
+                "[%s] PDF endpoint: latest dossier has terminal phase; refusing stale PDF | phase=%s | latest_dir=%s",
+                ticker,
+                newest_phase,
+                newest_dir,
+            )
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "status": "pdf_blocked",
+                    "retryable": False,
+                    "message": f"Latest PDF generation for {ticker} failed terminally (phase={newest_phase}). Refusing to serve stale PDF.",
+                    "phase": newest_phase,
+                    "directory": str(newest_dir),
+                },
+            )
+        newest_markdown = newest_deep_dive.with_suffix(".md")
+        newest_meta = newest_deep_dive.parent / "earnings_deep_dive_meta.json"
+        if newest_markdown.exists() or newest_meta.exists():
+            logger.error(
+                "[%s] PDF endpoint: latest dossier has deep-dive artifacts but no PDF; refusing stale PDF | latest_dir=%s | markdown=%s | meta=%s",
+                ticker,
+                newest_dir,
+                newest_markdown.exists(),
+                newest_meta.exists(),
+            )
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "status": "pdf_missing_latest",
+                    "retryable": False,
+                    "message": f"Latest analysis for {ticker} produced deep-dive artifacts but no PDF. Refusing to serve stale PDF.",
+                    "directory": str(newest_dir),
+                },
+            )
 
     # Language-specific path. Prefer the newest dossier that already has the
     # requested PDF instead of blindly using matches[0]. A newer partial dossier

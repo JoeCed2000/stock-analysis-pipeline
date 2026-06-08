@@ -1,5 +1,28 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-08 — Apple / AAPL download failure root cause
+
+**Status:** Root cause confirmed and local safeguards deployed.
+
+### Root cause
+- Apple was entered through ticker-shaped inputs that produced `APP`/`APPL` instead of canonical `AAPL`.
+- `/batch/upload` did mark `APPL` as invalid, but the frontend auto-selected every parsed item, including invalid rows.
+- Direct `/api/analyze` and `/api/analyze/async` only validated ticker format, so `APPL` reached the expensive analysis path and created a partial dossier with no client-ready Deep Dive PDF.
+- For real `AAPL`, the latest Deep Dive generation ran but was blocked by the PDF quality gate: `[guidance_current_as_guidance]` and `[verdict_missing_recommendation]`.
+- `/api/report/AAPL/pdf` then served an older valid PDF instead of exposing the newest missing/blocked PDF state, hiding the actual failure.
+
+### Change
+- Frontend ticker tags now filter invalid parser results out of the default selection; invalid tags are shown red and cannot be toggled into the analysis request.
+- Backend direct analyze endpoints now reject ticker-shaped symbols that are not confirmed by market lookup (`422 Ticker not found`) before creating jobs.
+- Report PDF download now refuses to serve stale older PDFs when the latest analysis has deep-dive artifacts but no PDF, returning actionable JSON instead.
+
+### Verification
+- `backend/.venv/bin/python -m pytest tests/test_batch.py::TestParseTickersFromText -q` → `10 passed`.
+- `cd frontend && npm run build` → OK.
+- Local `/api/batch/upload` with `AAPL APPL` → `AAPL` valid, `APPL` invalid.
+- Local `/api/analyze/async` with `APPL` → `422 Ticker not found`, no job spawned.
+- Local `/api/report/AAPL/pdf?lang=en` on the latest blocked dossier → `422 pdf_missing_latest`, no stale PDF served.
+
 ## 2026-06-08 — NVIDIA / NVDA Deep Dive feedback closeout
 
 **Status:** NVDA feedback visible in production; blocked Deep Dive download explained; Verdict prompt aligned with the PDF quality gate; attachment verified.

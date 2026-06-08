@@ -293,3 +293,33 @@ class TestParseTickersFromText:
         from backend.main import _parse_tickers_from_text
         items = _parse_tickers_from_text("   \n  \t  ")
         assert len(items) == 0
+
+    def test_ticker_shaped_unknown_symbol_marked_invalid(self, monkeypatch):
+        import backend.main as main
+
+        monkeypatch.setattr(main, "_ticker_exists", lambda ticker: ticker == "AAPL")
+        items = main._parse_tickers_from_text("AAPL APPL")
+
+        assert items[0]["normalized"] == "AAPL"
+        assert items[0]["status"] == "valid"
+        assert items[1]["normalized"] == "APPL"
+        assert items[1]["status"] == "invalid"
+        assert "Ticker not found" in items[1]["error"]
+
+    def test_analyze_async_rejects_ticker_shaped_unknown_symbol(self, monkeypatch):
+        import backend.main as main
+        from fastapi import HTTPException
+        from backend.models import TickerRequest
+
+        monkeypatch.setattr(main, "_ticker_exists", lambda ticker: ticker == "AAPL")
+
+        try:
+            import asyncio
+            asyncio.run(main.analyze_async(TickerRequest(tickers=["APPL"])))
+        except HTTPException as exc:
+            assert exc.status_code == 422
+            assert isinstance(exc.detail, dict)
+            assert exc.detail["error"] == "Ticker not found"
+            assert exc.detail["invalid"] == ["APPL"]
+        else:
+            raise AssertionError("Expected APPL to be rejected before job creation")

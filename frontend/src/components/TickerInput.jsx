@@ -35,7 +35,7 @@ export default function TickerInput({ onAnalyze, loading, t }) {
   const [parseError, setParseError] = useState(null);
   const timerRef = useRef(null);
 
-  const validItems = items;
+  const validItems = items.filter(it => it.status !== 'invalid');
 
   // Auto-parse with debounce
   useEffect(() => {
@@ -56,10 +56,10 @@ export default function TickerInput({ onAnalyze, loading, t }) {
       const file = new File([value], 'input.txt', { type: 'text/plain' });
       try {
         const data = await uploadTickerFile(file);
+        const selectable = (data.items || []).filter(it => it.status !== 'invalid');
         setItems(data.items || []);
         setSelected(new Set(
-          (data.items || [])
-            .map(it => it.normalized)
+          selectable.map(it => it.normalized)
         ));
       } catch (e) {
         console.error('Parse error:', e);
@@ -129,22 +129,23 @@ export default function TickerInput({ onAnalyze, loading, t }) {
 
               {items.map((it, idx) => {
                 const isSelected = selected.has(it.normalized);
+                const isInvalid = it.status === 'invalid';
                 return (
                   <span
                     key={it.value}
-                    onClick={() => !loading && toggle(it.normalized)}
+                    onClick={() => !loading && !isInvalid && toggle(it.normalized)}
                     title={it.error || it.value}
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: 4,
                       padding: '3px 8px', borderRadius: 4, fontSize: 12,
                       fontWeight: 600,
-                      background: isSelected ? '#1a3528' : '#21262d',
+                      background: isInvalid ? '#3a1f24' : isSelected ? '#1a3528' : '#21262d',
                       border: `1px solid ${
-                        isSelected ? '#238636' : '#30363d'
+                        isInvalid ? '#da3633' : isSelected ? '#238636' : '#30363d'
                       }`,
                       color: '#e1e4e8',
-                      cursor: loading ? 'default' : 'pointer',
-                      opacity: !isSelected ? 0.7 : 1,
+                      cursor: loading || isInvalid ? 'default' : 'pointer',
+                      opacity: isInvalid ? 0.55 : !isSelected ? 0.7 : 1,
                       transition: 'all 0.15s ease',
                       animation: 'tagIn 0.2s ease',
                     }}
@@ -153,7 +154,7 @@ export default function TickerInput({ onAnalyze, loading, t }) {
                       fontSize: 10, color: isSelected ? '#238636' : '#484f58',
                       transition: 'color 0.15s',
                     }}>
-                      {isSelected ? '✓' : '○'}
+                      {isInvalid ? '✕' : isSelected ? '✓' : '○'}
                     </span>
                     <span>{it.normalized}</span>
                     <span style={{ fontSize: 9, opacity: 0.4 }}>{it.type}</span>
