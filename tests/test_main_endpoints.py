@@ -98,12 +98,82 @@ def test_dossier_download_missing_dossier_is_read_only(tmp_path, monkeypatch):
         lambda ticker: {"ready": False, "files": [], "stage": "missing", "download_enabled": False},
     )
     monkeypatch.setattr("backend.pipeline.analyze_ticker", fail_if_called)
+    # Mock _ticker_exists to simulate a non-existent ticker so the noise gate fires
+    monkeypatch.setattr("backend.main._ticker_exists", lambda ticker: False)
 
     with pytest.raises(HTTPException) as exc:
         asyncio.run(main.dossier_download("MISSING"))
 
     assert exc.value.status_code == 404
     assert called is False
+
+
+def test_dossier_download_noise_gate_prevents_intake_on_fake_ticker(tmp_path, monkeypatch):
+    """When a non-existent ticker has no local analysis, the noise gate
+    returns 404 without calling _record_pdf_client_failure (no Kanban intake).
+    """
+    analyses_dir = tmp_path / "analyses"
+    analyses_dir.mkdir()
+    intake_calls = []
+
+    monkeypatch.setattr(main, "ANALYSES_DIR", analyses_dir)
+    monkeypatch.setattr("backend.main._ticker_exists", lambda ticker: False)
+    monkeypatch.setattr(
+        "backend.main._record_pdf_client_failure",
+        lambda *args, **kwargs: intake_calls.append(True),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(main.dossier_download("FAKETKR"))
+
+    assert exc.value.status_code == 404
+    assert len(intake_calls) == 0, "Noise gate must NOT call _record_pdf_client_failure for fake tickers"
+
+
+def test_dossier_download_noise_gate_skips_intake_on_invalid_ticker(tmp_path, monkeypatch):
+    """Invalid ticker (shorter than 2 chars) should still 404 silently."""
+    analyses_dir = tmp_path / "analyses"
+    analyses_dir.mkdir()
+    intake_calls = []
+
+    monkeypatch.setattr(main, "ANALYSES_DIR", analyses_dir)
+    monkeypatch.setattr("backend.main._ticker_exists", lambda ticker: False)
+    monkeypatch.setattr(
+        "backend.main._record_pdf_client_failure",
+        lambda *args, **kwargs: intake_calls.append(True),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(main.dossier_download("X"))
+
+    assert exc.value.status_code == 404
+    assert len(intake_calls) == 0
+
+
+def test_dossier_download_still_records_failure_for_real_ticker_without_analysis(tmp_path, monkeypatch):
+    """Real tickers (AAPL) with no analysis must still record the failure
+    and create a Kanban intake — the noise gate only blocks fake tickers.
+    """
+    analyses_dir = tmp_path / "analyses"
+    analyses_dir.mkdir()
+    intake_calls = []
+
+    monkeypatch.setattr(main, "ANALYSES_DIR", analyses_dir)
+    monkeypatch.setattr("backend.main._ticker_exists", lambda ticker: True)
+    monkeypatch.setattr(
+        "backend.async_dossier.get_dossier_status",
+        lambda ticker: {"ready": False, "files": [], "stage": "not_started", "download_enabled": False},
+    )
+    monkeypatch.setattr(
+        "backend.main._record_pdf_client_failure",
+        lambda *args, **kwargs: intake_calls.append(True),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(main.dossier_download("AAPL"))
+
+    assert exc.value.status_code == 404
+    assert len(intake_calls) == 1, "Real tickers must still trigger failure intake"
 
 
 def test_dossier_download_quarter_param_is_read_only(tmp_path, monkeypatch):

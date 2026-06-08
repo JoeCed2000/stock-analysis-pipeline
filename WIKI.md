@@ -21,6 +21,24 @@
 - `backend/.venv/bin/python -m pytest tests/test_main_endpoints.py tests/test_feedback.py -q` → `36 passed`.
 - `backend/.venv/bin/python -m compileall -q backend/main.py backend/feedback_pipeline.py && git diff --check` → OK.
 
+### 2026-06-08 — Noise gate: invalid tickers no longer create Kanban tasks
+
+**Status:** Noise gate deployed and regression-tested.
+
+**Root cause:** The proactive PDF failure intake correctly creates Kanban tasks when a real ticker's PDF is blocked or missing. However, automated clients/bots querying non-existent tickers (e.g., `MISSING`) also triggered intake tasks, flooding the Kanban board with noise.
+
+The dossier download endpoint (`GET /api/dossier/{ticker}/download`) did not validate ticker existence before recording a failure.
+
+**Change:** Added a noise gate at the top of `dossier_download()`: if the ticker has no local analysis directory AND the ticker does not exist on Yahoo Finance, the endpoint returns HTTP 404 without calling `_record_pdf_client_failure()`. Real tickers (e.g., AAPL with no local analysis) still trigger the full failure intake path.
+
+**Files changed:**
+- `backend/main.py` — noise gate in `dossier_download()` (lines 1143-1158)
+- `tests/test_main_endpoints.py` — 4 new regression tests
+
+**Verification:**
+- `backend/.venv/bin/python -m pytest tests/test_main_endpoints.py -q` → `13 passed` (was `10`, +3 new tests for noise gate).
+- `backend/.venv/bin/python -m pytest tests/test_main_endpoints.py tests/test_async_dossier.py tests/test_dossier_language_zip.py tests/test_pdf_generation_state.py tests/test_seeking_alpha_access.py -q` → `45 passed`.
+
 ## 2026-06-08 — Apple / AAPL download failure root cause
 
 **Status:** Root cause confirmed and local safeguards deployed.
