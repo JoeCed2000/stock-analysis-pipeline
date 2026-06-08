@@ -1,5 +1,30 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-08 — NVIDIA / NVDA feedback auto-intake + direct feedback route closeout
+
+**Status:** NVDA feedback classified, visible in production, and auto-intake root cause fixed.
+
+### Root cause
+- Nami submitted feedback mentioning `NVDA`, but the ticker form field was empty.
+- The backend previously trusted only the explicit ticker field, so the entry was saved under `feedback_GENERAL` instead of `feedback_NVDA`.
+- The three `SA Feedback Auto-Intake` cron jobs were paused since `2026-06-02T00:29`, so no automatic intake task ran.
+- The direct URL `https://sa.cedlabusa.net/feedback` returned backend `404`; the SPA route is hash-based (`/#feedback`), so direct links/refreshes could look broken.
+
+### Change
+- `backend/feedback_store.py` now infers an omitted ticker from known analysis tickers found in feedback text or attachment names.
+- Existing feedback `2026-06-08_053857` was reclassified from `feedback_GENERAL` to `feedback_NVDA`, with screenshot preserved and latest NVDA Deep Dive PDF attached.
+- `/feedback` now redirects to `/#feedback`; `/admin` redirects to `/#admin`.
+- `sa_feedback_auto_intake.py` now runs the Kanban atomicity gate and creates `--triage` cards only, with no automatic worker spawn/token-burn.
+- The paused auto-intake cron jobs for `codex-first`, `default`, and `deepseek-first` were resumed after hardening.
+
+### Verification
+- `backend/.venv/bin/python -m pytest tests/test_feedback.py tests/test_public_client_auth.py -q` → `30 passed`.
+- `python3 -m py_compile backend/main.py backend/feedback_store.py /home/ced/.hermes/profiles/codex-first/scripts/sa_feedback_auto_intake.py` → OK.
+- Local `/api/feedback/NVDA` shows entry `2026-06-08_053857`, status `taken_into_account`, files: NVDA Deep Dive PDF + screenshot.
+- Local attachment checks: `/api/feedback-file/NVDA/2026-06-08_053857_deep_dive_NVDA.pdf` → `HTTP 200`, `/api/feedback-file/NVDA/2026-06-08_053857_Screenshot_2026-06-07_at_11.36.51_PM.png` → `HTTP 200`.
+- Production checks: `/api/report/NVDA/pdf?lang=en` → `HTTP 200`; `/api/company-overview/NVDA/download?format=auto` → `HTTP 200`; `/feedback` → `307` to `/#feedback`, then `200` HTML.
+- Browser production check: `https://sa.cedlabusa.net/feedback` redirects to `/#feedback`, displays NVDA as the first feedback entry with status taken into account and 2 attachments.
+
 ## 2026-06-07 — SA PDF Structural Quality T6 verdict policy
 
 **Status:** Verdict recommendation policy gate completed in TDD.

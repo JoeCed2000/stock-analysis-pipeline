@@ -78,6 +78,25 @@ class TestFeedbackEndpoint:
         assert entries[0]["ticker"] is None
         assert entries[0]["text"] == "General UX feedback"
 
+    def test_blank_ticker_is_inferred_from_known_analysis_ticker_in_text(self, client):
+        analysis_dir = self.feedback_root / "2026-06-08_050625_NVDA_NVIDIA_Corp" / "07_final_report"
+        analysis_dir.mkdir(parents=True)
+        (analysis_dir / "earnings_deep_dive.pdf").write_bytes(b"%PDF-1.4 fake nvda pdf")
+
+        resp = self._submit(
+            client,
+            text="I checked NVDA now, but I still cannot retrieve PDF or access to the data on the site.",
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ticker"] == "NVDA"
+        assert body["bucket"] == "NVDA"
+        entries = json.loads((self.feedback_root / "feedback_NVDA" / "index.json").read_text())
+        assert entries[0]["ticker"] == "NVDA"
+        assert entries[0]["files"][0].endswith("_deep_dive_NVDA.pdf")
+        assert not (self.feedback_root / "feedback_GENERAL" / "index.json").exists()
+
     def test_feedback_stored_on_disk_for_ticker(self, client):
         self._submit(client, ticker="NVDA", text="Test feedback")
         fb_dir = self.feedback_root / "feedback_NVDA"
@@ -137,6 +156,16 @@ class TestFeedbackEndpoint:
         assert resp.json()["status"] == "ok"
         entries = json.loads((self.feedback_root / "feedback_GENERAL" / "index.json").read_text())
         assert entries[0]["text"] == "Remote browser can submit feedback"
+
+    def test_feedback_page_direct_url_redirects_to_hash_route(self, client):
+        resp = client.get("/feedback", follow_redirects=False)
+        assert resp.status_code in {307, 308}
+        assert resp.headers["location"] == "/#feedback"
+
+    def test_admin_page_direct_url_redirects_to_hash_route(self, client):
+        resp = client.get("/admin", follow_redirects=False)
+        assert resp.status_code in {307, 308}
+        assert resp.headers["location"] == "/#admin"
 
     def test_admin_feedback_remains_protected_for_remote_browser(self, remote_client):
         resp = remote_client.get("/api/admin/feedback")

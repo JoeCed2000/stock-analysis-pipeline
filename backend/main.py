@@ -38,7 +38,7 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile, Header, Form, Request, Body, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import math
@@ -2472,6 +2472,16 @@ class _PrefixStripperMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(_PrefixStripperMiddleware)
+
+@app.get("/feedback", include_in_schema=False)
+async def redirect_feedback_hash_route():
+    return RedirectResponse(url="/#feedback")
+
+
+@app.get("/admin", include_in_schema=False)
+async def redirect_admin_hash_route():
+    return RedirectResponse(url="/#admin")
+
 
 _frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
 

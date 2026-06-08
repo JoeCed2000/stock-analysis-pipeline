@@ -45,6 +45,48 @@ def _normalize_feedback_bucket(ticker: str | None) -> str:
     return normalized or GENERAL_FEEDBACK_BUCKET
 
 
+def _known_feedback_tickers() -> set[str]:
+    """Return ticker symbols that already have analyses or feedback buckets.
+
+    This keeps ticker inference conservative: generic words like PDF/API are ignored
+    unless they correspond to a known project analysis bucket.
+    """
+    tickers: set[str] = set()
+    if not ANALYSES_DIR.exists():
+        return tickers
+
+    ticker_pattern = re.compile(r"(?:^|[_-])([A-Z]{1,6})(?=[_-])")
+    for path in ANALYSES_DIR.iterdir():
+        if not path.is_dir():
+            continue
+        name = path.name.upper()
+        if name.startswith("FEEDBACK_"):
+            bucket = name.removeprefix("FEEDBACK_")
+            if bucket != GENERAL_FEEDBACK_BUCKET and re.fullmatch(r"[A-Z]{1,6}", bucket):
+                tickers.add(bucket)
+            continue
+        for match in ticker_pattern.finditer(name):
+            candidate = match.group(1)
+            if candidate != GENERAL_FEEDBACK_BUCKET:
+                tickers.add(candidate)
+    return tickers
+
+
+def _infer_ticker_from_feedback_text(text: str | None, filenames: list[str]) -> str | None:
+    """Infer an omitted ticker from feedback content when it is unambiguous."""
+    known = _known_feedback_tickers()
+    if not known:
+        return None
+
+    haystack = "\n".join([text or "", *filenames]).upper()
+    matches = sorted(
+        ticker
+        for ticker in known
+        if re.search(rf"(?<![A-Z0-9]){re.escape(ticker)}(?![A-Z0-9])", haystack)
+    )
+    return matches[0] if len(matches) == 1 else None
+
+
 def _feedback_dir(bucket: str) -> Path:
     """Get/create the feedback directory for a bucket."""
     d = ANALYSES_DIR / f"feedback_{bucket}"
@@ -175,9 +217,6 @@ async def save_feedback(
     """
     now = datetime.now(PARIS)
     entry_id = now.strftime("%Y-%m-%d_%H%M%S")
-    bucket = _normalize_feedback_bucket(ticker)
-    fb_dir = _feedback_dir(bucket)
-    log_label = ticker or GENERAL_FEEDBACK_BUCKET
     normalized_category = (category or "general").strip().lower().replace(" ", "_")
 
     pending_files: list[tuple[str, bytes]] = []
@@ -188,6 +227,17 @@ async def save_feedback(
         content = await upload.read()
         _validate_upload_content(safe_basename, content)
         pending_files.append((f"{entry_id}_{safe_basename}", content))
+
+    inferred_ticker = None
+    if not (ticker or "").strip():
+        inferred_ticker = _infer_ticker_from_feedback_text(text, [name for name, _ in pending_files])
+        if inferred_ticker:
+            ticker = inferred_ticker
+            logger.info("[%s] Feedback ticker inferred from text/attachments", inferred_ticker)
+
+    bucket = _normalize_feedback_bucket(ticker)
+    fb_dir = _feedback_dir(bucket)
+    log_label = ticker or GENERAL_FEEDBACK_BUCKET
 
     files_saved: list[str] = []
     for safe_name, content in pending_files:
