@@ -21,6 +21,22 @@
 - `backend/.venv/bin/python -m pytest tests/test_main_endpoints.py tests/test_feedback.py -q` → `36 passed`.
 - `backend/.venv/bin/python -m compileall -q backend/main.py backend/feedback_pipeline.py && git diff --check` → OK.
 
+### 2026-06-08 — Noise gate: quarter_missing no longer creates Kanban tasks
+
+**Status:** Implemented and verified with 2 new regression tests (15 total in test_main_endpoints.py).
+
+**Root cause:** The `dossier_download` endpoint's `quarter` parameter accepts specific quarter values (e.g., `?quarter=2025Q4`) but does not implement quarter-specific directory lookups. When any non-`latest` quarter value is passed, the endpoint immediately records a `quarter_missing` failure and returns 404. This is by design — the endpoint is read-only and never triggers generation. However, every such request created a Kanban task via `process_pdf_failure()`, flooding the board with noise for an unimplemented feature.
+
+**Change:** Added a noise gate in `process_pdf_failure()` in `backend/feedback_pipeline.py`: `quarter_missing` status now skips Kanban task creation. The failure is still logged to the admin search DB and the endpoint still returns 404 correctly. Only the worker-spawning Kanban intake is suppressed.
+
+**Files changed:**
+- `backend/feedback_pipeline.py` — noise gate in `process_pdf_failure()` (lines 192-200)
+- `tests/test_main_endpoints.py` — 2 new regression tests
+
+**Verification:**
+- `backend/.venv/bin/python -m pytest tests/test_main_endpoints.py -q` → `15 passed`.
+- `backend/.venv/bin/python -m pytest tests/test_feedback.py -q` → `26 passed`.
+
 ### 2026-06-08 — Noise gate: invalid tickers no longer create Kanban tasks
 
 **Status:** Noise gate deployed and regression-tested.
