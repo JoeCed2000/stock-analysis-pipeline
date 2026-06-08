@@ -192,6 +192,17 @@ def process_pdf_failure(
         logger.info("[%s] PDF failure intake skipped by idempotency key %s", ticker, key)
         return None
 
+    # ── Noise gate: known-expected statuses that do not need Kanban tasks ──
+    # quarter_missing: the dossier_download endpoint's quarter parameter is
+    # intentionally unimplemented for specific-quarter lookups. The 404 is
+    # correct endpoint behavior, not a pipeline bug. Skip Kanban task creation.
+    if status in ("quarter_missing",):
+        logger.info(
+            "[%s] PDF failure intake skipped by noise gate — status=%s is expected endpoint behavior, not a pipeline bug",
+            ticker, status,
+        )
+        return None
+
     preflight_ok, preflight_msg = run_preflight_gate()
     if not preflight_ok:
         logger.error("Pre-flight FAILED for PDF failure intake: %s", preflight_msg)
