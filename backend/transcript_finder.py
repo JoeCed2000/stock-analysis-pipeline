@@ -159,8 +159,16 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
             sa_content = sa_data.get("content", "") if sa_data else ""
             if not _is_usable(sa_content):
                 continue
-            source_name = str(sa_data.get("source") or sa_result.get("source") or "StockAnalysis").strip()
             source_url = str(sa_data.get("url") or sa_url).strip()
+            # Source label MUST match the actual URL — never claim "Seeking Alpha" for a StockAnalysis URL.
+            # Per Ced rule: SA cookies/auth → "Seeking Alpha"; fallback → "Seeking Alpha via StockAnalysis".
+            src_url_lower = source_url.lower()
+            if "seekingalpha.com/article/" in src_url_lower:
+                source_name = "Seeking Alpha"
+            elif "stockanalysis.com" in src_url_lower:
+                source_name = "Seeking Alpha via StockAnalysis"
+            else:
+                source_name = str(sa_data.get("source") or sa_result.get("source") or "StockAnalysis").strip()
             primary_text = sa_content
             results.append({
                 "source": source_name,

@@ -501,7 +501,9 @@ def _load_transcript(request: DeepDiveRequest) -> Tuple[str, Dict[str, Any]]:
             domain_map = {
                 "fool.com": "The Motley Fool",
                 "seekingalpha.com": "Seeking Alpha",
-                "stockanalysis.com": "Seeking Alpha",
+                # Per Ced rule (2026-06-05): stockanalysis.com is its own source, not SA republisher.
+                # Use explicit "via StockAnalysis" label so audit trail reflects actual URL.
+                "stockanalysis.com": "Seeking Alpha via StockAnalysis",
                 "alphavantage.co": "Alpha Vantage",
             }
             source_name = domain_map.get(domain, domain.split(".")[0].title())

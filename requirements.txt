@@ -14,3 +14,6 @@ openpyxl>=3.1.0
 openai>=1.0.0
 weasyprint>=60.0
 edgartools>=4.0.0
+# Undetected Playwright fork — bypasses Seeking Alpha PerimeterX anti-bot.
+# Primary transcript-fetch path for SA; falls back to StockAnalysis if missing.
+patchright>=1.60.0

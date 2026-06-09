@@ -2549,7 +2549,7 @@ def build_earnings_deep_dive_report(
             DOMAIN_NAMES = {
                 "fool.com": "Motley Fool",
                 "seekingalpha.com": "Seeking Alpha",
-                "stockanalysis.com": "Seeking Alpha",  # Canonical source — StockAnalysis republishes SA transcripts
+                "stockanalysis.com": "Seeking Alpha via StockAnalysis",  # Per Ced rule 2026-06-05: explicit fallback label
                 "finance.yahoo.com": "Yahoo Finance",
                 "reuters.com": "Reuters",
                 "bloomberg.com": "Bloomberg",

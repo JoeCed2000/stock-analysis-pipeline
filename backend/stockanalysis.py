@@ -84,7 +84,9 @@ def search_transcripts(ticker: str, limit: int = 5) -> List[Dict]:
             "title": title,
             "url": urljoin(BASE, href),
             "id": transcript_id,
-            "source": "Seeking Alpha",  # Canonical source — StockAnalysis republishes SA transcripts verbatim
+            # Source label MUST match the actual URL. Per Ced rule (2026-06-05):
+            # SA cookies/auth → "Seeking Alpha"; fallback → "Seeking Alpha via StockAnalysis".
+            "source": "Seeking Alpha via StockAnalysis",
         })
         if len(results) >= limit:
             break
@@ -163,6 +165,8 @@ def fetch_transcript(url: str) -> Optional[Dict]:
         "date": date,
         "url": sa_url or url,  # Prefer the concrete SA article; otherwise cite StockAnalysis fallback.
         "stockanalysis_url": url,
-        "source": "Seeking Alpha" if sa_url else "StockAnalysis",
+        # Per Ced rule: only label "Seeking Alpha" when we actually have a SA article URL.
+        # StockAnalysis.com is its own transcript source, not a SA republisher.
+        "source": "Seeking Alpha" if sa_url else "Seeking Alpha via StockAnalysis",
         "retrieval_provider": "StockAnalysis",
     }

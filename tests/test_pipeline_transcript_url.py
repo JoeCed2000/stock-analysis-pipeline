@@ -73,8 +73,14 @@ def test_transcript_url_no_source_no_ticker_returns_none():
 
 
 def test_best_transcript_source_prefers_seeking_alpha_when_both_usable():
-    stockanalysis_text = "A" * 2600
-    seekingalpha_text = "B" * 2100
+    """Priority (SA=400, StockAnalysis=300) wins when content lengths are
+    comparable (within 1.2x). Per _best_transcript_source tie-break rule
+    added in d29d854: when non-SA content is 1.2x+ longer than SA, prefer
+    the longer (avoids paying for SA MPW-truncated previews when
+    StockAnalysis has the full transcript).
+    """
+    stockanalysis_text = "A" * 3000
+    seekingalpha_text = "B" * 2900  # comparable length, no 1.2x swing
     sources = [
         {
             "source": "StockAnalysis.com",
@@ -83,7 +89,7 @@ def test_best_transcript_source_prefers_seeking_alpha_when_both_usable():
         },
         {
             "source": "RapidAPI Seeking Alpha",
-            "url": "https://seekingalpha.com/symbol/NVDA/earnings/transcripts",
+            "url": "https://seekingalpha.com/article/4700000-nvidia-q1-2027-earnings-call-transcript",
             "text": seekingalpha_text,
         },
     ]
@@ -91,6 +97,31 @@ def test_best_transcript_source_prefers_seeking_alpha_when_both_usable():
     best_text, best_source = _best_transcript_source(sources)
     assert best_text == seekingalpha_text
     assert "seekingalpha.com" in best_source["url"]
+
+
+def test_best_transcript_source_prefers_longer_when_1_2x_clearer():
+    """When non-SA source is 1.2x+ longer than SA, prefer the longer one
+    to avoid MPW-truncated SA previews. Per Ced rule 2026-06-05:
+    fallback transcripts must be reliable full text, not truncated previews.
+    """
+    stockanalysis_text = "A" * 5000  # clearly longer
+    seekingalpha_text = "B" * 2100  # MPW-truncated preview
+    sources = [
+        {
+            "source": "StockAnalysis.com",
+            "url": "https://stockanalysis.com/stocks/nvda/transcripts/568907-q1-2027/",
+            "text": stockanalysis_text,
+        },
+        {
+            "source": "RapidAPI Seeking Alpha",
+            "url": "https://seekingalpha.com/article/4700000-nvidia-q1-2027-earnings-call-transcript",
+            "text": seekingalpha_text,
+        },
+    ]
+
+    best_text, best_source = _best_transcript_source(sources)
+    assert best_text == stockanalysis_text
+    assert "stockanalysis.com" in best_source["url"]
 
 
 def test_best_transcript_source_falls_back_to_longest_when_none_usable():
