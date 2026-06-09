@@ -51,19 +51,90 @@ ANTIBOT_COOKIE_NAMES = {"pxcts", "_px3", "_pxvid", "cf_clearance"}
 
 
 def _is_earnings_call_transcript_link(label: str, href: str) -> bool:
-    """Return True only for actual earnings-call transcript articles.
+    """Return True for any transcript article; reject explicit non-transcripts.
 
-    Seeking Alpha's `/earnings/transcripts` listing mixes conference transcripts,
-    presentations, comment anchors, and real earnings calls. A generic
-    `/article/` link is not sufficient proof that the cookie probe can access the
-    earnings transcript flow.
+    SA's `/earnings/transcripts` listing mixes earnings-call transcripts,
+    conference transcripts (e.g. "Presents at Bank of America 2026 ... Conference
+    Transcript"), and obvious non-transcripts (slideshows, slides, news,
+    commentary, comment anchors). Earnings content and conference presentations
+    with Q&A are both useful — the title word "transcript" is the reliable signal.
+
+    Previously this filter rejected anything containing "conference" or
+    "presentation" — that wrongly excluded legitimate conference transcripts
+    like "Nvidia Corporation presents at Bank of America 2026 Global Technology
+    Conference Transcript" which Ced flagged on 2026-06-09 as valid earnings
+    content. The fix keeps "transcript" as the primary accept signal and only
+    rejects clearly non-transcript content (slideshows, slides, news,
+    commentary, comment anchors, and the slides-only "Earnings Call Presentation"
+    variant).
+    """
+    return _rank_transcript_link(label, href) > 0
+
+
+# Ranking tiers — higher is better. Used to pick the best transcript article
+# when several are available, so that the quarterly earnings call is preferred
+# over a more recent conference presentation of the same company.
+_RANK_EARNINGS_CALL = 100          # "Q1 2027 Earnings Call Transcript"
+_RANK_EARNINGS_CALL_LEGACY = 50     # "Earnings Call Transcript" (no quarter tag)
+_RANK_SHAREHOLDER_CALL = 40         # "Shareholder/Analyst Call Transcript"
+_RANK_OPERATOR_QA = 30              # any transcript whose body has "operator:" (Q&A)
+_RANK_CONFERENCE_TRANSCRIPT = 20    # "Presents at X Conference Transcript"
+_RANK_PREPARED_REMARKS = 10         # "Prepared Remarks Transcript" (no Q&A)
+_RANK_OTHER_TRANSCRIPT = 5          # other transcripts we can't classify
+
+
+def _rank_transcript_link(label: str, href: str) -> int:
+    """Score a candidate article link; 0 means reject.
+
+    Higher score = better. Used to pick the best transcript when several
+    candidates are available. The filter itself is the boolean return from
+    ``_is_earnings_call_transcript_link`` (any non-zero score passes).
     """
     text = f"{label or ''} {href or ''}".lower()
     if "/article/" not in text:
-        return False
-    if "#scroll_comments" in text or "presentation" in text or "conference" in text:
-        return False
-    return "earnings call transcript" in text or re.search(r"\bq[1-4]\b.*earnings.*call", text) is not None
+        return 0
+    # Comment anchor (e.g. "8 Comments" linked to #scroll_comments)
+    if "#scroll_comments" in text:
+        return 0
+    # Slideshows / pure slides / news / commentary are not transcripts
+    if any(kw in text for kw in ("slideshow", "-slides", "slides", "news", "commentary")):
+        return 0
+    # "Earnings Call Presentation" is the slides-only variant of the call —
+    # not the spoken transcript. Real transcripts end in "Transcript".
+    if "earnings call presentation" in text:
+        return 0
+    # Must have a transcript signal (or legacy fallback)
+    if "transcript" not in text:
+        if "earnings call transcript" not in text and re.search(
+            r"\bq[1-4]\b.*earnings.*call", text
+        ) is None:
+            return 0
+    # Score the transcript type
+    if re.search(r"\bq[1-4]\b.*earnings.*call.*transcript", text):
+        return _RANK_EARNINGS_CALL
+    if "earnings call transcript" in text:
+        return _RANK_EARNINGS_CALL_LEGACY
+    if "shareholder/analyst call transcript" in text:
+        return _RANK_SHAREHOLDER_CALL
+    # "Conference Call Transcript" / "Q1 Conference Call" — these are real
+    # Q&A calls (analyst + operator), not pure presentations. Score above a
+    # plain "Conference Transcript" because they have operator-driven Q&A.
+    if re.search(r"conference\s+call", text) and "transcript" in text:
+        return _RANK_SHAREHOLDER_CALL
+    # "Presents at X Conference Transcript" — prepared + Q&A at an event
+    if "conference transcript" in text or (
+        "presents at" in text and "transcript" in text
+    ):
+        return _RANK_CONFERENCE_TRANSCRIPT
+    if "prepared remarks" in text and "transcript" in text:
+        return _RANK_PREPARED_REMARKS
+    # Any other transcript with "call" in the title is a Q&A call
+    if "call" in text and "transcript" in text:
+        return _RANK_SHAREHOLDER_CALL
+    if "transcript" in text:
+        return _RANK_OTHER_TRANSCRIPT
+    return 0
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()

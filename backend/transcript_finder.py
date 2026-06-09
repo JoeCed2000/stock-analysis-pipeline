@@ -26,7 +26,7 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
     # Playwright (real browser) bypasses PerimeterX where httpx gets 403.
     # Falls back to StockAnalysis.com if cookies are missing/expired.
     try:
-        from backend.seeking_alpha_access import _is_earnings_call_transcript_link, _read_store
+        from backend.seeking_alpha_access import _rank_transcript_link, _read_store
         import re as _re
 
         store = _read_store()
@@ -89,15 +89,25 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
                     logger.warning(f"Seeking Alpha blocked by PerimeterX for {ticker} — falling back")
                     browser.close()
                 else:
-                    # Find the first real earnings-call transcript link. The listing
-                    # also includes conference transcripts, presentations, and
-                    # comment anchors that are not suitable transcript sources.
+                    # Find the best transcript link in the listing. The SA
+                    # listing mixes the quarterly earnings-call transcript
+                    # (highest priority) with conference presentations and
+                    # comment anchors. We rank candidates and pick the best
+                    # one — see ``_rank_transcript_link``.
                     links = page.query_selector_all('a[href*="/article/"]')
+                    best_link = None  # (score, href, label)
                     for link in links:
                         href = link.get_attribute("href") or ""
                         label = (link.inner_text() or "").strip()
-                        if not _is_earnings_call_transcript_link(label, href):
+                        if not href:
                             continue
+                        score = _rank_transcript_link(label, href)
+                        if score == 0:
+                            continue
+                        if best_link is None or score > best_link[0]:
+                            best_link = (score, href, label)
+                    if best_link is not None:
+                        score, href, label = best_link
                         if href.startswith("/"):
                             first_url = "https://seekingalpha.com" + href
                         else:
@@ -120,8 +130,10 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
                                     "text": raw,
                                     "text_length": len(raw),
                                 })
-                                logger.info(f"Seeking Alpha (Playwright+cookie): {len(raw)} chars for {ticker}")
-                                break
+                                logger.info(
+                                    f"Seeking Alpha (Playwright+cookie): {len(raw)} chars "
+                                    f"for {ticker} (rank={score}, title={label[:60]!r})"
+                                )
                     browser.close()
     except Exception as e:
         logger.warning(f"Seeking Alpha (Playwright) unavailable for {ticker}: {e}")
