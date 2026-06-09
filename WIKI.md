@@ -55,6 +55,23 @@ The dossier download endpoint (`GET /api/dossier/{ticker}/download`) did not val
 - `backend/.venv/bin/python -m pytest tests/test_main_endpoints.py -q` → `13 passed` (was `10`, +3 new tests for noise gate).
 - `backend/.venv/bin/python -m pytest tests/test_main_endpoints.py tests/test_async_dossier.py tests/test_dossier_language_zip.py tests/test_pdf_generation_state.py tests/test_seeking_alpha_access.py -q` → `45 passed`.
 
+### 2026-06-09 — Noise gate: get_report_pdf (ZZZZUNKNOWN) now filters fake tickers
+
+**Status:** Noise gate deployed and regression-tested.
+
+**Root cause:** The `get_report_pdf` endpoint (`/api/report/{ticker}/pdf`) did not have the same invalid-ticker noise gate that was previously added to `dossier_download`. Automated clients/bots querying non-existent tickers (e.g., `ZZZZUNKNOWN`) triggered `analysis_missing` intake tasks, flooding the Kanban board with noise for tickers that never existed.
+
+The noise gate was already present in `dossier_download()` but the `get_report_pdf` endpoint was missed — both are hit by random/bot queries.
+
+**Change:** Added the same noise gate at the top of `get_report_pdf()`: if the ticker has no local analysis directory AND the ticker does not exist on Yahoo Finance, the endpoint returns HTTP 404 without calling `_record_pdf_client_failure()`. Real tickers (e.g., AAPL with no local analysis) still trigger the full failure intake path.
+
+**Files changed:**
+- `backend/main.py` — noise gate in `get_report_pdf()` (lines 1633-1646)
+- `tests/test_main_endpoints.py` — 2 new regression tests
+
+**Verification:**
+- `backend/.venv/bin/python -m pytest tests/test_main_endpoints.py -q` → `17 passed` (was `15`, +2 new tests).
+
 ## 2026-06-08 — Apple / AAPL download failure root cause
 
 **Status:** Root cause confirmed and local safeguards deployed.
@@ -1215,7 +1232,8 @@ but no PDF was produced.
 | 2026-05-28 | Multiprofile feedback auto-intake | Added shared Hermes script `/home/ced/.hermes/shared/scripts/sa_feedback_auto_intake.py` plus 3 staggered cron jobs (codex-first/default/deepseek-first) that scan canonical `SA_ANALYSES_DIR/feedback_*`, create ready Kanban tasks on board `sa-pipeline` for each `processed=false` entry, and write back `processed=true` + `processing_task_id` so the feedback page shows "Taken into account". Obsolete paused Nami feedback cron jobs were removed. Verification: controlled dry-run, live task creation/cleanup, and browser-visible status transition on `https://sa.cedlabusa.net/#feedback` from `Pending` → `Taken into account` with auto note + counter update, then cleanup back to baseline; idle run prints nothing. | ✅ DONE |
 | 2026-05-28 | Dedicated user feedback page | Added a user-visible `#feedback` page and header button on the production frontend, plus a global feedback flow independent of ticker. Backend now supports general feedback via `feedback_GENERAL`, keeps ticker-specific history intact, exposes `GET /api/feedback` for user history, and still preserves per-ticker/admin views. Verification: `PYTHONPATH=. .venv/bin/pytest tests/test_feedback.py -q` = 13 passed, `frontend/npm run build` OK, backend listener restarted at 08:48, production browser check on `https://sa.cedlabusa.net/#feedback` shows existing GOOGL feedback with date + status and 0 JS errors. | ✅ DONE |
 | 2026-05-28 | Canonical admin feedback store | Root cause fixed for empty admin feedback inbox across `/home` vs `/mnt` runtimes: backend paths now resolve through shared `SA_ANALYSES_DIR`, preload + deep-dive output validation use the same canonical analyses root, and the historical `feedback_GOOGL` folder was migrated into the shared store. Verification: targeted backend tests `tests/test_feedback.py` + `tests/test_storage_paths.py` = 14 passed, backend restarted at 07:55, production admin page now shows 1 Nami feedback entry with 0 JS errors. | ✅ DONE |
-| 2026-05-27 | Ticker input rate-limit fix | Root cause of "typing ticker does nothing": `/api/batch/upload` debounce parser could be 429-limited by prior page/static requests from the same IP. Rate-limit buckets are now per IP+tier, parser stays in the lightweight default tier, and the frontend has a local ticker fallback + visible warning instead of silent failure. Verification: 193 backend/API tests passed + frontend production build. | ✅ DONE |
+|| 2026-06-09 | Feedback upload: 100MB cap + .har | `MAX_FEEDBACK_UPLOAD_BYTES` 10MB→100MB, `.har` added to allowed suffixes + frontend accept. 26/26 feedback tests pass. Backend restarted. Commit: 7c1ed65. | ✅ DONE |
+|| 2026-05-27 | Ticker input rate-limit fix | Root cause of "typing ticker does nothing": `/api/batch/upload` debounce parser could be 429-limited by prior page/static requests from the same IP. Rate-limit buckets are now per IP+tier, parser stays in the lightweight default tier, and the frontend has a local ticker fallback + visible warning instead of silent failure. Verification: 193 backend/API tests passed + frontend production build. | ✅ DONE |
 | 2026-05-27 | API compatibility + test gate | Legacy `{ticker: "NVDA"}` payload accepted for `/api/analyze/async`; FastAPI TestClient auth/rate-limit bypass handles synthetic `testclient` host; `/api/health` and `/api/version` git probes have 5s timeouts. Verification: 192 backend/API tests passed + frontend production build. | ✅ DONE |
 | 2026-05-26 | SA-P0-403 | **REVIEW APPROVED**: Root-cause 403 on /api/analyze — process_nami_feedback.py was reading ADMIN_SECRET placeholder instead of CED_CONTROL_KEY. Fix verified: 153/153 tests, 0 JS errors, no more 403. |
 | 2026-05-26 | V2.7-T3 | **Integration — Mapper + Pipeline Wiring**: _build_v27_models() populates 3/6 V2.7 models from old metrics + company_overview + scoring. ExecutiveSnapshot (market cap, sector, verdict), FinancialMetrics (EPS/revenue/margins/growth/FCF with display strings), ValuationSection (PE multiples). 13 integration tests (unit + pipeline→PDF). Commit: 0e6bba2. | ✅ DONE |
