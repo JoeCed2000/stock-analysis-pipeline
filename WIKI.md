@@ -1,5 +1,23 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-09 — .har file upload in SeekingAlphaAccessPanel + /api/admin/seeking-alpha/access/har
+
+**Status:** Implemented and verified.
+
+**Change:**
+- Replaced cookie-only textarea in SeekingAlphaAccessPanel with dual input: textarea (paste) + file upload (Upload .har, 100 MB)
+- Added `POST /api/admin/seeking-alpha/access/har` backend endpoint that accepts .har files, calls `import_har_cookies()` to extract Seeking Alpha cookies
+- Frontend `api.js`: added `uploadSeekingAlphaHar(file)` 
+- Frontend `SeekingAlphaAccessPanel.jsx`: new file input with `<label>`-styled button, JP/EN labels, upload → verification flow identical to textarea path
+- Backend `seeking_alpha_access.py`: `import_har_cookies()` parses HAR JSON, extracts cookies from `request.cookies` array + `Cookie` header, deduplicates by name, stores in Netscape-compatible format with domain/path
+
+**Verification:** 
+- Endpoint tested locally: 4 cookies imported from valid .har
+- Frontend build: OK (index-BO2tv0fe.js, 314KB)
+- Backend restart: PID 2225011, port 8780
+
+**Commits:** `88928cc` on `kanban/spec-fonctionnelle-sa`
+
 ## 2026-06-08 — Proactive PDF failure intake + admin failure semantics
 
 **Status:** Implemented and locally verified.
