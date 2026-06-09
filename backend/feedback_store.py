@@ -27,9 +27,10 @@ logger = logging.getLogger(__name__)
 PARIS = __import__("zoneinfo").ZoneInfo("Europe/Paris")
 ANALYSES_DIR = get_analyses_dir()
 GENERAL_FEEDBACK_BUCKET = "GENERAL"
-MAX_FEEDBACK_UPLOAD_BYTES = 10 * 1024 * 1024  # Public endpoint: keep uploads bounded.
+MAX_FEEDBACK_UPLOAD_BYTES = 100 * 1024 * 1024  # Public endpoint: 100 MB upload cap.
 ALLOWED_FEEDBACK_UPLOAD_SUFFIXES = {
     ".csv",
+    ".har",
     ".jpeg",
     ".jpg",
     ".md",

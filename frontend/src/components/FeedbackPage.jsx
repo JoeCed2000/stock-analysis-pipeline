@@ -314,7 +314,7 @@ export default function FeedbackPage({ lang = 'en', onClose }) {
                 ref={fileRef}
                 type="file"
                 multiple
-                accept="image/*,application/pdf,.txt,.md,.json,.csv,.xlsx"
+                accept="image/*,application/pdf,.txt,.md,.json,.csv,.xlsx,.har"
                 onChange={handleFileChange}
                 style={{ display: 'none' }}
               />
