@@ -187,6 +187,15 @@ const translations = {
     exportCopyOk: "Summary copied",
     exportFailed: "Export failed",
     exportPngLoading: "Generating PNG\u2026",
+
+    // HAR export help
+    harHelpLabel: "\uD83D\uDD0E How to export HAR from Chrome?",
+    harHelpStep1: "Press F12 (or Ctrl+Shift+I) to open Chrome DevTools",
+    harHelpStep2: "Go to the \"Network\" tab",
+    harHelpStep3: "Keep the Network tab open, then navigate to seekingalpha.com and log in",
+    harHelpStep4: "In the filter box, type \"seekingalpha\" to filter requests",
+    harHelpStep5: "Right-click anywhere in the network request table \u2192 \"Save all as HAR with content\"",
+    harHelpNote: "\uD83D\uDCA1 Note: \"Request List\" is a technical HAR term \u2014 it refers to this exact table. Chrome doesn't label it, but the table IS the Request List.",
   },
   
   jp: {  // canonical
@@ -373,7 +382,16 @@ const translations = {
     exportCopyOk: "コピー完了",
     exportFailed: "エクスポート失敗",
     exportPngLoading: "PNG生成中…",
-  }
-};
+
+    // HAR export help
+    harHelpLabel: "\uD83D\uDD0E Chrome\u304B\u3089HAR\u3092\u30A8\u30AF\u30B9\u30DD\u30FC\u30C8\u3059\u308B\u65B9\u6CD5",
+    harHelpStep1: "F12\u30AD\u30FC\uFF08\u307E\u305F\u306FCtrl+Shift+I\uFF09\u3092\u62BC\u3057\u3066Chrome DevTools\u3092\u958B\u304F",
+    harHelpStep2: "\"Network\"\u30BF\u30D6\u306B\u79FB\u52D5\u3059\u308B",
+    harHelpStep3: "Network\u30BF\u30D6\u3092\u958B\u3044\u305F\u307E\u307E\u3001seekingalpha.com\u306B\u30A2\u30AF\u30BB\u30B9\u3057\u3066\u30ED\u30B0\u30A4\u30F3\u3059\u308B",
+    harHelpStep4: "\u30D5\u30A3\u30EB\u30BF\u30FC\u30DC\u30C3\u30AF\u30B9\u306B\"seekingalpha\"\u3068\u5165\u529B\u3057\u3066\u30EA\u30AF\u30A8\u30B9\u30C8\u3092\u7D5E\u308A\u8FBC\u3080",
+    harHelpStep5: "\u30CD\u30C3\u30C8\u30EF\u30FC\u30AF\u30EA\u30AF\u30A8\u30B9\u30C8\u30C6\u30FC\u30D6\u30EB\u5185\u3067\u53F3\u30AF\u30EA\u30C3\u30AF → \"Save all as HAR with content\"",
+    harHelpNote: "\uD83D\uDCA1 \u88DC\u8DB3: \"Request List\"\u306F\u6280\u8853\u7684\u306AHAR\u7528\u8A9E\u3067\u3059 — \u3053\u306E\u30C6\u30FC\u30D6\u30EB\u306E\u3053\u3068\u3092\u6307\u3057\u3066\u3044\u307E\u3059\u3002Chrome\u306B\u30E9\u30D9\u30EB\u306F\u3042\u308A\u307E\u305B\u3093\u304C\u3001\u3053\u306E\u30C6\u30FC\u30D6\u30EB\u304CRequest List\u3067\u3059\u3002",
+   }
+ };
 
 export default translations;

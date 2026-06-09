@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  clearSeekingAlphaAccess,
   getSeekingAlphaAccessStatus,
-  saveSeekingAlphaAccess,
   testSeekingAlphaAccess,
   uploadSeekingAlphaHar,
 } from '../api.js';
@@ -16,13 +14,10 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export default function SeekingAlphaAccessPanel({ mode = 'admin', lang = 'en' }) {
   const isFeedbackMode = mode === 'feedback';
   const [status, setStatus] = useState(null);
-  const [cookieHeader, setCookieHeader] = useState('');
   const [testTicker, setTestTicker] = useState(DEFAULT_TICKER);
   const [testResult, setTestResult] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [clearing, setClearing] = useState(false);
   const [verificationState, setVerificationState] = useState('idle'); // idle | pending | verified | failed
   const [message, setMessage] = useState('');
   const [uploadingHar, setUploadingHar] = useState(false);
@@ -97,60 +92,12 @@ export default function SeekingAlphaAccessPanel({ mode = 'admin', lang = 'en' })
     return lastResult;
   }, []);
 
-  const handleSave = async () => {
-    if (!cookieHeader.trim()) {
-      setMessage('Paste the full Cookie header first.');
-      return;
-    }
-
-    setSaving(true);
-    setMessage('');
-
-    try {
-      const next = await saveSeekingAlphaAccess(cookieHeader);
-      setStatus(next);
-      setCookieHeader('');
-
-      if (isFeedbackMode) {
-        await runVerification({
-          ticker: testTicker || DEFAULT_TICKER,
-          attempts: RETRY_ATTEMPTS,
-          delayMs: RETRY_DELAY_MS,
-          auto: true,
-        });
-      } else {
-        setMessage(`Cookies stored server-side (${next.cookie_count} cookies).`);
-      }
-    } catch (err) {
-      setVerificationState('failed');
-      setMessage(err.message || 'Save failed');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleTest = async () => {
     await runVerification({
       ticker: testTicker || DEFAULT_TICKER,
       attempts: 1,
       auto: false,
     });
-  };
-
-  const handleClear = async () => {
-    setClearing(true);
-    setMessage('');
-    try {
-      const next = await clearSeekingAlphaAccess();
-      setStatus(next);
-      setTestResult(null);
-      setVerificationState('idle');
-      setMessage('Stored Seeking Alpha cookies cleared.');
-    } catch (err) {
-      setMessage(err.message || 'Clear failed');
-    } finally {
-      setClearing(false);
-    }
   };
 
   const handleHarUpload = async (e) => {
@@ -230,8 +177,8 @@ export default function SeekingAlphaAccessPanel({ mode = 'admin', lang = 'en' })
     : '🔐 Seeking Alpha Access';
   const panelSubtitle = isFeedbackMode
     ? (lang === 'jp'
-      ? 'Cookie はサーバー側のみで保管されます。送信後は pending → verified/failed で結果を表示します。'
-      : 'Cookies are stored server-side only. After submit, status goes pending → verified/failed.')
+      ? 'Cookie はサーバー側のみで保管されます。HAR ファイルをアップロードしてください。'
+      : 'Cookies are stored server-side only. Upload a .har file to configure access.')
     : 'Cookies stay server-side only. The UI never reads them back.';
 
   return (
@@ -248,21 +195,7 @@ export default function SeekingAlphaAccessPanel({ mode = 'admin', lang = 'en' })
         </span>
       </div>
 
-      <textarea
-        value={cookieHeader}
-        onChange={(e) => setCookieHeader(e.target.value)}
-        placeholder={lang === 'jp'
-          ? 'Seeking Alpha の Cookie ヘッダーを貼り付け'
-          : 'Paste the full Cookie header from Seeking Alpha here'}
-        spellCheck={false}
-        style={{
-          width: '100%', minHeight: 88, resize: 'vertical',
-          background: '#0d1117', color: '#c9d1d9', border: '1px solid #30363d', borderRadius: 8,
-          padding: 12, fontSize: 12, fontFamily: 'monospace', boxSizing: 'border-box',
-          marginBottom: 12,
-        }}
-      />
-
+      {/* ── HAR upload (only input method) ── */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
         <input
           ref={harInputRef}
@@ -291,19 +224,29 @@ export default function SeekingAlphaAccessPanel({ mode = 'admin', lang = 'en' })
         </label>
       </div>
 
+      {/* ── HAR export help (collapsible) ── */}
+      <details style={{ marginBottom: 12, fontSize: 12, color: '#8b949e', background: '#0d1117', border: '1px solid #21262d', borderRadius: 8, padding: '10px 14px' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#c9d1d9' }}>
+          {lang === 'jp'
+            ? '\uD83D\uDD0E Chrome\u304B\u3089HAR\u3092\u30A8\u30AF\u30B9\u30DD\u30FC\u30C8\u3059\u308B\u65B9\u6CD5'
+            : '\uD83D\uDD0E How to export HAR from Chrome?'}
+        </summary>
+        <ol style={{ marginTop: 8, paddingLeft: 20, lineHeight: 1.8 }}>
+          <li>{lang === 'jp' ? 'F12\u30AD\u30FC\uFF08\u307E\u305F\u306FCtrl+Shift+I\uFF09\u3092\u62BC\u3057\u3066Chrome DevTools\u3092\u958B\u304F' : 'Press F12 (or Ctrl+Shift+I) to open Chrome DevTools'}</li>
+          <li>{lang === 'jp' ? '\u201CNetwork\u201D\u30BF\u30D6\u306B\u79FB\u52D5\u3059\u308B' : 'Go to the "Network" tab'}</li>
+          <li>{lang === 'jp' ? 'Network\u30BF\u30D6\u3092\u958B\u3044\u305F\u307E\u307E\u3001seekingalpha.com\u306B\u30A2\u30AF\u30BB\u30B9\u3057\u3066\u30ED\u30B0\u30A4\u30F3\u3059\u308B' : 'Keep the Network tab open, then navigate to seekingalpha.com and log in'}</li>
+          <li>{lang === 'jp' ? '\u30D5\u30A3\u30EB\u30BF\u30FC\u30DC\u30C3\u30AF\u30B9\u306B\u201Cseekingalpha\u201D\u3068\u5165\u529B\u3057\u3066\u30EA\u30AF\u30A8\u30B9\u30C8\u3092\u7D5E\u308A\u8FBC\u3080' : 'In the filter box, type "seekingalpha" to filter requests'}</li>
+          <li>{lang === 'jp' ? '\u30CD\u30C3\u30C8\u30EF\u30FC\u30AF\u30EA\u30AF\u30A8\u30B9\u30C8\u30C6\u30FC\u30D6\u30EB\u5185\u3067\u53F3\u30AF\u30EA\u30C3\u30AF \u2192 "Save all as HAR with content"' : 'Right-click anywhere in the network request table \u2192 "Save all as HAR with content"'}</li>
+        </ol>
+        <div style={{ marginTop: 6, padding: '8px 10px', background: '#1c2333', borderLeft: '3px solid #58a6ff', borderRadius: 4, fontSize: 11 }}>
+          {lang === 'jp'
+            ? '\uD83D\uDCA1 \u88DC\u8DB3: "Request List"\u306F\u6280\u8853\u7684\u306AHAR\u7528\u8A9E\u3067\u3059 \u2014 \u3053\u306E\u30C6\u30FC\u30D6\u30EB\u306E\u3053\u3068\u3092\u6307\u3057\u3066\u3044\u307E\u3059\u3002Chrome\u306B\u30E9\u30D9\u30EB\u306F\u3042\u308A\u307E\u305B\u3093\u304C\u3001\u3053\u306E\u30C6\u30FC\u30D6\u30EB\u304CRequest List\u3067\u3059\u3002'
+            : '\uD83D\uDCA1 Note: "Request List" is a technical HAR term \u2014 it refers to this exact table. Chrome doesn\'t label it, but the table IS the Request List.'}
+        </div>
+      </details>
+
+      {/* ── Test + Refresh toolbar ── */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
-        <button onClick={handleSave} disabled={saving} style={{ ...btnStyle, background: '#238636', color: '#fff', border: '1px solid #2ea043' }}>
-          {saving
-            ? (lang === 'jp' ? '保存中…' : 'Saving…')
-            : (lang === 'jp' ? 'Cookie を保存' : 'Save cookies')}
-        </button>
-
-        {!isFeedbackMode && (
-          <button onClick={handleClear} disabled={clearing || !status?.configured} style={{ ...btnStyle, background: '#21262d', color: '#c9d1d9', border: '1px solid #30363d' }}>
-            {clearing ? 'Clearing…' : 'Clear'}
-          </button>
-        )}
-
         <input
           value={testTicker}
           onChange={(e) => setTestTicker(e.target.value.toUpperCase())}
