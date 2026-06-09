@@ -2557,6 +2557,7 @@ async def submit_feedback(
     cookie_status = None
     if har_files:
         from backend.seeking_alpha_access import import_har_cookies
+        from backend.seeking_alpha_access import probe_access_async
         from backend.feedback_store import get_feedback_file_path
 
         for _orig_name, safe_basename in har_files:
@@ -2570,6 +2571,22 @@ async def submit_feedback(
                     cookie_status.get("cookie_count", 0),
                     cookie_status.get("cookie_diagnostics", {}).get("quality", "?"),
                 )
+                # ── Auto-probe: verify cookies are usable by the pipeline ──
+                try:
+                    probe_result = await probe_access_async()
+                    cookie_status["probe"] = {
+                        "ok": probe_result.get("ok", False),
+                        "reason": probe_result.get("reason", "?"),
+                        "status_code": probe_result.get("status_code"),
+                        "tested_at": probe_result.get("tested_at"),
+                    }
+                    logger.info(
+                        "Feedback HAR auto-probe: ok=%s reason=%s",
+                        probe_result.get("ok"), probe_result.get("reason"),
+                    )
+                except Exception as probe_exc:
+                    logger.warning("Feedback HAR auto-probe failed: %s", probe_exc)
+                    cookie_status["probe"] = {"ok": False, "reason": f"probe_error: {probe_exc}"}
             except ValueError as e:
                 logger.warning("HAR import failed for %s (%s): %s", saved_name, _orig_name, e)
                 cookie_status = {"error": str(e), "file": _orig_name}
@@ -2807,7 +2824,6 @@ async def upload_seeking_alpha_har(file: UploadFile = FastAPIFile(...)):
 
     try:
         result = import_har_cookies(tmp_path)
-        return JSONResponse(result)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -2818,6 +2834,26 @@ async def upload_seeking_alpha_har(file: UploadFile = FastAPIFile(...)):
             tmp_path.unlink(missing_ok=True)
         except OSError:
             pass
+
+    # ── Auto-probe: verify cookies are usable by the pipeline ─────────
+    from backend.seeking_alpha_access import probe_access_async
+    try:
+        probe_result = await probe_access_async()
+        result["probe"] = {
+            "ok": probe_result.get("ok", False),
+            "reason": probe_result.get("reason", "?"),
+            "status_code": probe_result.get("status_code"),
+            "tested_at": probe_result.get("tested_at"),
+        }
+        logger.info(
+            "HAR auto-probe: ok=%s reason=%s code=%s",
+            probe_result.get("ok"), probe_result.get("reason"), probe_result.get("status_code"),
+        )
+    except Exception as probe_exc:
+        logger.warning("HAR auto-probe failed: %s", probe_exc)
+        result["probe"] = {"ok": False, "reason": f"probe_error: {probe_exc}"}
+
+    return JSONResponse(result)
 
 
 @app.post("/api/admin/seeking-alpha/test")

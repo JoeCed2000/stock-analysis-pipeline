@@ -174,11 +174,29 @@ export default function SeekingAlphaAccessPanel({ mode = 'admin', lang = 'en' })
     try {
       const next = await uploadSeekingAlphaHar(file);
       setStatus(next);
-      setMessage(
-        lang === 'jp'
-          ? `.har から ${next.cookie_count} Cookie をインポートしました`
-          : `Imported ${next.cookie_count} cookies from .har`
-      );
+
+      const probe = next.probe;
+      let msg;
+      if (lang === 'jp') {
+        msg = `.har から ${next.cookie_count} Cookie をインポートしました`;
+        if (probe) {
+          msg += probe.ok
+            ? ' ✅ Seeking Alpha アクセス確認済み'
+            : ` ⚠️ プローブ失敗: ${probe.reason || '?'}`;
+        }
+      } else {
+        msg = `Imported ${next.cookie_count} cookies from .har`;
+        if (probe) {
+          msg += probe.ok
+            ? ' ✅ Seeking Alpha access confirmed'
+            : ` ⚠️ Probe failed: ${probe.reason || '?'}`;
+        }
+      }
+      setMessage(msg);
+      if (probe) {
+        setTestResult({ ...probe, ticker: 'NVDA', url: `https://seekingalpha.com/symbol/NVDA/earnings/transcripts` });
+        setVerificationState(probe.ok ? 'verified' : 'failed');
+      }
 
       if (isFeedbackMode) {
         await runVerification({
