@@ -16,7 +16,13 @@
 - Frontend build: OK (index-BO2tv0fe.js, 314KB)
 - Backend restart: PID 2225011, port 8780
 
-**Commits:** `88928cc` on `kanban/spec-fonctionnelle-sa`
+**Commits:** `88928cc`, `2844fba` on `kanban/spec-fonctionnelle-sa`
+
+### 2026-06-09 (update) — Auto-probe after HAR upload
+- `/api/admin/seeking-alpha/access/har` now auto-probes SA access after import, returns `probe.{ok,reason,status_code}` 
+- `/api/feedback` also auto-probes after HAR cookie import from feedback uploads
+- Frontend `SeekingAlphaAccessPanel.jsx`: displays probe result (✅/⚠️) + updates verification state immediately after upload — no need for manual test click
+- **Commit:** `2844fba`
 
 ## 2026-06-08 — Proactive PDF failure intake + admin failure semantics
 
