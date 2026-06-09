@@ -232,16 +232,17 @@ export default function SeekingAlphaAccessPanel({ mode = 'admin', lang = 'en' })
             : '\uD83D\uDD0E How to export HAR from Chrome?'}
         </summary>
         <ol style={{ marginTop: 8, paddingLeft: 20, lineHeight: 1.8 }}>
-          <li>{lang === 'jp' ? 'F12\u30AD\u30FC\uFF08\u307E\u305F\u306FCtrl+Shift+I\uFF09\u3092\u62BC\u3057\u3066Chrome DevTools\u3092\u958B\u304F' : 'Press F12 (or Ctrl+Shift+I) to open Chrome DevTools'}</li>
-          <li>{lang === 'jp' ? '\u201CNetwork\u201D\u30BF\u30D6\u306B\u79FB\u52D5\u3059\u308B' : 'Go to the "Network" tab'}</li>
-          <li>{lang === 'jp' ? 'Network\u30BF\u30D6\u3092\u958B\u3044\u305F\u307E\u307E\u3001seekingalpha.com\u306B\u30A2\u30AF\u30BB\u30B9\u3057\u3066\u30ED\u30B0\u30A4\u30F3\u3059\u308B' : 'Keep the Network tab open, then navigate to seekingalpha.com and log in'}</li>
-          <li>{lang === 'jp' ? '\u30D5\u30A3\u30EB\u30BF\u30FC\u30DC\u30C3\u30AF\u30B9\u306B\u201Cseekingalpha\u201D\u3068\u5165\u529B\u3057\u3066\u30EA\u30AF\u30A8\u30B9\u30C8\u3092\u7D5E\u308A\u8FBC\u3080' : 'In the filter box, type "seekingalpha" to filter requests'}</li>
-          <li>{lang === 'jp' ? '\u30CD\u30C3\u30C8\u30EF\u30FC\u30AF\u30EA\u30AF\u30A8\u30B9\u30C8\u30C6\u30FC\u30D6\u30EB\u5185\u3067\u53F3\u30AF\u30EA\u30C3\u30AF \u2192 "Save all as HAR with content"' : 'Right-click anywhere in the network request table \u2192 "Save all as HAR with content"'}</li>
+          <li>{lang === 'jp' ? 'F12\u30AD\u30FC\u3092\u62BC\u3057\u3066Chrome DevTools\u3092\u958B\u304F' : 'Press F12 to open Chrome DevTools'}</li>
+          <li>{lang === 'jp' ? 'F1\u30AD\u30FC\u3092\u62BC\u3057\u3066\u8A2D\u5B9A\u3092\u958B\u304F' : 'Press F1 to open Settings'}</li>
+          <li>{lang === 'jp' ? '\u201CNetwork\u201D\u30BB\u30AF\u30B7\u30E7\u30F3\u307E\u3067\u30B9\u30AF\u30ED\u30FC\u30EB\u3057\u3001\u201CAllow to generate HAR with sensitive data\u201D\u306B\u30C1\u30A7\u30C3\u30AF\uFF08\u8A8D\u8A3CCookie\u3092\u53D6\u5F97\u3059\u308B\u305F\u3081\uFF09' : 'Scroll to Network section, check \u201CAllow to generate HAR with sensitive data\u201D (this captures auth cookies)'}</li>
+          <li>{lang === 'jp' ? '\u8A2D\u5B9A\u3092\u9589\u3058\u3001\u201CPreserve log\u201D\u306B\u30C1\u30A7\u30C3\u30AF' : 'Close Settings, check \u201CPreserve log\u201D'}</li>
+          <li>{lang === 'jp' ? '\u30ED\u30B0\u30A4\u30F3\u3057\u305F\u72B6\u614B\u3067Seeking Alpha\u306B\u30A2\u30AF\u30BB\u30B9\u3059\u308B' : 'Navigate to Seeking Alpha while logged in'}</li>
+          <li>{lang === 'jp' ? '\u4E0B\u77E2\u5370\u3092\u30AF\u30EA\u30C3\u30AF\u3057\u3066\u300CExport HAR with sensitive data\u300D' : 'Click the down arrow \u2192 \u201CExport HAR with sensitive data\u201D'}</li>
         </ol>
         <div style={{ marginTop: 6, padding: '8px 10px', background: '#1c2333', borderLeft: '3px solid #58a6ff', borderRadius: 4, fontSize: 11 }}>
           {lang === 'jp'
-            ? '\uD83D\uDCA1 \u88DC\u8DB3: "Request List"\u306F\u6280\u8853\u7684\u306AHAR\u7528\u8A9E\u3067\u3059 \u2014 \u3053\u306E\u30C6\u30FC\u30D6\u30EB\u306E\u3053\u3068\u3092\u6307\u3057\u3066\u3044\u307E\u3059\u3002Chrome\u306B\u30E9\u30D9\u30EB\u306F\u3042\u308A\u307E\u305B\u3093\u304C\u3001\u3053\u306E\u30C6\u30FC\u30D6\u30EB\u304CRequest List\u3067\u3059\u3002'
-            : '\uD83D\uDCA1 Note: "Request List" is a technical HAR term \u2014 it refers to this exact table. Chrome doesn\'t label it, but the table IS the Request List.'}
+            ? '\uD83D\uDCA1 \u8A8D\u8A3CCookie\u304CHAR\u306B\u542B\u307E\u308C\u3066\u3044\u306A\u3044\u5834\u5408\u3001\u30B9\u30C6\u30C3\u30D73\u306E\u8A2D\u5B9A\u304C\u30AA\u30D5\u306B\u306A\u3063\u3066\u3044\u308B\u53EF\u80FD\u6027\u304C\u3042\u308A\u307E\u3059\u3002\u518D\u5EA6\u624B\u9806\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044\u3002'
+            : '\uD83D\uDCA1 If the .har doesn\u2019t contain auth cookies, step 3 may have been missed. Re-export with the setting enabled.'}
         </div>
       </details>
 
