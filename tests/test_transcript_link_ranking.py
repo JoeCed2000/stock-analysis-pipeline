@@ -240,3 +240,87 @@ def test_ranking_prefers_earnings_call_over_older_conference():
         "/article/1234-acme-q4-2025-earnings-call-transcript",
     )
     assert earn_score > conf_score
+
+
+# --- Tests for _primary_source_name (label/content consistency) ------------
+
+
+def test_primary_source_name_picks_longest_not_first():
+    """The primary source label must match the source with the longest text,
+    not just the first one with any text.
+
+    Reproduces the 2026-06-09 bug: SA primary path captured 5042 chars (MPW
+    paywall preview); StockAnalysis captured 49881 chars (full text).
+    _best_transcript correctly picked StockAnalysis for the content, but
+    _primary_source_name iterated in list order and returned "Seeking Alpha"
+    (the first source with any text) — so the saved dossier's header and
+    filename said "Seeking Alpha" while the content was actually from
+    StockAnalysis. This test pins the fix.
+    """
+    from backend.earnings_deep_dive.generator import _primary_source_name
+
+    sources = [
+        {
+            "source": "Seeking Alpha",
+            "url": "https://seekingalpha.com/article/4907259-q1-2027",
+            "text": "Skip to content Home page Seeking Alpha - Power to Investors..." * 50,  # 5042
+        },
+        {
+            "source": "Seeking Alpha via StockAnalysis",
+            "url": "https://stockanalysis.com/stocks/nvda/transcripts/568907-q1-2027",
+            "text": "NVIDIA (NVDA) Q1 2027 Earnings Call Transcript & Audio\n\n" + "Operator: ... " * 5000,  # 49K+
+        },
+    ]
+    name = _primary_source_name(sources)
+    assert name == "Seeking Alpha via StockAnalysis", (
+        f"FAIL: primary_source should match the longest transcript "
+        f"(StockAnalysis, 49K), got {name!r}"
+    )
+
+
+def test_primary_source_name_handles_list_text():
+    """Some sources pass text as a list of paragraphs — must still compare lengths."""
+    from backend.earnings_deep_dive.generator import _primary_source_name
+
+    sources = [
+        {
+            "source": "Seeking Alpha",
+            "text": ["short", "list"],
+        },
+        {
+            "source": "Seeking Alpha via StockAnalysis",
+            "text": ["line " * 200 for _ in range(200)],  # 1000 chars
+        },
+    ]
+    name = _primary_source_name(sources)
+    assert name == "Seeking Alpha via StockAnalysis"
+
+
+def test_primary_source_name_handles_empty_sources():
+    """Empty source list returns 'unknown' without crashing."""
+    from backend.earnings_deep_dive.generator import _primary_source_name
+
+    assert _primary_source_name([]) == "unknown"
+
+
+def test_primary_source_name_falls_back_to_title():
+    """When 'source' is missing but 'title' is present, use title."""
+    from backend.earnings_deep_dive.generator import _primary_source_name
+
+    sources = [
+        {"title": "Earnings Call Q1 2027", "text": "Some content here"},
+    ]
+    name = _primary_source_name(sources)
+    assert name == "Earnings Call Q1 2027"
+
+
+def test_primary_source_name_ignores_empty_text():
+    """A source with no usable text must not be picked over one with text."""
+    from backend.earnings_deep_dive.generator import _primary_source_name
+
+    sources = [
+        {"source": "Empty", "text": ""},
+        {"source": "Has Text", "text": "Some real transcript content"},
+    ]
+    name = _primary_source_name(sources)
+    assert name == "Has Text"

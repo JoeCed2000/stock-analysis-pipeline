@@ -567,10 +567,26 @@ def _best_transcript(sources: Iterable[Dict[str, Any]]) -> Tuple[str, Dict[str, 
 
 
 def _primary_source_name(sources: Iterable[Dict[str, Any]]) -> str:
+    """Return the source label of the LONGEST transcript (matches ``_best_transcript``).
+
+    Previously this function iterated in list order and returned the first
+    source that had any text. That mismatched ``_best_transcript`` (which picks
+    the longest text) and produced label/URL/content inconsistencies in the
+    saved dossier — the file content came from StockAnalysis (longest = 49K)
+    while the label said "Seeking Alpha" (first with any text = 5K MPW preview).
+    See Ced 2026-06-09 root-cause analysis.
+    """
+    best_text_len = -1
+    best_name = "unknown"
     for source in sources:
-        if source.get("text") or source.get("content") or source.get("transcript"):
-            return str(source.get("source") or source.get("title") or "unknown")
-    return "unknown"
+        text = source.get("text") or source.get("content") or source.get("transcript") or ""
+        if isinstance(text, list):
+            text = "\n".join(str(item) for item in text)
+        text_len = len(text.strip()) if isinstance(text, str) else 0
+        if text_len > best_text_len:
+            best_text_len = text_len
+            best_name = str(source.get("source") or source.get("title") or "unknown")
+    return best_name
 
 
 def _extract_relevant_excerpt(transcript: str, keywords: List[str], max_chars: int = 1600) -> str:
