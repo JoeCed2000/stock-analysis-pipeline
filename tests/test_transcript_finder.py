@@ -14,6 +14,13 @@ def _disable_stockanalysis(monkeypatch):
 
 
 def test_find_transcripts_uses_stockanalysis_as_first_cookie_fallback(monkeypatch):
+    """When SA cookies are not configured, the StockAnalysis fallback must
+    produce a 'Seeking Alpha via StockAnalysis' label — NOT plain
+    'StockAnalysis' (which loses the SA lineage the client expects to see
+    in PDFs and the dossier header) and NOT plain 'Seeking Alpha' (which
+    would lie about the content source). The URL stays on StockAnalysis
+    because the content was fetched from there.
+    """
     _disable_sa_cookies(monkeypatch)
     monkeypatch.setattr(
         "backend.stockanalysis.search_transcripts",
@@ -22,7 +29,9 @@ def test_find_transcripts_uses_stockanalysis_as_first_cookie_fallback(monkeypatc
     monkeypatch.setattr(
         "backend.stockanalysis.fetch_transcript",
         lambda url: {
-            "source": "StockAnalysis",
+            # stockanalysis.fetch_transcript now always returns the via-label
+            # regardless of whether an SA link was found on the page.
+            "source": "Seeking Alpha via StockAnalysis",
             "title": "NVDA Q1 2027 Earnings Call Transcript",
             "url": url,
             "stockanalysis_url": url,
@@ -36,12 +45,22 @@ def test_find_transcripts_uses_stockanalysis_as_first_cookie_fallback(monkeypatc
     result = transcript_finder.find_transcripts("NVDA")
 
     assert result["found"] is True
-    assert result["sources"][0]["source"] == "StockAnalysis"
+    assert result["sources"][0]["source"] == "Seeking Alpha via StockAnalysis"
     assert result["sources"][0]["url"] == "https://stockanalysis.com/stocks/nvda/transcripts/568907-q1-2027/"
-    assert "Seeking Alpha via StockAnalysis" not in result["sources"][0]["source"]
+    # Negative checks: must NOT be the bare labels.
+    assert result["sources"][0]["source"] != "Seeking Alpha"
+    assert result["sources"][0]["source"] != "StockAnalysis"
 
 
-def test_find_transcripts_preserves_original_seeking_alpha_url_from_stockanalysis(monkeypatch):
+def test_find_transcripts_preserves_original_sa_url_as_reference_only(monkeypatch):
+    """Regression for 2026-06-09 NVDA bug.
+
+    When stockanalysis.fetch_transcript finds an SA article link on the
+    StockAnalysis page, the SA URL is preserved as `original_sa_url`
+    (reference for clients with SA Premium cookies in their browser) — NOT
+    used as the primary citation. The citation URL stays on StockAnalysis
+    because that is the page we actually fetched the verbatim content from.
+    """
     _disable_sa_cookies(monkeypatch)
     monkeypatch.setattr(
         "backend.stockanalysis.search_transcripts",
@@ -50,10 +69,12 @@ def test_find_transcripts_preserves_original_seeking_alpha_url_from_stockanalysi
     monkeypatch.setattr(
         "backend.stockanalysis.fetch_transcript",
         lambda url: {
-            "source": "Seeking Alpha",
+            "source": "Seeking Alpha via StockAnalysis",
             "title": "NVDA Q1 2027 Earnings Call Transcript",
-            "url": "https://seekingalpha.com/article/4700000-nvidia-q1-2027-earnings-call-transcript",
+            "url": url,  # StockAnalysis URL — the page we actually fetched
             "stockanalysis_url": url,
+            # The SA article URL is preserved as a reference, not as the citation.
+            "original_sa_url": "https://seekingalpha.com/article/4700000-nvidia-q1-2027-earnings-call-transcript",
             "content": LONG,
             "date": "2026-05-28",
             "retrieval_provider": "StockAnalysis",
@@ -63,9 +84,12 @@ def test_find_transcripts_preserves_original_seeking_alpha_url_from_stockanalysi
     result = transcript_finder.find_transcripts("NVDA")
 
     assert result["found"] is True
-    assert result["sources"][0]["source"] == "Seeking Alpha"
-    assert result["sources"][0]["url"] == "https://seekingalpha.com/article/4700000-nvidia-q1-2027-earnings-call-transcript"
+    assert result["sources"][0]["source"] == "Seeking Alpha via StockAnalysis"
+    # Citation URL is the StockAnalysis page we actually fetched.
+    assert result["sources"][0]["url"] == "https://stockanalysis.com/stocks/nvda/transcripts/568907-q1-2027/"
     assert result["sources"][0]["stockanalysis_url"] == "https://stockanalysis.com/stocks/nvda/transcripts/568907-q1-2027/"
+    # SA URL is preserved as a reference for clients with SA Premium cookies.
+    assert result["sources"][0]["original_sa_url"] == "https://seekingalpha.com/article/4700000-nvidia-q1-2027-earnings-call-transcript"
 
 
 def test_find_transcripts_falls_back_to_alpha_vantage_when_stockanalysis_empty(monkeypatch):

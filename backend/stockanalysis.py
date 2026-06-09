@@ -150,7 +150,14 @@ def fetch_transcript(url: str) -> Optional[Dict]:
     
     logger.info(f"StockAnalysis transcript: {len(content)} chars from {url[:80]}")
     
-    # Extract original Seeking Alpha article URL from the page
+    # Extract original Seeking Alpha article URL from the page (for reference only).
+    # Per Ced rule 2026-06-09: source attribution MUST match the actual content
+    # provider. The content above was fetched from StockAnalysis.com, so we label
+    # the source as "Seeking Alpha via StockAnalysis" — NOT as plain "Seeking Alpha"
+    # just because a link to the SA article was found on the StockAnalysis page.
+    # Earlier behaviour (url=sa_url, source="Seeking Alpha") created a label/URL
+    # mismatch in downstream transcript files and PDFs: filename said
+    # "Seeking Alpha", URL pointed to SA, but verbatim content was StockAnalysis.
     sa_url = ""
     sa_link = re.search(r'<a[^>]*href="(https://seekingalpha\.com/article/\d+[^"]*)"[^>]*>', html)
     if not sa_link:
@@ -163,10 +170,14 @@ def fetch_transcript(url: str) -> Optional[Dict]:
         "title": title,
         "content": content,
         "date": date,
-        "url": sa_url or url,  # Prefer the concrete SA article; otherwise cite StockAnalysis fallback.
+        # URL is the StockAnalysis transcript page (the page we actually fetched).
+        "url": url,
         "stockanalysis_url": url,
-        # Per Ced rule: only label "Seeking Alpha" when we actually have a SA article URL.
-        # StockAnalysis.com is its own transcript source, not a SA republisher.
-        "source": "Seeking Alpha" if sa_url else "Seeking Alpha via StockAnalysis",
+        # Keep the SA original URL as a reference for clients that want to
+        # deep-link to the SA article (e.g. for users with SA Premium cookies
+        # in their browser).
+        "original_sa_url": sa_url,
+        # Source label reflects the actual content provider: StockAnalysis.
+        "source": "Seeking Alpha via StockAnalysis",
         "retrieval_provider": "StockAnalysis",
     }

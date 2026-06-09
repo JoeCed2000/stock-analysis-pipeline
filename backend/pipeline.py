@@ -107,13 +107,18 @@ def _transcript_url(source: Dict[str, Any], ticker: str | None = None,
                     all_sources: list | None = None) -> Optional[str]:
     """Return a transcript citation URL that points to a real transcript.
 
-    Policy:
-    1) Prefer a concrete Seeking Alpha article URL (`/article/...`) when cookies
-       made the primary source accessible.
-    2) If cookies are unavailable/expired and StockAnalysis is used as fallback,
-       keep the concrete StockAnalysis transcript deep link.
-    3) Never replace a fallback transcript with a generic Seeking Alpha ticker
-       listing (`/symbol/{ticker}/earnings/transcripts`) — that page is not the
+    Policy (revised 2026-06-09 after NVDA label/URL mismatch):
+    1) Cite the URL of the **picked** (longest-text) source by default. The
+       citation must reflect the content actually used in the deep dive — a
+       StockAnalysis page when StockAnalysis content was picked, a SA article
+       URL when SA cookies made the full transcript reachable.
+    2) Fall back to scanning all_sources only when the picked source has no
+       usable URL. This avoids the previous label/URL mismatch where the
+       picked source was StockAnalysis (verbatim content) but the citation
+       got hijacked by a higher-priority SA article URL discovered on the
+       StockAnalysis listing page.
+    3) Never return a generic Seeking Alpha ticker listing
+       (`/symbol/{ticker}/earnings/transcripts`) — that page is not the
        cited transcript and can be stale or unusable in PDFs.
     4) Investor-relations portals are not transcript citations.
     """
@@ -140,7 +145,39 @@ def _transcript_url(source: Dict[str, Any], ticker: str | None = None,
             return bool(re.match(r"^/symbol/[^/]+/earnings/transcripts/?$", path))
         return False
 
-    candidates: list[tuple[int, str]] = []  # (priority, url)
+    def _classify(host: str, path: str) -> int:
+        """Return priority (higher = better), or -1 to reject."""
+        if _is_ir_portal(host):
+            return 10
+        if "seekingalpha.com" in host and _is_sa_article(path):
+            return 500
+        if host == "stockanalysis.com" and re.search(r"/stocks/[^/]+/transcripts/\d+-", path):
+            return 350
+        if _is_transcript_listing(host, path):
+            # Listing pages are discovery aids, not transcript citations.
+            return 50
+        if "transcript" in path.lower():
+            return 200
+        return 100
+
+    def _above_floor(url: str) -> bool:
+        try:
+            parsed = urlparse(url)
+            host = parsed.netloc.lower().replace("www.", "")
+            path = parsed.path
+        except Exception:
+            return False
+        return _classify(host, path) > 50
+
+    # 1) Try the picked source's URL first — this is the source whose content
+    #    was actually used for the deep dive, so the citation must match.
+    if isinstance(source, dict):
+        picked_url = _extract_url(source)
+        if picked_url and _above_floor(picked_url):
+            return picked_url
+
+    # 2) Fall back to scanning all_sources if the picked source has no usable URL.
+    candidates: list[tuple[int, str]] = []
     all_candidate_sources = list(all_sources) if all_sources else [source]
 
     for src in all_candidate_sources:
@@ -153,20 +190,7 @@ def _transcript_url(source: Dict[str, Any], ticker: str | None = None,
             parsed = urlparse(url)
             host = parsed.netloc.lower().replace("www.", "")
             path = parsed.path
-
-            if _is_ir_portal(host):
-                candidates.append((10, url))
-            elif "seekingalpha.com" in host and _is_sa_article(path):
-                candidates.append((500, url))
-            elif host == "stockanalysis.com" and re.search(r"/stocks/[^/]+/transcripts/\d+-", path):
-                candidates.append((350, url))
-            elif _is_transcript_listing(host, path):
-                # Listing pages are discovery aids, not transcript citations.
-                candidates.append((50, url))
-            elif "transcript" in path.lower():
-                candidates.append((200, url))
-            else:
-                candidates.append((100, url))
+            candidates.append((_classify(host, path), url))
         except Exception:
             pass
 

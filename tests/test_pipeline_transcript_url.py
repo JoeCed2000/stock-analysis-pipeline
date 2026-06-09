@@ -58,14 +58,33 @@ def test_transcript_url_rejects_generic_seeking_alpha_listing():
     assert _transcript_url(source, ticker="NVDA") is None
 
 
-def test_transcript_url_prefers_true_seeking_alpha_article_over_stockanalysis():
-    stockanalysis = {"url": "https://stockanalysis.com/stocks/nvda/transcripts/568907-q1-2027/"}
-    sources = [
-        stockanalysis,
-        {"url": "https://seekingalpha.com/article/4700000-nvidia-q1-2027-earnings-call-transcript"},
-    ]
+def test_transcript_url_uses_picked_source_url_even_when_higher_priority_url_exists_in_all_sources():
+    """The citation URL must match the picked (longest-text) source.
 
-    assert _transcript_url(stockanalysis, ticker="NVDA", all_sources=sources) == "https://seekingalpha.com/article/4700000-nvidia-q1-2027-earnings-call-transcript"
+    Regression for 2026-06-09 NVDA bug: the old implementation iterated over
+    ALL sources and picked the highest-priority URL (SA article = 500), even
+    when the picked source was StockAnalysis (priority 350). The PDF then
+    showed "Seeking Alpha" as the header + URL while the verbatim content
+    was StockAnalysis. Fix: the picked source's URL wins by default; only
+    fall back to scanning all_sources when the picked source has no usable
+    URL.
+    """
+    stockanalysis = {"url": "https://stockanalysis.com/stocks/nvda/transcripts/568907-q1-2027/"}
+    sa_article = {"url": "https://seekingalpha.com/article/4700000-nvidia-q1-2027-earnings-call-transcript"}
+    sources = [stockanalysis, sa_article]
+
+    # StockAnalysis is the picked source → citation is the StockAnalysis URL.
+    assert (
+        _transcript_url(stockanalysis, ticker="NVDA", all_sources=sources)
+        == "https://stockanalysis.com/stocks/nvda/transcripts/568907-q1-2027/"
+    )
+
+    # SA article is the picked source (e.g. SA cookies made the full
+    # transcript reachable, picked as longest) → citation is the SA article.
+    assert (
+        _transcript_url(sa_article, ticker="NVDA", all_sources=sources)
+        == "https://seekingalpha.com/article/4700000-nvidia-q1-2027-earnings-call-transcript"
+    )
 
 
 def test_transcript_url_no_source_no_ticker_returns_none():

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   clearSeekingAlphaAccess,
   getSeekingAlphaAccessStatus,
   saveSeekingAlphaAccess,
   testSeekingAlphaAccess,
+  uploadSeekingAlphaHar,
 } from '../api.js';
 
 const DEFAULT_TICKER = 'NVDA';
@@ -24,6 +25,8 @@ export default function SeekingAlphaAccessPanel({ mode = 'admin', lang = 'en' })
   const [clearing, setClearing] = useState(false);
   const [verificationState, setVerificationState] = useState('idle'); // idle | pending | verified | failed
   const [message, setMessage] = useState('');
+  const [uploadingHar, setUploadingHar] = useState(false);
+  const harInputRef = useRef(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -150,6 +153,51 @@ export default function SeekingAlphaAccessPanel({ mode = 'admin', lang = 'en' })
     }
   };
 
+  const handleHarUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const name = (file.name || '').toLowerCase();
+    if (!name.endsWith('.har') && !name.endsWith('.json')) {
+      setMessage(
+        lang === 'jp'
+          ? '.har ファイルのみ対応しています'
+          : 'Only .har files are accepted'
+      );
+      return;
+    }
+
+    setUploadingHar(true);
+    setMessage('');
+
+    try {
+      const next = await uploadSeekingAlphaHar(file);
+      setStatus(next);
+      setMessage(
+        lang === 'jp'
+          ? `.har から ${next.cookie_count} Cookie をインポートしました`
+          : `Imported ${next.cookie_count} cookies from .har`
+      );
+
+      if (isFeedbackMode) {
+        await runVerification({
+          ticker: testTicker || DEFAULT_TICKER,
+          attempts: RETRY_ATTEMPTS,
+          delayMs: RETRY_DELAY_MS,
+          auto: true,
+        });
+      }
+    } catch (err) {
+      setVerificationState('failed');
+      setMessage(err.message || 'HAR upload failed');
+    } finally {
+      setUploadingHar(false);
+      // Reset file input so the same file can be re-uploaded
+      if (harInputRef.current) harInputRef.current.value = '';
+    }
+  };
+
   const statusBadge = buildStatusBadge({
     isFeedbackMode,
     status,
@@ -196,6 +244,34 @@ export default function SeekingAlphaAccessPanel({ mode = 'admin', lang = 'en' })
           marginBottom: 12,
         }}
       />
+
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        <input
+          ref={harInputRef}
+          type="file"
+          accept=".har,.json"
+          onChange={handleHarUpload}
+          disabled={uploadingHar}
+          id="sa-har-upload"
+          style={{ display: 'none' }}
+        />
+        <label
+          htmlFor="sa-har-upload"
+          style={{
+            ...btnStyle,
+            display: 'inline-block',
+            background: uploadingHar ? '#21262d' : '#1f6feb',
+            color: uploadingHar ? '#8b949e' : '#fff',
+            border: uploadingHar ? '1px solid #30363d' : '1px solid #388bfd',
+            cursor: uploadingHar ? 'not-allowed' : 'pointer',
+            opacity: uploadingHar ? 0.6 : 1,
+          }}
+        >
+          {uploadingHar
+            ? (lang === 'jp' ? 'アップロード中…' : 'Uploading…')
+            : (lang === 'jp' ? '.har をアップロード (100 MB)' : 'Upload .har (100 MB)')}
+        </label>
+      </div>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
         <button onClick={handleSave} disabled={saving} style={{ ...btnStyle, background: '#238636', color: '#fff', border: '1px solid #2ea043' }}>

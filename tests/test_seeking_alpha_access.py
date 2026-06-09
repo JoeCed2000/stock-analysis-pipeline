@@ -179,19 +179,64 @@ class TestSeekingAlphaAccessAdmin:
         assert payload["ticker"] == "NVDA"
         assert payload["url"].endswith("/symbol/NVDA/earnings/transcripts")
 
-    def test_probe_link_filter_rejects_conference_and_accepts_earnings_call(self):
-        assert not _is_earnings_call_transcript_link(
+    def test_probe_link_filter_ranks_earnings_call_above_conference_transcript(self):
+        """Transcript links must be classified and ranked, not binary-rejected.
+
+        Ced rule 2026-06-09: 'Presents at Bank of America ... Conference
+        Transcript' is VALID earnings content (prepared remarks + Q&A at an
+        industry event) and must be accepted as a fallback, NOT rejected.
+        The ranking system prefers Q1 2027 Earnings Call (rank 100) over
+        such conference transcripts (rank 20), but both are usable.
+
+        The only hard rejections are non-transcript artefacts: slides-only
+        'Earnings Call Presentation', slideshows, news, commentary, and
+        comment anchors.
+        """
+        from backend.seeking_alpha_access import (
+            _RANK_CONFERENCE_TRANSCRIPT,
+            _RANK_EARNINGS_CALL,
+            _is_earnings_call_transcript_link,
+            _rank_transcript_link,
+        )
+
+        # Conference transcript with Q&A → ACCEPT, rank 20.
+        assert _is_earnings_call_transcript_link(
             "NVIDIA Corporation (NVDA) Presents at Bank of America 2026 Global Technology Conference Transcript",
             "/article/4912081-nvidia-corporation-nvda-presents-at-bank-of-america-2026-global-technology-conference",
         )
+        assert (
+            _rank_transcript_link(
+                "NVIDIA Corporation (NVDA) Presents at Bank of America 2026 Global Technology Conference Transcript",
+                "/article/4912081-nvidia-corporation-nvda-presents-at-bank-of-america-2026-global-technology-conference",
+            )
+            == _RANK_CONFERENCE_TRANSCRIPT
+        )
+
+        # Slides-only 'Earnings Call Presentation' → still REJECTED
+        # (no spoken transcript content).
         assert not _is_earnings_call_transcript_link(
             "NVIDIA Corporation 2027 Q1 - Results - Earnings Call Presentation",
             "/article/4907285-nvidia-corporation-2027-q1-results-earnings-call-presentation",
         )
+
+        # Q1 2027 Earnings Call Transcript → ACCEPT, rank 100 (top).
         assert _is_earnings_call_transcript_link(
             "NVIDIA Corporation (NVDA) Q1 2027 Earnings Call Transcript",
             "/article/4907259-nvidia-corporation-nvda-q1-2027-earnings-call-transcript",
         )
+        assert (
+            _rank_transcript_link(
+                "NVIDIA Corporation (NVDA) Q1 2027 Earnings Call Transcript",
+                "/article/4907259-nvidia-corporation-nvda-q1-2027-earnings-call-transcript",
+            )
+            == _RANK_EARNINGS_CALL
+        )
+
+        # Ranking invariant: earnings call (100) > conference (20), so the
+        # pipeline's _best_transcript_source / transcript_ranking picks the
+        # Q1 2027 Earnings Call over the conference transcript when both
+        # are present on the SA listing.
+        assert _RANK_EARNINGS_CALL > _RANK_CONFERENCE_TRANSCRIPT
 
 
 class TestCompanyOverviewDownload:

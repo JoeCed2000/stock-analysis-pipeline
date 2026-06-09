@@ -193,6 +193,12 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
                 "id": sa_result.get("id", ""),
                 "stockanalysis_url": sa_data.get("stockanalysis_url", sa_url),
                 "retrieval_provider": sa_data.get("retrieval_provider", "StockAnalysis"),
+                # Propagate the original SA article URL (if found on the
+                # StockAnalysis page) as a reference for clients with SA
+                # Premium cookies. NOT the citation — the citation is the
+                # StockAnalysis page we actually fetched. See 2026-06-09
+                # NVDA label/URL mismatch regression.
+                "original_sa_url": sa_data.get("original_sa_url", ""),
             })
             logger.info(f"StockAnalysis.com transcript: {len(sa_content)} chars for {ticker}")
             break

@@ -148,6 +148,21 @@ export async function clearSeekingAlphaAccess() {
   return res.json();
 }
 
+export async function uploadSeekingAlphaHar(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${API_BASE}/admin/seeking-alpha/access/har`, {
+    method: 'POST',
+    headers: NGROK_HEADER,
+    body: formData,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.detail || `HAR upload error: ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function testSeekingAlphaAccess(ticker = 'NVDA') {
   const res = await fetch(`${API_BASE}/admin/seeking-alpha/test`, {
     method: 'POST',

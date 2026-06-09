@@ -339,6 +339,123 @@ def import_netscape_cookies(file_path: str | Path) -> dict[str, Any]:
     return get_access_status()
 
 
+def import_har_cookies(file_path: str | Path) -> dict[str, Any]:
+    """Import Seeking Alpha cookies from a browser HAR export file.
+
+    Parses a Chrome/Edge/Firefox HAR (HTTP Archive) JSON file, finds all
+    requests to ``*.seekingalpha.com``, extracts cookies from both the
+    ``request.cookies`` array and the ``Cookie`` request header, deduplicates
+    by cookie name, and persists them to the server-side SA access store in
+    Netscape-compatible format so Playwright can use them with per-cookie
+    domain/path for PerimeterX bypass.
+
+    Returns the access status dict on success.
+    Raises ValueError if the file is not valid JSON, not a HAR, or contains
+    no Seeking Alpha cookies.
+    """
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"HAR file not found: {file_path}")
+
+    # Strict read: refuse files over 100 MB
+    try:
+        fstat = path.stat()
+        if fstat.st_size > 100 * 1024 * 1024:
+            raise ValueError(
+                f"HAR file too large ({fstat.st_size} bytes, max 100 MB). "
+                "Export a shorter session or filter to seekingalpha.com only."
+            )
+    except OSError:
+        pass
+
+    raw = path.read_text(encoding="utf-8")
+    try:
+        har = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid HAR JSON: {e}") from e
+
+    entries = har.get("log", {}).get("entries")
+    if entries is None:
+        raise ValueError("Not a valid HAR file: missing log.entries")
+
+    # Collect cookies from seekingalpha.com entries
+    sa_cookies: dict[str, str] = {}
+    sa_user_agent: str | None = None
+
+    for entry in entries:
+        req = entry.get("request", {})
+        url = req.get("url", "")
+
+        # Only Seeking Alpha domains
+        if "seekingalpha.com" not in url:
+            continue
+
+        # 1) request.cookies array (structured)
+        for c in req.get("cookies", []):
+            name = (c.get("name") or "").strip()
+            value = (c.get("value") or "").strip()
+            if name and value:
+                sa_cookies[name] = value
+
+        # 2) Cookie header (raw, may contain cookies not in the array)
+        for h in req.get("headers", []):
+            if (h.get("name") or "").lower() == "cookie":
+                for part in h["value"].split(";"):
+                    if "=" not in part:
+                        continue
+                    name, val = part.strip().split("=", 1)
+                    name, val = name.strip(), val.strip()
+                    if name and val:
+                        sa_cookies[name] = val
+
+        # 3) User-Agent (first one wins)
+        if sa_user_agent is None:
+            for h in req.get("headers", []):
+                if (h.get("name") or "").lower() == "user-agent":
+                    ua = h.get("value", "").strip()
+                    if ua:
+                        sa_user_agent = ua
+                    break
+
+    if not sa_cookies:
+        raise ValueError(
+            "No Seeking Alpha cookies found in HAR file. "
+            "Make sure the browser session included requests to seekingalpha.com "
+            "while logged in."
+        )
+
+    # Build cookie header + Netscape-compatible parsed list
+    cookie_parts: list[str] = []
+    cookies_parsed: list[dict[str, str]] = []
+    for name, value in sa_cookies.items():
+        cookie_parts.append(f"{name}={value}")
+        cookies_parsed.append({
+            "name": name,
+            "value": value,
+            "domain": ".seekingalpha.com",
+            "path": "/",
+        })
+
+    cookie_header = "; ".join(cookie_parts)
+    existing = _read_store()
+    payload = {
+        "cookie_header": cookie_header,
+        "cookies_parsed": cookies_parsed,
+        "user_agent": (sa_user_agent or existing.get("user_agent") or DEFAULT_USER_AGENT).strip() or DEFAULT_USER_AGENT,
+        "created_at": existing.get("created_at") or _now_iso(),
+        "updated_at": _now_iso(),
+        "_import_source": f"har:{path.name}",
+    }
+    _write_store(payload)
+    logger.info(
+        "Imported %d Seeking Alpha cookies from HAR file %s (%d with domain info, UA: %s)",
+        len(cookies_parsed), path.name,
+        sum(1 for c in cookies_parsed if c.get("domain")),
+        "found" if sa_user_agent else "default",
+    )
+    return get_access_status()
+
+
 def clear_access() -> dict[str, Any]:
     path = _storage_path()
     try:

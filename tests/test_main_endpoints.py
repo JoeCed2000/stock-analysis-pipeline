@@ -380,3 +380,50 @@ def test_process_pdf_failure_other_statuses_still_create_tasks(tmp_path, monkeyp
     )
     assert result == "t_deadbeef"
     assert len(created) == 1
+
+
+def test_report_pdf_noise_gate_prevents_intake_on_fake_ticker(tmp_path, monkeypatch):
+    """When a non-existent ticker (ZZZZUNKNOWN) has no local analysis, the noise gate
+    in get_report_pdf must return 404 without calling _record_pdf_client_failure.
+    This mirrors the dossier_download noise gate test.
+    """
+    from backend import main
+    analyses_dir = tmp_path / "analyses"
+    analyses_dir.mkdir()
+    intake_calls = []
+
+    monkeypatch.setattr(main, "ANALYSES_DIR", analyses_dir)
+    monkeypatch.setattr("backend.main._ticker_exists", lambda ticker: False)
+    monkeypatch.setattr(
+        "backend.main._record_pdf_client_failure",
+        lambda *args, **kwargs: intake_calls.append(True),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(main.get_report_pdf("ZZZZUNKNOWN"))
+
+    assert exc.value.status_code == 404
+    assert len(intake_calls) == 0, "Noise gate must NOT call _record_pdf_client_failure for fake tickers"
+
+
+def test_report_pdf_still_records_failure_for_real_ticker_without_analysis(tmp_path, monkeypatch):
+    """Real tickers (e.g., a known ticker with no analysis) must still trigger
+    the failure intake path from get_report_pdf — the noise gate only blocks fake tickers.
+    """
+    from backend import main
+    analyses_dir = tmp_path / "analyses"
+    analyses_dir.mkdir()
+    intake_calls = []
+
+    monkeypatch.setattr(main, "ANALYSES_DIR", analyses_dir)
+    monkeypatch.setattr("backend.main._ticker_exists", lambda ticker: True)
+    monkeypatch.setattr(
+        "backend.main._record_pdf_client_failure",
+        lambda *args, **kwargs: intake_calls.append(True),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(main.get_report_pdf("AAPL"))
+
+    assert exc.value.status_code == 404
+    assert len(intake_calls) == 1, "Real tickers must still trigger failure intake"

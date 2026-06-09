@@ -24,7 +24,7 @@ for _k in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"):
 import uuid
 import logging
 from pathlib import Path
-from typing import List
+from typing import Any, List
 
 import io
 import json
@@ -1629,6 +1629,22 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
             quarter,
             audience_mode,
         )
+
+    # Pre-check: non-existent tickers that have no local analysis are noise,
+    # not real pipeline failures. Return 404 without recording a proactive
+    # Kanban intake task. (Mirrors dossier_download noise gate at line 1147.)
+    if not _find_analysis_dirs(ticker) and not _ticker_exists(ticker):
+        logger.info(
+            "[%s] PDF endpoint refused — ticker not found and no local analysis; skipped intake (noise gate) | lang=%s | quarter=%s",
+            ticker,
+            lang,
+            quarter,
+        )
+        raise HTTPException(
+            status_code=404,
+            detail=f"No analysis found for {ticker}",
+        )
+
     matches = _find_analysis_dirs(ticker)
     if not matches:
         logger.warning("[%s] PDF endpoint: no analysis directory found", ticker)
@@ -2512,9 +2528,22 @@ async def submit_feedback(
     if not text.strip() and not files:
         raise HTTPException(status_code=422, detail="Feedback text or at least one attachment is required")
 
+    # Detect .har files before save_feedback consumes them
+    har_files: list[tuple[str, str]] = []  # (original_name, safe_basename)
+    for upload in (files or []):
+        if not upload.filename:
+            continue
+        if upload.filename.lower().endswith(".har"):
+            # Reconstruct the safe basename (same logic as _sanitize_upload_filename)
+            safe_basename = re.sub(
+                r"[^A-Za-z0-9._-]+", "_",
+                Path(upload.filename).stem,
+            ).strip("._-") or "attachment"
+            safe_basename = f"{safe_basename}.har"
+            har_files.append((upload.filename, safe_basename))
+
     try:
         result = await save_feedback(normalized_ticker or None, text, files, category=normalized_category)
-        return JSONResponse({"status": "ok", **result})
     except ValueError as e:
         scope = normalized_ticker or "GENERAL"
         logger.warning(f"Feedback validation failed for {scope}: {e}")
@@ -2523,6 +2552,35 @@ async def submit_feedback(
         scope = normalized_ticker or "GENERAL"
         logger.error(f"Feedback save failed for {scope}: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+    # ── HAR auto-processing: extract Seeking Alpha cookies ────────────
+    cookie_status = None
+    if har_files:
+        from backend.seeking_alpha_access import import_har_cookies
+        from backend.feedback_store import get_feedback_file_path
+
+        for _orig_name, safe_basename in har_files:
+            saved_name = f"{result['id']}_{safe_basename}"
+            try:
+                har_path = get_feedback_file_path(result["bucket"], saved_name)
+                cookie_status = import_har_cookies(har_path)
+                logger.info(
+                    "HAR imported from feedback %s: %d SA cookies, quality=%s",
+                    result["id"],
+                    cookie_status.get("cookie_count", 0),
+                    cookie_status.get("cookie_diagnostics", {}).get("quality", "?"),
+                )
+            except ValueError as e:
+                logger.warning("HAR import failed for %s (%s): %s", saved_name, _orig_name, e)
+                cookie_status = {"error": str(e), "file": _orig_name}
+            except Exception as e:
+                logger.error("HAR import unexpected error for %s: %s", saved_name, e)
+                cookie_status = {"error": f"unexpected: {e}", "file": _orig_name}
+
+    response_data: dict[str, Any] = {"status": "ok", **result}
+    if cookie_status:
+        response_data["cookie_import"] = cookie_status
+    return JSONResponse(response_data)
 
 
 @app.get("/api/feedback")
@@ -2707,6 +2765,59 @@ async def clear_seeking_alpha_access():
     from backend.seeking_alpha_access import clear_access
 
     return JSONResponse(clear_access())
+
+
+@app.post("/api/admin/seeking-alpha/access/har")
+async def upload_seeking_alpha_har(file: UploadFile = FastAPIFile(...)):
+    """Upload a browser HAR export (.har) to import Seeking Alpha cookies.
+
+    Accepts a Chrome/Edge/Firefox HAR JSON file, extracts cookies from all
+    requests to ``*.seekingalpha.com``, and persists them server-side in
+    Netscape-compatible format so Playwright can use them with per-cookie
+    domain/path for PerimeterX bypass.
+
+    Public by design for the feedback page (no auth required) — the endpoint
+    never returns the stored cookies.
+    Max file size: 100 MB.
+    """
+    from backend.seeking_alpha_access import import_har_cookies
+    from backend.seeking_alpha_access import STATE_DIR, _now_iso
+
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in {".har", ".json"}:
+        raise HTTPException(status_code=400, detail="Only .har files are accepted for cookie import")
+
+    # Write uploaded file to a temporary location
+    tmp_dir = STATE_DIR / "tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = tmp_dir / f"sa_har_upload_{_now_iso().replace(':', '-')}_{file.filename}"
+    try:
+        contents = await file.read()
+        if len(contents) > 100 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="HAR file too large (max 100 MB)")
+        tmp_path.write_bytes(contents)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Failed to write HAR upload: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to process upload") from exc
+
+    try:
+        result = import_har_cookies(tmp_path)
+        return JSONResponse(result)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("HAR import failed: %s", exc)
+        raise HTTPException(status_code=500, detail="HAR cookie extraction failed") from exc
+    finally:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 @app.post("/api/admin/seeking-alpha/test")
