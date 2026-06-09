@@ -484,12 +484,14 @@ def build_request_headers(extra_headers: dict[str, str] | None = None) -> dict[s
 
 
 async def probe_access_async(ticker: str | None = None) -> dict[str, Any]:
-    """Lightweight cookie health check — does NOT trigger Playwright.
+    """Cookie health check — probes a REAL transcript article, not just the listing page.
 
-    Uses a simple HTTP HEAD request to verify cookies are not expired/revoked.
-    Full Playwright access is reserved for actual transcript extraction during
-    pipeline runs (1-2/day), not for health probes (which would trigger
-    PerimeterX rate-limiting if called frequently).
+    The listing page is always public. The real gate is individual transcript articles.
+    This probe:
+      1. Fetches the listing page, extracts the first earnings-call transcript link
+      2. Fetches THAT article, checks for isMpwLocked (MPW = metered paywall)
+      3. Reports ok=True only if the transcript article is fully accessible (not MPW-locked)
+    No Playwright — pure httpx, safe for frequent health checks.
     """
     import asyncio
 
@@ -512,43 +514,119 @@ async def probe_access_async(ticker: str | None = None) -> dict[str, Any]:
             "reason": "missing_auth_or_antibot_cookies", "text_length": 0, "tested_at": _now_iso(),
         }
 
-    # Lightweight probe: HTTP HEAD with cookies, no browser, no JS.
-    # PerimeterX does not block simple HEAD requests the way it blocks
-    # headless browsers. This tells us if cookies are still valid without
-    # burning our IP reputation.
     try:
         import httpx
 
-        def _light_probe() -> dict[str, Any]:
+        def _deep_probe() -> dict[str, Any]:
             h = build_request_headers()
             h["Accept"] = "text/html"
-            with httpx.Client(timeout=15, follow_redirects=False) as client:
-                resp = client.head(listing_url, headers=h)
-            reachable = resp.status_code in (200, 301, 302, 307, 308)
-            blocked = resp.status_code == 403
-            return {
-                "authenticated": reachable and not blocked,
-                "reachable": reachable,
-                "blocked": blocked,
-                "url": listing_url,
-                "status_code": resp.status_code,
-                "reason": "ok" if (reachable and not blocked) else (
-                    "blocked_403" if blocked else f"http_{resp.status_code}"
-                ),
-                "text_length": 0,
-            }
 
-        probe_result = await asyncio.to_thread(_light_probe)
+            with httpx.Client(timeout=25, follow_redirects=True) as client:
+                # ── Step 1: fetch listing page, extract first transcript link ──
+                listing_resp = client.get(listing_url, headers=h)
+                if listing_resp.status_code == 403:
+                    return {
+                        "authenticated": False, "reachable": False, "blocked": True,
+                        "url": listing_url, "status_code": 403,
+                        "reason": "blocked_403", "text_length": 0,
+                        "phase": "listing_page",
+                    }
+                if listing_resp.status_code not in (200, 301, 302, 307, 308):
+                    return {
+                        "authenticated": False, "reachable": False, "blocked": False,
+                        "url": listing_url, "status_code": listing_resp.status_code,
+                        "reason": f"listing_http_{listing_resp.status_code}", "text_length": 0,
+                        "phase": "listing_page",
+                    }
+
+                # Extract first earnings-call transcript article URL
+                import re as _re
+                article_matches = _re.findall(
+                    r'"(/article/\d+[^"]*earnings-call-transcript[^"]*)"',
+                    listing_resp.text,
+                )
+                if not article_matches:
+                    # Broader: any earnings call link
+                    article_matches = _re.findall(
+                        r'"(/article/\d+[^"]*transcript[^"]*)"',
+                        listing_resp.text,
+                    )
+                if not article_matches:
+                    # Fallback: any article link
+                    article_matches = _re.findall(
+                        r'"(/article/\d+[^"]*)"',
+                        listing_resp.text,
+                    )
+
+                if not article_matches:
+                    return {
+                        "authenticated": False, "reachable": True, "blocked": False,
+                        "url": listing_url, "status_code": listing_resp.status_code,
+                        "reason": "no_transcript_link_found", "text_length": 0,
+                        "phase": "listing_page",
+                    }
+
+                transcript_url = "https://seekingalpha.com" + article_matches[0]
+
+                # ── Step 2: fetch the actual transcript article ──
+                article_resp = client.get(transcript_url, headers=h)
+                article_text = article_resp.text
+                text_len = len(article_text)
+
+                if article_resp.status_code == 403:
+                    return {
+                        "authenticated": False, "reachable": False, "blocked": True,
+                        "url": transcript_url, "status_code": 403,
+                        "reason": "transcript_blocked_403", "text_length": text_len,
+                        "phase": "transcript_article",
+                    }
+
+                # ── Step 3: check for paywall ──
+                is_mpw_locked = 'isMpwLocked":true' in article_text
+                is_mpw_unlocked = 'isMpwLocked":false' in article_text
+
+                if is_mpw_locked:
+                    return {
+                        "authenticated": True, "reachable": True, "blocked": False,
+                        "url": transcript_url, "status_code": article_resp.status_code,
+                        "reason": "mpw_locked_preview_only",
+                        "text_length": text_len,
+                        "mpw_locked": True,
+                        "phase": "transcript_article",
+                    }
+
+                # ── Check for actual transcript content ──
+                has_transcript_sections = _re.search(
+                    r'class="transcript-presentation-section"', article_text
+                ) is not None
+                section_count = len(_re.findall(r'seq="(\d+)"', article_text))
+
+                return {
+                    "authenticated": True,
+                    "reachable": True,
+                    "blocked": False,
+                    "url": transcript_url,
+                    "status_code": article_resp.status_code,
+                    "reason": "ok_full_transcript" if (is_mpw_unlocked or not is_mpw_locked) else "ok",
+                    "text_length": text_len,
+                    "mpw_locked": is_mpw_locked,
+                    "transcript_sections": section_count,
+                    "has_transcript_content": has_transcript_sections,
+                    "phase": "transcript_article",
+                }
+
+        probe_result = await asyncio.to_thread(_deep_probe)
         return {
             **status,
-            "ok": probe_result["authenticated"],
+            "ok": probe_result["authenticated"] and not probe_result.get("mpw_locked", False),
+            "ticker": clean_ticker,
             **probe_result,
-            "probe_method": "http_head",
+            "probe_method": "transcript_deep_probe",
             "tested_at": _now_iso(),
         }
 
     except Exception as exc:
-        logger.warning("Seeking Alpha light probe failed for %s: %s", clean_ticker, exc)
+        logger.warning("Seeking Alpha deep probe failed for %s: %s", clean_ticker, exc)
         return {
             **status, "ok": False, "authenticated": False, "reachable": False,
             "ticker": clean_ticker, "url": listing_url,
