@@ -37,7 +37,7 @@ def _llm_chat(prompt: str, system: str = "", max_tokens: int = MAX_CODEX_TOKENS)
     available only when explicitly enabled with ``SA_ENABLE_DEEPSEEK_FALLBACK=true``.
     """
     model = (os.getenv("SA_CODEX_MODEL") or "gpt-5.3-codex-spark").strip()
-    effort = (os.getenv("SA_CODEX_DEFAULT_EFFORT") or "low").strip().lower()
+    effort = (os.getenv("SA_CODEX_DEFAULT_EFFORT") or "medium").strip().lower()
     result = codex_chat(prompt, system=system, max_tokens=max_tokens, model=model, reasoning_effort=effort)
     if result:
         return result
@@ -229,7 +229,7 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
             sys_prompt = system_prompt(request.language, sector, industry)
             last_error = ""
             provider_model = os.getenv("SA_CODEX_MODEL", "gpt-5.3-codex-spark") if provider_name == "primary" else provider_name
-            provider_effort = os.getenv("SA_CODEX_DEFAULT_EFFORT", "low") if provider_name == "primary" else "default"
+            provider_effort = os.getenv("SA_CODEX_DEFAULT_EFFORT", "medium") if provider_name == "primary" else "default"
             
             for attempt in (1, 2):
                 prompt = build_prompt(
@@ -803,7 +803,7 @@ def _save_outputs(
         "provider": "Codex CLI local",
         "generation_provider": "codex_cli",
         "generation_model": os.getenv("SA_CODEX_MODEL", "gpt-5.3-codex-spark"),
-        "generation_reasoning_effort": os.getenv("SA_CODEX_DEFAULT_EFFORT", "low"),
+        "generation_reasoning_effort": os.getenv("SA_CODEX_DEFAULT_EFFORT", "medium"),
         "deepseek_fallback_enabled": os.getenv("SA_ENABLE_DEEPSEEK_FALLBACK", "false").strip().lower() in {"1", "true", "yes"},
         "max_tokens_per_call": MAX_CODEX_TOKENS,
         "llm_trace_path": trace_path,

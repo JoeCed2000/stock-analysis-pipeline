@@ -58,7 +58,7 @@ def _codex_chat(
         return None
 
     selected_model = (model or os.getenv("SA_CODEX_MODEL") or "gpt-5.3-codex-spark").strip()
-    selected_effort = (reasoning_effort or os.getenv("SA_CODEX_DEFAULT_EFFORT") or "low").strip().lower()
+    selected_effort = (reasoning_effort or os.getenv("SA_CODEX_DEFAULT_EFFORT") or "medium").strip().lower()
     safe_effort = selected_effort if selected_effort in {"minimal", "low", "medium", "high"} else "low"
     full_prompt = f"{system}\n\n{prompt}\n\nReturn ONLY the requested output. No explanations."
     env = os.environ.copy()
