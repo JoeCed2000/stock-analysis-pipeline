@@ -23,6 +23,10 @@ logger = logging.getLogger(__name__)
 
 # ─── Constants ───────────────────────────────────────────────────────────────
 
+# 🔴 KANBAN DISABLED 2026-06-09 — Ced: "on reviendra au kanban quand il sera opérationnel"
+#    Set to True to restore Kanban-based worker pipeline.
+USE_KANBAN = False
+
 KANBAN_BOARD = "sa-pipeline"
 MAX_MONITOR_SECONDS = 1800  # 30 min max before giving up
 MONITOR_INTERVAL_SECONDS = 30  # Check every 30s
@@ -179,12 +183,7 @@ def process_pdf_failure(
     quarter: str = "latest",
     directory: str = "",
 ) -> Optional[str]:
-    """Create one proactive root-cause task for a client-visible PDF failure.
-
-    Download/report endpoints stay read-only: this does NOT regenerate the PDF.
-    It turns a client-visible failure into the same operational signal as a
-    feedback report, with idempotency so repeated browser polls do not fan out.
-    """
+    """Handle client-visible PDF failure. Direct automation when USE_KANBAN=False."""
     ticker = (ticker or "").strip().upper()
     safe_issues = [str(issue) for issue in (issues or []) if str(issue).strip()]
     key = _pdf_failure_key(ticker, source, status, language, quarter, safe_issues or [message])
@@ -192,16 +191,27 @@ def process_pdf_failure(
         logger.info("[%s] PDF failure intake skipped by idempotency key %s", ticker, key)
         return None
 
-    # ── Noise gate: known-expected statuses that do not need Kanban tasks ──
-    # quarter_missing: the dossier_download endpoint's quarter parameter is
-    # intentionally unimplemented for specific-quarter lookups. The 404 is
-    # correct endpoint behavior, not a pipeline bug. Skip Kanban task creation.
+    # Noise gate
     if status in ("quarter_missing",):
         logger.info(
-            "[%s] PDF failure intake skipped by noise gate — status=%s is expected endpoint behavior, not a pipeline bug",
+            "[%s] PDF failure intake skipped by noise gate — status=%s",
             ticker, status,
         )
         return None
+
+    if not USE_KANBAN:
+        # Direct path: log + trigger background action
+        logger.error(
+            "PDF FAILURE [%s]: source=%s status=%s message=%s quarter=%s issues=%s",
+            ticker, source, status, message[:200], quarter, safe_issues,
+        )
+        if ticker and ticker != "GENERAL":
+            asyncio.ensure_future(_action_reanalyze_ticker(ticker))
+        else:
+            asyncio.ensure_future(_action_restart_backend())
+        return key
+
+    # ── Kanban path below (USE_KANBAN=True) ──
 
     preflight_ok, preflight_msg = run_preflight_gate()
     if not preflight_ok:
@@ -338,11 +348,13 @@ async def process_feedback(
     language: str = "ja",
     ticker: Optional[str] = None,
 ) -> Optional[str]:
-    """Autonomous feedback → Kanban → fix pipeline.
+    """Autonomous feedback processing. Uses direct automation when USE_KANBAN=False."""
+    if not USE_KANBAN:
+        return await process_feedback_direct(
+            session_id, user_message, feedback_type, language, ticker,
+        )
 
-    Returns the Kanban task_id if successfully created, None otherwise.
-    This is called as a fire-and-forget task after the AI response is delivered.
-    """
+    # ── Kanban path below (USE_KANBAN=True) ──
     logger.info(f"Processing {feedback_type} feedback from session {session_id}")
 
     # Gate 0: Pre-flight check
@@ -622,6 +634,248 @@ async def _send_timeout_response(session_id: str, task_id: str, language: str):
                 pass
     except Exception as e:
         logger.error(f"Failed to send timeout response: {e}")
+
+
+# ─── Learning Loop ────────────────────────────────────────────────────────────
+
+# 🔴 NON-KANBAN PIPELINE (USE_KANBAN=False) ─────────────────────────────────
+
+# Issue classification patterns for direct action routing
+_ACTION_CATEGORIES = {
+    "infra": [
+        "cloudflare", "tunnel", "403", "524", "504", "502", "rate limit",
+        "inaccessible", "extremely slow", "could not connect", "unreachable",
+        "not opening", "can't access", "cannot access", "don't load",
+        "アクセスでき", "接続でき", "表示されな", "開けな", "遅",
+        "error message occurred", "cannot get", "not working", "site was inaccessible",
+    ],
+    "access": [
+        "seeking alpha", "cookie", "har file", "transcript",
+        "earnings call", "seekingalpha", "har ",
+    ],
+    "content": [
+        "wrong", "incorrect", "mistake", "error in", "number is wrong",
+        "chart", "graph", "data", "metric", "calculation", "missing",
+        "間違", "違う", "エラー", "表示されない", "データ",
+        "eps", "peg", "revenue", "fcf", "growth rate", "margin",
+        "not showing", "should be", "should show",
+    ],
+    "feature": [
+        "feature", "add", "would like", "please include",
+        "追加", "機能", "ほしい",
+    ],
+}
+
+
+def _pattern_matches_direct(pattern: str, text: str) -> bool:
+    """Word-boundary-aware pattern matching."""
+    import re
+    if " " in pattern or len(pattern) > 5:
+        return pattern.lower() in text
+    return bool(re.search(rf"\b{re.escape(pattern.lower())}\b", text))
+
+
+def _classify_direct(user_message: str, feedback_type: str) -> str:
+    """Classify feedback for direct action routing."""
+    text_lower = user_message.lower()
+    for category in ["infra", "access", "content", "feature"]:
+        for pattern in _ACTION_CATEGORIES[category]:
+            if _pattern_matches_direct(pattern, text_lower):
+                return category
+    type_defaults = {
+        "bug": "content", "correction": "content",
+        "data_quality": "content", "seeking_alpha_access": "access",
+        "feature_request": "feature", "ui_ux": "content",
+        "report_content": "content",
+    }
+    return type_defaults.get(feedback_type, "content")
+
+
+async def _action_restart_backend() -> dict:
+    """Restart the SA backend and return result."""
+    logger.info("DIRECT-ACTION: restarting backend")
+    result = {"action": "restart_backend", "success": False, "detail": ""}
+    try:
+        subprocess.run(["fuser", "-k", "8780/tcp"], capture_output=True, text=True, timeout=10)
+        await asyncio.sleep(3)
+        subprocess.run(
+            ["bash", "/home/ced/.hermes/shared/scripts/launch-stock-backend.sh"],
+            capture_output=True, text=True, timeout=30,
+        )
+        await asyncio.sleep(5)
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        result["success"] = sock.connect_ex(("127.0.0.1", 8780)) == 0
+        sock.close()
+        result["detail"] = "Backend restarted" if result["success"] else "Port check failed"
+    except Exception as e:
+        result["detail"] = f"Restart error: {e}"
+    return result
+
+
+async def _action_reanalyze_ticker(ticker: str) -> dict:
+    """Re-run analysis for a ticker."""
+    logger.info(f"DIRECT-ACTION: reanalyzing {ticker}")
+    result = {"action": "reanalyze_ticker", "ticker": ticker, "success": False, "detail": ""}
+    if not ticker or ticker == "GENERAL":
+        result["detail"] = "No ticker — cannot reanalyze"
+        return result
+    try:
+        import urllib.request
+        url = f"http://127.0.0.1:8780/api/analyze/{ticker}?force_refresh=true&skip_codex=true"
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read())
+            result["success"] = data.get("status") == "ok" or "analysis" in data
+            result["detail"] = str(data.get("status", ""))[:200]
+    except Exception as e:
+        result["detail"] = f"Reanalysis error: {e}"
+    return result
+
+
+async def _send_chat_direct(session_id: str, content: str, language: str,
+                             event: str = "feedback_update",
+                             metadata: Optional[dict] = None) -> Optional[str]:
+    """Send a response message to the chat. Returns message ID or None."""
+    try:
+        from backend import chat_store
+        from backend.chat import _uid, _utcnow_iso, _ws_connections
+        from backend.chat_models import ChatMessage as ChatMsg
+        now = _utcnow_iso()
+        msg_id = _uid("msg")
+        msg = ChatMsg(id=msg_id, session_id=session_id, role="assistant",
+                      content=content, language=language, status="completed",
+                      created_at=now, updated_at=now)
+        try:
+            chat_store.save_message(msg)
+        except Exception:
+            pass
+        chat_store.log_event(session_id, event, {**(metadata or {}), "message_id": msg_id})
+        ws = _ws_connections.get(session_id)
+        if ws:
+            try:
+                await ws.send_json({"event": event, "message_id": msg_id,
+                                    "content": content, **(metadata or {})})
+            except Exception:
+                pass
+        return msg_id
+    except Exception as e:
+        logger.error(f"Direct chat response failed: {e}")
+        return None
+
+
+def _ack_direct(category: str, is_jp: bool, ticker: Optional[str]) -> str:
+    """Generate acknowledgment message based on category."""
+    ts = f"（{ticker}）" if ticker else ""
+    ack = {
+        "infra": (
+            f"🔧 アクセス問題{ts}を検知しました。自動復旧を試みます…"
+            if is_jp else
+            f"🔧 Access issue detected{ts}. Attempting automatic recovery…"
+        ),
+        "content": (
+            f"📊 データの問題{ts}を検知しました。分析を再実行します…"
+            if is_jp else
+            f"📊 Data issue detected{ts}. Re-running analysis…"
+        ),
+        "access": (
+            "🔐 Seeking Alphaの接続にはCookie更新が必要です。\n"
+            "Chrome DevToolsからHARファイルをエクスポートして、フィードバックページからアップロードしてください。"
+            if is_jp else
+            "🔐 Seeking Alpha access requires updated cookies.\n"
+            "Please export a HAR file from Chrome DevTools and upload via the feedback page."
+        ),
+        "feature": (
+            "💡 機能リクエストを承りました。確認します。"
+            if is_jp else
+            "💡 Feature request received. I'll review it."
+        ),
+    }
+    return ack.get(category, ack["content"])
+
+
+async def process_feedback_direct(
+    session_id: str,
+    user_message: str,
+    feedback_type: str,
+    language: str = "ja",
+    ticker: Optional[str] = None,
+) -> Optional[str]:
+    """Process feedback with DIRECT automation — no Kanban workers.
+
+    Flow: classify → acknowledge → execute action → respond
+    """
+    logger.info(f"DIRECT processing {feedback_type} from session {session_id}")
+    is_jp = language.startswith("ja")
+    category = _classify_direct(user_message, feedback_type)
+    action_key = f"fb:{category}:{ticker or 'GENERAL'}:{int(time.time())}"
+
+    # Step 1: Acknowledge immediately
+    ack = _ack_direct(category, is_jp, ticker)
+    await _send_chat_direct(session_id, ack, language, "feedback_acknowledged", {
+        "category": category, "ticker": ticker, "action_key": action_key,
+    })
+
+    # Step 2: Execute automated action
+    if category == "infra":
+        result = await _action_restart_backend()
+        detail = (
+            f"✅ サイトを再起動しました。再度アクセスしてみてください。\n"
+            f"ステータス: {result.get('detail', '')}"
+            if is_jp and result["success"] else
+            f"✅ Site restarted. Please try again.\n"
+            f"Status: {result.get('detail', '')}"
+            if result["success"] else
+            f"⚠️ 再起動を試みましたが問題が継続している可能性があります。Cedに通知しました。"
+            if is_jp else
+            f"⚠️ Attempted restart but issue may persist. Ced has been notified."
+        )
+    elif category == "content":
+        if ticker and ticker != "GENERAL":
+            result = await _action_reanalyze_ticker(ticker)
+            detail = (
+                f"✅ **{ticker}** の分析を再実行しました。新しいPDFをご確認ください。\n"
+                f"ステータス: {result.get('detail', '')}"
+                if is_jp and result["success"] else
+                f"✅ Re-ran analysis for **{ticker}**. Check the new PDF.\n"
+                f"Status: {result.get('detail', '')}"
+                if result["success"] else
+                f"⚠️ {ticker}の再分析に失敗しました。Cedに通知しました。"
+                if is_jp else
+                f"⚠️ Reanalysis of {ticker} failed. Ced has been notified."
+            )
+        else:
+            detail = (
+                "📝 ご指摘ありがとうございます。内容を確認し修正します。"
+                if is_jp else
+                "📝 Thanks for the report. I'll review and fix the content."
+            )
+    elif category == "access":
+        detail = (
+            "🔐 Seeking Alphaの接続にはCookie更新が必要です。\n"
+            "Chrome DevToolsからHARファイルをエクスポートして、フィードバックページからアップロードしてください。\n"
+            "アップロード後、自動的に接続が復旧します。"
+            if is_jp else
+            "🔐 Seeking Alpha access requires cookie refresh.\n"
+            "Please export a HAR file from Chrome DevTools and upload via the feedback page.\n"
+            "Connection will auto-restore after upload."
+        )
+    else:  # feature
+        detail = (
+            "💡 機能リクエストを承りました。優先度を検討し対応します。"
+            if is_jp else
+            "💡 Feature request noted. I'll prioritize and implement it."
+        )
+
+    await _send_chat_direct(session_id, detail, language, "feedback_action_result", {
+        "category": category, "action_key": action_key,
+    })
+    logger.info(f"DIRECT feedback done: {action_key} → {category}")
+    return action_key
+
+
+# 🔴 END NON-KANBAN PIPELINE ──────────────────────────────────────────────────
 
 
 # ─── Learning Loop ────────────────────────────────────────────────────────────

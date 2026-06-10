@@ -1414,6 +1414,22 @@ def verdict_prompt(language: str, ticker: str, company: str, quarter: str, metri
     if op_margin is not None:
         try: extra += f"\n⚠️  Operating Margin = {float(op_margin):.1f}% — do NOT say margins are missing or unavailable."
         except (TypeError, ValueError): pass
+    # 🔴 CRITICAL OVERRIDE (2026-06-10): The recommendation line MUST be emitted FIRST in
+    # the Verdict section, before the table or any dimension analysis. Previously this
+    # requirement lived at the end of the EN/JP section formats, so a low-effort or
+    # truncated LLM (e.g. gpt-5.3-codex-spark effort=low, observed on NVDA 12:59) would
+    # cut the response mid-section and silently drop the only BUY/HOLD/SELL token,
+    # tripping pre_render_validator (verdict_missing_recommendation) and blocking the PDF.
+    # Emitting the recommendation first guarantees it survives any downstream truncation.
+    extra += (
+        "\n\n🔴 CRITICAL OVERRIDE — RECOMMENDATION FIRST: Begin the section content with "
+        "EXACTLY this line (no other text before it, no `Recommendation:` prefix variant):\n"
+        "**Recommendation: BUY**   OR   **Recommendation: HOLD**   OR   **Recommendation: SELL**\n"
+        "Then a blank line, then the Strengths/Weaknesses/Opportunities/Risks table, then the "
+        "five-dimension assessment. The orchestrator's score (FH/G/V/M/Mo/S) and the evidence "
+        "above MUST drive the choice: FH>=9 + strong G/M/Mo + supportive V → BUY; mixed signals "
+        "or stretched valuation → HOLD; FH<=4 OR deteriorating fundamentals → SELL."
+    )
     base = _base_prompt(
         section="Verdict",
         language=language,

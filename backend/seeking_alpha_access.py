@@ -669,6 +669,19 @@ async def probe_access_async(ticker: str | None = None) -> dict[str, Any]:
             h = build_request_headers()
             h["Accept"] = "text/html"
 
+            # Check if PRO cookies are present — if so, skip httpx and go straight to Playwright
+            # because SA uses JavaScript to unlock content for PRO subscribers
+            cookie_store = _read_store()
+            has_pro = any(
+                c.get("name") in ("ever_pro", "has_paid_subscription") 
+                and str(c.get("value")).lower() in ("1", "true")
+                for c in cookie_store.get("cookies_parsed", [])
+            )
+            
+            if has_pro:
+                logger.info(f"PRO cookies detected — using Playwright probe for {clean_ticker}")
+                return _probe_with_playwright(listing_url, cookie_store)
+
             with httpx.Client(timeout=25, follow_redirects=True) as client:
                 # ── Step 1: fetch listing page, extract first transcript link ──
                 listing_resp = client.get(listing_url, headers=h)

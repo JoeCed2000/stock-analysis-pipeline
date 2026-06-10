@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(claude mcp list *)",
+      "Bash(claude mcp get *)",
+      "mcp__codegraph__codegraph_search",
+      "mcp__codegraph__codegraph_explore",
+      "mcp__codegraph__codegraph_callers",
+      "mcp__codegraph__codegraph_callees",
+      "mcp__codegraph__codegraph_impact",
+      "mcp__codegraph__codegraph_node",
+      "mcp__codegraph__codegraph_files",
+      "mcp__codegraph__codegraph_status",
+      "mcp__gbrain__query",
+      "mcp__gbrain__search",
+      "mcp__gbrain__recall",
+      "mcp__gbrain__code_callers",
+      "mcp__gbrain__code_callees",
+      "mcp__gbrain__code_def",
+      "mcp__gbrain__code_refs",
+      "mcp__gbrain__code_flow",
+      "mcp__gbrain__get_page",
+      "mcp__gbrain__list_pages",
+      "mcp__gbrain__get_stats",
+      "mcp__gbrain__get_health",
+      "mcp__gbrain__get_recent_salience",
+      "mcp__serena__initial_instructions",
+      "mcp__serena__get_symbols_overview",
+      "mcp__serena__find_symbol",
+      "mcp__serena__find_referencing_symbols",
+      "mcp__serena__find_declaration",
+      "mcp__serena__find_implementations",
+      "mcp__serena__read_memory",
+      "mcp__serena__list_memories",
+      "mcp__serena__get_diagnostics_for_file"
+    ]
+  }
+}
