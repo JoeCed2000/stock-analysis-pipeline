@@ -498,9 +498,11 @@ def _probe_with_playwright(listing_url: str, cookie_store: dict) -> dict[str, An
         return {"ok": False, "reason": "playwright_not_installed", "phase": "playwright_fallback"}
     
     pw_cookies = []
-    # SA-specific cookie prefixes (skip Google, Facebook, HubSpot, etc.)
+    # SA-specific cookie prefixes (include PerimeterX, auth, session, and tracking cookies that SA needs)
     sa_prefixes = ("sa-", "user_", "sapu", "gk_", "ever_", "has_", "sailthru", 
-                   "_px", "pxcts", "machine_", "LAST_", "session_", "u_voc")
+                   "_px", "pxcts", "machine_", "LAST_", "session_", "u_voc",
+                   "_ga", "_gcl", "_fbp", "_hj", "_ig", "_twpid", "_uet",  # needed for PerimeterX
+                   "g_state", "__stripe", "sailthru")
     for c in cookie_store.get("cookies_parsed", []):
         name = (c.get("name") or "").strip()
         value = (c.get("value") or "")
@@ -522,6 +524,7 @@ def _probe_with_playwright(listing_url: str, cookie_store: dict) -> dict[str, An
     
     try:
         with sync_playwright() as p:
+            # Patchright Chromium — bypasses PerimeterX via anti-detection patches
             browser = p.chromium.launch(headless=True)
             context = browser.new_context(
                 viewport={"width": 1920, "height": 1080},
