@@ -1414,6 +1414,38 @@ but no PDF was produced.
 ### Remaining caveat
 - Ced Agent Kernel final gate was attempted but blocked by the approval system timeout, so Kernel verdict remains **non-READY / non vérifié** until rerun.
 
+## 2026-06-10 — Codex Spark default reasoning_effort: `low` → `medium`
+
+**Status:** Committed locally on branch `kanban/spec-fonctionnelle-sa` (commit `548726a`). Not pushed.
+
+### Root cause / change
+- Spark with `reasoning_effort: low` skipped structural reasoning on financial prompts, leading to shallow highlights and inconsistent analysis sections.
+- Four hardcoded `"low"` defaults replaced with `"medium"` for `gpt-5.3-codex-spark`:
+  - `backend/codex_provider.py:62` (selected_effort fallback in `_codex_chat`)
+  - `backend/earnings_deep_dive/generator.py:40` (`_llm_chat` effort)
+  - `backend/earnings_deep_dive/generator.py:232` (`_generate_deep_dive_single` provider_effort)
+  - `backend/earnings_deep_dive/generator.py:806` (`_save_outputs` generation_reasoning_effort)
+- The `safe_effort` whitelist at `codex_provider.py:64` still keeps `"low"` as a safety clamp for unknown values.
+- `backend/company_overview.py:837` was already `medium` (no patch needed).
+
+### Precedence
+- Env var `SA_CODEX_DEFAULT_EFFORT` still takes precedence over the new code default. To force global low again: `export SA_CODEX_DEFAULT_EFFORT=low` before backend start.
+- Per-call explicit `reasoning_effort=low` arg overrides env + code default.
+
+### Verification
+- `git diff --cached --stat` after staging only the 2 affected files: `2 files changed, 4 insertions(+), 4 deletions(-)` — surgical.
+- Other pre-existing uncommitted changes in `prompts.py` (16 lines) + `feedback_pipeline.py` (284 lines) were preserved untouched (not in scope for this commit).
+- Backend restart pattern unchanged: `fuser -k 8780/tcp; sleep 3; bash ~/.hermes/shared/scripts/launch-stock-backend.sh`; verify with `ss -tlnp | grep 8780` (never trust timed-out terminal as failure).
+
+### Backups
+- `~/.hermes/backups/gateway-watchdog-port-fix-20260610-140035/codex_provider.py` (pre medium)
+- `~/.hermes/backups/gateway-watchdog-port-fix-20260610-140035/generator.py` (pre medium)
+- Undo via `git revert 548726a` (commit hash known).
+
+### Notes
+- This commit is **not yet pushed** to `origin` (Ced has not requested a push). Branch `kanban/spec-fonctionnelle-sa` ahead of `origin/kanban/spec-fonctionnelle-sa` by 1 commit.
+- No new tests needed (string constant change, no behavior change in test paths). Existing 4 codex_provider + 131 generator tests should remain green.
+
 ## Non-Regression Playbooks
 - **When modifying ValuationGroup**: run `node chartUtils.test.cjs` (68 tests), rebuild frontend, test NVDA and MSFT
 - **When modifying PeerBenchmarkGroup**: run `npm run build`, verify browser console 0 errors, test NVDA/AAPL/TSLA
