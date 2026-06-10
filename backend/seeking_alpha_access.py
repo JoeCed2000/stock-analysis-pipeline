@@ -483,6 +483,152 @@ def build_request_headers(extra_headers: dict[str, str] | None = None) -> dict[s
     return headers
 
 
+def _probe_with_playwright(listing_url: str, cookie_store: dict) -> dict[str, Any]:
+    """Retry transcript probe using Playwright for PRO accounts (JS-enabled).
+    
+    SA serves full transcript content to PRO subscribers via JavaScript.
+    The HTTP-only probe sees isMpwLocked:true in raw HTML, but the browser
+    JS unlocks it for PRO accounts. This function uses a headless browser.
+    """
+    import re as _re
+    
+    try:
+        from patchright.sync_api import sync_playwright
+    except ImportError:
+        return {"ok": False, "reason": "playwright_not_installed", "phase": "playwright_fallback"}
+    
+    pw_cookies = []
+    # SA-specific cookie prefixes (skip Google, Facebook, HubSpot, etc.)
+    sa_prefixes = ("sa-", "user_", "sapu", "gk_", "ever_", "has_", "sailthru", 
+                   "_px", "pxcts", "machine_", "LAST_", "session_", "u_voc")
+    for c in cookie_store.get("cookies_parsed", []):
+        name = (c.get("name") or "").strip()
+        value = (c.get("value") or "")
+        domain = (c.get("domain") or ".seekingalpha.com")
+        path = (c.get("path") or "/")
+        if not name:
+            continue
+        # Only include SA-native cookies, not third-party
+        if not any(name.startswith(p) for p in sa_prefixes):
+            continue
+        if domain.startswith("."):
+            domain = domain[1:]
+        pw_cookies.append({
+            "name": name,
+            "value": str(value),
+            "domain": domain,
+            "path": path,
+        })
+    
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                viewport={"width": 1920, "height": 1080},
+                locale="en-US",
+            )
+            context.add_cookies(pw_cookies)
+            page = context.new_page()
+            
+            # Step 1: listing page
+            page.goto(listing_url, timeout=30000, wait_until="domcontentloaded")
+            page.wait_for_timeout(5000)
+            
+            body = page.inner_text("body")[:500].lower()
+            if any(m in body for m in ["press & hold", "verify", "access denied", "are you a robot"]):
+                browser.close()
+                return {"ok": False, "reason": "blocked_perimeterx", "phase": "playwright_listing"}
+            
+            # Step 2: find first transcript article link
+            links = page.query_selector_all('a[href*="/article/"]')
+            article_url = None
+            for link in links:
+                href = link.get_attribute("href") or ""
+                label = (link.inner_text() or "").lower()
+                if _is_earnings_call_transcript_link(label, href):
+                    article_url = "https://seekingalpha.com" + href if href.startswith("/") else href
+                    break
+            
+            if not article_url and links:
+                href = links[0].get_attribute("href") or ""
+                article_url = "https://seekingalpha.com" + href if href.startswith("/") else href
+            
+            if not article_url:
+                browser.close()
+                return {"ok": False, "reason": "no_article_link_found", "phase": "playwright_listing"}
+            
+            # Step 3: fetch article with JS
+            page.goto(article_url, timeout=30000, wait_until="domcontentloaded")
+            page.wait_for_timeout(8000)
+            
+            # Get text from the transcript section specifically
+            article_text = page.inner_text("body")
+            article_html = page.content()
+            text_len = len(article_text)
+            
+            # Try to get transcript content more specifically
+            try:
+                transcript_el = page.query_selector('[data-test-id="transcript-presentation"]')
+                if transcript_el:
+                    article_text = transcript_el.inner_text()
+                    text_len = len(article_text)
+            except Exception:
+                pass
+            
+            browser.close()
+            
+            # Check for MPW in rendered page
+            is_mpw_locked = 'isMpwLocked":true' in article_html
+            is_mpw_unlocked = 'isMpwLocked":false' in article_html
+            
+            # Check for transcript content
+            has_transcript = 'transcript-presentation-section' in article_html
+            section_count = len(_re.findall(r'seq="(\d+)"', article_html))
+            
+            # Key: check if the article text is substantial (not just preview)
+            if text_len > 8000 and has_transcript:
+                return {
+                    "ok": True,
+                    "authenticated": True,
+                    "reachable": True,
+                    "blocked": False,
+                    "url": article_url,
+                    "status_code": 200,
+                    "reason": "ok_full_transcript_playwright",
+                    "text_length": text_len,
+                    "mpw_locked": is_mpw_locked,
+                    "transcript_sections": section_count,
+                    "has_transcript_content": has_transcript,
+                    "phase": "playwright_transcript",
+                    "tested_at": _now_iso(),
+                }
+            elif is_mpw_locked and text_len < 5000:
+                return {
+                    "ok": False,
+                    "reason": "mpw_locked_even_with_playwright",
+                    "text_length": text_len,
+                    "url": article_url,
+                    "phase": "playwright_transcript",
+                    "tested_at": _now_iso(),
+                }
+            else:
+                return {
+                    "ok": True,
+                    "authenticated": True,
+                    "reachable": True,
+                    "url": article_url,
+                    "status_code": 200,
+                    "reason": "ok_partial_or_non_transcript",
+                    "text_length": text_len,
+                    "phase": "playwright_transcript",
+                    "tested_at": _now_iso(),
+                }
+                
+    except Exception as e:
+        logger.warning(f"Playwright probe failed: {e}")
+        return {"ok": False, "reason": f"playwright_error_{type(e).__name__}", "phase": "playwright_fallback", "tested_at": _now_iso()}
+
+
 async def probe_access_async(ticker: str | None = None) -> dict[str, Any]:
     """Cookie health check — probes a REAL transcript article, not just the listing page.
 
@@ -490,8 +636,10 @@ async def probe_access_async(ticker: str | None = None) -> dict[str, Any]:
     This probe:
       1. Fetches the listing page, extracts the first earnings-call transcript link
       2. Fetches THAT article, checks for isMpwLocked (MPW = metered paywall)
-      3. Reports ok=True only if the transcript article is fully accessible (not MPW-locked)
-    No Playwright — pure httpx, safe for frequent health checks.
+      3. If MPW locked and account has PRO cookies, retries with Playwright (JS-enabled)
+         because SA serves full content to PRO subscribers via JavaScript.
+      4. Reports ok=True only if the transcript article is fully accessible.
+    Uses httpx first (fast), Playwright as fallback for PRO accounts.
     """
     import asyncio
 
@@ -586,6 +734,21 @@ async def probe_access_async(ticker: str | None = None) -> dict[str, Any]:
                 is_mpw_unlocked = 'isMpwLocked":false' in article_text
 
                 if is_mpw_locked:
+                    # Check if account has PRO cookies — if so, retry with Playwright
+                    # because SA serves full transcripts to PRO users via JavaScript
+                    cookie_store = _read_store()
+                    has_pro = any(
+                        c.get("name") in ("ever_pro", "has_paid_subscription") 
+                        and str(c.get("value")).lower() in ("1", "true")
+                        for c in cookie_store.get("cookies_parsed", [])
+                    )
+                    
+                    if has_pro:
+                        logger.info(f"MPW locked but PRO cookies detected — retrying with Playwright for {clean_ticker}")
+                        pw_result = _probe_with_playwright(listing_url, cookie_store)
+                        if pw_result.get("ok"):
+                            return pw_result
+                    
                     return {
                         "authenticated": True, "reachable": True, "blocked": False,
                         "url": transcript_url, "status_code": article_resp.status_code,
