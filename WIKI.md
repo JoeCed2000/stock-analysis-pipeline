@@ -24,6 +24,31 @@
 - Frontend `SeekingAlphaAccessPanel.jsx`: displays probe result (✅/⚠️) + updates verification state immediately after upload — no need for manual test click
 - **Commit:** `2844fba`
 
+## 2026-06-09 — Collapsible HAR export help section in SeekingAlphaAccessPanel
+
+**Status:** Implemented and browser-verified.
+
+**Change:**
+- Added a collapsible `<details>` element in `SeekingAlphaAccessPanel.jsx` below the "Upload .har" button
+- Default collapsed, summary label: "🔎 How to export HAR from Chrome?" (JP: "🔎 ChromeからHARをエクスポートする方法")
+- Expanded content: 5 numbered steps covering F12 → Network → filter → save-as-HAR
+- "Request List" clarification note in a blue left-border box explaining the HAR term
+- EN+JP i18n strings added to `i18n.js` under `harHelp*` keys
+- Follows existing component pattern (inline ternaries, no import of i18n.js needed)
+
+**Write scope:**
+- `frontend/src/components/SeekingAlphaAccessPanel.jsx` — `<details>` block inserted between HAR upload and toolbar
+- `frontend/src/i18n.js` — 7 EN + 7 JP `harHelp*` strings
+
+**Verification:**
+- `npm run build` → 64 modules, 0 errors, built in 1.59s
+- Browser (JP mode): collapsible renders collapsed under the .har upload button
+- Clicking summary toggles open: 5 numbered list items + note visible
+- Production URL: `curl https://sa.cedlabusa.net` → 200 (0.67s)
+- Backend restarted: PID 2271786, port 8780
+
+**Commit:** `t_a18735a9` (no git commit — Kanban scratch workspace)
+
 ## 2026-06-08 — Proactive PDF failure intake + admin failure semantics
 
 **Status:** Implemented and locally verified.
@@ -147,6 +172,13 @@ The noise gate was already present in `dossier_download()` but the `get_report_p
 - Local attachment checks: `/api/feedback-file/NVDA/2026-06-08_053857_deep_dive_NVDA.pdf` → `HTTP 200`, `/api/feedback-file/NVDA/2026-06-08_053857_Screenshot_2026-06-07_at_11.36.51_PM.png` → `HTTP 200`.
 - Production checks: `/api/report/NVDA/pdf?lang=en` → `HTTP 200`; `/api/company-overview/NVDA/download?format=auto` → `HTTP 200`; `/feedback` → `307` to `/#feedback`, then `200` HTML.
 - Browser production check: `https://sa.cedlabusa.net/feedback` redirects to `/#feedback`, displays NVDA as the first feedback entry with status taken into account and 2 attachments.
+
+### Re-verification (2026-06-10 13:38)
+- NVDA re-analyzed end-to-end via `/api/analyze/async`: `analyses/2026-06-10_133522_NVDA_NVIDIA_Corp/`.
+- `07_final_report/deep_dive_validation.json` = `{"passed": true, "issues": []}`.
+- `07_final_report/earnings_deep_dive.pdf` = 384754 bytes / 25 pages, Verdict section page 21 with `Recommendation: BUY` on its own line.
+- `earnings_deep_dive_meta.json` lists all 10 sections (`Highlights`, `EPS & Revenue`, `Operating Metrics`, `Cash Flow`, `Capital Efficiency`, `Segments`, `Forward P/E`, `Backlog`, `Guidance`, `Verdict`) as `ok`, no warnings.
+- `analyses/feedback_NVDA/index.json` entry `2026-06-08_053857` now carries a 2026-06-10 re-verification note appended to `notes`.
 
 ## 2026-06-07 — SA PDF Structural Quality T6 verdict policy
 
