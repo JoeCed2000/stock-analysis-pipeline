@@ -49,15 +49,21 @@ class TestQuarterPresence:
     """AC6: quarter=None → catches 'Not available' in title."""
 
     def test_quarter_none_flagged(self):
-        """Given quarter=None, validator flags quarter_missing."""
+        """Given quarter=None, validator flags quarter_missing.
+
+        Contract update (RULE 4): quarter_missing is a non-blocking warning —
+        the deep-dive can still render with a 'Not available' label, so
+        validation passes but the warning must be present."""
         result = validate_pre_render(
             ticker="TEST",
             quarter=None,
             metrics=_metrics(),
             section_analysis={"Verdict": "Score: 8/10 — Strong buy."},
         )
-        assert not result.passed
         assert _has_warning(result.warnings, "quarter_missing")
+        assert all(
+            w.severity != "error" for w in result.warnings if w.check == "quarter_missing"
+        ), "quarter_missing must stay a non-blocking warning"
 
     def test_quarter_empty_string_flagged(self):
         """Empty string treated same as None."""
@@ -88,7 +94,11 @@ class TestForbiddenMarkers:
     """AC2: No 'Not available' in any field."""
 
     def test_not_available_in_section_flagged(self):
-        """Section text containing 'Not available' is flagged."""
+        """Section text containing 'Not available' is flagged.
+
+        Contract update (RULE 5): the check is named forbidden_marker_leak
+        and is a non-blocking warning — §23 post-processing strips the
+        marker before rendering."""
         result = validate_pre_render(
             ticker="TEST",
             quarter="2026Q1",
@@ -98,11 +108,10 @@ class TestForbiddenMarkers:
                 "EPS & Revenue": "Revenue was $82.9B. Not available for EPS.",
             },
         )
-        assert not result.passed
-        assert _has_warning(result.warnings, "not_available", "EPS & Revenue")
+        assert _has_warning(result.warnings, "forbidden_marker_leak", "EPS & Revenue")
 
     def test_data_not_available_flagged(self):
-        """'DATA NOT AVAILABLE' (uppercase) is flagged."""
+        """'DATA NOT AVAILABLE' (uppercase) is flagged as forbidden_marker_leak."""
         result = validate_pre_render(
             ticker="TEST",
             quarter="2026Q1",
@@ -112,11 +121,10 @@ class TestForbiddenMarkers:
                 "Cash Flow": "DATA NOT AVAILABLE for this quarter.",
             },
         )
-        assert not result.passed
-        assert _has_warning(result.warnings, "not_available", "Cash Flow")
+        assert _has_warning(result.warnings, "forbidden_marker_leak", "Cash Flow")
 
     def test_french_not_available_flagged(self):
-        """'DONNÉE NON DISPONIBLE' (French) is flagged."""
+        """'DONNÉE NON DISPONIBLE' (French) is flagged as forbidden_marker_leak."""
         result = validate_pre_render(
             ticker="TEST",
             quarter="2026Q1",
@@ -126,8 +134,7 @@ class TestForbiddenMarkers:
                 "Operating Metrics": "DONNÉE NON DISPONIBLE",
             },
         )
-        assert not result.passed
-        assert _has_warning(result.warnings, "not_available", "Operating Metrics")
+        assert _has_warning(result.warnings, "forbidden_marker_leak", "Operating Metrics")
 
     def test_clean_text_passes(self):
         """Clean section text with no forbidden markers passes."""
@@ -395,11 +402,19 @@ class TestEdgeCases:
         assert isinstance(result, ValidationResult)
 
     def test_all_checks_pass(self):
-        """Clean data → passes all checks."""
+        """Clean data → passes all checks.
+
+        revenue_estimate must sit a realistic distance from the actual:
+        check 13e (eps_revenue_estimate_actual_proximity) legitimately flags
+        estimates within 1% of the actual as same-source suspicion."""
         result = validate_pre_render(
             ticker="TEST",
             quarter="2026Q1",
-            metrics=_metrics(revenue_actual=82_900_000_000, eps_actual=1.50),
+            metrics=_metrics(
+                revenue_actual=82_900_000_000,
+                revenue_estimate=80_600_000_000,  # 2.8% surprise — independent consensus
+                eps_actual=1.50,
+            ),
             section_analysis={
                 "Verdict": "Score: 8/10 — Strong execution, buy recommendation.",
                 "EPS & Revenue": "Revenue reached $82.9B, EPS was $1.50.",

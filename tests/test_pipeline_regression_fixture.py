@@ -91,29 +91,27 @@ class TestStructuralInvariants:
         assert nvda_result.ticker == "NVDA"
 
     def test_score_exists_and_in_range(self, nvda_result):
-        """Score must exist and be on /40 scale."""
+        """Score must exist and be on /40 scale (6 canonical categories)."""
         scoring = nvda_result.scoring
         assert scoring is not None, "Scoring is None"
-        # Sum the 8 criteria
-        total = (scoring.growth + scoring.profitability + scoring.financial_strength +
-                 scoring.moat + scoring.management + scoring.valuation_risk +
-                 scoring.geopolitical_risk + scoring.business_momentum)
-        assert 0 <= total <= 40, f"Score {total} out of /40 range"
+        assert 0 <= scoring.total <= 40, f"Score {scoring.total} out of /40 range"
 
     def test_score_components_sum_to_total(self, nvda_result):
-        """Each sub-score must contribute to /40 total. Catches dual bookkeeping."""
+        """The 6 canonical categories must sum to the /40 total.
+        Catches dual bookkeeping between categories and total."""
         scoring = nvda_result.scoring
-        total = (scoring.growth + scoring.profitability + scoring.financial_strength +
-                 scoring.moat + scoring.management + scoring.valuation_risk +
-                 scoring.geopolitical_risk + scoring.business_momentum)
-        assert 0 <= total <= 40, f"Score components sum to {total}"
+        component_sum = (scoring.financial_health + scoring.growth +
+                         scoring.valuation + scoring.management +
+                         scoring.moat + scoring.sentiment)
+        assert component_sum == scoring.total, (
+            f"Components sum to {component_sum} but total says {scoring.total}"
+        )
+        assert 0 <= component_sum <= 40, f"Score components sum to {component_sum}"
 
     def test_decision_maps_to_score_band(self, nvda_result):
         """Decision must match score band: BUY >= 28, HOLD 15-27, SELL < 15."""
         scoring = nvda_result.scoring
-        total = (scoring.growth + scoring.profitability + scoring.financial_strength +
-                 scoring.moat + scoring.management + scoring.valuation_risk +
-                 scoring.geopolitical_risk + scoring.business_momentum)
+        total = scoring.total
         decision = nvda_result.decision.upper()
         if total >= 28:
             assert "BUY" in decision, f"Score {total} should be BUY, got {decision}"
@@ -231,9 +229,7 @@ class TestWarnings:
     def test_score_above_minimum(self, nvda_result):
         """NVDA score should be >= 20 under normal conditions. WARN if lower."""
         scoring = nvda_result.scoring
-        total = (scoring.growth + scoring.profitability + scoring.financial_strength +
-                 scoring.moat + scoring.management + scoring.valuation_risk +
-                 scoring.geopolitical_risk + scoring.business_momentum)
+        total = scoring.total
         if total < 20:
             pytest.fail(f"NVDA score {total} < 20 — INVESTIGATE "
                        f"(may be market conditions or pipeline regression)")

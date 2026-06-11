@@ -321,7 +321,11 @@ class TestCompanyOverviewPdfCanonicalProvenance:
 
         assert metric["status"] == "blocked"
         assert metric["display"] == "Not available"
-        assert metric["source"] == "Blocked: mismatch_blocked"
+        # Client-safe label: provenance internals (reason codes) must never
+        # leak into investor PDFs — blocked renders as 'Under review'
+        # (contract owned by backend/tests/test_company_overview_pdf_sanitization.py).
+        assert metric["source"] == "Under review"
+        assert "mismatch_blocked" not in str(metric["source"])
         assert metric["value"] is None
 
     def test_kpi_renderer_uses_provenance_without_hidden_yahoo_fallback(self):
@@ -359,7 +363,11 @@ class TestCompanyOverviewPdfCanonicalProvenance:
 
         assert "Market Cap" in rendered
         assert "Not available" in rendered
-        assert "Blocked: mismatch_blocked" in rendered
+        # Blocked provenance renders the client-safe 'Under review' label;
+        # internal reason codes must never appear in the KPI table.
+        assert "Under review" in rendered
+        assert "mismatch_blocked" not in rendered
+        assert "Blocked:" not in rendered
         assert "$383.3B" in rendered
         assert "$3.00T" not in rendered
         assert "$1000.0B" not in rendered
