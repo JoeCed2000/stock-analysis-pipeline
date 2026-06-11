@@ -2334,6 +2334,24 @@ def _section_runtime_summary_label(section_key: str, base_label: str, language: 
     return base_label
 
 
+def effective_section_analysis(report: Any) -> Dict[str, str]:
+    """Per-section text exactly as it will be rendered in the PDF.
+
+    The pre-render gate must judge this normalized content (post mapper
+    cleanup, conciseness caps, and deterministic fallbacks) — not the raw
+    LLM text, which the mapper may replace entirely. Raw-text validation
+    stays useful as a diagnostic only.
+    """
+    effective: Dict[str, str] = {}
+    for section in getattr(report, "sections", []) or []:
+        parts = [str(p) for p in (getattr(section, "analysis", None) or []) if p]
+        summary = getattr(section, "summary", None)
+        if summary:
+            parts.append(str(summary))
+        effective[section.key] = "\n\n".join(parts)
+    return effective
+
+
 def build_earnings_deep_dive_report(
     *,
     ticker: str,

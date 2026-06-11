@@ -1615,6 +1615,7 @@ def _add_earnings_deep_dive_if_transcript(
         from backend.earnings_deep_dive.generator import generate_deep_dive
         from backend.earnings_deep_dive.mapper import (
             build_earnings_deep_dive_report,
+            effective_section_analysis,
             _build_report_period_context,
             _build_metrics_ledger,
             _build_source_registry,
@@ -1722,6 +1723,9 @@ def _add_earnings_deep_dive_if_transcript(
         # ── Pre-render validation phase ──
         set_dossier_phase(ticker, DossierPhase.PDF_VALIDATING)
 
+        # Stage 1 — diagnostic on raw LLM text. Never blocks: the mapper may
+        # replace or normalize this content before rendering, so the blocking
+        # decision is deferred to the effective (normalized) sections below.
         en_validation = validate_pre_render(
             ticker=ticker,
             quarter=transcript_quarter,
@@ -1733,15 +1737,12 @@ def _add_earnings_deep_dive_if_transcript(
             earnings_documents=_earnings_docs,
         )
         if en_validation.errors:
-            error_msg = format_validation_error(en_validation, ticker)
-            logger.error(error_msg)
-            set_dossier_phase(ticker, DossierPhase.PDF_BLOCKED, error=error_msg[:200])
-            raise ValidationError(
-                ticker=ticker,
-                errors=en_validation.errors,
-                message=error_msg,
+            logger.warning(
+                f"[{ticker}] Pre-render raw diagnostic: {len(en_validation.errors)} error-level "
+                f"finding(s) on raw LLM text — blocking decision deferred to normalized content | "
+                f"first={en_validation.errors[0].detail}"
             )
-        elif en_validation.warnings:
+        if en_validation.warnings:
             logger.warning(
                 f"[{ticker}] Pre-render validation: {len(en_validation.warnings)} warning(s) — "
                 f"sections flagged with ⚠️"
@@ -1784,6 +1785,7 @@ def _add_earnings_deep_dive_if_transcript(
             # ── Pre-render validation for JP (best-effort) ──
             if jp_response is not None:
                 try:
+                    # Stage 1 (JP) — diagnostic on raw LLM text, never blocks.
                     jp_validation = validate_pre_render(
                         ticker=ticker,
                         quarter=transcript_quarter,
@@ -1795,14 +1797,12 @@ def _add_earnings_deep_dive_if_transcript(
                         earnings_documents=_earnings_docs,
                     )
                     if jp_validation.errors:
-                        error_msg = format_validation_error(jp_validation, ticker)
-                        logger.error(error_msg)
-                        raise ValidationError(
-                            ticker=ticker,
-                            errors=jp_validation.errors,
-                            message=error_msg,
+                        logger.warning(
+                            f"[{ticker}] Pre-render raw diagnostic (JP): {len(jp_validation.errors)} "
+                            f"error-level finding(s) on raw LLM text — blocking decision deferred to "
+                            f"normalized content | first={jp_validation.errors[0].detail}"
                         )
-                    elif jp_validation.warnings:
+                    if jp_validation.warnings:
                         logger.warning(
                             f"[{ticker}] Pre-render validation (JP): {len(jp_validation.warnings)} issue(s) — "
                             f"sections flagged with ⚠️"
@@ -1840,6 +1840,41 @@ def _add_earnings_deep_dive_if_transcript(
         if website:
             from backend.earnings_deep_dive.report_model import SourceRef
             en_report_model.sources.append(SourceRef(label="Official Website", url=website))
+
+        # Stage 2 — BLOCKING gate on the normalized content actually rendered
+        # in the PDF (post mapper cleanup, conciseness caps, deterministic
+        # fallbacks). If this content is still invalid, the PDF must not ship.
+        en_effective_validation = validate_pre_render(
+            ticker=ticker,
+            quarter=transcript_quarter,
+            metrics=deep_dive_metrics,
+            section_analysis=effective_section_analysis(en_report_model),
+            period_context=_period_ctx,
+            metrics_ledger=_metrics_ledger,
+            source_registry=_source_registry,
+            earnings_documents=_earnings_docs,
+        )
+        if en_effective_validation.errors:
+            error_msg = format_validation_error(en_effective_validation, ticker)
+            logger.error(
+                f"[{ticker}] Pre-render validation BLOCKED PDF (normalized content): "
+                f"{len(en_effective_validation.errors)} error(s)"
+            )
+            logger.error(error_msg)
+            set_dossier_phase(ticker, DossierPhase.PDF_BLOCKED, error=error_msg[:200])
+            raise ValidationError(
+                ticker=ticker,
+                errors=en_effective_validation.errors,
+                message=error_msg,
+            )
+        elif en_effective_validation.warnings:
+            logger.warning(
+                f"[{ticker}] Pre-render validation (normalized content): "
+                f"{len(en_effective_validation.warnings)} warning(s) — non-blocking"
+            )
+        else:
+            logger.info(f"[{ticker}] Pre-render validation passed cleanly (normalized content)")
+
         render_earnings_deep_dive_pdf(en_report_model, en_pdf_path)
         logger.info(f"[{ticker}] Earnings deep-dive PDF built successfully")
         set_dossier_phase(ticker, DossierPhase.COMPLETE)
@@ -1860,6 +1895,36 @@ def _add_earnings_deep_dive_if_transcript(
             )
             if website:
                 jp_report_model.sources.append(SourceRef(label="Official Website", url=website))
+
+            # Stage 2 (JP) — BLOCKING gate on normalized content, preserving the
+            # original semantics: a JP validation error aborts via ValidationError.
+            jp_effective_validation = validate_pre_render(
+                ticker=ticker,
+                quarter=transcript_quarter,
+                metrics=deep_dive_metrics,
+                section_analysis=effective_section_analysis(jp_report_model),
+                period_context=_period_ctx,
+                metrics_ledger=_metrics_ledger,
+                source_registry=_source_registry,
+                earnings_documents=_earnings_docs,
+            )
+            if jp_effective_validation.errors:
+                error_msg = format_validation_error(jp_effective_validation, ticker)
+                logger.error(
+                    f"[{ticker}] Pre-render validation BLOCKED JP PDF (normalized content): "
+                    f"{len(jp_effective_validation.errors)} error(s)"
+                )
+                logger.error(error_msg)
+                raise ValidationError(
+                    ticker=ticker,
+                    errors=jp_effective_validation.errors,
+                    message=error_msg,
+                )
+            elif jp_effective_validation.warnings:
+                logger.warning(
+                    f"[{ticker}] Pre-render validation JP (normalized content): "
+                    f"{len(jp_effective_validation.warnings)} warning(s) — non-blocking"
+                )
             render_earnings_deep_dive_pdf(jp_report_model, jp_pdf_path)
 
         logger.info(f"[{ticker}] Earnings deep-dive added to dossier (EN{'+ JP' if generate_jp else ''})")
