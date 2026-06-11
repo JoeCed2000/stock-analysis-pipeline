@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 Language = Literal["en", "jp", "bilingual"]
-SectionState = Literal["ok", "retry_ok", "failed", "placeholder"]
+SectionState = Literal["ok", "retry_ok", "salvaged", "failed", "placeholder"]
 
 
 class FinancialMetrics(BaseModel):

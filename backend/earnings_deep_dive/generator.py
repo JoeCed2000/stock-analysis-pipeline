@@ -18,6 +18,7 @@ from backend.earnings_deep_dive.prompts import (
 from backend.earnings_deep_dive.schemas import DeepDiveRequest, DeepDiveResponse, SectionStatus
 from backend.earnings_deep_dive.validators import (
     check_table_presence,
+    collapse_repetition_loop,
     detect_repetition_loop,
     is_bilingual,
     validate_section_heading,
@@ -272,6 +273,8 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
             provider_model = _resolved_model if provider_name == "primary" else provider_name
             provider_effort = _resolved_effort if provider_name == "primary" else "default"
             
+            salvage_candidate: Optional[str] = None
+
             for attempt in (1, 2):
                 prompt = build_prompt(
                     section, request.language, request.ticker, company,
@@ -280,13 +283,24 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
                     sector=sector,
                     industry=industry,
                 )
+                repetition_retry = attempt == 2 and "Repetition loop" in last_error
                 if attempt == 2:
                     prompt += (
                         "\nRetry instruction: fix the previous malformed output. "
                         "Keep the exact required heading, avoid repeated lines, "
                         "and follow table requirements.\n"
                     )
-                
+                    if repetition_retry:
+                        prompt += (
+                            "The previous output entered a repetition loop. Do not "
+                            "repeat any sentence, line, or table row. Stop as soon "
+                            "as the section is complete.\n"
+                        )
+                # Defensive retry: a repetition loop is a greedy-decoding
+                # failure mode — raise temperature to break it. Normal calls
+                # keep the standard 0.3.
+                temperature = 0.7 if repetition_retry else 0.3
+
                 started = datetime.now(timezone.utc)
                 logger.info(
                     "llm_section start ticker=%s language=%s section=%r provider=%s model=%s effort=%s attempt=%d max_tokens=%d",
@@ -300,8 +314,9 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
                     MAX_CODEX_TOKENS,
                 )
                 try:
+                    cleaned = None
                     try:
-                        output = chat_fn(prompt, system=sys_prompt, max_tokens=MAX_CODEX_TOKENS, temperature=0.3)
+                        output = chat_fn(prompt, system=sys_prompt, max_tokens=MAX_CODEX_TOKENS, temperature=temperature)
                     except TypeError:
                         output = chat_fn(prompt, system=sys_prompt, max_tokens=MAX_CODEX_TOKENS)
                     duration_ms = int((datetime.now(timezone.utc) - started).total_seconds() * 1000)
@@ -347,6 +362,10 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
                 except (KimiFailureError, ValidationError) as exc:
                     duration_ms = int((datetime.now(timezone.utc) - started).total_seconds() * 1000)
                     last_error = str(exc)
+                    if "Repetition loop" in last_error and cleaned:
+                        # Keep the looping output: if the retry loops too, we
+                        # try to salvage it by truncating at the loop start.
+                        salvage_candidate = cleaned
                     with llm_trace_lock:
                         llm_trace.append({
                             "ticker": request.ticker,
@@ -374,6 +393,51 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
                         last_error,
                     )
             
+            # Both attempts looped: salvage by truncating at the loop start.
+            # Accept only if the truncated section still passes the full
+            # section validation — this never weakens validation, it just
+            # recovers the valid prefix instead of shipping a placeholder.
+            if salvage_candidate is not None:
+                collapsed, was_collapsed = collapse_repetition_loop(salvage_candidate)
+                if was_collapsed:
+                    try:
+                        _validate_section(
+                            collapsed, section, request.language,
+                            request.max_section_chars, require_table=has_tx,
+                        )
+                    except ValidationError as salvage_exc:
+                        logger.warning(
+                            "llm_section salvage rejected ticker=%s language=%s section=%r error=%s — falling back to placeholder",
+                            request.ticker, request.language, section, salvage_exc,
+                        )
+                    else:
+                        salvage_note = (
+                            f"repetition loop collapsed: kept {len(collapsed)} of "
+                            f"{len(salvage_candidate)} chars after truncating the loop"
+                        )
+                        with llm_trace_lock:
+                            llm_trace.append({
+                                "ticker": request.ticker,
+                                "language": request.language,
+                                "phase": "earnings_deep_dive",
+                                "section": section,
+                                "provider": provider_name,
+                                "model": provider_model,
+                                "effort": provider_effort,
+                                "attempt": 2,
+                                "status": "salvaged",
+                                "warning": salvage_note,
+                            })
+                        logger.warning(
+                            "llm_section salvaged ticker=%s language=%s section=%r provider=%s model=%s %s",
+                            request.ticker, request.language, section,
+                            provider_name, provider_model, salvage_note,
+                        )
+                        return collapsed, SectionStatus(
+                            name=section, status="salvaged", attempts=2,
+                            warnings=[salvage_note],
+                        ), None
+
             # Failed after retries
             return _placeholder_section(section, last_error), SectionStatus(
                 name=section, status="failed", attempts=2, error=last_error or "failed",

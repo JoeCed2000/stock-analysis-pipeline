@@ -52,6 +52,31 @@ def detect_repetition_loop(markdown: str) -> bool:
     return any(count > 3 for count in counts.values())
 
 
+def collapse_repetition_loop(markdown: str) -> tuple[str, bool]:
+    """Salvage output caught in a repetition loop by truncating at the loop.
+
+    LLM repetition loops are trailing: the model produces valid content, then
+    repeats a line/block until the token budget runs out. Truncate right
+    before the first line whose normalized form reaches its 4th occurrence
+    (the detect_repetition_loop threshold) and drop everything after it.
+
+    Returns (text, True) when a truncation was applied; the caller must
+    re-validate the truncated section before accepting it.
+    """
+    if not markdown:
+        return markdown, False
+    lines = markdown.splitlines()
+    counts: Counter = Counter()
+    for idx, line in enumerate(lines):
+        normalized = re.sub(r"\s+", " ", line).strip()
+        if not normalized:
+            continue
+        counts[normalized] += 1
+        if counts[normalized] > 3:
+            return "\n".join(lines[:idx]).rstrip(), True
+    return markdown, False
+
+
 def check_table_presence(markdown: str) -> bool:
     """Return True when markdown contains a basic pipe table."""
     if not markdown:
