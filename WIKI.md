@@ -1,5 +1,37 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-11 — Smart HAR merge + Firefox auto-refresh: SA cookies last longer
+
+**Status:** Implemented, tested, deployed.
+
+**Problem:** A fresh HAR re-upload wiped out long-lived auth cookies (`slireg`, `sa-user-id-v3`, `user_remember_token`) whenever the user only navigated a single page before exporting. The `refresh_cookies_from_firefox` function existed but was never wired to any route or cron. PerimeterX probe成功率 was hurt by a too-narrow `sa_prefixes` whitelist missing `__cf_bm`, `OptanonConsent`, `_ttp`, etc.
+
+**Change:**
+- `backend/seeking_alpha_access.py`:
+  - New constants: `LONG_LIVED_AUTH_COOKIES` (16 names: `slireg`, `sa-user-id-v3`, `user_remember_token`, `gk_user_access`, …), `MEDIUM_LIVED_COOKIES`, `SHORT_LIVED_COOKIES` (with wildcard support).
+  - New helpers: `_categorize_cookie_longevity(name)`, `_estimate_expires_at(name, har_expires)`, `_cookies_by_name(cookies)`, `_compute_cookie_freshness(payload)`.
+  - `import_har_cookies()` rewritten to **smart-merge**: HAR overwrites short/medium, but long-lived auth cookies that the HAR is missing are *preserved* from the existing store. Per-cookie `expires_at` + `longevity` added to each cookie.
+  - `refresh_cookies_from_firefox()` rewired: now also computes `expires_at` per cookie, smart-merges against the existing store (`preserve_existing=True` default), reports `preserved_long_lived` list.
+  - New async `auto_refresh_cookies_if_needed()`: triggers Firefox refresh only when `freshness.status in {expiring_soon, missing_long_lived_auth, stale_over_72h}` AND the persistent Firefox profile dir exists.
+  - `_probe_with_playwright`: tries persistent Firefox profile first (consistent fingerprint with cookie source), falls back to Chromium. Extended `sa_prefixes` with `__cf_bm`, `cf_clearance`, `OptanonConsent`, `amplitude_id`, `mp_`, `_ttp`, `_rdt`, `_clck`, `_clsk`, `hubspotutk`, `__hssrc`, `__hstc`, `__stripe`, `slireg`.
+  - `get_access_status()` now returns `freshness` + `merge_metadata` so the UI can surface warnings.
+- `backend/main.py`:
+  - `POST /api/admin/seeking-alpha/refresh-from-firefox` (admin auth) — wires the previously-dead function.
+  - `GET /api/admin/seeking-alpha/freshness` (admin auth) — cheap store inspection without probing SA.
+- `~/.hermes/scripts/sa-cookie-refresh-cron.sh`: daily 03:00 cron, silent on success, Telegram on failure with the freshness reason. Silent when freshness is `fresh` or `not_configured`.
+- `tests/test_sa_cookie_longevity.py`: 27 new tests covering classification, expiry estimation, smart merge, freshness states, and the public `get_access_status` shape.
+
+**Verification:**
+- `PYTHONPATH=. backend/.venv/bin/pytest tests/test_sa_cookie_longevity.py tests/test_seeking_alpha_access.py -q` → **41 passed**
+- Backend restart: `systemctl --user restart sa-backend` → PID 61089, port 8780
+- `GET /api/admin/seeking-alpha/freshness` returns `{"status":"fresh","long_lived_present":13,"long_lived_missing":2,"earliest_long_lived_expiry_iso":"2026-07-11T17:28:01+00:00"}`
+- `GET /api/admin/seeking-alpha/access` now includes `freshness` + `merge_metadata` fields
+- `POST /api/admin/seeking-alpha/refresh-from-firefox` returns `{"skipped":true,"reason":"freshness_fresh"}` (expected — store still fresh)
+
+**Behavior change for users:**
+- Re-uploading a partial HAR (e.g. just navigated the home page) now keeps `slireg` and `user_remember_token` from the previous store instead of wiping them.
+- Daily 03:00 cron silently checks freshness; only Telegram-notifies on failure. Manual `/api/admin/seeking-alpha/refresh-from-firefox` is available for on-demand refresh after a SA re-login.
+
 ## 2026-06-09 — .har file upload in SeekingAlphaAccessPanel + /api/admin/seeking-alpha/access/har
 
 **Status:** Implemented and verified.

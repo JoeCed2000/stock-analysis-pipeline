@@ -2032,16 +2032,57 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                     format_validation_error,
                 )
                 sections = getattr(dd_response, 'sections', None)
-                pre_val = validate_pre_render(
+                # Stage 1 — diagnostic on raw LLM text. Never blocks: the mapper
+                # may replace non-conforming sections with deterministic
+                # fallbacks, so raw findings only annotate and inform logs.
+                raw_val = validate_pre_render(
                     ticker=ticker,
                     quarter=dd_req.quarter,
                     metrics=metrics,
                     section_analysis=sections,
                 )
+                if raw_val.errors:
+                    logger.warning(
+                        "[%s/%s] Pre-render raw diagnostic: %s error-level finding(s) on raw LLM text — blocking decision deferred to normalized content | first=%s",
+                        ticker,
+                        lang,
+                        raw_val.error_count,
+                        raw_val.errors[0].detail if raw_val.errors else "-",
+                    )
+                if raw_val.warnings:
+                    sections = annotate_sections_with_warnings(
+                        sections or {}, raw_val,
+                    )
+
+                from backend.earnings_deep_dive.mapper import (
+                    build_earnings_deep_dive_report,
+                    effective_section_analysis,
+                )
+                from backend.earnings_deep_dive.pdf_renderer import render_earnings_deep_dive_pdf
+                report_model = build_earnings_deep_dive_report(
+                    ticker=ticker,
+                    company=dummy.company_name,
+                    quarter=dd_req.quarter,
+                    metrics=metrics,
+                    transcript_url=getattr(dd_response, 'transcript_url', None),
+                    language=lang,
+                    section_analysis=sections,
+                    company_overview=company_overview,
+                    yf_info=q_data.get("_raw_info"),
+                )
+
+                # Stage 2 — BLOCKING gate on the normalized content actually
+                # rendered in the PDF (post mapper cleanup/fallbacks).
+                pre_val = validate_pre_render(
+                    ticker=ticker,
+                    quarter=dd_req.quarter,
+                    metrics=metrics,
+                    section_analysis=effective_section_analysis(report_model),
+                )
                 if pre_val.errors:
                     error_msg = format_validation_error(pre_val, ticker)
                     logger.error(
-                        "[%s/%s] Pre-render validation BLOCKED PDF | errors=%s | warnings=%s | validation_path=%s | first_error=%s",
+                        "[%s/%s] Pre-render validation BLOCKED PDF (normalized content) | errors=%s | warnings=%s | validation_path=%s | first_error=%s",
                         ticker,
                         lang,
                         pre_val.error_count,
@@ -2057,37 +2098,21 @@ async def get_report_pdf(ticker: str, lang: str = "en", quarter: str = "latest",
                     )
                 elif pre_val.warnings:
                     logger.warning(
-                        "[%s/%s] Pre-render validation warnings | warnings=%s | errors=0 | validation_path=%s | first_warning=%s",
+                        "[%s/%s] Pre-render validation warnings (normalized content) | warnings=%s | errors=0 | validation_path=%s | first_warning=%s",
                         ticker,
                         lang,
                         pre_val.warning_count,
                         validation_log_path,
                         pre_val.warnings[0].detail if pre_val.warnings else "-",
                     )
-                    sections = annotate_sections_with_warnings(
-                        sections or {}, pre_val,
-                    )
                 else:
                     logger.info(
-                        "[%s/%s] Pre-render validation passed cleanly | validation_path=%s",
+                        "[%s/%s] Pre-render validation passed cleanly (normalized content) | validation_path=%s",
                         ticker,
                         lang,
                         validation_log_path,
                     )
-                
-                from backend.earnings_deep_dive.mapper import build_earnings_deep_dive_report
-                from backend.earnings_deep_dive.pdf_renderer import render_earnings_deep_dive_pdf
-                report_model = build_earnings_deep_dive_report(
-                    ticker=ticker,
-                    company=dummy.company_name,
-                    quarter=dd_req.quarter,
-                    metrics=metrics,
-                    transcript_url=getattr(dd_response, 'transcript_url', None),
-                    language=lang,
-                    section_analysis=sections,
-                    company_overview=company_overview,
-                    yf_info=q_data.get("_raw_info"),
-                )
+
                 os.makedirs(dd_path.parent, exist_ok=True)
                 render_earnings_deep_dive_pdf(report_model, str(dd_path))
                 set_dossier_phase(
@@ -2869,6 +2894,34 @@ async def test_seeking_alpha_access(payload: SeekingAlphaProbeRequest | None = N
 
     ticker = payload.ticker if payload else "NVDA"
     return JSONResponse(await probe_access_async(ticker))
+
+
+@app.post("/api/admin/seeking-alpha/refresh-from-firefox", dependencies=[Depends(_require_auth)])
+async def refresh_from_firefox():
+    """Force-refresh SA cookies from the persistent Firefox profile.
+
+    Long-running (10-30s) because it spawns a headless Firefox. The
+    endpoint is admin-only because it touches the auth store. Use after
+    a SA account re-login, or rely on the 3am cron to keep things
+    fresh automatically.
+    """
+    from backend.seeking_alpha_access import auto_refresh_cookies_if_needed
+
+    result = await auto_refresh_cookies_if_needed()
+    return JSONResponse(result)
+
+
+@app.get("/api/admin/seeking-alpha/freshness")
+async def sa_freshness(_=Depends(_require_auth)):
+    """Return cookie-store freshness without probing SA itself.
+
+    Cheaper than ``/test`` because it doesn't issue any HTTP request.
+    Used by the admin dashboard to decide whether to surface a
+    "your cookies are about to expire" warning.
+    """
+    from backend.seeking_alpha_access import _compute_cookie_freshness, _read_store
+
+    return JSONResponse(_compute_cookie_freshness(_read_store()))
 
 
 # ── Cache transparency ──────────────────────────────────────────────────

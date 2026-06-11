@@ -49,6 +49,129 @@ AUTH_COOKIE_NAMES = {
 }
 ANTIBOT_COOKIE_NAMES = {"pxcts", "_px3", "_pxvid", "cf_clearance"}
 
+# Long-lived session cookies (expiry ≥ 7 days, often 30+).
+# These survive short-lived PerimeterX/analytics rotations and are the
+# ones that keep the SA auth working week-over-week. We preserve them
+# across HAR imports so a fresh HAR never wipes out a still-valid
+# ``slireg`` / ``sa-user-id-v3`` / ``user_remember_token``.
+LONG_LIVED_AUTH_COOKIES = frozenset({
+    "slireg",                   # SA main auth session (~30d)
+    "sa-user-id",               # SA user id v1
+    "sa-user-id-v2",            # SA user id v2
+    "sa-user-id-v3",            # SA user id v3 (current)
+    "user_remember_token",      # SA remember-me (~365d)
+    "remember_user_token",      # legacy alias
+    "gk_user_access",           # SA gatekeeper role (premium flag)
+    "gk_user_access_sign",      # SA gatekeeper signature
+    "user_id",                  # legacy user id
+    "user_nick",                # SA username
+    "user_cookie_key",          # SA cookie key (analytics, but stable)
+    "user_locale",              # UI preference
+    "user_devices",             # device fingerprint (medium-lived)
+    "sapu",                     # SA per-user id
+    "sailthru_hid",             # Sailthru visitor id (months)
+})
+
+# Medium-lived (1-7 days) cookies — refreshed by re-login but useful.
+MEDIUM_LIVED_COOKIES = frozenset({
+    "session_id",               # SA session (rotates)
+    "pxcts",                    # PerimeterX session token
+    "_px3",                     # PerimeterX payload
+    "_pxvid",                   # PerimeterX visitor id (longer than pxcts)
+    "machine_cookie",           # SA machine fingerprint
+    "has_paid_subscription",    # Pro flag (subset of gk_user_access)
+    "ever_pro",                 # Pro flag
+})
+
+# Short-lived / pure-session. Re-generated every browser launch.
+# OK to overwrite on every HAR.
+SHORT_LIVED_COOKIES = frozenset({
+    "_ga", "_ga_*", "_fbp", "_fbc", "_gcl_au", "_hj*", "_ig",
+    "_twpid", "_uet", "_ttp", "_rdt", "_clck", "_clsk",
+    "amplitude_id*", "mp_*_mixpanel", "OptanonConsent",
+    "LAST_VISITED_PAGE", "__hssrc", "__hstc", "hubspotutk",
+    "__stripe_mid", "__stripe_sid",
+    "g_state",  # Google session state, ephemeral
+    "__Secure-3PSIDTS", "__Secure-3PSIDCC", "NID",  # Google auth, long but SA-incompatible
+})
+
+# Default expected lifetime in seconds when the HAR doesn't carry
+# the cookie's own ``expires`` field. PerimeterX session tokens
+# without ``expires`` are session cookies; SA remember tokens are
+# ~1 year. Conservative defaults favor the longer estimate.
+_DEFAULT_TTL_SECONDS = {
+    "LONG": 30 * 24 * 3600,
+    "MEDIUM": 7 * 24 * 3600,
+    "SHORT": 24 * 3600,
+    "UNKNOWN": 24 * 3600,
+}
+
+
+def _categorize_cookie_longevity(name: str) -> str:
+    """Return ``LONG`` / ``MEDIUM`` / ``SHORT`` for a cookie name.
+
+    Used by the smart HAR merge to avoid wiping still-valid auth cookies
+    when a fresh HAR is missing them. ``SHORT`` cookies (analytics, ad
+    pixels) refresh on every browser launch and are safe to overwrite.
+    """
+    if not name:
+        return "UNKNOWN"
+    if name in LONG_LIVED_AUTH_COOKIES:
+        return "LONG"
+    if name in MEDIUM_LIVED_COOKIES:
+        return "MEDIUM"
+    # Exact-match SHORT first (avoids the more expensive prefix loop)
+    if name in SHORT_LIVED_COOKIES:
+        return "SHORT"
+    # Wildcard patterns in SHORT_LIVED_COOKIES. Supported forms:
+    #   ``_ga_*``  → rstrip('*') == '_ga_', match by startswith
+    #   ``mp_*_mixpanel``  → keep the literal ``*_mixpanel`` suffix
+    #                         so ``mp_abc_mixpanel`` matches but
+    #                         ``mp_abc_other`` does not.
+    for pat in SHORT_LIVED_COOKIES:
+        if "*" not in pat:
+            continue
+        if pat.endswith("*"):
+            prefix = pat[:-1]
+            if name.startswith(prefix):
+                return "SHORT"
+            continue
+        if "*" in pat:
+            # Treat the literal portion after ``*`` as a suffix
+            head, _, tail = pat.partition("*")
+            if name.startswith(head) and name.endswith(tail):
+                return "SHORT"
+    return "UNKNOWN"
+
+
+def _estimate_expires_at(name: str, har_expires: float | int | None) -> float | None:
+    """Return the expiry epoch (seconds) for a cookie, or None if unknown.
+
+    ``har_expires`` is the value from the HAR (usually -1 for session
+    cookies, otherwise a unix timestamp). We map it to a usable epoch;
+    session cookies (-1) get a 24h default so the next probe still works.
+    """
+    import time as _time
+    longevity = _categorize_cookie_longevity(name)
+    if har_expires is None or har_expires == -1 or har_expires == 0:
+        # Session cookie or unknown — use longevity default
+        ttl = _DEFAULT_TTL_SECONDS[longevity]
+        return _time.time() + ttl
+    if har_expires < _time.time():
+        # Already expired (HAR was taken more than 1d ago) — treat as session
+        return _time.time() + _DEFAULT_TTL_SECONDS[longevity]
+    return float(har_expires)
+
+
+def _cookies_by_name(cookies_parsed: list[dict[str, str]] | None) -> dict[str, dict[str, str]]:
+    """Index ``cookies_parsed`` by name for O(1) merge lookups."""
+    out: dict[str, dict[str, str]] = {}
+    for c in cookies_parsed or []:
+        name = (c.get("name") or "").strip()
+        if name:
+            out[name] = c
+    return out
+
 
 def _is_earnings_call_transcript_link(label: str, href: str) -> bool:
     """Return True for any transcript article; reject explicit non-transcripts.
@@ -257,6 +380,7 @@ def get_access_status() -> dict[str, Any]:
     payload = _read_store()
     cookie_header = payload.get("cookie_header", "")
     configured = bool(cookie_header)
+    freshness = _compute_cookie_freshness(payload)
     return {
         "configured": configured,
         "cookie_count": _cookie_count(cookie_header) if configured else 0,
@@ -266,6 +390,65 @@ def get_access_status() -> dict[str, Any]:
         "cookie_diagnostics": _cookie_diagnostics(cookie_header),
         "server_side_only": True,
         "test_ticker_default": DEFAULT_TEST_TICKER,
+        "freshness": freshness,
+        "merge_metadata": payload.get("_har_merged", {}),
+    }
+
+
+def _compute_cookie_freshness(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return a freshness summary for the current cookie store.
+
+    The frontend uses this to decide whether to nag the user about a
+    re-upload or whether the long-lived auth cookies are about to expire.
+    """
+    import time as _time
+    now = _time.time()
+    cookies_parsed = payload.get("cookies_parsed") or []
+    cookie_expires = payload.get("cookie_expires") or {}
+    long_lived_present: list[str] = []
+    long_lived_missing: list[str] = []
+    earliest_expiry: float | None = None
+    for name in LONG_LIVED_AUTH_COOKIES:
+        if any(c.get("name") == name for c in cookies_parsed):
+            exp = cookie_expires.get(name)
+            if exp is None and cookies_parsed:
+                # Backfill estimate from cookie name
+                exp = _estimate_expires_at(name, None)
+            if exp is not None:
+                if earliest_expiry is None or exp < earliest_expiry:
+                    earliest_expiry = exp
+            long_lived_present.append(name)
+        else:
+            long_lived_missing.append(name)
+    updated_at = payload.get("updated_at")
+    age_hours: float | None = None
+    if updated_at:
+        try:
+            from datetime import datetime as _dt
+            ts = _dt.fromisoformat(updated_at.replace("Z", "+00:00"))
+            age_hours = max(0.0, (now - ts.timestamp()) / 3600.0)
+        except (ValueError, AttributeError):
+            pass
+    if not cookies_parsed:
+        status = "not_configured"
+    elif long_lived_missing and len(long_lived_missing) >= 3:
+        status = "missing_long_lived_auth"  # user should re-login
+    elif earliest_expiry is not None and earliest_expiry < now + 24 * 3600:
+        status = "expiring_soon"  # next 24h
+    elif age_hours is not None and age_hours > 72:
+        status = "stale_over_72h"  # should refresh
+    else:
+        status = "fresh"
+    return {
+        "status": status,
+        "long_lived_present": long_lived_present,
+        "long_lived_missing": long_lived_missing,
+        "earliest_long_lived_expiry": earliest_expiry,
+        "earliest_long_lived_expiry_iso": (
+            _dt.fromtimestamp(earliest_expiry, tz=timezone.utc).isoformat()
+            if earliest_expiry else None
+        ),
+        "store_age_hours": age_hours,
     }
 
 
@@ -378,8 +561,14 @@ def import_har_cookies(file_path: str | Path) -> dict[str, Any]:
     if entries is None:
         raise ValueError("Not a valid HAR file: missing log.entries")
 
-    # Collect cookies from seekingalpha.com entries
+    # Collect cookies from seekingalpha.com entries.
+    # ``sa_cookies`` keeps the LAST value seen (Chrome/FF usually send
+    # the same value across requests, so last-write-wins is fine).
+    # ``sa_expires`` carries the explicit expires timestamp from the
+    # HAR's structured cookie record, when present (Chrome only — FF
+    # HAR omits this; we then fall back to category-based default).
     sa_cookies: dict[str, str] = {}
+    sa_expires: dict[str, float | int] = {}
     sa_user_agent: str | None = None
 
     for entry in entries:
@@ -390,12 +579,19 @@ def import_har_cookies(file_path: str | Path) -> dict[str, Any]:
         if "seekingalpha.com" not in url:
             continue
 
-        # 1) request.cookies array (structured)
+        # 1) request.cookies array (structured, may carry expires)
         for c in req.get("cookies", []):
             name = (c.get("name") or "").strip()
             value = (c.get("value") or "").strip()
             if name and value:
                 sa_cookies[name] = value
+                # expires is sometimes -1 (session), sometimes a unix ts
+                exp = c.get("expires")
+                if exp is not None and exp != "":
+                    try:
+                        sa_expires[name] = float(exp)
+                    except (TypeError, ValueError):
+                        pass
 
         # 2) Cookie header (raw, may contain cookies not in the array)
         for h in req.get("headers", []):
@@ -424,35 +620,81 @@ def import_har_cookies(file_path: str | Path) -> dict[str, Any]:
             "while logged in."
         )
 
-    # Build cookie header + Netscape-compatible parsed list
+    # ── Smart merge: preserve long-lived auth cookies from the existing
+    # store when the HAR doesn't carry them. This stops a fresh HAR from
+    # wiping out ``slireg`` / ``sa-user-id-v3`` when the user only
+    # re-exported after navigating a single page.
+    existing = _read_store()
+    existing_by_name = _cookies_by_name(existing.get("cookies_parsed"))
+    preserved_long_lived: list[str] = []
+    merged_short_lived: list[str] = []
+    cookie_expires: dict[str, float] = {}
+    cookies_parsed: list[dict[str, Any]] = []
     cookie_parts: list[str] = []
-    cookies_parsed: list[dict[str, str]] = []
+
+    # First pass: walk HAR cookies, but for LONG-lived ones that the HAR
+    # is missing, copy from the existing store. We do NOT silently keep
+    # the existing value if the HAR has a fresher copy of the same name.
+    har_names = set(sa_cookies.keys())
+    for name in existing_by_name:
+        if name in har_names:
+            continue  # HAR is the source of truth
+        longevity = _categorize_cookie_longevity(name)
+        if longevity == "LONG":
+            cookies_parsed.append(dict(existing_by_name[name]))
+            preserved_long_lived.append(name)
+
+    # Second pass: write HAR cookies, computing per-cookie expiry.
     for name, value in sa_cookies.items():
-        cookie_parts.append(f"{name}={value}")
+        expires_at = _estimate_expires_at(name, sa_expires.get(name))
+        # Domain — Chrome HAR often doesn't carry it; default to
+        # .seekingalpha.com (covers both apex and subdomains).
+        domain = ".seekingalpha.com"
         cookies_parsed.append({
             "name": name,
             "value": value,
-            "domain": ".seekingalpha.com",
+            "domain": domain,
             "path": "/",
+            "expires_at": expires_at,
+            "longevity": _categorize_cookie_longevity(name),
         })
+        cookie_parts.append(f"{name}={value}")
+        cookie_expires[name] = expires_at
+        merged_short_lived.append(name)
+
+    # Sort cookies_parsed for deterministic output: LONG first, then by name
+    _longevity_rank = {"LONG": 0, "MEDIUM": 1, "SHORT": 2, "UNKNOWN": 3}
+    cookies_parsed.sort(key=lambda c: (_longevity_rank.get(c.get("longevity", "UNKNOWN"), 3), c.get("name", "")))
 
     cookie_header = "; ".join(cookie_parts)
-    existing = _read_store()
     payload = {
         "cookie_header": cookie_header,
         "cookies_parsed": cookies_parsed,
+        "cookie_expires": cookie_expires,
         "user_agent": (sa_user_agent or existing.get("user_agent") or DEFAULT_USER_AGENT).strip() or DEFAULT_USER_AGENT,
         "created_at": existing.get("created_at") or _now_iso(),
         "updated_at": _now_iso(),
         "_import_source": f"har:{path.name}",
+        "_har_merged": {
+            "har_cookie_count": len(merged_short_lived),
+            "preserved_long_lived": preserved_long_lived,
+            "preserved_count": len(preserved_long_lived),
+            "merge_strategy": "har_overwrites_short_medium_preserves_long",
+        },
     }
     _write_store(payload)
     logger.info(
-        "Imported %d Seeking Alpha cookies from HAR file %s (%d with domain info, UA: %s)",
-        len(cookies_parsed), path.name,
-        sum(1 for c in cookies_parsed if c.get("domain")),
-        "found" if sa_user_agent else "default",
+        "Imported %d SA cookies from HAR %s (preserved %d long-lived: %s)",
+        len(merged_short_lived), path.name,
+        len(preserved_long_lived),
+        ", ".join(preserved_long_lived) or "(none)",
     )
+    if preserved_long_lived:
+        logger.info(
+            "Smart HAR merge kept long-lived auth cookies that were absent "
+            "from the upload: %s",
+            preserved_long_lived,
+        )
     return get_access_status()
 
 
@@ -483,29 +725,32 @@ def build_request_headers(extra_headers: dict[str, str] | None = None) -> dict[s
     return headers
 
 
-def refresh_cookies_from_firefox() -> dict[str, Any]:
+def refresh_cookies_from_firefox(preserve_existing: bool = True) -> dict[str, Any]:
     """Launch Firefox with persistent profile, extract fresh SA cookies.
-    
+
     Uses a persistent Firefox profile so cookies survive across restarts.
     The first run may need manual login; subsequent runs reuse the session.
     Stores extracted cookies in the backend's cookie store.
-    
-    Returns: {"ok": bool, "cookie_count": int, "reason": str}
+
+    When ``preserve_existing=True`` (default), long-lived auth cookies
+    that the live session doesn't carry (e.g. ``slireg`` was rotated)
+    are *kept* from the previous store rather than wiped out. This
+    means a Firefox refresh never downgrades the auth coverage.
     """
-    import time as _time
-    from pathlib import Path
-    
     profile_dir = Path(_storage_path()).parent / "firefox_sa_profile"
     profile_dir.mkdir(parents=True, exist_ok=True)
-    
+
     try:
         from patchright.sync_api import sync_playwright
     except ImportError:
         return {"ok": False, "reason": "patchright_not_installed", "cookie_count": 0}
-    
+
     try:
         with sync_playwright() as p:
-            # Persistent Firefox context — cookies survive across runs
+            # Persistent Firefox context — cookies survive across runs.
+            # We use the same profile that refresh_cookies_from_firefox
+            # has been writing to so existing slireg/user_remember_token
+            # cookies are reused when the browser relaunches.
             browser = p.firefox.launch_persistent_context(
                 str(profile_dir),
                 headless=True,
@@ -513,79 +758,168 @@ def refresh_cookies_from_firefox() -> dict[str, Any]:
                 locale="en-US",
             )
             page = browser.new_page()
-            
+
             # Navigate to SA — if logged in, cookies from profile will authenticate
-            page.goto("https://seekingalpha.com/symbol/NVDA/earnings/transcripts", 
+            page.goto("https://seekingalpha.com/symbol/NVDA/earnings/transcripts",
                      timeout=30000, wait_until="domcontentloaded")
             page.wait_for_timeout(5000)
-            
+
             body = page.inner_text("body")[:1000].lower()
-            
+
             # Check if we're authenticated
             if any(m in body for m in ["press & hold", "verify", "access denied"]):
                 browser.close()
                 return {
-                    "ok": False, 
-                    "reason": "perimeterx_blocked_persistent", 
+                    "ok": False,
+                    "reason": "perimeterx_blocked_persistent",
                     "cookie_count": 0,
                     "hint": "Launch Firefox manually once to log in: playwright.firefox.launch_persistent_context(headless=False)"
                 }
-            
+
             # Extract all cookies from the browser context
             all_cookies = browser.cookies()
             sa_cookies = [c for c in all_cookies if "seekingalpha" in c.get("domain", "")]
-            
-            # Convert to Netscape format for storage
-            cookie_lines = []
-            parsed_cookies = []
+
+            # Convert to parsed format with per-cookie expiry + longevity
+            parsed_cookies: list[dict[str, Any]] = []
+            cookie_expires: dict[str, float] = {}
+            import time as _time
             for c in sa_cookies:
-                cookie_lines.append(
-                    f"{c['domain']}\tTRUE\t{c.get('path', '/')}\t"
-                    f"{'TRUE' if c.get('secure') else 'FALSE'}\t"
-                    f"{int(c.get('expires', -1)) if c.get('expires') and c['expires'] > 0 else 0}\t"
-                    f"{c['name']}\t{c['value']}"
-                )
+                exp = c.get("expires", -1)
+                expires_at: float | None
+                if exp and exp > 0:
+                    expires_at = float(exp)
+                else:
+                    expires_at = _estimate_expires_at(c["name"], None)
                 parsed_cookies.append({
                     "name": c["name"],
                     "value": c["value"],
                     "domain": c.get("domain", ".seekingalpha.com"),
                     "path": c.get("path", "/"),
+                    "expires_at": expires_at,
+                    "longevity": _categorize_cookie_longevity(c["name"]),
                 })
-            
+                if expires_at is not None:
+                    cookie_expires[c["name"]] = expires_at
+
             cookie_header = "; ".join(f"{c['name']}={c['value']}" for c in sa_cookies)
-            
+
             browser.close()
-            
+
             if not sa_cookies:
                 return {"ok": False, "reason": "no_sa_cookies_found", "cookie_count": 0}
-            
-            # Store in the backend cookie store
+
             has_pro = any(
                 str(c.get("value", "")).lower() in ("1", "true")
                 for c in parsed_cookies
                 if c["name"] in ("ever_pro", "has_paid_subscription")
             )
-            
+
+            # Smart merge: keep long-lived cookies from the existing
+            # store that aren't in the fresh Firefox session. This
+            # protects against slireg/sa-user-id-v3 silently dropping
+            # out of the live browser cookie jar.
+            existing = _read_store()
+            preserved: list[str] = []
+            if preserve_existing:
+                existing_by_name = _cookies_by_name(existing.get("cookies_parsed"))
+                live_names = {c["name"] for c in parsed_cookies}
+                for name, c in existing_by_name.items():
+                    if name in live_names:
+                        continue
+                    if _categorize_cookie_longevity(name) == "LONG":
+                        # Re-add to parsed_cookies (LONGEVITY first)
+                        parsed_cookies.append(dict(c))
+                        if not str(cookie_header).endswith(";"):
+                            cookie_header = cookie_header + "; " if cookie_header else ""
+                            # Re-join: we need a single header string
+                        cookie_header = "; ".join(
+                            f"{x['name']}={x['value']}" for x in parsed_cookies
+                        )
+                        preserved.append(name)
+                # Sort LONG first for deterministic output
+                _longevity_rank = {"LONG": 0, "MEDIUM": 1, "SHORT": 2, "UNKNOWN": 3}
+                parsed_cookies.sort(key=lambda c: (
+                    _longevity_rank.get(c.get("longevity", "UNKNOWN"), 3),
+                    c.get("name", ""),
+                ))
+
             store_data = {
                 "cookie_header": cookie_header,
                 "cookies_parsed": parsed_cookies,
+                "cookie_expires": cookie_expires,
+                "user_agent": existing.get("user_agent") or DEFAULT_USER_AGENT,
+                "created_at": existing.get("created_at") or _now_iso(),
+                "updated_at": _now_iso(),
                 "source": "firefox_persistent_profile",
                 "refreshed_at": _now_iso(),
                 "pro_level": has_pro,
+                "_har_merged": {
+                    "har_cookie_count": len(sa_cookies),
+                    "preserved_long_lived": preserved,
+                    "preserved_count": len(preserved),
+                    "merge_strategy": "firefox_refresh_preserves_long_lived",
+                },
             }
             _write_store(store_data)
-            
+
             return {
                 "ok": True,
                 "reason": "cookies_refreshed_from_firefox",
                 "cookie_count": len(sa_cookies),
+                "preserved_long_lived": preserved,
                 "pro_level": has_pro,
                 "profile_dir": str(profile_dir),
             }
-            
+
     except Exception as e:
         logger.warning(f"Firefox cookie refresh failed: {e}")
-        return {"ok": False, "reason": f"error_{type(e).__name__}", "cookie_count": 0}
+        return {"ok": False, "reason": f"error_{type(e).__name__}", "cookie_count": 0, "error": str(e)}
+
+
+async def auto_refresh_cookies_if_needed() -> dict[str, Any]:
+    """Conditionally refresh SA cookies via Firefox when the store looks stale.
+
+    Called by the cron watchdog (3am daily) and by the feedback pipeline
+    when an "access" complaint comes in. Returns the refresh outcome so
+    callers can decide whether to notify Ced.
+
+    Triggers a Firefox refresh when:
+      * freshness.status in {expiring_soon, missing_long_lived_auth, stale_over_72h}
+      * AND the Firefox profile dir already exists (user logged in once)
+
+    If the profile dir is missing, we return a "manual_login_required"
+    hint so the user is told what to do instead of silently failing.
+    """
+    payload = _read_store()
+    freshness = _compute_cookie_freshness(payload)
+    profile_dir = _storage_path().parent / "firefox_sa_profile"
+    profile_exists = profile_dir.exists() and any(profile_dir.iterdir())
+
+    if freshness["status"] in ("fresh", "not_configured"):
+        return {
+            "skipped": True,
+            "reason": f"freshness_{freshness['status']}",
+            "freshness": freshness,
+        }
+
+    if not profile_exists:
+        return {
+            "skipped": True,
+            "reason": "no_firefox_profile",
+            "hint": (
+                "Run `hermes-admin seeking-alpha login-firefox` once manually "
+                "to create the persistent Firefox profile at "
+                f"{profile_dir}, then re-run."
+            ),
+            "freshness": freshness,
+        }
+
+    # Run the sync refresh in a thread (it blocks on browser lifecycle)
+    import asyncio
+    result = await asyncio.to_thread(refresh_cookies_from_firefox)
+    result["freshness"] = _compute_cookie_freshness(_read_store())
+    return result
 
 
 def _probe_with_playwright(listing_url: str, cookie_store: dict) -> dict[str, Any]:
@@ -603,11 +937,29 @@ def _probe_with_playwright(listing_url: str, cookie_store: dict) -> dict[str, An
         return {"ok": False, "reason": "playwright_not_installed", "phase": "playwright_fallback"}
     
     pw_cookies = []
-    # SA-specific cookie prefixes (include PerimeterX, auth, session, and tracking cookies that SA needs)
-    sa_prefixes = ("sa-", "user_", "sapu", "gk_", "ever_", "has_", "sailthru", 
-                   "_px", "pxcts", "machine_", "LAST_", "session_", "u_voc",
-                   "_ga", "_gcl", "_fbp", "_hj", "_ig", "_twpid", "_uet",  # needed for PerimeterX
-                   "g_state", "__stripe", "sailthru")
+    # SA-specific cookie prefixes. We must send ALL of these together —
+    # PerimeterX scores the request fingerprint and refuses the request
+    # when too many of these are missing. The list is intentionally
+    # broad: it's strictly better to send a slightly-stale analytic
+    # cookie than to look bot-shaped.
+    sa_prefixes = (
+        # SA-native
+        "sa-", "user_", "sapu", "gk_", "ever_", "has_", "sailthru",
+        # PerimeterX (anti-bot)
+        "_px", "pxcts", "machine_", "pxvid", "_pxvid", "_px3", "_pxhd",
+        # Session
+        "LAST_", "session_", "u_voc", "slireg", "g_state",
+        # Google analytics + ads
+        "_ga", "_gcl", "_fbp", "_fbc", "_ig", "_hj", "_twpid", "_uet",
+        # NEW: missing in v1 — Cloudflare/PerimeterX/OneTrust/Mixpanel
+        "__cf_bm", "cf_clearance",
+        "OptanonConsent", "OptanonAlertBoxClosed",
+        "amplitude_id", "mp_",  # Mixpanel
+        "_ttp", "_rdt",  # TikTok / Reddit
+        "_clck", "_clsk",  # Microsoft Clarity
+        "hubspotutk", "__hssrc", "__hstc",  # HubSpot
+        "__stripe", "stripe*",
+    )
     for c in cookie_store.get("cookies_parsed", []):
         name = (c.get("name") or "").strip()
         value = (c.get("value") or "")
@@ -629,14 +981,36 @@ def _probe_with_playwright(listing_url: str, cookie_store: dict) -> dict[str, An
     
     try:
         with sync_playwright() as p:
-            # Patchright Chromium — bypasses PerimeterX via anti-detection patches
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(
-                viewport={"width": 1920, "height": 1080},
-                locale="en-US",
-            )
-            context.add_cookies(pw_cookies)
-            page = context.new_page()
+            # Prefer Firefox (camoufox if available) — same engine that
+            # generated the cookie store, so fingerprinting stays
+            # consistent and PerimeterX doesn't see a Chrome vs Firefox
+            # UA mismatch.
+            browser = None
+            profile_dir = _storage_path().parent / "firefox_sa_profile"
+            use_persistent_firefox = profile_dir.exists() and any(profile_dir.iterdir())
+            if use_persistent_firefox:
+                try:
+                    browser = p.firefox.launch_persistent_context(
+                        str(profile_dir),
+                        headless=True,
+                        viewport={"width": 1920, "height": 1080},
+                        locale="en-US",
+                    )
+                    # Reuse the profile's cookies (they include slireg +
+                    # all Px tokens) instead of overriding with pw_cookies
+                    context = browser
+                    page = browser.new_page()
+                except Exception as fx_err:
+                    logger.info("Persistent Firefox unavailable (%s); falling back to chromium", fx_err)
+                    browser = None
+            if browser is None:
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context(
+                    viewport={"width": 1920, "height": 1080},
+                    locale="en-US",
+                )
+                context.add_cookies(pw_cookies)
+                page = context.new_page()
             
             # Step 1: listing page
             page.goto(listing_url, timeout=30000, wait_until="domcontentloaded")
