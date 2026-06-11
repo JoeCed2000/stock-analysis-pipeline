@@ -14,13 +14,21 @@ export default function AdminPage({ t, onClose }) {
   const [page, setPage] = useState(0);
   const [feedbacks, setFeedbacks] = useState([]);
   const [feedbackError, setFeedbackError] = useState('');
+  const [userAgentFilter, setUserAgentFilter] = useState('');
+  const [errorFilter, setErrorFilter] = useState('');
 
   const fetchData = useCallback(async () => {
     try {
       const offset = page * PAGE_SIZE;
+      const searchParams = new URLSearchParams({
+        limit: String(PAGE_SIZE),
+        offset: String(offset),
+      });
+      if (userAgentFilter.trim()) searchParams.set('user_agent', userAgentFilter.trim());
+      if (errorFilter.trim()) searchParams.set('error', errorFilter.trim());
       const [statsRes, searchRes, fbRes] = await Promise.all([
         fetch(`${API}/search-stats`).then(r => r.ok ? r.json() : null),
-        fetch(`${API}/recent-searches?limit=${PAGE_SIZE}&offset=${offset}`).then(r => r.ok ? r.json() : null),
+        fetch(`${API}/recent-searches?${searchParams.toString()}`).then(r => r.ok ? r.json() : null),
         fetch(`${API}/feedback`).then(r => r.ok ? r.json() : { error: `HTTP ${r.status}` }),
       ]);
       if (statsRes) setStats(statsRes);
@@ -37,7 +45,7 @@ export default function AdminPage({ t, onClose }) {
     } catch (e) {
       console.error('[AdminPage] fetch failed:', e);
     }
-  }, [page]);
+  }, [page, userAgentFilter, errorFilter]);
 
   useEffect(() => {
     fetchData();
@@ -46,6 +54,13 @@ export default function AdminPage({ t, onClose }) {
   }, [fetchData]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const hasSearchFilters = Boolean(userAgentFilter.trim() || errorFilter.trim());
+
+  const clearSearchFilters = () => {
+    setUserAgentFilter('');
+    setErrorFilter('');
+    setPage(0);
+  };
 
   const formatTime = (iso) => {
     try { return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
@@ -98,6 +113,48 @@ export default function AdminPage({ t, onClose }) {
           <span style={{ fontSize: 11, color: '#8b949e' }}>
             Page {page + 1} of {totalPages} — {totalCount} total
           </span>
+        </div>
+        <div style={{
+          padding: '10px 16px', borderBottom: '1px solid #30363d',
+          display: 'grid', gridTemplateColumns: 'minmax(180px, 1fr) minmax(180px, 1fr) auto', gap: 8, alignItems: 'center',
+          background: '#0d1117',
+        }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: '#8b949e' }}>
+            User Agent filter
+            <input
+              value={userAgentFilter}
+              onChange={(e) => { setUserAgentFilter(e.target.value); setPage(0); }}
+              placeholder="e.g. Edge, Chrome, curl"
+              style={filterInputStyle}
+            />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: '#8b949e' }}>
+            Error filter
+            <input
+              value={errorFilter}
+              onChange={(e) => { setErrorFilter(e.target.value); setPage(0); }}
+              placeholder="e.g. blocked, timeout, pdf_missing"
+              style={filterInputStyle}
+            />
+          </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignSelf: 'end' }}>
+            <span style={{ fontSize: 11, color: hasSearchFilters ? '#d29922' : '#484f58' }}>
+              {hasSearchFilters ? `Filtered rows: ${totalCount}` : 'No filters'}
+            </span>
+            <button
+              type="button"
+              onClick={clearSearchFilters}
+              disabled={!hasSearchFilters}
+              style={{
+                padding: '6px 10px', borderRadius: 6, border: '1px solid #30363d',
+                background: hasSearchFilters ? '#21262d' : '#0d1117',
+                color: hasSearchFilters ? '#c9d1d9' : '#484f58',
+                cursor: hasSearchFilters ? 'pointer' : 'default', fontSize: 12,
+              }}
+            >
+              Clear filters
+            </button>
+          </div>
         </div>
         <div style={{ maxHeight: 500, overflowY: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -327,6 +384,12 @@ function StatCard({ label, value, color }) {
     </div>
   );
 }
+
+const filterInputStyle = {
+  width: '100%', padding: '7px 9px', borderRadius: 6,
+  border: '1px solid #30363d', background: '#161b22',
+  color: '#e1e4e8', fontSize: 12, outline: 'none', boxSizing: 'border-box',
+};
 
 const thStyle = {
   textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600,

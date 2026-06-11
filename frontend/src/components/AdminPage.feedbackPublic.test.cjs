@@ -39,8 +39,28 @@ assert(
 );
 
 assert(
-  source.includes('fetch(`${API}/recent-searches?limit=${PAGE_SIZE}&offset=${offset}`)'),
-  'Admin search history must use public read-only /api/recent-searches so the table remains visible in production'
+  source.includes('const searchParams = new URLSearchParams'),
+  'Admin search history must build URLSearchParams so filters are encoded safely'
+);
+
+assert(
+  source.includes("searchParams.set('user_agent', userAgentFilter.trim())"),
+  'Admin search history must expose a User Agent filter query param'
+);
+
+assert(
+  source.includes("searchParams.set('error', errorFilter.trim())"),
+  'Admin search history must expose an Error filter query param'
+);
+
+assert(
+  source.includes('fetch(`${API}/recent-searches?${searchParams.toString()}`)'),
+  'Admin search history must use public read-only /api/recent-searches with encoded filters so the table remains visible in production'
+);
+
+assert(
+  source.includes('Filtered rows') && source.includes('Clear filters'),
+  'Admin search history must show filtered-row feedback and a clear action'
 );
 
 assert(

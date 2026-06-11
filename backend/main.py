@@ -2444,17 +2444,30 @@ async def list_analyses():
     return JSONResponse({"analyses": analyses})
 
 
-def _recent_searches_payload(limit: int = 50, offset: int = 0, status: str = "all") -> dict:
+def _recent_searches_payload(
+    limit: int = 50,
+    offset: int = 0,
+    status: str = "all",
+    user_agent: str = "",
+    error: str = "",
+) -> dict:
     """Build the read-only recent search payload used by admin and public UI routes."""
-    from backend.search_db import read_recent_sqlite, _ensure_db, DB_PATH
-    import sqlite3
+    from backend.search_db import read_recent_sqlite, count_recent_sqlite
 
-    results = read_recent_sqlite(limit=max(1, min(limit, 200)), offset=max(0, offset), status_filter=status)
-    # Get total count for pagination
-    _ensure_db()
-    conn = sqlite3.connect(str(DB_PATH))
-    total = conn.execute("SELECT COUNT(*) as n FROM searches").fetchone()[0]
-    conn.close()
+    bounded_limit = max(1, min(limit, 200))
+    bounded_offset = max(0, offset)
+    results = read_recent_sqlite(
+        limit=bounded_limit,
+        offset=bounded_offset,
+        status_filter=status,
+        user_agent_filter=user_agent.strip(),
+        error_filter=error.strip(),
+    )
+    total = count_recent_sqlite(
+        status_filter=status,
+        user_agent_filter=user_agent.strip(),
+        error_filter=error.strip(),
+    )
     return {"total": total, "searches": results}
 
 
@@ -2466,28 +2479,54 @@ def _search_stats_payload() -> dict:
 
 
 @app.get("/api/recent-searches")
-async def public_recent_searches(limit: int = 50, offset: int = 0, status: str = "all"):
+async def public_recent_searches(
+    limit: int = 50,
+    offset: int = 0,
+    status: str = "all",
+    user_agent: str = "",
+    error: str = "",
+):
     """Public read-only recent search events for the static production dashboard.
 
     The static frontend cannot carry an admin API key. This route exposes only
     already-visible operational search metadata; privileged admin routes remain
     protected under `/api/admin/*`.
     """
-    return JSONResponse(_recent_searches_payload(limit=limit, offset=offset, status=status))
+    return JSONResponse(_recent_searches_payload(
+        limit=limit,
+        offset=offset,
+        status=status,
+        user_agent=user_agent,
+        error=error,
+    ))
 
 
 @app.get("/api/admin/recent-searches", dependencies=[Depends(_require_auth)])
-async def recent_searches(limit: int = 50, offset: int = 0, status: str = "all"):
+async def recent_searches(
+    limit: int = 50,
+    offset: int = 0,
+    status: str = "all",
+    user_agent: str = "",
+    error: str = "",
+):
     """Get recent search events for near-real-time monitoring.
     
     Query params:
     - limit: max number of events (default 50, max 200)
     - offset: pagination offset (default 0)
     - status: "all", "completed", or "failed" (default "all")
+    - user_agent: case-insensitive substring filter for user agent
+    - error: case-insensitive substring filter for error text
     
     Returns {total: int, searches: [{timestamp, ticker, status, duration_ms, cache_hit, user_agent}]}
     """
-    return JSONResponse(_recent_searches_payload(limit=limit, offset=offset, status=status))
+    return JSONResponse(_recent_searches_payload(
+        limit=limit,
+        offset=offset,
+        status=status,
+        user_agent=user_agent,
+        error=error,
+    ))
 
 
 @app.get("/api/search-stats")

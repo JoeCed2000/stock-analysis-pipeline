@@ -78,7 +78,20 @@ def log_search_sqlite(
     conn.close()
 
 
-def _read_recent_jsonl(limit: int = 50, offset: int = 0, status_filter: str = "all") -> list:
+def _text_filter_matches(value: str, needle: str) -> bool:
+    """Case-insensitive substring match for admin text filters."""
+    if not needle:
+        return True
+    return needle.casefold() in str(value or "").casefold()
+
+
+def _read_recent_jsonl(
+    limit: int = 50,
+    offset: int = 0,
+    status_filter: str = "all",
+    user_agent_filter: str = "",
+    error_filter: str = "",
+) -> list:
     """Fallback reader for the durable JSONL log.
 
     SQLite is queryable, but JSONL is the append-only source that already has
@@ -100,6 +113,10 @@ def _read_recent_jsonl(limit: int = 50, offset: int = 0, status_filter: str = "a
             except json.JSONDecodeError:
                 continue
             if status_filter != "all" and entry.get("status") != status_filter:
+                continue
+            if not _text_filter_matches(entry.get("user_agent", ""), user_agent_filter):
+                continue
+            if not _text_filter_matches(entry.get("error", ""), error_filter):
                 continue
             rows.append(entry)
 
@@ -146,7 +163,13 @@ def _stats_from_jsonl() -> dict:
     }
 
 
-def read_recent_sqlite(limit: int = 50, offset: int = 0, status_filter: str = "all") -> list:
+def read_recent_sqlite(
+    limit: int = 50,
+    offset: int = 0,
+    status_filter: str = "all",
+    user_agent_filter: str = "",
+    error_filter: str = "",
+) -> list:
     """Read recent searches from SQLite, newest first.
 
     Falls back to the append-only JSONL log when SQLite has no rows. This keeps
@@ -158,23 +181,69 @@ def read_recent_sqlite(limit: int = 50, offset: int = 0, status_filter: str = "a
     bounded_offset = max(0, offset)
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
-    
-    if status_filter == "all":
-        rows = conn.execute(
-            "SELECT timestamp, ticker, status, duration_ms, cache_hit, user_agent, client_ip, error FROM searches ORDER BY id DESC LIMIT ? OFFSET ?",
-            (bounded_limit, bounded_offset),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT timestamp, ticker, status, duration_ms, cache_hit, user_agent, client_ip, error FROM searches WHERE status = ? ORDER BY id DESC LIMIT ? OFFSET ?",
-            (status_filter, bounded_limit, bounded_offset),
-        ).fetchall()
-    
+
+    filters = []
+    params = []
+    if status_filter != "all":
+        filters.append("status = ?")
+        params.append(status_filter)
+    if user_agent_filter:
+        filters.append("LOWER(user_agent) LIKE ?")
+        params.append(f"%{user_agent_filter.lower()}%")
+    if error_filter:
+        filters.append("LOWER(error) LIKE ?")
+        params.append(f"%{error_filter.lower()}%")
+    where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+
+    rows = conn.execute(
+        f"SELECT timestamp, ticker, status, duration_ms, cache_hit, user_agent, client_ip, error FROM searches {where_clause} ORDER BY id DESC LIMIT ? OFFSET ?",
+        (*params, bounded_limit, bounded_offset),
+    ).fetchall()
+    sqlite_total_rows = conn.execute("SELECT COUNT(*) FROM searches").fetchone()[0]
+
     conn.close()
     results = [dict(r) for r in rows]
-    if results:
+    if results or sqlite_total_rows > 0:
         return results
-    return _read_recent_jsonl(limit=bounded_limit, offset=bounded_offset, status_filter=status_filter)
+    return _read_recent_jsonl(
+        limit=bounded_limit,
+        offset=bounded_offset,
+        status_filter=status_filter,
+        user_agent_filter=user_agent_filter,
+        error_filter=error_filter,
+    )
+
+
+def count_recent_sqlite(status_filter: str = "all", user_agent_filter: str = "", error_filter: str = "") -> int:
+    """Count recent searches with the same filters used by read_recent_sqlite."""
+    _ensure_db()
+    conn = sqlite3.connect(str(DB_PATH))
+
+    filters = []
+    params = []
+    if status_filter != "all":
+        filters.append("status = ?")
+        params.append(status_filter)
+    if user_agent_filter:
+        filters.append("LOWER(user_agent) LIKE ?")
+        params.append(f"%{user_agent_filter.lower()}%")
+    if error_filter:
+        filters.append("LOWER(error) LIKE ?")
+        params.append(f"%{error_filter.lower()}%")
+    where_clause = f"WHERE {' AND '.join(filters)}" if filters else ""
+
+    count = conn.execute(f"SELECT COUNT(*) FROM searches {where_clause}", tuple(params)).fetchone()[0]
+    sqlite_total_rows = conn.execute("SELECT COUNT(*) FROM searches").fetchone()[0]
+    conn.close()
+    if count > 0 or sqlite_total_rows > 0:
+        return count
+    return len(_read_recent_jsonl(
+        limit=100000,
+        offset=0,
+        status_filter=status_filter,
+        user_agent_filter=user_agent_filter,
+        error_filter=error_filter,
+    ))
 
 
 def get_stats() -> dict:

@@ -1,5 +1,24 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-11 — Admin search filters for User Agent and Error
+
+**Status:** Implemented and verified.
+
+**Change:**
+- `backend/search_db.py`: `read_recent_sqlite()` now supports case-insensitive `user_agent_filter` and `error_filter`, with matching `count_recent_sqlite()` totals and JSONL fallback filtering.
+- `backend/main.py`: public and protected recent-search routes now accept `user_agent` and `error` query params; pagination totals reflect the active filters.
+- `frontend/src/components/AdminPage.jsx`: Admin → All Searches now has User Agent and Error filter inputs, resets pagination to page 1 when filters change, displays filtered row count, and provides a clear button.
+- `frontend/src/components/AdminPage.feedbackPublic.test.cjs` and `tests/test_search_db_fallback.py`: regression tests cover encoded frontend query params and backend SQLite/JSONL filtering.
+
+**Verification:**
+- `PYTHONPATH=. backend/.venv/bin/pytest tests/test_search_db_fallback.py -q` → **4 passed**.
+- `cd frontend && node src/components/AdminPage.feedbackPublic.test.cjs` → OK.
+- `backend/.venv/bin/python -m py_compile backend/search_db.py backend/main.py` → OK.
+- `cd frontend && npm run build` → OK, bundle `index-DOq3LSKI.js`.
+- `/home/ced/.hermes/hermes-agent/venv/bin/tb sa-check` → ALL OK.
+- Live API: `/api/recent-searches?limit=3&user_agent=pdf-client-failure&error=pdf_blocked` → `total=26`, rows match both filters.
+- Browser prod: `https://sa.cedlabusa.net/?v=admin-filters-1#admin` shows both filter inputs, `Filtered rows: 26`, and zero JS console errors.
+
 ## 2026-06-11 — Cookie-store security hardening after cookies_status_corrections.txt
 
 **Status:** Implemented and locally verified.
