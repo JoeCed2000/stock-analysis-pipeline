@@ -1287,8 +1287,19 @@ def _verdict_rows(metrics: FinancialMetrics, row_labels: tuple[str, ...], scorin
     except (TypeError, ValueError):
         ocf_num = 0
     cash_quality = "Strong" if ocf_num > 0 and rev_num > 0 else "Monitor"
+    # Beat/miss claims require consensus data. Without an estimate, the
+    # pre-render contract (check 25c) forbids beat/miss vocabulary — say
+    # "not calculable from reviewed sources" instead of implying a miss.
+    has_consensus = (
+        metrics.eps_vs_estimate is not None
+        or (metrics.eps_actual is not None and metrics.eps_estimate is not None)
+    )
     eq_positive = f"EPS {eps_val}{' beat' if eps_beat else ''}"
-    eq_negative = "No material earnings red flags in reported data" if eps_beat else "EPS did not beat consensus"
+    eq_negative = (
+        "No material earnings red flags in reported data" if eps_beat
+        else "EPS did not beat consensus" if has_consensus
+        else "Beat/miss not calculable from reviewed sources"
+    )
     eq_assessment = "Solid — earnings backed by cash flow" if (eps_beat and cash_quality == "Strong") else "Adequate"
 
     # ---- Growth durability ----
@@ -1701,8 +1712,30 @@ def _default_section_analysis(
         "Guidance": f"🧠 Guidance reads as: {guidance}. This section resets expectations after the reported quarter by linking management's forward comments to revenue, margins, and EPS. 👉 Strong trailing results deserve a lower valuation weight if the next-quarter guide implies slowing demand or margin pressure.",
         "Verdict": f"🎯 The verdict combines revenue of {revenue}, EPS of {eps}, free cash flow of {fcf}, operating margin of {operating_margin}, and forward P/E of {pe}. The investment call should not rest on one metric. 👉 The risk/reward improves when growth, cash conversion, and valuation are aligned; it weakens when any one of those pillars breaks.",
     }
+    # Consensus-aware EPS & Revenue commentary: without estimate data, the
+    # pre-render contract (check 25c) forbids beat/miss/surprise vocabulary —
+    # the commentary must state the limitation ("not calculable from reviewed
+    # sources") instead of discussing a surprise that cannot be computed.
+    has_consensus = (
+        getattr(metrics, "eps_estimate", None) is not None
+        or getattr(metrics, "revenue_estimate", None) is not None
+        or getattr(metrics, "eps_vs_estimate", None) is not None
+    )
+    if not has_consensus:
+        text["EPS & Revenue"] = (
+            f"🧠 EPS was {eps} and revenue was {revenue}, with YoY revenue growth of {revenue_yoy}. "
+            "No independent consensus estimate was retrieved for this quarter, so estimate variance is "
+            "not calculable from reviewed sources. The read therefore rests on the reported actuals and "
+            "their YoY direction. 👉 Treat the absence of consensus as a data limitation, not as a signal "
+            "in either direction."
+        )
+
     audit = {
-        "EPS & Revenue": f"● Audit read: tie each surprise back to the EPS and revenue rows before calling the quarter strong or weak. For {ticker}, a revenue beat without EPS leverage would point to cost pressure, while EPS strength without revenue support could be mix, tax, buybacks, or one-time items. 👉 The source-safe conclusion is the intersection of estimate variance, YoY growth, and management explanation.",
+        "EPS & Revenue": (
+            f"● Audit read: tie each surprise back to the EPS and revenue rows before calling the quarter strong or weak. For {ticker}, a revenue beat without EPS leverage would point to cost pressure, while EPS strength without revenue support could be mix, tax, buybacks, or one-time items. 👉 The source-safe conclusion is the intersection of estimate variance, YoY growth, and management explanation."
+            if has_consensus else
+            f"● Audit read: with no consensus retrieved, estimate variance is not calculable from reviewed sources. For {ticker}, anchor the read on reported EPS, revenue, and YoY growth, and confirm each against the source dossier. 👉 Do not infer how the quarter compared to expectations; flag the missing consensus as an audit item."
+        ),
         "Operating Metrics": f"● Audit read: compare the income statement from top line to operating income. Revenue growth of {revenue_yoy} is more convincing when gross margin and operating margin move with it. If gross margin is stable but operating margin weakens, OpEx is the pressure point; if gross margin weakens first, pricing, mix, or input costs need source confirmation.",
         "Cash Flow": "● Audit read: cash conversion should reconcile earnings quality with balance-sheet movement. A quarter can show strong EPS while free cash flow lags because of working capital timing, inventory, receivables, or heavy capex. The PDF should therefore keep OCF, CapEx, and FCF separate instead of collapsing them into a single cash-flow judgment.",
         "Capital Efficiency": "● Audit read: returns on capital are useful only when the denominator is understood. ROE can rise because operations improved, because equity fell after buybacks, or because leverage increased. ROIC is the cleaner operating lens, but it still needs to be read beside cash generation and reinvestment requirements before assigning a quality premium.",
