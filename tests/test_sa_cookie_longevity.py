@@ -188,41 +188,53 @@ class TestHarSmartMerge:
         assert result["cookie_count"] == 3
 
     def test_har_preserves_long_lived_when_missing(self, state_dir):
-        """When a fresh HAR omits slireg, the existing store's slireg is kept."""
+        """When a fresh HAR omits slireg, the existing store's slireg is kept.
+
+        With the downgrade-protection fix, even when the HAR DOES carry
+        the same long-lived name (sa-user-id-v3), the store's still-valid
+        copy wins over the HAR's value. To force replacement, the user
+        must clear the store first.
+        """
         # Step 1: upload a full HAR
+        future = time.time() + 30 * 24 * 3600
         har_full = _make_har([
-            {"name": "slireg", "value": "ORIGINAL_SLIREG"},
-            {"name": "sa-user-id-v3", "value": "ORIGINAL_SA_V3"},
-            {"name": "_ga", "value": "GA1.1.111"},
+            {"name": "slireg", "value": "ORIGINAL_SLIREG", "expires": future},
+            {"name": "sa-user-id-v3", "value": "ORIGINAL_SA_V3", "expires": future},
+            {"name": "_ga", "value": "GA1.1.111", "expires": -1},
         ])
         sa.import_har_cookies(har_full)
 
-        # Step 2: upload a partial HAR (missing slireg, fresher _ga)
+        # Step 2: upload a partial HAR (missing slireg, has different
+        # sa-user-id-v3 and _ga). The store wins for ALL long-lived
+        # because it's still valid. Short-lived (_ga) is overwritten.
         har_partial = _make_har([
-            {"name": "sa-user-id-v3", "value": "FRESH_SA_V3"},
-            {"name": "_ga", "value": "GA1.1.222"},
+            {"name": "sa-user-id-v3", "value": "FRESH_SA_V3", "expires": -1},
+            {"name": "_ga", "value": "GA1.1.222", "expires": -1},
         ])
-        result = sa.import_har_cookies(har_partial)
-        # The store should have all 3 cookies
-        # slireg preserved (LONG), sa-user-id-v3 overwritten (HAR has it),
-        # _ga overwritten (HAR has it)
+        sa.import_har_cookies(har_partial)
+
+        # The store should still have all 3 cookies
         names = {c["name"] for c in sa._read_store().get("cookies_parsed", [])}
-        assert "slireg" in names, "slireg must be preserved across partial HAR"
+        assert "slireg" in names, "slireg must be preserved (HAR missing it)"
         assert "sa-user-id-v3" in names
         assert "_ga" in names
 
-        # slireg value must be the ORIGINAL (not overwritten, not in HAR)
         store_cookies = sa._read_store().get("cookies_parsed", [])
+
+        # slireg value must be the ORIGINAL (not in HAR → kept)
         slireg = next(c for c in store_cookies if c["name"] == "slireg")
         assert slireg["value"] == "ORIGINAL_SLIREG"
 
-        # sa-user-id-v3 must be the FRESH one
+        # sa-user-id-v3 must STILL be the ORIGINAL (downgrade protected)
         sa_v3 = next(c for c in store_cookies if c["name"] == "sa-user-id-v3")
-        assert sa_v3["value"] == "FRESH_SA_V3"
+        assert sa_v3["value"] == "ORIGINAL_SA_V3", (
+            "sa-user-id-v3 should be downgrade-protected when the store's "
+            "expiry is fresher than the HAR"
+        )
 
-        # Merge metadata should report preservation
-        meta = result.get("merge_metadata", {})
-        assert "slireg" in meta.get("preserved_long_lived", [])
+        # _ga was free to update (SHORT-lived)
+        ga = next(c for c in store_cookies if c["name"] == "_ga")
+        assert ga["value"] == "GA1.1.222"
 
     def test_har_short_lived_overwrites_every_time(self, state_dir):
         har1 = _make_har([{"name": "_ga", "value": "v1"}])
@@ -265,6 +277,79 @@ class TestHarSmartMerge:
         }), encoding="utf-8")
         with pytest.raises(ValueError, match="No Seeking Alpha cookies"):
             sa.import_har_cookies(p)
+
+    def test_har_cannot_downgrade_still_valid_long_lived(self, state_dir):
+        """Uploading a HAR with a 'stale' slireg must NOT overwrite a fresher
+        one in the store. The store's value wins for the whole 30-day window
+        (or until the user explicitly clears the store).
+        """
+        # Step 1: full HAR with slireg valid for 30d
+        future = time.time() + 30 * 24 * 3600
+        har_full = _make_har([
+            {"name": "slireg", "value": "FRESH_VALUE", "expires": future},
+            {"name": "sa-user-id-v3", "value": "FRESH_SA_V3", "expires": future},
+        ])
+        sa.import_har_cookies(har_full)
+
+        store = sa._read_store()
+        slireg = next(c for c in store["cookies_parsed"] if c["name"] == "slireg")
+        assert slireg["value"] == "FRESH_VALUE"
+
+        # Step 2: upload a HAR from a DIFFERENT browser/account with a
+        # different slireg. The store's still-valid slireg must win.
+        har_other_account = _make_har([
+            {"name": "slireg", "value": "OTHER_ACCOUNT_SLIREG", "expires": -1},
+            {"name": "_ga", "value": "GA1.1.different"},
+        ])
+        result = sa.import_har_cookies(har_other_account)
+        meta = result.get("merge_metadata", {})
+
+        # slireg must still be the FRESH one, not the other-account one
+        store = sa._read_store()
+        slireg_after = next(c for c in store["cookies_parsed"] if c["name"] == "slireg")
+        assert slireg_after["value"] == "FRESH_VALUE", (
+            "Store slireg was overwritten by a HAR with worse/no expiry!"
+        )
+
+        # _ga was free to update (SHORT)
+        ga = next(c for c in store["cookies_parsed"] if c["name"] == "_ga")
+        assert ga["value"] == "GA1.1.different"
+
+        # Meta should report the downgrade protection
+        assert "slireg" in meta.get("downgrade_protected", []), (
+            f"Expected slireg in downgrade_protected, got {meta}"
+        )
+
+    def test_har_cannot_replace_long_lived_with_backfilled_expiry(self, state_dir):
+        """Even if the HAR shows an expired slireg, the store's backfilled
+        30d default keeps it alive. To force replacement, the user must
+        clear the store explicitly.
+        """
+        # Step 1: import a slireg whose expires is in the past
+        #         (simulating an old session — the smart merge backfills
+        #         expires_at to now+30d because slireg is LONG-lived)
+        ancient = time.time() - 24 * 3600
+        har_old = _make_har([
+            {"name": "slireg", "value": "OLD_SLIREG", "expires": ancient},
+        ])
+        sa.import_har_cookies(har_old)
+
+        store = sa._read_store()
+        slireg = next(c for c in store["cookies_parsed"] if c["name"] == "slireg")
+        # expires_at was backfilled with the LONG default = now + 30d
+        assert slireg["expires_at"] > time.time() + 29 * 24 * 3600
+
+        # Step 2: upload a HAR with a different slireg. Store's
+        # backfilled 30d expiry still wins — the HAR is rejected
+        # to avoid clobbering a still-valid store value.
+        har_new = _make_har([
+            {"name": "slireg", "value": "NEW_SLIREG", "expires": ancient},
+        ])
+        sa.import_har_cookies(har_new)
+        store = sa._read_store()
+        slireg_after = next(c for c in store["cookies_parsed"] if c["name"] == "slireg")
+        # Store wins
+        assert slireg_after["value"] == "OLD_SLIREG"
 
 
 # ─────────────────────────────────────────────────────────────────────

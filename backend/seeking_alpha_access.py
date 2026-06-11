@@ -621,34 +621,60 @@ def import_har_cookies(file_path: str | Path) -> dict[str, Any]:
         )
 
     # ── Smart merge: preserve long-lived auth cookies from the existing
-    # store when the HAR doesn't carry them. This stops a fresh HAR from
-    # wiping out ``slireg`` / ``sa-user-id-v3`` when the user only
-    # re-exported after navigating a single page.
+    # store. Two rules, both for the goal of "never lose a still-valid
+    # long-lived cookie":
+    #   1. If the HAR is MISSING a long-lived cookie that the store has,
+    #      keep the store's copy (preserved_long_lived).
+    #   2. If the HAR has a long-lived cookie but the store's copy is
+    #      STILL VALID (expires_at > now), keep the store's copy
+    #      (downgrade_protected). The HAR's copy is logged but not
+    #      used. This protects against uploading a HAR from a
+    #      different browser/SA account that would otherwise wipe out
+    #      a perfectly good 30-day cookie.
     existing = _read_store()
     existing_by_name = _cookies_by_name(existing.get("cookies_parsed"))
+    existing_expires = existing.get("cookie_expires") or {}
     preserved_long_lived: list[str] = []
+    downgrade_protected: list[str] = []
     merged_short_lived: list[str] = []
     cookie_expires: dict[str, float] = {}
     cookies_parsed: list[dict[str, Any]] = []
     cookie_parts: list[str] = []
+    import time as _time
+    now_ts = _time.time()
 
     # First pass: walk HAR cookies, but for LONG-lived ones that the HAR
-    # is missing, copy from the existing store. We do NOT silently keep
-    # the existing value if the HAR has a fresher copy of the same name.
+    # is missing, copy from the existing store.
     har_names = set(sa_cookies.keys())
     for name in existing_by_name:
         if name in har_names:
-            continue  # HAR is the source of truth
+            continue  # HAR also has it — handled in 2nd pass
         longevity = _categorize_cookie_longevity(name)
         if longevity == "LONG":
             cookies_parsed.append(dict(existing_by_name[name]))
             preserved_long_lived.append(name)
 
-    # Second pass: write HAR cookies, computing per-cookie expiry.
+    # Second pass: write HAR cookies, but PROTECT long-lived ones.
+    # For LONG cookies: if the store has a still-valid copy, keep it
+    # and skip the HAR value (downgrade_protected). Otherwise use HAR.
     for name, value in sa_cookies.items():
+        longevity = _categorize_cookie_longevity(name)
         expires_at = _estimate_expires_at(name, sa_expires.get(name))
-        # Domain — Chrome HAR often doesn't carry it; default to
-        # .seekingalpha.com (covers both apex and subdomains).
+
+        if longevity == "LONG" and name in existing_by_name:
+            existing_exp = existing_expires.get(name)
+            if existing_exp is None:
+                # Backfill estimate from the existing cookie name
+                existing_exp = _estimate_expires_at(name, None)
+            if existing_exp is not None and existing_exp > now_ts:
+                # Existing is still valid — DON'T downgrade from HAR
+                cookies_parsed.append(dict(existing_by_name[name]))
+                cookie_parts.append(f"{name}={existing_by_name[name].get('value', '')}")
+                cookie_expires[name] = existing_exp
+                downgrade_protected.append(name)
+                continue
+
+        # Default: use the HAR value
         domain = ".seekingalpha.com"
         cookies_parsed.append({
             "name": name,
@@ -656,7 +682,7 @@ def import_har_cookies(file_path: str | Path) -> dict[str, Any]:
             "domain": domain,
             "path": "/",
             "expires_at": expires_at,
-            "longevity": _categorize_cookie_longevity(name),
+            "longevity": longevity,
         })
         cookie_parts.append(f"{name}={value}")
         cookie_expires[name] = expires_at
@@ -678,22 +704,30 @@ def import_har_cookies(file_path: str | Path) -> dict[str, Any]:
         "_har_merged": {
             "har_cookie_count": len(merged_short_lived),
             "preserved_long_lived": preserved_long_lived,
-            "preserved_count": len(preserved_long_lived),
-            "merge_strategy": "har_overwrites_short_medium_preserves_long",
+            "downgrade_protected": downgrade_protected,
+            "preserved_count": len(preserved_long_lived) + len(downgrade_protected),
+            "merge_strategy": "long_lived_protected_from_downgrade",
         },
     }
     _write_store(payload)
     logger.info(
-        "Imported %d SA cookies from HAR %s (preserved %d long-lived: %s)",
+        "Imported %d SA cookies from HAR %s (preserved %d long-lived, downgrade-protected %d)",
         len(merged_short_lived), path.name,
-        len(preserved_long_lived),
-        ", ".join(preserved_long_lived) or "(none)",
+        len(preserved_long_lived), len(downgrade_protected),
     )
     if preserved_long_lived:
         logger.info(
             "Smart HAR merge kept long-lived auth cookies that were absent "
             "from the upload: %s",
             preserved_long_lived,
+        )
+    if downgrade_protected:
+        logger.warning(
+            "Smart HAR merge REFUSED to overwrite still-valid long-lived "
+            "cookies with HAR values (existing store has fresher expiry): %s. "
+            "If you really need to replace them, clear the store first via "
+            "POST /api/admin/seeking-alpha/access/clear.",
+            downgrade_protected,
         )
     return get_access_status()
 
