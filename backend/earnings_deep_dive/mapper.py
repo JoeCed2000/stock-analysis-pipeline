@@ -1438,7 +1438,13 @@ def _compute_final_verdict(ticker: str, metrics: FinancialMetrics) -> str:
     if rev_yoy_num <= 0: concerns.append("declining revenue")
 
     strength_str = ", ".join(strengths) if strengths else "no clear positives"
-    concern_str = ", ".join(concerns) if concerns else "no major red flags"
+    # Never claim "no major red flags": only 3 quantitative checks ran here,
+    # and that categorical claim contradicts any risk discussion in the LLM
+    # verdict prose (pre-render check 21c, verdict_no_red_flags_paradox).
+    concern_str = (
+        ", ".join(concerns) if concerns
+        else "none triggered by the quantitative checks (margins, valuation, growth)"
+    )
 
     scoring_note = (
         "\n\n📝 Scoring methodology: This 0-5 score is a simplified quick check "

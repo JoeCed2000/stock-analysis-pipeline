@@ -107,6 +107,23 @@ def test_effective_section_analysis_covers_all_sections():
     assert all(isinstance(v, str) for v in effective.values())
 
 
+def test_verdict_fallback_does_not_claim_no_red_flags_against_risk_prose():
+    """The mapper's deterministic verdict summary must not claim 'no major
+    red flags' (it only runs 3 quantitative checks) when the LLM verdict
+    prose legitimately discusses risks — that combination tripped check 21c
+    (verdict_no_red_flags_paradox) on the normalized content."""
+    raw = dict(UNSUBSTANTIATED_RAW)
+    raw["Verdict"] = (
+        "## Verdict\n\n"
+        "The quarter showed solid execution, but competition is intensifying, "
+        "regulatory uncertainty persists in key markets, and supply chain "
+        "pressure could become a headwind for margins. **HOLD**.\n"
+    )
+    _, eff_val, report = _effective_validation("ACME", raw, GENERIC_METRICS)
+    assert not _has_error(eff_val, "verdict_no_red_flags_paradox"), \
+        [w.detail for w in eff_val.errors]
+
+
 def test_non_regression_valid_fixture_renders_pdf(tmp_path):
     """End-to-end with the new order: a normal valid report must pass the
     effective gate and still render a PDF."""
