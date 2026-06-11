@@ -179,6 +179,48 @@ class TestSeekingAlphaAccessAdmin:
         assert payload["ticker"] == "NVDA"
         assert payload["url"].endswith("/symbol/NVDA/earnings/transcripts")
 
+    @pytest.mark.asyncio
+    async def test_probe_handles_playwright_negative_result_without_keyerror(self, monkeypatch):
+        """A Playwright PRO-cookie failure must be returned as a clean diagnosis.
+
+        Regression: _probe_with_playwright() can return negative outcomes such as
+        mpw_locked_even_with_playwright without an authenticated key. The outer
+        probe must not collapse that into request_error "'authenticated'".
+        """
+        from backend import seeking_alpha_access as saa
+
+        store = {
+            "cookie_header": "ever_pro=1; has_paid_subscription=true; sapu=abc; _px3=anti",
+            "cookies_parsed": [
+                {"name": "ever_pro", "value": "1", "domain": ".seekingalpha.com", "path": "/"},
+                {"name": "has_paid_subscription", "value": "true", "domain": ".seekingalpha.com", "path": "/"},
+                {"name": "sapu", "value": "abc", "domain": ".seekingalpha.com", "path": "/"},
+                {"name": "_px3", "value": "anti", "domain": ".seekingalpha.com", "path": "/"},
+            ],
+        }
+        saa._write_store(store)
+
+        monkeypatch.setattr(
+            saa,
+            "_probe_with_playwright",
+            lambda listing_url, cookie_store: {
+                "ok": False,
+                "reason": "mpw_locked_even_with_playwright",
+                "text_length": 1200,
+                "url": "https://seekingalpha.com/article/123-test-transcript",
+                "phase": "playwright_transcript",
+            },
+        )
+
+        result = await saa.probe_access_async("nvda")
+
+        assert result["ok"] is False
+        assert result["authenticated"] is False
+        assert result["reachable"] is True
+        assert result["reason"] == "mpw_locked_even_with_playwright"
+        assert result["probe_method"] == "transcript_deep_probe"
+        assert "error" not in result
+
     def test_probe_link_filter_ranks_earnings_call_above_conference_transcript(self):
         """Transcript links must be classified and ranked, not binary-rejected.
 

@@ -1155,7 +1155,15 @@ def _probe_with_playwright(listing_url: str, cookie_store: dict) -> dict[str, An
             body = page.inner_text("body")[:500].lower()
             if any(m in body for m in ["press & hold", "verify", "access denied", "are you a robot"]):
                 browser.close()
-                return {"ok": False, "reason": "blocked_perimeterx", "phase": "playwright_listing"}
+                return {
+                    "ok": False,
+                    "authenticated": False,
+                    "reachable": False,
+                    "blocked": True,
+                    "url": listing_url,
+                    "reason": "blocked_perimeterx",
+                    "phase": "playwright_listing",
+                }
             
             # Step 2: find first transcript article link
             links = page.query_selector_all('a[href*="/article/"]')
@@ -1173,7 +1181,15 @@ def _probe_with_playwright(listing_url: str, cookie_store: dict) -> dict[str, An
             
             if not article_url:
                 browser.close()
-                return {"ok": False, "reason": "no_article_link_found", "phase": "playwright_listing"}
+                return {
+                    "ok": False,
+                    "authenticated": False,
+                    "reachable": True,
+                    "blocked": False,
+                    "url": listing_url,
+                    "reason": "no_article_link_found",
+                    "phase": "playwright_listing",
+                }
             
             # Step 3: fetch article with JS
             page.goto(article_url, timeout=30000, wait_until="domcontentloaded")
@@ -1222,9 +1238,14 @@ def _probe_with_playwright(listing_url: str, cookie_store: dict) -> dict[str, An
             elif is_mpw_locked and text_len < 5000:
                 return {
                     "ok": False,
+                    "authenticated": False,
+                    "reachable": True,
+                    "blocked": False,
+                    "status_code": 200,
                     "reason": "mpw_locked_even_with_playwright",
                     "text_length": text_len,
                     "url": article_url,
+                    "mpw_locked": True,
                     "phase": "playwright_transcript",
                     "tested_at": _now_iso(),
                 }
@@ -1409,9 +1430,18 @@ async def probe_access_async(ticker: str | None = None) -> dict[str, Any]:
                 }
 
         probe_result = await asyncio.to_thread(_deep_probe)
+        probe_authenticated = bool(probe_result.get("authenticated", probe_result.get("ok", False)))
+        probe_reachable = bool(
+            probe_result.get(
+                "reachable",
+                bool(probe_result.get("url")) and not probe_result.get("blocked", False),
+            )
+        )
         return {
             **status,
-            "ok": probe_result["authenticated"] and not probe_result.get("mpw_locked", False),
+            "ok": probe_authenticated and not probe_result.get("mpw_locked", False),
+            "authenticated": probe_authenticated,
+            "reachable": probe_reachable,
             "ticker": clean_ticker,
             **probe_result,
             "probe_method": "transcript_deep_probe",
