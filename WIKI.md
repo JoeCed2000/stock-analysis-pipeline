@@ -1,5 +1,34 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-11 — Cookie-store security hardening after cookies_status_corrections.txt
+
+**Status:** Implemented and locally verified.
+
+**Root cause:** The first smart-HAR implementation protected long-lived SA auth cookies, but several paths were inconsistent: preserved HAR cookies were present in `cookies_parsed` but missing from `cookie_header`, legacy stores without recorded expiries could keep backfilling `now+30d` and block legitimate HAR replacement, the freshness status counted individual alias cookies instead of auth families, and `_write_store()` briefly created temp files with default permissions before chmod.
+
+**Change:**
+- `backend/seeking_alpha_access.py`:
+  - Preserved long-lived cookies are now written to all three store views: `cookies_parsed`, `cookie_header`, and `cookie_expires`.
+  - HAR downgrade protection now only applies when an existing cookie has a recorded, still-valid expiry; legacy stores without `cookie_expires` can be replaced by a fresh HAR.
+  - Freshness now checks required auth families (`session`, `user_id`, `remember`) and exposes `missing_families`, while keeping `missing_long_lived_auth` status for existing consumers.
+  - `save_access()` now keeps `cookie_header`, `cookies_parsed`, and `cookie_expires` synchronized, preserving absent LONG cookies in both header and parsed store.
+  - Netscape import now records `expires_at`, `longevity`, and `cookie_expires`.
+  - `clear_access(purge_firefox_profile=True)` can explicitly purge `.state/firefox_sa_profile`; default remains non-destructive.
+  - HAR host filtering now uses `urlsplit().hostname`, so a malicious non-SA host that only mentions the SA domain in a query string cannot import cookies.
+  - `_write_store()` creates the temp file with `0600` at open time and cleans orphan `.tmp` files on exceptions.
+  - Cookie tiers corrected: `ever_pro` / `has_paid_subscription` are LONG, `_pxhd` is MEDIUM, `_gat` / `_gid` are SHORT; dead/confusing code around Firefox refresh and Stripe prefix cleaned.
+- `backend/main.py`: `DELETE /api/admin/seeking-alpha/access?purge_profile=true` passes the explicit purge flag to `clear_access()`.
+- `tests/test_sa_cookie_longevity.py`: regression coverage added for all P1 cookie-store bugs plus security/consistency cases from the desktop correction file.
+
+**Verification:**
+- RED phase: `PYTHONPATH=. backend/.venv/bin/pytest tests/test_sa_cookie_longevity.py -q` → **12 failed, 29 passed** before production changes.
+- GREEN phase: `PYTHONPATH=. backend/.venv/bin/pytest tests/test_sa_cookie_longevity.py tests/test_seeking_alpha_access.py -q` → **55 passed, 2 warnings**.
+- `git diff --check` → OK.
+- `backend/.venv/bin/python -m py_compile backend/seeking_alpha_access.py backend/main.py` → OK.
+- `.state/` confirmed ignored by git: `.gitignore:58:.state/`.
+
+**Security note:** No real cookie values were added to tests, logs, or docs; all regression values are fake (`test-value-*`, `OLD_SLIREG`, etc.).
+
 ## 2026-06-11 — Smart HAR merge + Firefox auto-refresh: SA cookies last longer
 
 **Status:** Implemented, tested, deployed.

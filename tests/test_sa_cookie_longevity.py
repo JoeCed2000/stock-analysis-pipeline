@@ -45,8 +45,25 @@ class TestCookieLongevity:
             assert sa._categorize_cookie_longevity(name) == "LONG", name
 
     def test_medium_lived_cookies(self):
-        for name in ["session_id", "pxcts", "_px3", "_pxvid", "machine_cookie", "ever_pro"]:
+        for name in ["session_id", "pxcts", "_px3", "_pxvid", "machine_cookie", "_pxhd"]:
             assert sa._categorize_cookie_longevity(name) == "MEDIUM", name
+
+    def test_classification_tiers_security_contract(self):
+        cases = [
+            ("ever_pro", "LONG"),
+            ("has_paid_subscription", "LONG"),
+            ("_pxhd", "MEDIUM"),
+            ("_gat", "SHORT"),
+            ("_gid", "SHORT"),
+            ("_ga", "SHORT"),
+            ("_ga_ABC123", "SHORT"),
+            ("mp_abc_mixpanel", "SHORT"),
+            ("mp_abc_other", "UNKNOWN"),
+            ("slireg", "LONG"),
+            ("inconnu_xyz", "UNKNOWN"),
+        ]
+        for name, expected in cases:
+            assert sa._categorize_cookie_longevity(name) == expected, name
 
     def test_short_lived_cookies_exact(self):
         for name in ["_ga", "_fbp", "_fbc", "_gcl_au", "_twpid", "hubspotutk", "g_state"]:
@@ -236,6 +253,33 @@ class TestHarSmartMerge:
         ga = next(c for c in store_cookies if c["name"] == "_ga")
         assert ga["value"] == "GA1.1.222"
 
+    def test_preserved_long_lived_cookie_is_in_cookie_header(self, state_dir):
+        future = time.time() + 30 * 24 * 3600
+        sa._write_store({
+            "cookie_header": "slireg=disk-value; _ga=old",
+            "cookies_parsed": [
+                {
+                    "name": "slireg",
+                    "value": "disk-value",
+                    "domain": ".seekingalpha.com",
+                    "path": "/",
+                    "expires_at": future,
+                    "longevity": "LONG",
+                },
+                {"name": "_ga", "value": "old", "domain": ".seekingalpha.com", "path": "/", "longevity": "SHORT"},
+            ],
+            "cookie_expires": {"slireg": future},
+            "created_at": "2026-06-11T00:00:00+00:00",
+            "updated_at": "2026-06-11T00:00:00+00:00",
+        })
+        har = _make_har([{"name": "_ga", "value": "new"}])
+
+        sa.import_har_cookies(har)
+        store = sa._read_store()
+
+        assert "slireg=disk-value" in store["cookie_header"]
+        assert "slireg" in store["cookie_expires"]
+
     def test_har_short_lived_overwrites_every_time(self, state_dir):
         har1 = _make_har([{"name": "_ga", "value": "v1"}])
         sa.import_har_cookies(har1)
@@ -320,36 +364,34 @@ class TestHarSmartMerge:
             f"Expected slireg in downgrade_protected, got {meta}"
         )
 
-    def test_har_cannot_replace_long_lived_with_backfilled_expiry(self, state_dir):
-        """Even if the HAR shows an expired slireg, the store's backfilled
-        30d default keeps it alive. To force replacement, the user must
-        clear the store explicitly.
+    def test_legacy_store_without_recorded_expiry_can_be_replaced_by_har(self, state_dir):
+        """Downgrade protection only applies when the store recorded a valid expiry.
+
+        Legacy stores created before cookie_expires existed must not lock a
+        long-lived cookie forever by backfilling now+30d on every HAR import.
         """
-        # Step 1: import a slireg whose expires is in the past
-        #         (simulating an old session — the smart merge backfills
-        #         expires_at to now+30d because slireg is LONG-lived)
-        ancient = time.time() - 24 * 3600
-        har_old = _make_har([
-            {"name": "slireg", "value": "OLD_SLIREG", "expires": ancient},
-        ])
-        sa.import_har_cookies(har_old)
+        sa._write_store({
+            "cookie_header": "slireg=OLD_SLIREG",
+            "cookies_parsed": [{
+                "name": "slireg",
+                "value": "OLD_SLIREG",
+                "domain": ".seekingalpha.com",
+                "path": "/",
+                "longevity": "LONG",
+            }],
+            "created_at": "2026-06-11T00:00:00+00:00",
+            "updated_at": "2026-06-11T00:00:00+00:00",
+        })
 
-        store = sa._read_store()
-        slireg = next(c for c in store["cookies_parsed"] if c["name"] == "slireg")
-        # expires_at was backfilled with the LONG default = now + 30d
-        assert slireg["expires_at"] > time.time() + 29 * 24 * 3600
-
-        # Step 2: upload a HAR with a different slireg. Store's
-        # backfilled 30d expiry still wins — the HAR is rejected
-        # to avoid clobbering a still-valid store value.
+        future = time.time() + 30 * 24 * 3600
         har_new = _make_har([
-            {"name": "slireg", "value": "NEW_SLIREG", "expires": ancient},
+            {"name": "slireg", "value": "NEW_SLIREG", "expires": future},
         ])
-        sa.import_har_cookies(har_new)
+        result = sa.import_har_cookies(har_new)
         store = sa._read_store()
         slireg_after = next(c for c in store["cookies_parsed"] if c["name"] == "slireg")
-        # Store wins
-        assert slireg_after["value"] == "OLD_SLIREG"
+        assert slireg_after["value"] == "NEW_SLIREG"
+        assert "slireg" not in result.get("merge_metadata", {}).get("downgrade_protected", [])
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -382,7 +424,7 @@ class TestCookieFreshness:
         assert freshness["long_lived_missing"] == []
 
     def test_missing_long_lived_auth_triggers_warning(self, state_dir):
-        # Only 1 of 16 long-lived cookies present
+        # Missing the required user_id and remember families.
         cookies = [{"name": "slireg", "value": "x", "domain": ".sa.com", "path": "/",
                     "expires_at": time.time() + 30 * 24 * 3600, "longevity": "LONG"}]
         payload = {
@@ -393,7 +435,46 @@ class TestCookieFreshness:
         freshness = sa._compute_cookie_freshness(payload)
         assert freshness["status"] == "missing_long_lived_auth"
         assert "slireg" in freshness["long_lived_present"]
-        assert len(freshness["long_lived_missing"]) >= 3
+        assert "user_id" in freshness["missing_families"]
+        assert "remember" in freshness["missing_families"]
+
+    def test_healthy_store_with_alias_gaps_is_not_flagged_missing(self, state_dir):
+        future = time.time() + 30 * 24 * 3600
+        cookies = [
+            {"name": "slireg", "value": "x", "domain": ".sa.com", "path": "/", "expires_at": future, "longevity": "LONG"},
+            {"name": "sa-user-id-v3", "value": "123", "domain": ".sa.com", "path": "/", "expires_at": future, "longevity": "LONG"},
+            {"name": "user_remember_token", "value": "remember", "domain": ".sa.com", "path": "/", "expires_at": future, "longevity": "LONG"},
+            {"name": "gk_user_access", "value": "1", "domain": ".sa.com", "path": "/", "expires_at": future, "longevity": "LONG"},
+        ]
+        payload = {
+            "cookies_parsed": cookies,
+            "cookie_expires": {c["name"]: c["expires_at"] for c in cookies},
+            "updated_at": "2026-06-11T18:00:00+00:00",
+        }
+        freshness = sa._compute_cookie_freshness(payload)
+        assert freshness["status"] == "fresh"
+        assert freshness["missing_families"] == []
+
+    def test_missing_session_family_is_flagged(self, state_dir):
+        future = time.time() + 30 * 24 * 3600
+        cookies = [
+            {"name": "sa-user-id-v3", "value": "123", "domain": ".sa.com", "path": "/", "expires_at": future, "longevity": "LONG"},
+            {"name": "user_remember_token", "value": "remember", "domain": ".sa.com", "path": "/", "expires_at": future, "longevity": "LONG"},
+        ]
+        freshness = sa._compute_cookie_freshness({
+            "cookies_parsed": cookies,
+            "cookie_expires": {c["name"]: c["expires_at"] for c in cookies},
+            "updated_at": "2026-06-11T18:00:00+00:00",
+        })
+        assert freshness["status"] == "missing_long_lived_auth"
+        assert "session" in freshness["missing_families"]
+
+    def test_freshness_without_updated_at_does_not_crash(self, state_dir):
+        freshness = sa._compute_cookie_freshness({
+            "cookies_parsed": [{"name": "slireg", "value": "x"}],
+        })
+        assert isinstance(freshness, dict)
+        assert "status" in freshness
 
     def test_expiring_soon_when_within_24h(self, state_dir):
         # All long-lived present, but one expires in 6h
@@ -438,3 +519,97 @@ class TestAccessStatusIncludesFreshness:
         assert result["freshness"]["status"] == "not_configured"
         assert "merge_metadata" in result
         assert result["merge_metadata"] == {}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Additional cookie-store security corrections
+# ─────────────────────────────────────────────────────────────────────
+
+
+class TestCookieStoreCorrections:
+    def test_netscape_import_records_cookie_expires(self, state_dir, tmp_path):
+        cookie_file = tmp_path / "cookies.txt"
+        cookie_file.write_text("slireg\ttest-value-1\t.seekingalpha.com\t/\n", encoding="utf-8")
+
+        sa.import_netscape_cookies(cookie_file)
+        store = sa._read_store()
+
+        assert "slireg" in store["cookie_expires"]
+        slireg = next(c for c in store["cookies_parsed"] if c["name"] == "slireg")
+        assert slireg["longevity"] == "LONG"
+        assert slireg["expires_at"] == store["cookie_expires"]["slireg"]
+
+    def test_save_access_keeps_header_and_parsed_consistent(self, state_dir):
+        future = time.time() + 30 * 24 * 3600
+        sa._write_store({
+            "cookie_header": "slireg=old; _ga=old",
+            "cookies_parsed": [
+                {"name": "slireg", "value": "old", "domain": ".seekingalpha.com", "path": "/", "longevity": "LONG", "expires_at": future},
+                {"name": "_ga", "value": "old", "domain": ".seekingalpha.com", "path": "/", "longevity": "SHORT", "expires_at": future},
+            ],
+            "cookie_expires": {"slireg": future, "_ga": future},
+        })
+
+        sa.save_access("pxcts=abc; _px3=def")
+        store = sa._read_store()
+        header_names = {part.split("=", 1)[0].strip() for part in store["cookie_header"].split(";") if "=" in part}
+        parsed_names = {c["name"] for c in store["cookies_parsed"]}
+
+        assert header_names == parsed_names
+        assert "slireg" in header_names
+        assert store["cookie_expires"]["slireg"] == future
+
+    def test_clear_access_purges_firefox_profile_when_asked(self, state_dir):
+        profile_dir = state_dir / "firefox_sa_profile"
+        profile_dir.mkdir(parents=True)
+        (profile_dir / "cookies.sqlite").write_text("fake", encoding="utf-8")
+        sa._write_store({"cookie_header": "slireg=x"})
+
+        sa.clear_access(purge_firefox_profile=True)
+
+        assert not profile_dir.exists()
+        assert not sa._storage_path().exists()
+
+    def test_clear_access_keeps_firefox_profile_by_default(self, state_dir):
+        profile_dir = state_dir / "firefox_sa_profile"
+        profile_dir.mkdir(parents=True)
+        (profile_dir / "cookies.sqlite").write_text("fake", encoding="utf-8")
+        sa._write_store({"cookie_header": "slireg=x"})
+
+        sa.clear_access()
+
+        assert profile_dir.exists()
+        assert not sa._storage_path().exists()
+
+    def test_har_rejects_non_sa_host_with_sa_in_query(self, state_dir):
+        p = Path("/tmp/evil_har.json")
+        p.write_text(json.dumps({
+            "log": {"version": "1.2", "entries": [{
+                "request": {
+                    "url": "https://evil.example/?next=seekingalpha.com",
+                    "cookies": [{"name": "slireg", "value": "evil-value", "expires": time.time() + 3600}],
+                    "headers": [{"name": "Cookie", "value": "slireg=evil-value"}],
+                }
+            }]}
+        }), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="No Seeking Alpha cookies"):
+            sa.import_har_cookies(p)
+
+    def test_write_store_tmp_cleanup_after_json_error(self, state_dir, monkeypatch):
+        original_dumps = sa.json.dumps
+
+        def boom(*args, **kwargs):
+            raise TypeError("boom")
+
+        monkeypatch.setattr(sa.json, "dumps", boom)
+        with pytest.raises(TypeError):
+            sa._write_store({"cookie_header": "slireg=x"})
+
+        assert not sa._storage_path().exists()
+        assert not sa._storage_path().with_suffix(sa._storage_path().suffix + ".tmp").exists()
+        monkeypatch.setattr(sa.json, "dumps", original_dumps)
+
+    def test_write_store_permissions_are_0600(self, state_dir):
+        sa._write_store({"cookie_header": "slireg=x"})
+        assert (sa._storage_path().stat().st_mode & 0o777) == 0o600

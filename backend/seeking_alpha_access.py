@@ -10,10 +10,12 @@ import json
 import logging
 import os
 import re
+import shutil
 from datetime import datetime, timezone
 from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from backend.http_client import http
 from backend.storage_paths import REPO_ROOT
@@ -70,7 +72,15 @@ LONG_LIVED_AUTH_COOKIES = frozenset({
     "user_devices",             # device fingerprint (medium-lived)
     "sapu",                     # SA per-user id
     "sailthru_hid",             # Sailthru visitor id (months)
+    "has_paid_subscription",    # Pro flag (stable subscription flag)
+    "ever_pro",                 # Pro flag (stable subscription flag)
 })
+
+REQUIRED_AUTH_FAMILIES: dict[str, frozenset[str]] = {
+    "session": frozenset({"slireg"}),
+    "user_id": frozenset({"sa-user-id", "sa-user-id-v2", "sa-user-id-v3", "user_id"}),
+    "remember": frozenset({"user_remember_token", "remember_user_token"}),
+}
 
 # Medium-lived (1-7 days) cookies — refreshed by re-login but useful.
 MEDIUM_LIVED_COOKIES = frozenset({
@@ -78,15 +88,14 @@ MEDIUM_LIVED_COOKIES = frozenset({
     "pxcts",                    # PerimeterX session token
     "_px3",                     # PerimeterX payload
     "_pxvid",                   # PerimeterX visitor id (longer than pxcts)
+    "_pxhd",                    # PerimeterX history token
     "machine_cookie",           # SA machine fingerprint
-    "has_paid_subscription",    # Pro flag (subset of gk_user_access)
-    "ever_pro",                 # Pro flag
 })
 
 # Short-lived / pure-session. Re-generated every browser launch.
 # OK to overwrite on every HAR.
 SHORT_LIVED_COOKIES = frozenset({
-    "_ga", "_ga_*", "_fbp", "_fbc", "_gcl_au", "_hj*", "_ig",
+    "_ga", "_ga_*", "_gat", "_gid", "_fbp", "_fbc", "_gcl_au", "_hj*", "_ig",
     "_twpid", "_uet", "_ttp", "_rdt", "_clck", "_clsk",
     "amplitude_id*", "mp_*_mixpanel", "OptanonConsent",
     "LAST_VISITED_PAGE", "__hssrc", "__hstc", "hubspotutk",
@@ -144,8 +153,8 @@ def _categorize_cookie_longevity(name: str) -> str:
     return "UNKNOWN"
 
 
-def _estimate_expires_at(name: str, har_expires: float | int | None) -> float | None:
-    """Return the expiry epoch (seconds) for a cookie, or None if unknown.
+def _estimate_expires_at(name: str, har_expires: float | int | None) -> float:
+    """Return the expiry epoch (seconds) for a cookie.
 
     ``har_expires`` is the value from the HAR (usually -1 for session
     cookies, otherwise a unix timestamp). We map it to a usable epoch;
@@ -163,9 +172,9 @@ def _estimate_expires_at(name: str, har_expires: float | int | None) -> float | 
     return float(har_expires)
 
 
-def _cookies_by_name(cookies_parsed: list[dict[str, str]] | None) -> dict[str, dict[str, str]]:
+def _cookies_by_name(cookies_parsed: list[dict[str, Any]] | None) -> dict[str, dict[str, Any]]:
     """Index ``cookies_parsed`` by name for O(1) merge lookups."""
-    out: dict[str, dict[str, str]] = {}
+    out: dict[str, dict[str, Any]] = {}
     for c in cookies_parsed or []:
         name = (c.get("name") or "").strip()
         if name:
@@ -364,16 +373,24 @@ def _read_store() -> dict[str, Any]:
 def _write_store(payload: dict[str, Any]) -> None:
     path = _storage_path()
     tmp_path = path.with_suffix(path.suffix + ".tmp")
-    tmp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    replaced = False
     try:
-        os.chmod(tmp_path, 0o600)
-    except OSError:
-        pass
-    tmp_path.replace(path)
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+        data = json.dumps(payload, indent=2, ensure_ascii=False)
+        fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(data)
+        os.replace(tmp_path, path)
+        replaced = True
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+    finally:
+        if not replaced:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def get_access_status() -> dict[str, Any]:
@@ -398,21 +415,25 @@ def get_access_status() -> dict[str, Any]:
 def _compute_cookie_freshness(payload: dict[str, Any]) -> dict[str, Any]:
     """Return a freshness summary for the current cookie store.
 
-    The frontend uses this to decide whether to nag the user about a
-    re-upload or whether the long-lived auth cookies are about to expire.
+    Required auth is evaluated by cookie *families* so generation aliases
+    (sa-user-id-v3 vs older ids, remember token aliases, etc.) do not make a
+    healthy session look permanently incomplete.
     """
     import time as _time
     now = _time.time()
     cookies_parsed = payload.get("cookies_parsed") or []
     cookie_expires = payload.get("cookie_expires") or {}
+    present_names = {c.get("name") for c in cookies_parsed if c.get("name")}
     long_lived_present: list[str] = []
     long_lived_missing: list[str] = []
     earliest_expiry: float | None = None
     for name in LONG_LIVED_AUTH_COOKIES:
-        if any(c.get("name") == name for c in cookies_parsed):
+        if name in present_names:
             exp = cookie_expires.get(name)
+            if exp is None:
+                cookie = next((c for c in cookies_parsed if c.get("name") == name), {})
+                exp = cookie.get("expires_at")
             if exp is None and cookies_parsed:
-                # Backfill estimate from cookie name
                 exp = _estimate_expires_at(name, None)
             if exp is not None:
                 if earliest_expiry is None or exp < earliest_expiry:
@@ -420,18 +441,22 @@ def _compute_cookie_freshness(payload: dict[str, Any]) -> dict[str, Any]:
             long_lived_present.append(name)
         else:
             long_lived_missing.append(name)
+    missing_families = [
+        family
+        for family, names in REQUIRED_AUTH_FAMILIES.items()
+        if not (present_names & names)
+    ]
     updated_at = payload.get("updated_at")
     age_hours: float | None = None
     if updated_at:
         try:
-            from datetime import datetime as _dt
-            ts = _dt.fromisoformat(updated_at.replace("Z", "+00:00"))
+            ts = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
             age_hours = max(0.0, (now - ts.timestamp()) / 3600.0)
         except (ValueError, AttributeError):
             pass
     if not cookies_parsed:
         status = "not_configured"
-    elif long_lived_missing and len(long_lived_missing) >= 3:
+    elif missing_families:
         status = "missing_long_lived_auth"  # user should re-login
     elif earliest_expiry is not None and earliest_expiry < now + 24 * 3600:
         status = "expiring_soon"  # next 24h
@@ -443,9 +468,10 @@ def _compute_cookie_freshness(payload: dict[str, Any]) -> dict[str, Any]:
         "status": status,
         "long_lived_present": long_lived_present,
         "long_lived_missing": long_lived_missing,
+        "missing_families": missing_families,
         "earliest_long_lived_expiry": earliest_expiry,
         "earliest_long_lived_expiry_iso": (
-            _dt.fromtimestamp(earliest_expiry, tz=timezone.utc).isoformat()
+            datetime.fromtimestamp(earliest_expiry, tz=timezone.utc).isoformat()
             if earliest_expiry else None
         ),
         "store_age_hours": age_hours,
@@ -455,34 +481,81 @@ def _compute_cookie_freshness(payload: dict[str, Any]) -> dict[str, Any]:
 def save_access(cookie_header: str, user_agent: str | None = None) -> dict[str, Any]:
     normalized = _normalize_cookie_header(cookie_header)
     existing = _read_store()
+    existing_by_name = _cookies_by_name(existing.get("cookies_parsed"))
+    existing_expires = existing.get("cookie_expires") or {}
+    incoming: dict[str, str] = {}
+    for part in normalized.split(";"):
+        if "=" not in part:
+            continue
+        name, value = part.strip().split("=", 1)
+        if name.strip():
+            incoming[name.strip()] = value.strip()
+
+    cookies_parsed: list[dict[str, Any]] = []
+    cookie_expires: dict[str, float] = {}
+    cookie_parts: list[str] = []
+
+    # Preserve existing LONG cookies absent from the pasted header.
+    for name, cookie in existing_by_name.items():
+        if name in incoming:
+            continue
+        if _categorize_cookie_longevity(name) != "LONG":
+            continue
+        preserved = dict(cookie)
+        exp = float(existing_expires.get(name) or preserved.get("expires_at") or _estimate_expires_at(name, None))
+        preserved.setdefault("domain", ".seekingalpha.com")
+        preserved.setdefault("path", "/")
+        preserved["longevity"] = _categorize_cookie_longevity(name)
+        preserved["expires_at"] = exp
+        cookies_parsed.append(preserved)
+        cookie_parts.append(f"{name}={preserved.get('value', '')}")
+        cookie_expires[name] = exp
+
+    for name, value in incoming.items():
+        existing_cookie = existing_by_name.get(name, {})
+        longevity = _categorize_cookie_longevity(name)
+        exp = float(existing_expires.get(name) or existing_cookie.get("expires_at") or _estimate_expires_at(name, None))
+        cookies_parsed.append({
+            "name": name,
+            "value": value,
+            "domain": existing_cookie.get("domain") or ".seekingalpha.com",
+            "path": existing_cookie.get("path") or "/",
+            "expires_at": exp,
+            "longevity": longevity,
+        })
+        cookie_parts.append(f"{name}={value}")
+        cookie_expires[name] = exp
+
+    _longevity_rank = {"LONG": 0, "MEDIUM": 1, "SHORT": 2, "UNKNOWN": 3}
+    cookies_parsed.sort(key=lambda c: (_longevity_rank.get(c.get("longevity", "UNKNOWN"), 3), c.get("name", "")))
     payload = {
-        "cookie_header": normalized,
+        "cookie_header": "; ".join(cookie_parts),
+        "cookies_parsed": cookies_parsed,
+        "cookie_expires": cookie_expires,
         "user_agent": (user_agent or existing.get("user_agent") or DEFAULT_USER_AGENT).strip() or DEFAULT_USER_AGENT,
         "created_at": existing.get("created_at") or _now_iso(),
         "updated_at": _now_iso(),
     }
-    # Preserve cookies_parsed if already present (from Netscape import)
-    if existing.get("cookies_parsed"):
-        payload["cookies_parsed"] = existing["cookies_parsed"]
     _write_store(payload)
-    logger.info("Seeking Alpha cookies saved server-side (%s cookies)", _cookie_count(normalized))
+    logger.info("Seeking Alpha cookies saved server-side (%s cookies)", _cookie_count(payload["cookie_header"]))
     return get_access_status()
 
 
 def import_netscape_cookies(file_path: str | Path) -> dict[str, Any]:
     """Import cookies from a Netscape-format cookie file (browser export).
-    
+
     Parses the tab-separated format preserving per-cookie domain/path,
     which is critical for Seeking Alpha PerimeterX bypass via Playwright.
     """
-    path = Path(file_path)
-    if not path.exists():
+    source_path = Path(file_path)
+    if not source_path.exists():
         raise FileNotFoundError(f"Cookie file not found: {file_path}")
-    
-    lines = path.read_text().splitlines()
-    cookies_parsed: list[dict[str, str]] = []
+
+    lines = source_path.read_text().splitlines()
+    cookies_parsed: list[dict[str, Any]] = []
     cookie_parts: list[str] = []
-    
+    cookie_expires: dict[str, float] = {}
+
     for line in lines:
         line = line.strip()
         if not line or line.startswith('#'):
@@ -493,23 +566,29 @@ def import_netscape_cookies(file_path: str | Path) -> dict[str, Any]:
             value = parts[1].strip()
             if name and value:
                 domain = parts[2].strip() if len(parts) > 2 else "seekingalpha.com"
-                path = parts[3].strip() if len(parts) > 3 else "/"
+                cookie_path = parts[3].strip() if len(parts) > 3 else "/"
+                expires_at = _estimate_expires_at(name, None)
+                longevity = _categorize_cookie_longevity(name)
                 cookies_parsed.append({
                     "name": name,
                     "value": value,
                     "domain": domain,
-                    "path": path,
+                    "path": cookie_path,
+                    "expires_at": expires_at,
+                    "longevity": longevity,
                 })
                 cookie_parts.append(f"{name}={value}")
-    
+                cookie_expires[name] = expires_at
+
     if not cookie_parts:
         raise ValueError("No valid cookies found in Netscape file")
-    
+
     cookie_header = "; ".join(cookie_parts)
     existing = _read_store()
     payload = {
         "cookie_header": cookie_header,
         "cookies_parsed": cookies_parsed,
+        "cookie_expires": cookie_expires,
         "user_agent": existing.get("user_agent") or DEFAULT_USER_AGENT,
         "created_at": existing.get("created_at") or _now_iso(),
         "updated_at": _now_iso(),
@@ -575,8 +654,10 @@ def import_har_cookies(file_path: str | Path) -> dict[str, Any]:
         req = entry.get("request", {})
         url = req.get("url", "")
 
-        # Only Seeking Alpha domains
-        if "seekingalpha.com" not in url:
+        # Only Seeking Alpha domains; do not trust URLs that merely mention
+        # seekingalpha.com in their path/query string.
+        host = urlsplit(url).hostname or ""
+        if not (host == "seekingalpha.com" or host.endswith(".seekingalpha.com")):
             continue
 
         # 1) request.cookies array (structured, may carry expires)
@@ -636,7 +717,7 @@ def import_har_cookies(file_path: str | Path) -> dict[str, Any]:
     existing_expires = existing.get("cookie_expires") or {}
     preserved_long_lived: list[str] = []
     downgrade_protected: list[str] = []
-    merged_short_lived: list[str] = []
+    written_from_har: list[str] = []
     cookie_expires: dict[str, float] = {}
     cookies_parsed: list[dict[str, Any]] = []
     cookie_parts: list[str] = []
@@ -651,7 +732,15 @@ def import_har_cookies(file_path: str | Path) -> dict[str, Any]:
             continue  # HAR also has it — handled in 2nd pass
         longevity = _categorize_cookie_longevity(name)
         if longevity == "LONG":
-            cookies_parsed.append(dict(existing_by_name[name]))
+            preserved = dict(existing_by_name[name])
+            exp = float(existing_expires.get(name) or preserved.get("expires_at") or _estimate_expires_at(name, None))
+            preserved.setdefault("domain", ".seekingalpha.com")
+            preserved.setdefault("path", "/")
+            preserved["longevity"] = longevity
+            preserved["expires_at"] = exp
+            cookies_parsed.append(preserved)
+            cookie_parts.append(f"{name}={preserved.get('value', '')}")
+            cookie_expires[name] = exp
             preserved_long_lived.append(name)
 
     # Second pass: write HAR cookies, but PROTECT long-lived ones.
@@ -663,9 +752,6 @@ def import_har_cookies(file_path: str | Path) -> dict[str, Any]:
 
         if longevity == "LONG" and name in existing_by_name:
             existing_exp = existing_expires.get(name)
-            if existing_exp is None:
-                # Backfill estimate from the existing cookie name
-                existing_exp = _estimate_expires_at(name, None)
             if existing_exp is not None and existing_exp > now_ts:
                 # Existing is still valid — DON'T downgrade from HAR
                 cookies_parsed.append(dict(existing_by_name[name]))
@@ -686,7 +772,7 @@ def import_har_cookies(file_path: str | Path) -> dict[str, Any]:
         })
         cookie_parts.append(f"{name}={value}")
         cookie_expires[name] = expires_at
-        merged_short_lived.append(name)
+        written_from_har.append(name)
 
     # Sort cookies_parsed for deterministic output: LONG first, then by name
     _longevity_rank = {"LONG": 0, "MEDIUM": 1, "SHORT": 2, "UNKNOWN": 3}
@@ -702,9 +788,10 @@ def import_har_cookies(file_path: str | Path) -> dict[str, Any]:
         "updated_at": _now_iso(),
         "_import_source": f"har:{path.name}",
         "_har_merged": {
-            "har_cookie_count": len(merged_short_lived),
-            "preserved_long_lived": preserved_long_lived,
+            "har_cookie_count": len(sa_cookies),
+            "written_from_har": written_from_har,
             "downgrade_protected": downgrade_protected,
+            "preserved_long_lived": preserved_long_lived,
             "preserved_count": len(preserved_long_lived) + len(downgrade_protected),
             "merge_strategy": "long_lived_protected_from_downgrade",
         },
@@ -712,7 +799,7 @@ def import_har_cookies(file_path: str | Path) -> dict[str, Any]:
     _write_store(payload)
     logger.info(
         "Imported %d SA cookies from HAR %s (preserved %d long-lived, downgrade-protected %d)",
-        len(merged_short_lived), path.name,
+        len(written_from_har), path.name,
         len(preserved_long_lived), len(downgrade_protected),
     )
     if preserved_long_lived:
@@ -732,12 +819,19 @@ def import_har_cookies(file_path: str | Path) -> dict[str, Any]:
     return get_access_status()
 
 
-def clear_access() -> dict[str, Any]:
+def clear_access(purge_firefox_profile: bool = False) -> dict[str, Any]:
     path = _storage_path()
     try:
         path.unlink(missing_ok=True)
     except OSError as exc:
         logger.warning("Seeking Alpha access clear failed: %s", exc)
+    if purge_firefox_profile:
+        profile_dir = path.parent / "firefox_sa_profile"
+        try:
+            shutil.rmtree(profile_dir, ignore_errors=True)
+            logger.info("Seeking Alpha Firefox profile purged: %s", profile_dir)
+        except OSError as exc:
+            logger.warning("Seeking Alpha Firefox profile purge failed (%s): %s", profile_dir, exc)
     logger.info("Seeking Alpha cookies cleared")
     return get_access_status()
 
@@ -862,15 +956,18 @@ def refresh_cookies_from_firefox(preserve_existing: bool = True) -> dict[str, An
                     if name in live_names:
                         continue
                     if _categorize_cookie_longevity(name) == "LONG":
-                        # Re-add to parsed_cookies (LONGEVITY first)
-                        parsed_cookies.append(dict(c))
-                        if not str(cookie_header).endswith(";"):
-                            cookie_header = cookie_header + "; " if cookie_header else ""
-                            # Re-join: we need a single header string
-                        cookie_header = "; ".join(
-                            f"{x['name']}={x['value']}" for x in parsed_cookies
-                        )
+                        preserved_cookie = dict(c)
+                        exp = float(existing.get("cookie_expires", {}).get(name) or preserved_cookie.get("expires_at") or _estimate_expires_at(name, None))
+                        preserved_cookie.setdefault("domain", ".seekingalpha.com")
+                        preserved_cookie.setdefault("path", "/")
+                        preserved_cookie["longevity"] = _categorize_cookie_longevity(name)
+                        preserved_cookie["expires_at"] = exp
+                        parsed_cookies.append(preserved_cookie)
+                        cookie_expires[name] = exp
                         preserved.append(name)
+                cookie_header = "; ".join(
+                    f"{x['name']}={x['value']}" for x in parsed_cookies
+                )
                 # Sort LONG first for deterministic output
                 _longevity_rank = {"LONG": 0, "MEDIUM": 1, "SHORT": 2, "UNKNOWN": 3}
                 parsed_cookies.sort(key=lambda c: (
@@ -992,7 +1089,7 @@ def _probe_with_playwright(listing_url: str, cookie_store: dict) -> dict[str, An
         "_ttp", "_rdt",  # TikTok / Reddit
         "_clck", "_clsk",  # Microsoft Clarity
         "hubspotutk", "__hssrc", "__hstc",  # HubSpot
-        "__stripe", "stripe*",
+        "__stripe", "stripe",
     )
     for c in cookie_store.get("cookies_parsed", []):
         name = (c.get("name") or "").strip()
@@ -1020,6 +1117,7 @@ def _probe_with_playwright(listing_url: str, cookie_store: dict) -> dict[str, An
             # consistent and PerimeterX doesn't see a Chrome vs Firefox
             # UA mismatch.
             browser = None
+            page = None
             profile_dir = _storage_path().parent / "firefox_sa_profile"
             use_persistent_firefox = profile_dir.exists() and any(profile_dir.iterdir())
             if use_persistent_firefox:
@@ -1046,6 +1144,10 @@ def _probe_with_playwright(listing_url: str, cookie_store: dict) -> dict[str, An
                 context.add_cookies(pw_cookies)
                 page = context.new_page()
             
+            if page is None:
+                browser.close()
+                return {"ok": False, "reason": "playwright_page_not_created", "phase": "playwright_setup", "tested_at": _now_iso()}
+
             # Step 1: listing page
             page.goto(listing_url, timeout=30000, wait_until="domcontentloaded")
             page.wait_for_timeout(5000)
@@ -1095,8 +1197,7 @@ def _probe_with_playwright(listing_url: str, cookie_store: dict) -> dict[str, An
             
             # Check for MPW in rendered page
             is_mpw_locked = 'isMpwLocked":true' in article_html
-            is_mpw_unlocked = 'isMpwLocked":false' in article_html
-            
+
             # Check for transcript content
             has_transcript = 'transcript-presentation-section' in article_html
             section_count = len(_re.findall(r'seq="(\d+)"', article_html))

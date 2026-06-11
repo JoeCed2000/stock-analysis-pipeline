@@ -36,7 +36,7 @@ import mimetypes
 import time
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile, Header, Form, Request, Body, BackgroundTasks, Depends
+from fastapi import FastAPI, HTTPException, UploadFile, File as FastAPIFile, Header, Form, Request, Body, BackgroundTasks, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -2803,10 +2803,10 @@ async def save_seeking_alpha_access(payload: SeekingAlphaAccessUpdateRequest):
 
 
 @app.delete("/api/admin/seeking-alpha/access", dependencies=[Depends(_require_auth)])
-async def clear_seeking_alpha_access():
+async def clear_seeking_alpha_access(purge_profile: bool = Query(False)):
     from backend.seeking_alpha_access import clear_access
 
-    return JSONResponse(clear_access())
+    return JSONResponse(clear_access(purge_firefox_profile=purge_profile))
 
 
 @app.post("/api/admin/seeking-alpha/access/har")
