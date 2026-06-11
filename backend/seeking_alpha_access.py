@@ -483,6 +483,111 @@ def build_request_headers(extra_headers: dict[str, str] | None = None) -> dict[s
     return headers
 
 
+def refresh_cookies_from_firefox() -> dict[str, Any]:
+    """Launch Firefox with persistent profile, extract fresh SA cookies.
+    
+    Uses a persistent Firefox profile so cookies survive across restarts.
+    The first run may need manual login; subsequent runs reuse the session.
+    Stores extracted cookies in the backend's cookie store.
+    
+    Returns: {"ok": bool, "cookie_count": int, "reason": str}
+    """
+    import time as _time
+    from pathlib import Path
+    
+    profile_dir = Path(_storage_path()).parent / "firefox_sa_profile"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        from patchright.sync_api import sync_playwright
+    except ImportError:
+        return {"ok": False, "reason": "patchright_not_installed", "cookie_count": 0}
+    
+    try:
+        with sync_playwright() as p:
+            # Persistent Firefox context — cookies survive across runs
+            browser = p.firefox.launch_persistent_context(
+                str(profile_dir),
+                headless=True,
+                viewport={"width": 1920, "height": 1080},
+                locale="en-US",
+            )
+            page = browser.new_page()
+            
+            # Navigate to SA — if logged in, cookies from profile will authenticate
+            page.goto("https://seekingalpha.com/symbol/NVDA/earnings/transcripts", 
+                     timeout=30000, wait_until="domcontentloaded")
+            page.wait_for_timeout(5000)
+            
+            body = page.inner_text("body")[:1000].lower()
+            
+            # Check if we're authenticated
+            if any(m in body for m in ["press & hold", "verify", "access denied"]):
+                browser.close()
+                return {
+                    "ok": False, 
+                    "reason": "perimeterx_blocked_persistent", 
+                    "cookie_count": 0,
+                    "hint": "Launch Firefox manually once to log in: playwright.firefox.launch_persistent_context(headless=False)"
+                }
+            
+            # Extract all cookies from the browser context
+            all_cookies = browser.cookies()
+            sa_cookies = [c for c in all_cookies if "seekingalpha" in c.get("domain", "")]
+            
+            # Convert to Netscape format for storage
+            cookie_lines = []
+            parsed_cookies = []
+            for c in sa_cookies:
+                cookie_lines.append(
+                    f"{c['domain']}\tTRUE\t{c.get('path', '/')}\t"
+                    f"{'TRUE' if c.get('secure') else 'FALSE'}\t"
+                    f"{int(c.get('expires', -1)) if c.get('expires') and c['expires'] > 0 else 0}\t"
+                    f"{c['name']}\t{c['value']}"
+                )
+                parsed_cookies.append({
+                    "name": c["name"],
+                    "value": c["value"],
+                    "domain": c.get("domain", ".seekingalpha.com"),
+                    "path": c.get("path", "/"),
+                })
+            
+            cookie_header = "; ".join(f"{c['name']}={c['value']}" for c in sa_cookies)
+            
+            browser.close()
+            
+            if not sa_cookies:
+                return {"ok": False, "reason": "no_sa_cookies_found", "cookie_count": 0}
+            
+            # Store in the backend cookie store
+            has_pro = any(
+                str(c.get("value", "")).lower() in ("1", "true")
+                for c in parsed_cookies
+                if c["name"] in ("ever_pro", "has_paid_subscription")
+            )
+            
+            store_data = {
+                "cookie_header": cookie_header,
+                "cookies_parsed": parsed_cookies,
+                "source": "firefox_persistent_profile",
+                "refreshed_at": _now_iso(),
+                "pro_level": has_pro,
+            }
+            _write_store(store_data)
+            
+            return {
+                "ok": True,
+                "reason": "cookies_refreshed_from_firefox",
+                "cookie_count": len(sa_cookies),
+                "pro_level": has_pro,
+                "profile_dir": str(profile_dir),
+            }
+            
+    except Exception as e:
+        logger.warning(f"Firefox cookie refresh failed: {e}")
+        return {"ok": False, "reason": f"error_{type(e).__name__}", "cookie_count": 0}
+
+
 def _probe_with_playwright(listing_url: str, cookie_store: dict) -> dict[str, Any]:
     """Retry transcript probe using Playwright for PRO accounts (JS-enabled).
     
