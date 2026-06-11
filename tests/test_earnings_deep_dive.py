@@ -178,7 +178,7 @@ def test_generate_deep_dive_writes_report_and_meta(tmp_path, monkeypatch):
     assert meta["provider"] == "Codex CLI local"
     assert meta["generation_provider"] == "codex_cli"
     assert meta["generation_model"] == "gpt-5.3-codex-spark"
-    assert meta["generation_reasoning_effort"] == "low"
+    assert meta["generation_reasoning_effort"] == "medium"
     assert meta["llm_trace_path"] == str(trace_path)
     assert meta["llm_trace_summary"]["total_calls"] == len(trace)
     assert trace and all(item["phase"] == "earnings_deep_dive" for item in trace)

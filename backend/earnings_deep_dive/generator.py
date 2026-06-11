@@ -30,12 +30,41 @@ logger = logging.getLogger(__name__)
 
 MAX_CODEX_TOKENS = 16000
 
-def _llm_chat(prompt: str, system: str = "", max_tokens: int = MAX_CODEX_TOKENS) -> str | None:
-    """Codex Spark primary for Deep Dive sections; optional DeepSeek/Gemini fallback.
+def _generation_provider() -> tuple[str, str, str]:
+    """Resolve (provider, model, effort) for deep-dive generation.
 
-    Default is stable, quota-independent Codex Spark low-effort routing. DeepSeek is
-    available only when explicitly enabled with ``SA_ENABLE_DEEPSEEK_FALLBACK=true``.
+    ``SA_DEEP_DIVE_PROVIDER=deepseek`` routes sections to DeepSeek v4 Pro
+    (Codex stays as automatic fallback); anything else keeps Codex primary.
     """
+    provider = (os.getenv("SA_DEEP_DIVE_PROVIDER") or "codex").strip().lower()
+    if provider == "deepseek":
+        return "deepseek", "deepseek-v4-pro", (os.getenv("SA_DEEPSEEK_EFFORT") or "medium").strip().lower()
+    return (
+        "codex_cli",
+        os.getenv("SA_CODEX_MODEL", "gpt-5.3-codex-spark"),
+        os.getenv("SA_CODEX_DEFAULT_EFFORT", "medium"),
+    )
+
+
+def _llm_chat(prompt: str, system: str = "", max_tokens: int = MAX_CODEX_TOKENS) -> str | None:
+    """Primary provider routing for Deep Dive sections, with layered fallback.
+
+    ``SA_DEEP_DIVE_PROVIDER=deepseek`` makes DeepSeek v4 Pro the primary
+    (Codex out of tokens); Codex remains the automatic fallback. Optional
+    DeepSeek/Gemini fallbacks behind the Codex-primary default are unchanged
+    (``SA_ENABLE_DEEPSEEK_FALLBACK=true`` / ``SA_ENABLE_GEMINI_FALLBACK=true``).
+    """
+    primary = (os.getenv("SA_DEEP_DIVE_PROVIDER") or "codex").strip().lower()
+    if primary == "deepseek":
+        try:
+            from backend.kimi_provider import _deepseek_chat
+            result = _deepseek_chat(prompt, system, max_tokens)
+            if result:
+                return result
+            logger.warning("llm_call primary_failed provider=deepseek — falling back to codex")
+        except Exception as exc:
+            logger.warning("llm_call primary_failed provider=deepseek error=%s", exc, exc_info=True)
+
     model = (os.getenv("SA_CODEX_MODEL") or "gpt-5.3-codex-spark").strip()
     effort = (os.getenv("SA_CODEX_DEFAULT_EFFORT") or "medium").strip().lower()
     result = codex_chat(prompt, system=system, max_tokens=max_tokens, model=model, reasoning_effort=effort)
@@ -239,8 +268,9 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
             industry = str(metrics.get("industry", "") or "")
             sys_prompt = system_prompt(request.language, sector, industry)
             last_error = ""
-            provider_model = os.getenv("SA_CODEX_MODEL", "gpt-5.3-codex-spark") if provider_name == "primary" else provider_name
-            provider_effort = os.getenv("SA_CODEX_DEFAULT_EFFORT", "medium") if provider_name == "primary" else "default"
+            _, _resolved_model, _resolved_effort = _generation_provider()
+            provider_model = _resolved_model if provider_name == "primary" else provider_name
+            provider_effort = _resolved_effort if provider_name == "primary" else "default"
             
             for attempt in (1, 2):
                 prompt = build_prompt(
@@ -811,10 +841,10 @@ def _save_outputs(
         "quarter": request.quarter,
         "language": request.language,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "provider": "Codex CLI local",
-        "generation_provider": "codex_cli",
-        "generation_model": os.getenv("SA_CODEX_MODEL", "gpt-5.3-codex-spark"),
-        "generation_reasoning_effort": os.getenv("SA_CODEX_DEFAULT_EFFORT", "medium"),
+        "provider": "DeepSeek API" if _generation_provider()[0] == "deepseek" else "Codex CLI local",
+        "generation_provider": _generation_provider()[0],
+        "generation_model": _generation_provider()[1],
+        "generation_reasoning_effort": _generation_provider()[2],
         "deepseek_fallback_enabled": os.getenv("SA_ENABLE_DEEPSEEK_FALLBACK", "false").strip().lower() in {"1", "true", "yes"},
         "max_tokens_per_call": MAX_CODEX_TOKENS,
         "llm_trace_path": trace_path,
