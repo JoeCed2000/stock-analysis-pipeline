@@ -98,8 +98,8 @@ def test_highlights_have_at_least_three_numbered_items():
     numbered_items = re.findall(r"(?m)^(?:[①②③④⑤⑥⑦⑧⑨⑩]|\d+\.)\s+", text)
 
     assert len(numbered_items) >= 3
-    assert "🧠" in text
-    assert "🎯" in text
+    assert "Lowlight" in text
+    assert text.count("•") >= 6
 
 
 def test_each_major_section_has_more_than_200_chars_of_commentary():
@@ -207,7 +207,7 @@ def test_pdf_replaces_na_placeholders_with_not_available(tmp_path):
     text = "\n".join(page.get_text() for page in doc)
 
     assert re.search(r"(?m)^\s*N/A\s*$", text) is None
-    assert "Not available" in text
+    assert "Unavailable from reviewed sources" in text
 
 
 def test_pdf_table_preserves_advantage_sentence_without_hard_truncation(tmp_path):

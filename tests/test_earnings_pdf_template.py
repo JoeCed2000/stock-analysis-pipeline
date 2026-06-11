@@ -328,13 +328,12 @@ def test_japanese_template_outputs_nami_style_explanation_markers():
     highlights = next(section for section in report.sections if section.key == "Highlights")
     rendered = "\n".join(highlights.analysis + [highlights.summary])
 
-    assert "🌟 ハイライト（良かった点）" in rendered
-    assert "⚠️ ローライト（懸念点）" in rendered
-    assert "🧠 総合評価（投資家向け）" in rendered
-    assert "🎯 投資視点の一言" in rendered
+    assert "ハイライト" in rendered
+    assert "ローライト / 注視点" in rendered
     assert "👉" in rendered
-    assert "●" in rendered
-    assert "①" in rendered
+    assert rendered.count("•") >= 6
+    assert "1. " in rendered and "2. " in rendered and "3. " in rendered
+    assert len(rendered) <= 2600
 
 
 def test_mapper_scoring_section_has_6_categories():

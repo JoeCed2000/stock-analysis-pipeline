@@ -254,16 +254,19 @@ def test_cash_flow_rows_use_prior_year_yoy_and_quality():
         metrics,
     )
 
-    assert rows[0] == ["営業キャッシュフロー", "$467.0B", "$370.0B", "+26.2%", "Operating", "SEC Filing (10-Q/10-K) via EDGAR"]
+    # Client PDF revision contract: 5 columns (no Quality), FCF margin row,
+    # net cash/(debt) row displays the negated net_debt sign convention.
+    assert rows[0] == ["営業キャッシュフロー", "$467.0B", "$370.0B", "+26.2%", "SEC Filing (10-Q/10-K) via EDGAR"]
     assert rows[1][1:4] == ["-$309.0B", "-$167.0B", "+85.0%"]
     assert rows[2][1:4] == ["$158.0B", "$203.0B", "-22.2%"]
-    assert rows[2][4].startswith("pressured")
 
-    assert rows[3][0] == "現金・短期投資"
-    assert rows[3][1] == MISSING
+    assert rows[3][0] == "FCFマージン"
 
-    assert rows[4][0] == "ネットキャッシュ /（純負債）"
-    assert rows[4][1:4] == ["$82.0B", "$141.0B", "-41.8%"]
+    assert rows[4][0] == "現金・短期投資"
+    assert rows[4][1] == MISSING
+
+    assert rows[5][0] == "ネットキャッシュ /（純負債）"
+    assert rows[5][1:4] == ["-$82.0B", "-$141.0B", "-41.8%"]
 
 
 def test_forward_pe_row_uses_forward_pe_and_trailing_reference():

@@ -1193,18 +1193,30 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
     )
     quarterly_comparison = _extract_quarterly_comparison(ticker_for_segments) if ticker_for_segments else {}
 
-    # Client-supplied consensus overrides (Investing.com reference) —
-    # estimates only, never actuals; carries an honest provider label.
+    # Client-supplied consensus/filing overrides (Investing.com reference,
+    # filing-derived balance line items) — FINAL priority for these fields:
+    # quarterly_comparison/yfinance values must never clobber them.
+    consensus_override: Dict[str, Any] = {}
     if isinstance(fin_data, dict) and ticker_for_segments:
-        from backend.consensus_overrides import apply_consensus_overrides
+        from backend.consensus_overrides import apply_consensus_overrides, get_consensus_override
         apply_consensus_overrides(ticker_for_segments, fin_data)
+        consensus_override = get_consensus_override(
+            ticker_for_segments,
+            fin_data.get("fiscal_period_label"),
+            fin_data.get("estimate_period_tag") or fin_data.get("period_tag"),
+            "latest",
+        ) or {}
 
     def comparison_pick(name: str, fallback: Any = None) -> Any:
         value = quarterly_comparison.get(name)
         return value if value is not None else fallback
 
+    def override_pick(name: str, fallback: Any = None) -> Any:
+        value = consensus_override.get(name)
+        return value if value is not None else fallback
+
     return FinancialMetrics(
-        eps_estimate=comparison_pick("eps_estimate", pick("eps_estimate")),
+        eps_estimate=override_pick("eps_estimate", comparison_pick("eps_estimate", pick("eps_estimate"))),
         eps_actual=comparison_pick("eps_actual", pick("eps_actual")),
         eps_vs_estimate=pick("eps_vs_estimate"),
         # B14: if the displayed actual is the adjusted EPS from earnings_history,
@@ -1217,7 +1229,7 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
         fiscal_period_label=pick("fiscal_period_label"),
         period_end_date=pick("period_end_date"),
         consensus_provider=pick("consensus_provider"),
-        revenue_estimate=comparison_pick("revenue_estimate", pick("revenue_estimate")),
+        revenue_estimate=override_pick("revenue_estimate", comparison_pick("revenue_estimate", pick("revenue_estimate"))),
         revenue_actual=comparison_pick("revenue_actual", pick("revenue_quarterly")),
         revenue_yoy=comparison_pick("revenue_yoy", pick("revenue_yoy_growth")),
         gross_margin=comparison_pick("gross_margin", pick("gross_margin")),
@@ -1227,7 +1239,7 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
         free_cash_flow=comparison_pick("free_cash_flow", pick("free_cash_flow")),
         operating_cash_flow=comparison_pick("operating_cash_flow", pick("operating_cash_flow")),
         capex=comparison_pick("capex", pick("capex")),
-        net_debt=comparison_pick("net_debt", pick("net_debt")),
+        net_debt=override_pick("net_debt", comparison_pick("net_debt", pick("net_debt"))),
         roic=comparison_pick("roic", pick("roic")),
         roe=comparison_pick("roe", pick("roe")),
         roe_prior_year=quarterly_comparison.get("roe_prior_year"),
@@ -1258,7 +1270,7 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
         free_cash_flow_yoy=quarterly_comparison.get("free_cash_flow_yoy"),
         net_debt_prior_year=quarterly_comparison.get("net_debt_prior_year"),
         net_debt_yoy=quarterly_comparison.get("net_debt_yoy"),
-        cash_and_marketable_securities=comparison_pick("cash_and_marketable_securities", pick("cash_and_marketable_securities")),
+        cash_and_marketable_securities=override_pick("cash_and_marketable_securities", comparison_pick("cash_and_marketable_securities", pick("cash_and_marketable_securities"))),
         cash_and_marketable_securities_prior_year=quarterly_comparison.get("cash_and_marketable_securities_prior_year"),
         cash_and_marketable_securities_yoy=quarterly_comparison.get("cash_and_marketable_securities_yoy"),
         rotce=comparison_pick("rotce", pick("rotce")),

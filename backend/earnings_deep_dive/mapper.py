@@ -1195,7 +1195,10 @@ def _highlights_rows(metrics: FinancialMetrics, row_labels: tuple[str, ...]) -> 
     rev_yoy_num = _to_pct_num(metrics.revenue_yoy)
     eps_beat = False
     try:
-        eps_beat = float(metrics.eps_vs_estimate) > 0 if metrics.eps_vs_estimate is not None else False
+        if metrics.eps_vs_estimate is not None:
+            eps_beat = float(metrics.eps_vs_estimate) > 0
+        elif metrics.eps_actual is not None and metrics.eps_estimate is not None:
+            eps_beat = float(metrics.eps_actual) > float(metrics.eps_estimate)
     except (TypeError, ValueError):
         pass
 
@@ -1267,7 +1270,10 @@ def _verdict_rows(metrics: FinancialMetrics, row_labels: tuple[str, ...], scorin
     # ---- Earnings quality ----
     eps_beat = False
     try:
-        eps_beat = float(metrics.eps_vs_estimate) > 0 if metrics.eps_vs_estimate is not None else False
+        if metrics.eps_vs_estimate is not None:
+            eps_beat = float(metrics.eps_vs_estimate) > 0
+        elif metrics.eps_actual is not None and metrics.eps_estimate is not None:
+            eps_beat = float(metrics.eps_actual) > float(metrics.eps_estimate)
     except (TypeError, ValueError):
         pass
     rev_num = metrics.revenue_actual
@@ -1530,7 +1536,7 @@ def _summary(language: TemplateLanguage, ticker: str, section_key: str, metrics:
 
     summaries = {
         "EPS & Revenue": f"{ticker} reported EPS of {eps} and revenue of {revenue}; the key investor question is whether the beat/miss is broad-based or one-off.",
-        "Highlights": f"{ticker} Q: revenue {revenue} ({revenue_yoy} YoY), EPS {eps}. Focus on whether revenue growth converts into durable cash flow and margin expansion.",
+        "Highlights": f"{ticker}: revenue {revenue} ({revenue_yoy} YoY), EPS {eps}. Focus on whether revenue growth converts into durable cash flow and margin expansion.",
         "Operating Metrics": f"Revenue was {revenue} with YoY growth of {revenue_yoy}; margin direction determines the quality of the growth.",
         "Cash Flow": f"Free cash flow was {fcf}; cash conversion and capex intensity show whether earnings are translating into owner cash.",
         "Capital Efficiency": "ROE, ROIC, and related returns indicate whether growth is creating value or simply consuming capital.",
@@ -1750,14 +1756,26 @@ def _ensure_section_commentary(
     fallback = _default_section_analysis(language, ticker, section_key, metrics)
 
     if section_key == "Highlights":
-        # Concise client format: numbered headings + bullets, with an explicit
-        # Lowlights block. Emoji markers are optional (legacy format kept valid).
+        # Client format: numbered short headings + one-line bullets with an
+        # explicit Lowlights block, no paragraph walls. A verbose or
+        # non-conforming LLM section is REPLACED by the deterministic concise
+        # fallback — appending would make the section longer, not shorter.
         has_required_structure = (
             _numbered_highlight_count(combined) >= 3
-            and ("⚠" in combined or "Lowlight" in combined or "Lowlights" in combined or "リスク" in combined)
+            and ("⚠" in combined or "Lowlight" in combined or "リスク" in combined)
         )
-        if not has_required_structure:
+        is_concise = len(combined) <= 2600 and not any(
+            len(line.strip()) > 600 for line in combined.split("\n")
+        )
+        if not (has_required_structure and is_concise):
+            cleaned = _concise_highlights_fallback(language, metrics)
+    elif section_key in ("EPS & Revenue", "Operating Metrics"):
+        # Concise sections (client request): keep the lead, cap runaway prose
+        # at paragraph boundaries.
+        if len(combined) <= 200:
             cleaned.extend(fallback)
+        else:
+            cleaned = _cap_section_length(cleaned, max_chars=1600)
     elif len(combined) <= 200:
         cleaned.extend(fallback)
 
@@ -1769,6 +1787,77 @@ def _ensure_section_commentary(
             cleaned.insert(0, note)
 
     return cleaned
+
+
+def _cap_section_length(items: list[str], max_chars: int = 1600) -> list[str]:
+    """Trim section prose at paragraph boundaries once it exceeds max_chars.
+
+    Always keeps at least the first paragraph; never cuts mid-paragraph.
+    """
+    out: list[str] = []
+    used = 0
+    for item in items:
+        for paragraph in (p for p in item.split("\n\n") if p.strip()):
+            if out and used + len(paragraph) > max_chars:
+                return out
+            out.append(paragraph)
+            used += len(paragraph)
+    return out
+
+
+def _concise_highlights_fallback(language: TemplateLanguage, metrics: FinancialMetrics) -> list[str]:
+    """Deterministic client-format Highlights/Lowlights: numbered short
+    headings + one-line bullets, max 3 + 3 items, metrics-sourced only."""
+    revenue = _money(getattr(metrics, "revenue_actual", None) or getattr(metrics, "revenue_quarterly", None))
+    revenue_est = _money(getattr(metrics, "revenue_estimate", None))
+    revenue_yoy = _pct(getattr(metrics, "revenue_yoy", None))
+    eps = _eps(getattr(metrics, "eps_actual", None))
+    eps_est = _eps(getattr(metrics, "eps_estimate", None))
+    gross_margin = _pct(getattr(metrics, "gross_margin", None))
+    operating_margin = _pct(getattr(metrics, "operating_margin", None))
+    fcf = _money(getattr(metrics, "free_cash_flow", None))
+    pe = _multiple(getattr(metrics, "pe_forward", None))
+    if language == "jp":
+        text = (
+            "ハイライト\n"
+            "1. 売上・EPSの実績\n"
+            f"   • 売上高{revenue}（コンセンサス{revenue_est}）、前年同期比{revenue_yoy}。\n"
+            f"   • EPSは{eps}（コンセンサス{eps_est}）。\n"
+            "2. 収益性\n"
+            f"   • 粗利益率{gross_margin}、営業利益率{operating_margin}。\n"
+            "   • 売上成長とマージンの方向を合わせて読むことが成長の質の判断軸。\n"
+            "3. キャッシュ創出\n"
+            f"   • フリーキャッシュフローは{fcf}で、会計上の利益を裏付け。\n"
+            "\n"
+            "ローライト / 注視点\n"
+            "1. 市場期待の高さ\n"
+            f"   • 予想PER{pe}は高い期待を織り込み、成長鈍化時の振れ幅が大きい。\n"
+            "2. 集中リスク\n"
+            "   • セグメント集中と顧客ミックスは上表で確認。\n"
+            "3. データ制約\n"
+            "   • 「非開示」セルは推測せず、ソース上の制約として扱う。"
+        )
+    else:
+        text = (
+            "Highlights\n"
+            "1. Revenue and EPS delivery\n"
+            f"   • Revenue of {revenue} vs consensus {revenue_est}; YoY growth {revenue_yoy}.\n"
+            f"   • EPS of {eps} vs consensus {eps_est}.\n"
+            "2. Profitability\n"
+            f"   • Gross margin {gross_margin}, operating margin {operating_margin}.\n"
+            "   • Revenue growth and margin direction together define the quality of the quarter.\n"
+            "3. Cash generation\n"
+            f"   • Free cash flow of {fcf} backs the reported earnings.\n"
+            "\n"
+            "Lowlights / watch items\n"
+            "1. High market expectations\n"
+            f"   • Forward P/E of {pe} embeds high expectations; growth slowdowns get amplified.\n"
+            "2. Concentration\n"
+            "   • Watch segment concentration and customer mix in the table above.\n"
+            "3. Data limitations\n"
+            "   • Cells marked Not disclosed remain source gaps, not inferred values."
+        )
+    return [text]
 
 
 def _cash_flow_quality_note(language: TemplateLanguage, metrics: FinancialMetrics) -> str | None:
@@ -2267,6 +2356,11 @@ def build_earnings_deep_dive_report(
     resolved_quarter = _resolved_quarter_label(quarter, metrics)
     analysis_by_key = section_analysis or {}
 
+    # Fiscal-label repair: the raw calendar tag (e.g. '2026Q2') must never
+    # appear in client-facing prose when the fiscal label differs (FY2027 Q1).
+    _calendar_tag = (quarter or "").strip() if isinstance(quarter, str) else ""
+    _fiscal_label = _resolved_quarter_label(quarter, metrics)
+
     # Sanitize prose: remove garbage ???? patterns and JP leakage from LLM output
     import re as _re
     _GARBAGE_RE = _re.compile(r'[?？]{3,}')
@@ -2276,6 +2370,9 @@ def build_earnings_deep_dive_report(
             return text
         # ── Fix: strip null bytes from font rendering issues ──
         text = text.replace("\x00", "")
+        # ── Fiscal-label repair (client comment #2): calendar tag → fiscal label ──
+        if _calendar_tag and _fiscal_label and _fiscal_label != _calendar_tag:
+            text = text.replace(_calendar_tag, _fiscal_label)
         # ── Fix: collapse line breaks that split key phrases ──
         text = text.replace('For\nNami-san', 'For Nami-san')
         text = text.replace('For\nNamiさん', 'For Namiさん')

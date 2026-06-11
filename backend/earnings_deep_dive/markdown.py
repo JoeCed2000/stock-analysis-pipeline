@@ -31,7 +31,7 @@ _METRICS_FIELD = re.compile(r"Metrics\s*[—–-]\s*[a-z_, ]+(?=[)\]])", re.IGNO
 # "(source: yfinance eps_actual; yfinance eps_estimate; formula: eps_actual - eps_estimate)".
 # These are useful as model grounding instructions, but client PDFs must not expose
 # provider names or internal key names.
-_SOURCE_PAREN = re.compile(r"\(source:\s*([^)]*)\)", re.IGNORECASE)
+_SOURCE_PAREN = re.compile(r"\(source:\s*([^)\n]*)\)", re.IGNORECASE)
 _RAW_FIELD_TOKEN = re.compile(r"\b[a-z][a-z0-9]*_[a-z0-9_]+\b", re.IGNORECASE)
 _YFINANCE_SOURCE_TOKEN = re.compile(r"\byfinance\b", re.IGNORECASE)
 # 6. Competitor table/prose row IDs like "S1 Apple" are internal labels.

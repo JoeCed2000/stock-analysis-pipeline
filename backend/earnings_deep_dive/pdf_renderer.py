@@ -2188,7 +2188,9 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             story.extend(dq_story)
             story.append(Spacer(1, 0.08 * inch))
 
-        # ── Sources ──
+        # ── Sources ── (own page when scoring/data-quality content precedes it)
+        if report.scoring or dq_story:
+            story.append(PageBreak())
         story.append(Paragraph(translate("Sources", report.language), styles["section"]))
         story.append(Spacer(1, 0.15 * inch))
 

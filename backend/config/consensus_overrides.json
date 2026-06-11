@@ -3,13 +3,19 @@
     "FY2027 Q1": {
       "eps_estimate": 1.77,
       "revenue_estimate": 79190000000,
+      "net_debt": -72102000000,
+      "cash_and_marketable_securities": 80572000000,
       "source": "Investing.com (analyst consensus)",
+      "balance_source": "SEC 10-Q filing line items (cash 13,237M + marketable debt 37,098M + marketable equity 30,237M - debt 8,470M)",
       "as_of": "2026-05-20"
     },
     "2026Q2": {
       "eps_estimate": 1.77,
       "revenue_estimate": 79190000000,
+      "net_debt": -72102000000,
+      "cash_and_marketable_securities": 80572000000,
       "source": "Investing.com (analyst consensus)",
+      "balance_source": "SEC 10-Q filing line items (cash 13,237M + marketable debt 37,098M + marketable equity 30,237M - debt 8,470M)",
       "as_of": "2026-05-20"
     }
   }

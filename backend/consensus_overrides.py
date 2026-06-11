@@ -48,10 +48,15 @@ def apply_consensus_overrides(ticker: str, financials: Dict[str, Any]) -> None:
     )
     if not override:
         return
-    for field in ("eps_estimate", "revenue_estimate"):
+    # Estimates (consensus reference) + filing-derived balance line items when
+    # yfinance's classification is incomplete (e.g. long-term marketable equity
+    # securities missing from the cash & short-term investments row).
+    for field in ("eps_estimate", "revenue_estimate", "net_debt", "cash_and_marketable_securities"):
         if override.get(field) is not None:
             financials[field] = override[field]
     financials["consensus_provider"] = override.get("source", "Consensus override")
+    if override.get("balance_source"):
+        financials["balance_source"] = override["balance_source"]
     if override.get("as_of"):
         financials["consensus_as_of"] = override["as_of"]
     logger.info("Consensus override applied for %s (%s)", ticker, override.get("source"))

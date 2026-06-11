@@ -149,6 +149,17 @@ SECTION_METRIC_KEYS = {
 }
 
 
+def _display_quarter(request: DeepDiveRequest) -> str:
+    """Client-facing fiscal label for LLM prose (e.g. 'FY2027 Q1').
+
+    The raw calendar tag ('2026Q2') stays internal for routing/API
+    compatibility but must never leak into report prose for
+    offset-fiscal-year companies.
+    """
+    fiscal = getattr(request.metrics, "fiscal_period_label", None)
+    return fiscal or request.quarter
+
+
 def generate_deep_dive(request: DeepDiveRequest) -> DeepDiveResponse:
     """Generate a section-by-section earnings call deep-dive and save it to the dossier."""
     if request.language == "bilingual":
@@ -234,7 +245,7 @@ def _generate_deep_dive_single(request: DeepDiveRequest) -> DeepDiveResponse:
             for attempt in (1, 2):
                 prompt = build_prompt(
                     section, request.language, request.ticker, company,
-                    request.quarter, _section_metrics(section, metrics),
+                    _display_quarter(request), _section_metrics(section, metrics),
                     excerpts[section],
                     sector=sector,
                     industry=industry,
@@ -431,7 +442,7 @@ def _generate_section(
             request.language,
             request.ticker,
             company,
-            request.quarter,
+            _display_quarter(request),
             _section_metrics(section, metrics),
             transcript_excerpt,
             sector=sector,
