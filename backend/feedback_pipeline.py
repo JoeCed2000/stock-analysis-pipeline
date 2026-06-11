@@ -183,7 +183,7 @@ def process_pdf_failure(
     quarter: str = "latest",
     directory: str = "",
 ) -> Optional[str]:
-    """Handle client-visible PDF failure. Direct automation when USE_KANBAN=False."""
+    """Handle user-visible PDF failure. Direct automation when USE_KANBAN=False."""
     ticker = (ticker or "").strip().upper()
     safe_issues = [str(issue) for issue in (issues or []) if str(issue).strip()]
     key = _pdf_failure_key(ticker, source, status, language, quarter, safe_issues or [message])
@@ -230,18 +230,18 @@ def process_pdf_failure(
         f"**directory:** {directory or 'N/A'}\n"
         f"**idempotency_key:** {key}\n\n"
         f"## Root cause analysis — required first step\n\n"
-        f"A client-visible PDF failure was observed. Do not treat HTTP 200/OK from the analysis endpoint as success. "
-        f"Success means the client can open/download the requested PDF/ZIP artifact.\n\n"
+        f"A user-visible PDF failure was observed. Do not treat HTTP 200/OK from the analysis endpoint as success. "
+        f"Success means the user can open/download the requested PDF/ZIP artifact.\n\n"
         f"## Observed issues\n\n{issue_block}\n\n"
         f"## Scope\n\n"
         f"**project:** stock-analysis-pipeline\n"
         f"**read_scope:** backend/main.py, backend/async_dossier.py, backend/earnings_deep_dive/*, frontend/src/components/AdminPage.jsx, frontend/src/components/AnalysisCard.jsx, logs for this ticker\n"
         f"**write_scope:** Minimal files needed after root cause is identified; likely backend PDF/status/admin code plus focused regression tests.\n"
-        f"**expected_tests:** Add or update a regression proving the blocked/missing PDF is logged as a failure and the admin dashboard sees it as failed from the client perspective.\n"
+        f"**expected_tests:** Add or update a regression proving the blocked/missing PDF is logged as a failure and the admin dashboard sees it as failed from the user perspective.\n"
         f"**risk:** Medium — PDF generation can be slow; avoid respawn loops and avoid triggering generation from read-only download endpoints.\n\n"
         f"## Acceptance criteria\n\n"
-        f"- Root cause explains why the PDF was not served to the client.\n"
-        f"- Admin/recent-search status reflects the client-visible failure, not only the initial HTTP 200 analysis response.\n"
+        f"- Root cause explains why the PDF was not served to the user.\n"
+        f"- Admin/recent-search status reflects the user-visible failure, not only the initial HTTP 200 analysis response.\n"
         f"- Fix is idempotent and cannot create a Kanban/worker storm on repeated polls/download attempts.\n"
         f"- Verification includes tests and, if feasible, a real endpoint/browser check.\n"
     )

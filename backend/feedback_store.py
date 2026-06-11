@@ -183,6 +183,9 @@ def _decorate_entry(entry: dict[str, Any], bucket: str) -> dict[str, Any]:
     decorated["is_general"] = ticker is None
     decorated["category"] = decorated.get("category") or "general"
     decorated["status"] = "taken_into_account" if decorated.get("processed") else "pending"
+    # Track fix progression separately from intake status
+    if decorated.get("processed") and not decorated.get("fix_status"):
+        decorated["fix_status"] = "pending"  # pending | in_progress | corrected
     return decorated
 
 
@@ -306,9 +309,12 @@ def list_all_feedback() -> list[dict[str, Any]]:
     all_entries.sort(key=lambda e: e.get("submitted_at", ""), reverse=True)
     return all_entries
 
-
-def mark_processed(ticker: str, entry_id: str, notes: str = "") -> bool:
-    """Mark a feedback entry as processed. Used by cron jobs."""
+def mark_processed(ticker: str, entry_id: str, notes: str = "", fix_status: str = "pending", correction: str = "") -> bool:
+    """Mark a feedback entry as processed with fix tracking.
+    
+    fix_status: pending | in_progress | corrected
+    correction: description of what was fixed
+    """
     bucket = _normalize_feedback_bucket(ticker)
     index = _read_index(bucket)
     for entry in index:
@@ -317,8 +323,12 @@ def mark_processed(ticker: str, entry_id: str, notes: str = "") -> bool:
             entry["processed_at"] = datetime.now(PARIS).isoformat()
             if notes:
                 entry["notes"] = notes
+            if fix_status:
+                entry["fix_status"] = fix_status
+            if correction:
+                entry["correction"] = correction
             _write_index(bucket, index)
-            logger.info("[%s] Feedback %s marked as processed", bucket, entry_id)
+            logger.info("[%s] Feedback %s marked as processed (fix_status=%s)", bucket, entry_id, fix_status)
             return True
     return False
 
