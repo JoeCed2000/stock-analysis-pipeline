@@ -15,11 +15,40 @@ import hashlib
 import json
 import logging
 import subprocess
+import threading
 import time
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Coroutine, Optional, Dict
 
 logger = logging.getLogger(__name__)
+
+
+def _schedule_background_action(coro: Coroutine) -> None:
+    """Fire-and-forget an async remediation action from any calling context.
+
+    process_pdf_failure is invoked both from FastAPI handlers (running event
+    loop) and from plain daemon threads (the proactive intake thread spawned
+    by main.py), where asyncio.ensure_future raises
+    RuntimeError('There is no current event loop in thread ...').
+    Inside a loop: schedule on it. Outside: run in a dedicated daemon thread
+    via asyncio.run — the same pattern main.py uses for background deep-dive
+    generation.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if loop is not None:
+        loop.create_task(coro)
+        return
+
+    def _runner() -> None:
+        try:
+            asyncio.run(coro)
+        except Exception:
+            logger.exception("Background PDF-failure remediation action failed")
+
+    threading.Thread(target=_runner, daemon=True).start()
 
 # ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -206,9 +235,9 @@ def process_pdf_failure(
             ticker, source, status, message[:200], quarter, safe_issues,
         )
         if ticker and ticker != "GENERAL":
-            asyncio.ensure_future(_action_reanalyze_ticker(ticker))
+            _schedule_background_action(_action_reanalyze_ticker(ticker))
         else:
-            asyncio.ensure_future(_action_restart_backend())
+            _schedule_background_action(_action_restart_backend())
         return key
 
     # ── Kanban path below (USE_KANBAN=True) ──
