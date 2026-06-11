@@ -60,7 +60,7 @@ def test_template_tables_match_model_expectations():
         "Source",
     )
     assert tables["Operating Metrics"] == ("Metric", "Actual", "Prior Year", "YoY", "Source")
-    assert tables["Cash Flow"] == ("Metric", "Actual", "Prior Year", "YoY", "Quality", "Source")
+    assert tables["Cash Flow"] == ("Metric", "Actual", "Prior Year", "YoY", "Source")
     assert tables["Guidance"] == ("Metric", "Guidance", "QoQ", "Medium-term Signal", "Source")
 
 
@@ -85,19 +85,19 @@ def test_runtime_report_labels_use_quarter_and_ttm_naming():
     by_key = {section.key: section for section in report.sections}
 
     operating = by_key["Operating Metrics"]
-    assert operating.table.columns[1] == "Q1 2026"
-    assert operating.table.columns[2] == "Q1 2025"
+    assert operating.table.columns[1] == "FY2026 Q1"
+    assert operating.table.columns[2] == "FY2025 Q1"
 
     cash_flow = by_key["Cash Flow"]
     assert cash_flow.title == "Cash Flow & Liquidity"
     assert cash_flow.summary_label == "Commentary"
-    assert cash_flow.table.columns[1] == "Q1 2026"
-    assert cash_flow.table.columns[2] == "Q1 2025"
+    assert cash_flow.table.columns[1] == "FY2026 Q1"
+    assert cash_flow.table.columns[2] == "FY2025 Q1"
 
     capital = by_key["Capital Efficiency"]
-    assert capital.title == "Capital Allocation & Efficiency"
-    assert capital.table.columns[1] == "TTM Ending Q1 2026"
-    assert capital.table.columns[2] == "TTM Ending Q1 2025"
+    assert capital.title == "Capital Efficiency"
+    assert capital.table.columns[1] == "TTM Ending FY2026 Q1"
+    assert capital.table.columns[2] == "TTM Ending FY2025 Q1"
 
 
 def test_template_has_distinct_english_and_japanese_variants():

@@ -113,9 +113,7 @@ def test_pdf_renderer_generates_language_specific_japanese_report(tmp_path):
         "決算詳細分析",       # "Earnings Deep-Dive"
         "ソース",            # "Sources"
         "決算資料",          # "Earnings Documents"
-        "ソース凡例",        # "Source Legend"
-        "セクション別主張",  # "Claims by Section"
-        "主張の追跡可能性",  # "Claim Traceability"
+        "ソース凡例",        # "Source Legend" (client-facing legend)
         "データ & アナリティクス",  # "Data & Analytics"
         "手法",              # "Methodology"
     ]
@@ -123,6 +121,14 @@ def test_pdf_renderer_generates_language_specific_japanese_report(tmp_path):
     # next_earnings_date is present. The translation is applied when rendered.
     for label in jp_labels:
         assert label in text, f"JP PDF missing label: {label}"
+
+    # Claim Traceability appendix is INTERNAL ONLY — verify on an internal render
+    if report.claim_sources:
+        internal_path = tmp_path / "earnings_deep_dive_jp_internal.pdf"
+        render_earnings_deep_dive_pdf(report, internal_path, include_traceability=True)
+        internal_text = "\n".join(page.get_text() for page in fitz.open(internal_path))
+        for label in ("セクション別主張", "主張の追跡可能性"):
+            assert label in internal_text, f"JP internal PDF missing label: {label}"
 
 
 def test_pdf_renderer_resolves_model_fonts_when_available():

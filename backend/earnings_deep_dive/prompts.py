@@ -204,36 +204,36 @@ SECTION_FORMATS: Dict[str, str] = {
 | EPS | ... | ... | ... | ... | ... |
 | Revenue | ... | ... | ... | ... | ... |
 
-Required analysis format:
-① EPS: beat/miss, YoY direction, and exact source.
-② Revenue: beat/miss, YoY direction, and exact source.
-③ Quality of the beat/miss: explain whether both top line and profit moved together.
-👉 Namiさん向け解釈: explain in plain Japanese-investor terms whether this is a high-quality surprise or not.""",
+Required analysis format（簡潔に — 合計120語以内、長い段落は禁止）:
+① EPS: 実績 vs コンセンサス予想（予想の出所を明記）、サプライズ%、前年同期比の方向。
+② 売上高: 実績 vs コンセンサス予想、サプライズ%、前年同期比の方向。
+③ その後、1行の箇条書き2〜3点のみ: 今四半期の主なポジティブとネガティブ。
+詳細はハイライト/ローライトのセクションに任せ、ここでは繰り返さないこと。""",
     "Highlights": """Required table:
 {table_header}
 |---|---|---|---|---|---|
 | 🌟 Highlight | ① | ... | ... | ... | Low / Medium / High |
 | ⚠️ Lowlight | ① | ... | ... | ... | Low / Medium / High |
 
-Required analysis format:
-🌟 ハイライト（良かった点、各3〜5文）
-① 最重要ハイライト: 最も重要なポジティブサプライズを、具体的な指標またはトランスクリプトの証拠とともに示してください。構造的改善か一時的イベントかを評価。可能であればセクター比較。投資家への示唆。
-② 2番目のハイライト: 重要なオペレーション上または戦略上の改善。具体的なデータ証拠と出所。投資テーゼへの関連性。
-③ 3番目のハイライト: 経営陣のシグナルまたは市場動向。トランスクリプト証拠。将来への示唆。
-④⑤ 経営陣が強調したテーマに関する追加ポイント（トランスクリプトがあれば）。
+Required analysis format（簡潔に — 短い見出し + 箇条書きのみ、段落は禁止）:
+Highlights（ハイライト）
+1. <最重要ポジティブの短い見出し>
+   • 具体的な指標またはトランスクリプト根拠つきの1行箇条書きを2〜3点。
+2. <2番目のポジティブ — 短い見出し>
+   • 1行箇条書き2〜3点。
+3. <3番目のポジティブ — 短い見出し>
+   • 1行箇条書き2〜3点。
 
-⚠️ ローライト（懸念点、各3〜5文）
-① 最重要懸念: 最も重要なネガティブシグナル。具体的証拠（指標低下、コスト圧力、競合脅威）。深刻度と持続性の評価。投資家への懸念。
-② 2番目の懸念: 追加のリスクまたは弱点。可能であれば定量化。緩和要因または悪化傾向。
-③ 3番目の懸念: 今後重要になりうる二次的問題。モニタリングトリガー。
-④⑤ トランスクリプトが重大なリスクを明らかにしている場合の追加懸念。
+Lowlights（ローライト）
+1. <最重要懸念 — 短い見出し>
+   • 具体的根拠つきの1行箇条書き2〜3点。
+2. <2番目の懸念 — 短い見出し>
+   • 1行箇条書き2〜3点。
+3. <3番目の懸念 — 短い見出し>
+   • 1行箇条書き2〜3点。
 
-競合コンテキスト: 今四半期のパフォーマンスはセクター平均と比較してどうか？上回る/同等/下回る？
-
-⚠️ リスク: 1〜2の具体的で裏付けのあるリスク。汎用的ではない。
-
-🧠 総合評価（Namiさん向け）: grade the quarter in one concise line.
-🎯 投資視点の一言: state the core takeaway without investment advice.""",
+各箇条書きは1行。項目ごとに3〜5文の段落を書かないこと。
+""",
     "Operating Metrics": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -245,24 +245,14 @@ Required analysis format:
 | Operating Margin | ... | ... | ... | ... |
 | Net Income | ... | ... | ... | ... |
 
-Required analysis format:
-🧠 説明・分析（各3〜5文）
-① 粗利益・粗利益率の分析: 粗利益率を正確な%と出所で示してください。前期比と前年同期比で比較（3四半期トレンド）。要因を説明 — 価格決定力、投入コスト、規模の利益、製品ミックス。セクター平均と比較。収益品質の軌道への影響。
-② 営業利益・営業利益率: 営業利益率を正確な%で。営業レバレッジがポジティブか（収益成長 > OpEx成長）ネガティブか。固定費vs変動費の構造的影響。セクターの営業利益率基準との比較。
-③ OpExと純利益: 主要OpExカテゴリ（R&D、SG&A）とその軌道。純利益に影響する一時的項目。税率の影響。現在のコスト構造の持続可能性。
-④⑤ 追加分析: 収益の質（経常的vs一時的）、マージン持続性の要因、トランスクリプトからの経営陣のコスト見通し。
-
-3四半期マージントレンド: 過去3四半期の粗利益率と営業利益率の軌道を示してください。
-
-競合コンテキスト: セクター平均と比較したマージンの位置付け — 上回る/同等/下回る？
-
-🎯 全体構造（超重要）: 収益成長の軌道 × マージンプロファイル × コスト構造の相互作用を要約。
-
-🧩 Namiさん向けの本質理解: 収益品質が高いか（オペレーション主導、持続可能）脆弱か（コスト削減、一時的利益、景気循環的）を説明。
-
-⚠️ リスク: 1〜2のマージンまたはコストに関する具体的リスク。
-
-⚠️ 今後のチェックポイント: 次の2つのモニタリングポイントをリスト。""",
+Required analysis format — Key Takeaways only (max 5 bullets, one line each):
+• Gross margin level and what it signals vs sector norms.
+• Operating leverage: revenue growth vs expense growth.
+• Operating margin level in context (e.g. comparable to leading software peers, only if true).
+• Net income vs operating income — name the driver (e.g. unrealized investment gains) ONLY if supported by source data.
+• Core message: revenue growth AND margin direction together (growth quality).
+The table carries the detail — no multi-paragraph analysis, no INFERRED paragraphs.
+""",
     "Cash Flow": """Required table:
 {table_header}
 |---|---|---|---|---|---|
@@ -270,22 +260,14 @@ Required analysis format:
 | CapEx | ... | ... | ... | ... | ... |
 | Free Cash Flow (FCF) | ... | ... | ... | ... | ... |
 
-Required analysis format:
-🧠 説明・分析（各3〜5文）
-① 営業CF: OCF金額を正確な出所と共に。収益の質 — 純利益のどれだけが現金に変換されるか？運転資本効果（プラスまたはマイナスの影響）。3四半期OCFトレンド。セクターの現金変換基準と比較。
-② CapEx: CapEx金額と強度（CapEx/収益%）。投資が増加しているか減少しているか。何に投資しているか？再投資率をセクターおよび成長率の正当化と比較。
-③ FCF: FCF = OCF - CapExを正確な計算で。意味がある場合はFCF利回り。3四半期FCFトレンド。現在のFCF生成の持続可能性。
-④⑤ 追加分析: 自社株買い、配当、債務返済 — 実際の金額と軌道。
-
-🎯 Cash structure（超重要）: 現金生成と再投資ニーズの比較。この企業は現金複利マシンか現金消費者か？
-
-競合コンテキスト: セクター平均と比較したFCF変換率とCapEx強度。
-
-🧩 Namiさん向け解釈: 企業が効率的に現金を生み出しているか現金を消費しているか、現在の現金使途（自社株買い、投資、債務）が価値創造的かを説明。
-
-⚠️ リスク: 1〜2の運転資本または再投資リスク。
-
-⚠️ 注意点（Namiさん向け）: 一時的な運転資本や将来の投資リスクについて言及。""",
+Required analysis format — Key Takeaways形式のみ（最大5点、各1行）:
+• 粗利益率の水準とセクター水準との比較が示す意味。
+• 営業レバレッジ: 売上成長 vs 費用成長。
+• 営業利益率の水準（例: 大手ソフトウェア企業並み — 事実の場合のみ）。
+• 純利益 vs 営業利益 — 要因（例: 投資有価証券の未実現評価益）はソースで裏付けられる場合のみ明記。
+• 核心メッセージ: 売上成長とマージン改善の同時達成（成長の質）。
+表が詳細を担う — 複数段落の分析やINFERRED段落は書かないこと。
+""",
     "Capital Efficiency": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -428,11 +410,11 @@ EN_SECTION_FORMATS: Dict[str, str] = {
 | EPS | ... | ... | ... | ... | ... |
 | Revenue | ... | ... | ... | ... | ... |
 
-Required analysis format:
-① EPS: beat/miss, YoY direction, and exact source.
-② Revenue: beat/miss, YoY direction, and exact source.
-③ Quality of the beat/miss: explain whether both top line and profit moved together.
-For Nami-san: explain in plain investor terms whether this is a high-quality surprise or not.
+Required analysis format (CONCISE — max ~120 words total, no long paragraphs):
+① EPS: actual vs consensus estimate (name the consensus source), surprise %, YoY direction.
+② Revenue: actual vs consensus estimate, surprise %, YoY direction.
+③ Then 2-3 one-line bullets only: the key positives and negatives of the quarter.
+Detailed discussion belongs in Highlights & Lowlights below — do not repeat it here.
 > One-line summary: [your one-line summary here]""",
     "Highlights": """Required table:
 {table_header}
@@ -440,25 +422,24 @@ For Nami-san: explain in plain investor terms whether this is a high-quality sur
 | 🌟 Highlight | ① | ... | ... | ... | Low / Medium / High |
 | ⚠️ Lowlight | ① | ... | ... | ... | Low / Medium / High |
 
-Required analysis format:
-🌟 Highlights (3-5 sentences each)
-① Primary highlight: Name the single most important positive surprise with exact metric or transcript evidence. Explain structural vs one-time nature. Compare to sector peers if relevant. Investor implication.
-② Second highlight: Key operational or strategic improvement. Data evidence with specific source. Why it matters for the thesis.
-③ Third highlight: Management signal or market development. Transcript evidence. Forward-looking implication.
-④⑤ Additional points on themes management emphasized (use transcript if available).
+Required analysis format (CONCISE — short numbered headings + bullets, NO paragraphs):
+Highlights
+1. <Short heading for the most important positive>
+   • 2-3 one-line bullets with the specific metric or transcript evidence.
+2. <Second positive — short heading>
+   • 2-3 one-line bullets.
+3. <Third positive — short heading>
+   • 2-3 one-line bullets.
 
-⚠️ Lowlights (3-5 sentences each)
-① Primary concern: Name the single most important negative signal. Specific evidence (metric decline, cost pressure, competitive threat). Severity and durability assessment. Investor concern.
-② Second concern: Additional risk or weakness. Evidence and quantification if possible. Mitigation factors or worsening trajectory.
-③ Third concern: Secondary issue that could become material. Monitoring trigger.
-④⑤ Additional concerns if transcript reveals significant risks.
+Lowlights
+1. <Most important concern — short heading>
+   • 2-3 one-line bullets with specific evidence.
+2. <Second concern — short heading>
+   • 2-3 one-line bullets.
+3. <Third concern — short heading>
+   • 2-3 one-line bullets.
 
-Competitive context: How does this quarter's performance compare to sector peers? Above/at/below sector average?
-
-⚠️ Risk/Implications: 1-2 specific, sourced risks for this quarter's themes. Not generic.
-
-Essential insight for Nami-san: grade the quarter in one concise line.
-Investment takeaway: state the core takeaway without investment advice.
+Each bullet is ONE line. Do not write 3-5 sentence paragraphs per item.
 > One-line summary: [your one-line summary here]""",
     "Operating Metrics": """Required table:
 {table_header}

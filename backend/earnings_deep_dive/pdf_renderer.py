@@ -654,6 +654,16 @@ def _earnings_documents_story(
         transcript_label = "Earnings Transcript"
         transcript_url = None
 
+    def _display_url(url: str | None) -> str | None:
+        # Compact, protocol-free display so column wrapping never produces a
+        # truncated URL in the visible text (full URL stays in the Sources
+        # appendix links). Truncated visible URLs render as broken links.
+        if not url:
+            return url
+        compact = url.split("://", 1)[-1]
+        return compact[:57] + "…" if len(compact) > 60 else compact
+
+    transcript_url = _display_url(transcript_url)
     ir_value = _source_note(report, "investor relations")
     press_release_value = _source_note(report, "press release")
     presentation_value = _source_note(report, "presentation")
@@ -2017,8 +2027,14 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
     doc.onFirstPage = _on_first_page
     doc.onLaterPages = _on_later_pages
 
+    period_ctx = getattr(report, "period_context", None)
+    release_date = ((getattr(period_ctx, "earnings_release_date", None) or "")[:10]) if period_ctx else ""
+    period_suffix = f" ({release_date})" if release_date else ""
+    summary_word = "決算サマリー" if report.language == "jp" else "Earnings Summary"
     story: list = [
         Paragraph(escape(f"{report.company} ({report.ticker})"), styles["title"]),
+        # Fiscal period heading — prominent per client request (was small meta text)
+        Paragraph(escape(f"{report.quarter} {summary_word}{period_suffix}"), styles["section"]),
         Paragraph(escape(f"{translate('Earnings Deep-Dive', report.language)} - {report.quarter}"), styles["meta"]),
     ]
     website = _official_website(report)
@@ -2257,6 +2273,15 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
             f"<b>{methodology_label}:</b> {methodology_text}",
             styles["small"]
         ))
+
+        # ── Source legend (client-facing): maps source ids (S1…) to documents ──
+        if report.sources:
+            story.append(Spacer(1, 0.08 * inch))
+            story.append(Paragraph(f"<b>{translate('Source Legend', report.language)}</b>", styles["body"]))
+            for src in report.sources[:12]:
+                sid = getattr(src, "source_id", "") or ""
+                label = _glyph_safe(getattr(src, "label", "") or sid, font_name=fonts.regular)
+                story.append(Paragraph(f'<font size="8"><b>{sid}</b> = {label}</font>', styles["small"]))
 
         # ── Claim Traceability Appendix (INTERNAL ONLY — excluded from client PDF) ──
         if include_traceability and report.claim_sources:

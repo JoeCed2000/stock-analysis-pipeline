@@ -117,6 +117,16 @@ def _source(*values: Any, source_type: str = "sec_edgar") -> str:
     return SOURCE_COMPANY
 
 
+def _consensus_label(metrics: 'FinancialMetrics', estimate: Any) -> str:
+    """Honest source label for a consensus estimate cell — never SEC/company."""
+    if not _has(estimate):
+        return SOURCE_COMPANY
+    provider = getattr(metrics, "consensus_provider", None)
+    if provider and "investing" in str(provider).lower():
+        return "Investing.com (consensus)"
+    return SOURCE_CONSENSUS
+
+
 def _labels_are_japanese(row_labels: tuple[str, ...]) -> bool:
     return any(ord(ch) > 127 for ch in "".join(row_labels))
 
@@ -282,19 +292,25 @@ def _yoy_comment(value: Any) -> str:
     return "flat"
 
 
-def _variance(actual: Any, estimate: Any, explicit: Any = None) -> str:
+def _variance(actual: Any, estimate: Any, explicit: Any = None, precision: int = 1) -> str:
+    # Compute from the displayed actual/estimate pair first so the surprise %
+    # always reconciles with the table cells; an explicit override is only a
+    # fallback when one of the two values is missing.
+    try:
+        if _has(actual) and _has(estimate):
+            actual_number = float(actual)
+            estimate_number = float(estimate)
+            if estimate_number == 0:
+                return NOT_CALCULABLE
+            ratio = (actual_number - estimate_number) / abs(estimate_number)
+            pct = ratio * 100
+            sign = "+" if pct > 0 else ""
+            return f"{sign}{pct:.{precision}f}%"
+    except (TypeError, ValueError):
+        pass
     if _has(explicit):
         return _pct(explicit)
-    if not (_has(actual) and _has(estimate)):
-        return MISSING
-    try:
-        actual_number = float(actual)
-        estimate_number = float(estimate)
-    except (TypeError, ValueError):
-        return MISSING
-    if estimate_number == 0:
-        return NOT_CALCULABLE
-    return _pct((actual_number - estimate_number) / abs(estimate_number))
+    return MISSING
 
 
 def _clean_markdown_cell(value: str) -> str:
@@ -549,17 +565,17 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 row_labels[0],
                 _eps(metrics.eps_estimate),
                 _eps(metrics.eps_actual),
-                _variance(metrics.eps_actual, metrics.eps_estimate, getattr(metrics, "eps_vs_estimate", None)),
+                _variance(metrics.eps_actual, metrics.eps_estimate, getattr(metrics, "eps_vs_estimate", None), precision=2),
                 _yoy_pct(getattr(metrics, "eps_yoy", None)),
-                _source(metrics.eps_estimate, metrics.eps_actual, getattr(metrics, "eps_vs_estimate", None), getattr(metrics, "eps_yoy", None), source_type="yfinance_consensus"),
+                _consensus_label(metrics, metrics.eps_estimate) if _has(metrics.eps_actual) or _has(metrics.eps_estimate) else MISSING_EN,
             ],
             [
                 row_labels[1],
                 _money(getattr(metrics, "revenue_estimate", None)),
                 _money(getattr(metrics, "revenue_actual", None)),
-                _variance(getattr(metrics, "revenue_actual", None), getattr(metrics, "revenue_estimate", None)),
+                _variance(getattr(metrics, "revenue_actual", None), getattr(metrics, "revenue_estimate", None), precision=2),
                 _yoy_pct(getattr(metrics, "revenue_yoy", None)),
-                _source(getattr(metrics, "revenue_estimate", None), getattr(metrics, "revenue_actual", None), getattr(metrics, "revenue_yoy", None)),
+                _consensus_label(metrics, getattr(metrics, "revenue_estimate", None)) if _has(getattr(metrics, "revenue_actual", None)) or _has(getattr(metrics, "revenue_estimate", None)) else MISSING_EN,
             ],
         ]
 
@@ -638,22 +654,6 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         ]
 
     if section_key == "Cash Flow":
-        def cash_flow_quality() -> str:
-            if not (_has(metrics.free_cash_flow) and _has(metrics.operating_cash_flow)):
-                return MISSING
-            try:
-                operating_cash_flow = float(metrics.operating_cash_flow)
-                ratio = float(metrics.free_cash_flow) / operating_cash_flow if operating_cash_flow else None
-            except (TypeError, ValueError):
-                return MISSING
-            if ratio is None:
-                return MISSING
-            if ratio > 0.8:
-                return "strong"
-            if ratio >= 0.5:
-                return "balanced"
-            return "pressured"
-
         def _metric_value(*keys: str) -> Any:
             for key in keys:
                 value = getattr(metrics, key, None)
@@ -661,30 +661,22 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                     return value
             return None
 
-        quality = cash_flow_quality()
-        # Append FCF formula when both OCF and CapEx are available
-        fcf_formula = ""
-        if _has(metrics.free_cash_flow) and _has(metrics.operating_cash_flow) and _has(metrics.capex):
-            try:
-                ocf_val = float(metrics.operating_cash_flow)
-                capex_val = float(metrics.capex)
-                fcf_val = float(metrics.free_cash_flow)
-                fcf_formula = f" (FCF = {_money(ocf_val)} OCF - {_money(abs(capex_val))} CapEx)"
-            except (TypeError, ValueError):
-                pass
-        quality_display = quality + fcf_formula if quality != MISSING else quality
-
+        # The "Quality" column was removed (client request) — the quality
+        # interpretation is now a single note below the table, built by
+        # _cash_flow_quality_note().
         net_debt_value = _metric_value("net_debt")
         is_japanese = _labels_are_japanese(row_labels)
         net_label = "ネットキャッシュ /（純負債）" if is_japanese else "Net Cash / (Net Debt)"
-        if _has(net_debt_value):
+
+        def _net_display(value: Any) -> str:
+            # net_debt convention: positive = leveraged. Display the net
+            # position (cash - debt) so a net-cash company shows a positive $.
+            if not _has(value):
+                return MISSING
             try:
-                net_debt_number = float(net_debt_value)
-                net_quality = "Net cash (surplus)" if net_debt_number < 0 else "Net debt (leverage)"
+                return _money(-float(value))
             except (TypeError, ValueError):
-                net_quality = "Leverage"
-        else:
-            net_quality = "Leverage"
+                return MISSING
 
         cash_marketable_label = "現金・短期投資" if is_japanese else "Cash & Marketable Securities"
         cash_marketable_value = _metric_value(
@@ -703,13 +695,32 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
             "cash_and_equivalents_yoy",
         )
 
+        # FCF Margin = Free Cash Flow / Revenue (client request)
+        def _ratio(num: Any, den: Any) -> float | None:
+            try:
+                if num is None or den is None or float(den) == 0:
+                    return None
+                return float(num) / float(den)
+            except (TypeError, ValueError):
+                return None
+
+        fcf_margin_label = "FCFマージン" if is_japanese else "FCF Margin"
+        fcf_margin = _ratio(metrics.free_cash_flow, _metric_value("revenue_actual", "revenue_quarterly"))
+        fcf_margin_prior = _ratio(
+            _metric_value("free_cash_flow_prior_year"),
+            _metric_value("revenue_quarterly_prior_year", "revenue_actual_prior_year"),
+        )
+        fcf_margin_yoy = (
+            (fcf_margin - fcf_margin_prior) if (fcf_margin is not None and fcf_margin_prior is not None) else None
+        )
+        fcf_margin_source = "計算値（FCF ÷ 売上高）" if is_japanese else "Calculated (FCF ÷ Revenue)"
+
         rows = (
             (
                 row_labels[0],
                 _money(metrics.operating_cash_flow),
                 _money(getattr(metrics, "operating_cash_flow_prior_year", None)),
                 _yoy_pct(getattr(metrics, "operating_cash_flow_yoy", None)),
-                "Operating",
                 metrics.operating_cash_flow,
             ),
             (
@@ -717,7 +728,6 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 _money(metrics.capex),
                 _money(getattr(metrics, "capex_prior_year", None)),
                 _yoy_pct(getattr(metrics, "capex_yoy", None)),
-                "Investing",
                 metrics.capex,
             ),
             (
@@ -725,7 +735,6 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 _money(metrics.free_cash_flow),
                 _money(getattr(metrics, "free_cash_flow_prior_year", None)),
                 _yoy_pct(getattr(metrics, "free_cash_flow_yoy", None)),
-                quality_display,
                 metrics.free_cash_flow,
             ),
             (
@@ -733,19 +742,26 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 _money(cash_marketable_value),
                 _money(cash_marketable_prior),
                 _yoy_pct(cash_marketable_yoy),
-                "Liquidity buffer",
                 cash_marketable_value,
             ),
             (
                 net_label,
-                _money(metrics.net_debt),
-                _money(getattr(metrics, "net_debt_prior_year", None)),
+                _net_display(metrics.net_debt),
+                _net_display(getattr(metrics, "net_debt_prior_year", None)),
                 _yoy_pct(getattr(metrics, "net_debt_yoy", None)),
-                net_quality,
                 metrics.net_debt,
             ),
         )
-        return [[label, value, prior, yoy, q, _source(raw)] for label, value, prior, yoy, q, raw in rows]
+        result_rows = [[label, value, prior, yoy, _source(raw)] for label, value, prior, yoy, raw in rows]
+        # Insert FCF Margin right below the Free cash flow row
+        result_rows.insert(3, [
+            fcf_margin_label,
+            _pct(fcf_margin),
+            _pct(fcf_margin_prior),
+            _yoy_pts_val(fcf_margin_yoy),
+            fcf_margin_source if fcf_margin is not None else MISSING_EN,
+        ])
+        return result_rows
 
     if section_key == "Capital Efficiency":
         is_japanese = _labels_are_japanese(row_labels)
@@ -1734,21 +1750,55 @@ def _ensure_section_commentary(
     fallback = _default_section_analysis(language, ticker, section_key, metrics)
 
     if section_key == "Highlights":
+        # Concise client format: numbered headings + bullets, with an explicit
+        # Lowlights block. Emoji markers are optional (legacy format kept valid).
         has_required_structure = (
             _numbered_highlight_count(combined) >= 3
-            and "🧠" in combined
-            and "🎯" in combined
-            and ("⚠" in combined or "Lowlight" in combined or "Lowlights" in combined)
+            and ("⚠" in combined or "Lowlight" in combined or "Lowlights" in combined or "リスク" in combined)
         )
         if not has_required_structure:
             cleaned.extend(fallback)
     elif len(combined) <= 200:
         cleaned.extend(fallback)
 
+    if section_key == "Cash Flow":
+        # Single quality mention below the table — replaces the removed
+        # per-row "Quality" column (client request).
+        note = _cash_flow_quality_note(language, metrics)
+        if note and note not in cleaned:
+            cleaned.insert(0, note)
+
     return cleaned
 
 
+def _cash_flow_quality_note(language: TemplateLanguage, metrics: FinancialMetrics) -> str | None:
+    try:
+        ocf = float(metrics.operating_cash_flow) if _has(metrics.operating_cash_flow) else None
+        fcf = float(metrics.free_cash_flow) if _has(metrics.free_cash_flow) else None
+    except (TypeError, ValueError):
+        return None
+    if not ocf or fcf is None:
+        return None
+    ratio = fcf / ocf
+    quality = "strong" if ratio > 0.8 else ("balanced" if ratio >= 0.5 else "pressured")
+    formula = ""
+    if _has(metrics.capex):
+        try:
+            formula = f" — FCF = {_money(ocf)} OCF − {_money(abs(float(metrics.capex)))} CapEx"
+        except (TypeError, ValueError):
+            formula = ""
+    if language == "jp":
+        quality_jp = {"strong": "良好", "balanced": "均衡", "pressured": "圧迫"}[quality]
+        return f"キャッシュフローの質: {quality_jp}（FCF/営業CF = {ratio:.0%}）{formula}"
+    return f"Cash flow quality: {quality} (FCF/OCF = {ratio:.0%}){formula}"
+
+
 def _resolved_quarter_label(quarter: str, metrics: FinancialMetrics) -> str:
+    # Fiscal label derived from source data is authoritative — calendar tags
+    # like '2026Q2' mislabel offset-fiscal-year companies (NVDA: FY2027 Q1).
+    fiscal = _metric_text(metrics, "fiscal_period_label")
+    if fiscal:
+        return fiscal
     requested = quarter.strip() if isinstance(quarter, str) else ""
     if requested and requested.lower() != "latest quarter":
         return requested
@@ -1814,8 +1864,9 @@ def _quarter_labels_from_resolved(resolved_quarter: str) -> tuple[str, str, str,
         prior = "Prior Year Quarter"
         return current, prior, f"TTM Ending {current}", f"TTM Ending {prior}"
 
-    current = f"Q{quarter_num} {year}"
-    prior = f"Q{quarter_num} {year - 1}"
+    # FY-prefixed labels so fiscal periods are never mistaken for calendar ones
+    current = f"FY{year} Q{quarter_num}"
+    prior = f"FY{year - 1} Q{quarter_num}"
     return current, prior, f"TTM Ending {current}", f"TTM Ending {prior}"
 
 
@@ -2184,7 +2235,7 @@ def _section_runtime_title(section_key: str, base_title: str, language: str) -> 
     if section_key == "Cash Flow":
         return "キャッシュフロー & 流動性" if language == "jp" else "Cash Flow & Liquidity"
     if section_key == "Capital Efficiency":
-        return "資本配分・資本効率" if language == "jp" else "Capital Allocation & Efficiency"
+        return "資本効率" if language == "jp" else "Capital Efficiency"
     return base_title
 
 
@@ -2659,6 +2710,14 @@ def build_earnings_deep_dive_report(
         next_earnings_date=next_earnings_date,
         yf_info=yf_info,
     )
+
+    # ── Earnings-focus mode (client request): earnings PDFs skip the stable
+    # background block (company overview / revenue model / competitive
+    # landscape) — those belong to the dedicated company-overview report.
+    # Executive snapshot above keeps the one-line company context.
+    import os as _os
+    if _os.getenv("SA_EARNINGS_FOCUS", "true").strip().lower() in ("1", "true", "yes"):
+        company_overview = None
 
     # ── Convert company_overview dict to CompanyOverview model ──
     co_model: CompanyOverview | None = None

@@ -524,10 +524,33 @@ def _load_yfinance():
     return yf
 
 
+# B17: short-TTL in-run Ticker reuse. yfinance memoizes fetched statements on
+# the Ticker object, so reusing it within one workflow removes duplicate
+# network fetches (get_yahoo_data + get_yahoo_data_for_quarter both creating
+# fresh Tickers). TTL well below the 1h file cache — no extra staleness.
+# Set SA_YF_TICKER_TTL=0 to disable.
+_TICKER_CACHE: dict = {}
+
+
+def _ticker_cache_ttl() -> float:
+    import os
+    try:
+        return float(os.getenv("SA_YF_TICKER_TTL", "300"))
+    except ValueError:
+        return 300.0
+
+
 def _yf_ticker_safe(ticker: str, timeout: int = 120):
     """Create yf.Ticker with timeout to prevent hangs on slow Yahoo responses.
     Default 120s — mega-caps (NVDA, AAPL) need >60s for full financial statements."""
     import concurrent.futures
+    import time as _t
+
+    ttl = _ticker_cache_ttl()
+    if ttl > 0:
+        hit = _TICKER_CACHE.get(ticker)
+        if hit and _t.monotonic() - hit[0] <= ttl:
+            return hit[1]
 
     def _create():
         yf = _load_yfinance()
@@ -536,10 +559,48 @@ def _yf_ticker_safe(ticker: str, timeout: int = 120):
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(_create)
         try:
-            return future.result(timeout=timeout)
+            obj = future.result(timeout=timeout)
         except concurrent.futures.TimeoutError:
             logger.warning(f"yfinance Ticker({ticker}) timed out after {timeout}s")
             raise TimeoutError(f"yfinance Ticker({ticker}) timed out after {timeout}s")
+    if ttl > 0:
+        _TICKER_CACHE[ticker] = (_t.monotonic(), obj)
+    return obj
+
+
+def _fiscal_period_label(period_end, info: Dict[str, Any]) -> Optional[str]:
+    """Map a quarter period-end date to the company's fiscal label, e.g. 'FY2027 Q1'.
+
+    Uses yfinance info['lastFiscalYearEnd'] (epoch) for the fiscal year-end month.
+    Companies with offset fiscal years (NVDA ends late Jan, AAPL late Sep) must
+    not be labeled with calendar quarters.
+    """
+    try:
+        from datetime import datetime as _dt
+        fy_end_epoch = (info or {}).get("lastFiscalYearEnd")
+        fy_end_month = _dt.fromtimestamp(fy_end_epoch).month if fy_end_epoch else 12
+        month, year = period_end.month, period_end.year
+        fiscal_year = year if month <= fy_end_month else year + 1
+        fy_start_month = fy_end_month % 12 + 1
+        quarter_num = ((month - fy_start_month) % 12) // 3 + 1
+        return f"FY{fiscal_year} Q{quarter_num}"
+    except Exception:
+        return None
+
+
+def _net_position(total_debt: Optional[float], cash_eq: Optional[float],
+                  marketable: Optional[float], combined: Optional[float] = None):
+    """Return (net_debt, cash_and_marketable_securities).
+
+    Net Cash = Cash & Equivalents + Marketable Securities - Total Debt.
+    net_debt keeps the existing sign convention: positive = leveraged, negative = net cash.
+    `combined` is the pre-summed yfinance row 'Cash Cash Equivalents And Short Term Investments'.
+    """
+    cash_total = combined
+    if cash_total is None and cash_eq is not None:
+        cash_total = cash_eq + (marketable or 0)
+    net_debt = total_debt - cash_total if (total_debt is not None and cash_total is not None) else None
+    return net_debt, cash_total
 
 
 def get_yahoo_data(ticker: str) -> Dict[str, Any]:
@@ -636,6 +697,8 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
                 dt = latest_q.to_pydatetime() if hasattr(latest_q, 'to_pydatetime') else latest_q
                 q_num = (dt.month - 1) // 3 + 1
                 period_tag = f"{dt.year}Q{q_num}"
+                financials["period_end_date"] = dt.date().isoformat() if hasattr(dt, 'date') else str(dt)[:10]
+                financials["fiscal_period_label"] = _fiscal_period_label(dt, info)
             except Exception:
                 period_tag = None
             financials["revenue_quarterly"] = _safe_float(
@@ -767,8 +830,20 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
             cash_eq = _safe_float(
                 balance.loc["Cash And Cash Equivalents", latest] if "Cash And Cash Equivalents" in balance.index else None
             )
-            if total_debt is not None and cash_eq is not None:
-                financials["net_debt"] = total_debt - cash_eq
+            marketable = _safe_float(
+                balance.loc["Other Short Term Investments", latest] if "Other Short Term Investments" in balance.index else None
+            )
+            combined_cash = _safe_float(
+                balance.loc["Cash Cash Equivalents And Short Term Investments", latest]
+                if "Cash Cash Equivalents And Short Term Investments" in balance.index else None
+            )
+            # Net Cash = Cash & Equivalents + Marketable Securities - Total Debt
+            financials["net_debt"], financials["cash_and_marketable_securities"] = _net_position(
+                total_debt, cash_eq, marketable, combined_cash
+            )
+            # Legacy value (cash-equivalents only) kept for the ROIC invested-capital
+            # proxy below, so the net-debt correction does not silently change ROIC.
+            legacy_net_debt = total_debt - cash_eq if (total_debt is not None and cash_eq is not None) else None
             # Total assets & equity (v2.5)
             total_assets = _safe_float(
                 balance.loc["Total Assets", latest] if "Total Assets" in balance.index else None
@@ -810,7 +885,7 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
                 financials["roa"] = round(ni / ta, 4)
 
             oi = financials.get("operating_income")
-            total_debt_val = financials.get("net_debt")
+            total_debt_val = legacy_net_debt if legacy_net_debt is not None else financials.get("net_debt")
             if oi and eq and total_debt_val is not None:
                 invested = eq + abs(total_debt_val)
                 if invested > 0:
@@ -891,6 +966,18 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
                 financials["eps_actual_gaap"] = gaap_eps  # preserve GAAP for reference
                 financials["eps_actual"] = adj_eps
                 financials["eps_actual_source"] = "yfinance earnings_history (adjusted, matches consensus)"
+                # B14: GAAP-based YoY is not comparable to the adjusted actual.
+                # Show YoY only on a same-basis pair; otherwise leave undisclosed.
+                financials["eps_yoy_gaap"] = financials.get("eps_yoy")
+                prior_adj = None
+                if len(eh) >= 5:
+                    try:
+                        prior_adj = float(eh.iloc[-5]["epsActual"])
+                    except (TypeError, ValueError, KeyError, IndexError):
+                        prior_adj = None
+                financials["eps_yoy"] = (
+                    round((adj_eps - prior_adj) / abs(prior_adj), 4) if prior_adj else None
+                )
                 logger.info(f"eps_actual overridden: GAAP={gaap_eps} → adjusted={adj_eps}")
     except Exception as e:
         logger.debug(f"earnings_history epsActual override skipped: {e}")
@@ -1027,6 +1114,13 @@ def get_yahoo_data_for_quarter(ticker: str, quarter: str) -> Optional[Dict[str, 
         "total_assets": None, "equity": None, "buybacks": None, "dividends": None,
     }
 
+    try:
+        _dt_col = target_col.to_pydatetime() if hasattr(target_col, 'to_pydatetime') else target_col
+        financials["period_end_date"] = _dt_col.date().isoformat()
+        financials["fiscal_period_label"] = _fiscal_period_label(_dt_col, info)
+    except Exception:
+        pass
+
     # Extract from quarterly income
     try:
         financials["revenue_quarterly"] = _safe_float(
@@ -1098,8 +1192,14 @@ def get_yahoo_data_for_quarter(ticker: str, quarter: str) -> Optional[Dict[str, 
                 bs.loc["Total Debt", bs_col] if "Total Debt" in bs.index else None)
             cash_eq = _safe_float(
                 bs.loc["Cash And Cash Equivalents", bs_col] if "Cash And Cash Equivalents" in bs.index else None)
-            if total_debt is not None and cash_eq is not None:
-                financials["net_debt"] = total_debt - cash_eq
+            marketable = _safe_float(
+                bs.loc["Other Short Term Investments", bs_col] if "Other Short Term Investments" in bs.index else None)
+            combined_cash = _safe_float(
+                bs.loc["Cash Cash Equivalents And Short Term Investments", bs_col]
+                if "Cash Cash Equivalents And Short Term Investments" in bs.index else None)
+            # Net Cash = Cash & Equivalents + Marketable Securities - Total Debt
+            financials["net_debt"], financials["cash_and_marketable_securities"] = _net_position(
+                total_debt, cash_eq, marketable, combined_cash)
         except Exception as e:
             logger.debug(f"Fallback: {e}")
 

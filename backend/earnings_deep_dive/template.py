@@ -59,8 +59,8 @@ EARNINGS_TEMPLATE: tuple[ReportSectionTemplate, ...] = (
         key="Cash Flow",
         title="Cash Flow",
         question="Please assess cash conversion, capex intensity, and free cash flow quality.",
-        table_columns=("Metric", "Actual", "Prior Year", "YoY", "Quality", "Source"),
-        table_rows=("Operating cash flow", "CapEx", "Free cash flow", "Net debt"),
+        table_columns=("Metric", "Actual", "Prior Year", "YoY", "Source"),
+        table_rows=("Operating cash flow", "CapEx", "Free cash flow", "FCF margin", "Net debt"),
         summary_label="Cash flow takeaway",
     ),
     ReportSectionTemplate(
@@ -143,8 +143,8 @@ JAPANESE_EARNINGS_TEMPLATE: tuple[ReportSectionTemplate, ...] = (
         key="Cash Flow",
         title="キャッシュフロー",
         question="以下のキャッシュ創出力、設備投資、フリーキャッシュフローの質を評価してください。",
-        table_columns=("指標", "実績", "前年", "前年同期比", "品質", "出所"),
-        table_rows=("営業キャッシュフロー", "設備投資", "フリーキャッシュフロー", "純負債"),
+        table_columns=("指標", "実績", "前年", "前年同期比", "出所"),
+        table_rows=("営業キャッシュフロー", "設備投資", "フリーキャッシュフロー", "FCFマージン", "純負債"),
         summary_label="キャッシュフロー要点",
     ),
     ReportSectionTemplate(

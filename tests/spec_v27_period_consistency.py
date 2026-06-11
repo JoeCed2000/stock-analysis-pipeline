@@ -130,8 +130,8 @@ class TestBuildReportPeriodContext:
         assert ctx.fiscal_year == 2026
         assert ctx.fiscal_quarter == 1
         assert ctx.filing_period == "FY2026 Q1"
-        assert ctx.report_title_period_label == "Q1 2026"
-        assert ctx.comparison_prior_year_period == "Q1 2025"
+        assert ctx.report_title_period_label == "FY2026 Q1"
+        assert ctx.comparison_prior_year_period == "FY2025 Q1"
         assert "FY2026 Q1" in ctx.display_period_label
 
     def test_comparison_prior_year_different_quarter(self):
@@ -144,7 +144,7 @@ class TestBuildReportPeriodContext:
         )
         assert ctx.fiscal_year == 2025
         assert ctx.fiscal_quarter == 4
-        assert ctx.comparison_prior_year_period == "Q4 2024"
+        assert ctx.comparison_prior_year_period == "FY2024 Q4"
 
     def test_builds_with_metrics_fields(self):
         from backend.earnings_deep_dive.mapper import _build_report_period_context

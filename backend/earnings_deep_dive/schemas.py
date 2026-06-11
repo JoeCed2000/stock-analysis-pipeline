@@ -28,6 +28,10 @@ class FinancialMetrics(BaseModel):
     operating_cash_flow: Optional[float] = None
     capex: Optional[float] = None
     net_debt: Optional[float] = None
+    cash_and_marketable_securities: Optional[float] = None
+    fiscal_period_label: Optional[str] = None
+    period_end_date: Optional[str] = None
+    consensus_provider: Optional[str] = None
     roic: Optional[float] = None
     roe: Optional[float] = None
     # ── new yfinance-extracted fields (v2.5) ──

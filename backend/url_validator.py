@@ -24,6 +24,33 @@ logger = logging.getLogger("sa.url_validator")
 # ── Timeouts ──
 _CONNECT_TIMEOUT = 8.0       # seconds per connection attempt
 _TOTAL_BATCH_TIMEOUT = 30.0  # seconds for all URLs in one report
+
+# ── Result memoization (B13) ──
+# Link liveness barely changes within minutes; re-HEADing the same URLs on
+# every render dominated PDF render time (~75%). Results are reused within a
+# TTL window — validation itself is unchanged, only repeated identical checks
+# are skipped. Set SA_URL_VALIDATION_CACHE_TTL=0 to disable.
+import os as _os
+_RESULT_CACHE_TTL = float(_os.getenv("SA_URL_VALIDATION_CACHE_TTL", "900"))
+_RESULT_CACHE: dict[str, tuple[float, "UrlCheck"]] = {}
+
+
+def _cached_check(url: str) -> Optional["UrlCheck"]:
+    if _RESULT_CACHE_TTL <= 0:
+        return None
+    hit = _RESULT_CACHE.get(url)
+    if not hit:
+        return None
+    ts, check = hit
+    if _time.monotonic() - ts > _RESULT_CACHE_TTL:
+        _RESULT_CACHE.pop(url, None)
+        return None
+    return check
+
+
+def _store_check(check: "UrlCheck") -> None:
+    if _RESULT_CACHE_TTL > 0 and check.url and not check.url.startswith("("):
+        _RESULT_CACHE[check.url] = (_time.monotonic(), check)
 _MAX_REDIRECTS = 3
 _USER_AGENT = "SA-Pipeline/2.0 (URL Validator; +https://sa.cedlabusa.net)"
 _RESTRICTED_BUT_REACHABLE_STATUS_CODES = {401, 403, 429}
@@ -270,11 +297,23 @@ async def _validate_url_pairs(
 
     logger.info(f"[{ticker}] Validating {len(url_pairs)} {source} URLs...")
 
-    # Run all checks in parallel with overall timeout
+    # Reuse memoized results within the TTL window (B13)
+    from dataclasses import replace as _dc_replace
+    pending: list[tuple[str, str]] = []
+    for url, label in url_pairs:
+        hit = _cached_check(url)
+        if hit is not None:
+            report_obj.checks.append(_dc_replace(hit, label=label))
+        else:
+            pending.append((url, label))
+    if not pending:
+        logger.info(f"[{ticker}] All {len(url_pairs)} URLs served from validation cache")
+
+    # Run remaining checks in parallel with overall timeout
     try:
         tasks = [
             _check_one_url(url, label)
-            for url, label in url_pairs
+            for url, label in pending
         ]
         checks = await asyncio.wait_for(
             asyncio.gather(*tasks, return_exceptions=True),
@@ -295,6 +334,7 @@ async def _validate_url_pairs(
                 error=f"batch: {type(check).__name__}",
             ))
         elif isinstance(check, UrlCheck):
+            _store_check(check)
             report_obj.checks.append(check)
         else:
             report_obj.checks.append(UrlCheck(
