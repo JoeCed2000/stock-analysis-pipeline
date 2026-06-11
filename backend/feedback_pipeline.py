@@ -715,22 +715,26 @@ async def _action_restart_backend() -> dict:
 
 
 async def _action_reanalyze_ticker(ticker: str) -> dict:
-    """Re-run analysis for a ticker."""
+    """Re-run analysis for a ticker via POST /api/analyze."""
     logger.info(f"DIRECT-ACTION: reanalyzing {ticker}")
     result = {"action": "reanalyze_ticker", "ticker": ticker, "success": False, "detail": ""}
     if not ticker or ticker == "GENERAL":
         result["detail"] = "No ticker — cannot reanalyze"
         return result
     try:
-        import urllib.request
-        url = f"http://127.0.0.1:8780/api/analyze/{ticker}?force_refresh=true&skip_codex=true"
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            data = json.loads(resp.read())
-            result["success"] = data.get("status") == "ok" or "analysis" in data
-            result["detail"] = str(data.get("status", ""))[:200]
+        import urllib.request, json as _json
+        url = "http://127.0.0.1:8780/api/analyze?force_refresh=true&skip_codex=true&lang=en"
+        body = _json.dumps({"tickers": [ticker]}).encode()
+        req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            data = _json.loads(resp.read())
+            result["success"] = bool(data) and data.get("status") != "error"
+            result["detail"] = str(data.get("status", data.get("message", "")))[:200]
+            result["response_keys"] = list(data.keys())[:10]
+            logger.info(f"DIRECT-ACTION: reanalyze {ticker} → success={result['success']} detail={result['detail'][:100]}")
     except Exception as e:
-        result["detail"] = f"Reanalysis error: {e}"
+        result["detail"] = f"Reanalysis error: {type(e).__name__}: {e}"
+        logger.error(f"DIRECT-ACTION: reanalyze {ticker} FAILED: {e}")
     return result
 
 
