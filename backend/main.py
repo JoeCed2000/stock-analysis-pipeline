@@ -2587,6 +2587,23 @@ async def submit_feedback(
                 except Exception as probe_exc:
                     logger.warning("Feedback HAR auto-probe failed: %s", probe_exc)
                     cookie_status["probe"] = {"ok": False, "reason": f"probe_error: {probe_exc}"}
+                
+                # ── Auto-reanalyze: if probe OK and ticker present, trigger analysis ──
+                if (cookie_status and cookie_status.get("probe", {}).get("ok") 
+                    and normalized_ticker and normalized_ticker != "GENERAL"):
+                    try:
+                        from backend.feedback_pipeline import _action_reanalyze_ticker
+                        logger.info(f"Auto-reanalyzing {normalized_ticker} after successful HAR import")
+                        reanalysis = await _action_reanalyze_ticker(normalized_ticker)
+                        cookie_status["auto_reanalysis"] = {
+                            "triggered": True,
+                            "ticker": normalized_ticker,
+                            "success": reanalysis.get("success", False),
+                            "detail": reanalysis.get("detail", "")[:100],
+                        }
+                    except Exception as re_exc:
+                        logger.warning(f"Auto-reanalysis failed: {re_exc}")
+                        cookie_status["auto_reanalysis"] = {"triggered": False, "error": str(re_exc)}
             except ValueError as e:
                 logger.warning("HAR import failed for %s (%s): %s", saved_name, _orig_name, e)
                 cookie_status = {"error": str(e), "file": _orig_name}
