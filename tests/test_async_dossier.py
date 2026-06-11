@@ -229,3 +229,72 @@ def test_set_dossier_phase_logs_error_context(caplog):
     assert "pdf_path=/tmp/NVDA/earnings_deep_dive.pdf" in messages
     assert "validation_path=/tmp/NVDA/deep_dive_validation.json" in messages
     assert "directory=/tmp/NVDA" in messages
+
+
+# ── Registry phase timestamp preservation (poll-loop regression) ──────────────
+# get_dossier_status used to cache its computed status over the registry entry
+# WITHOUT phase_set_at. The next poll then saw age=None, declared the transient
+# phase stale, and flipped a healthy in-flight generation to failed — the
+# client polling /api/report/{ticker}/pdf got 422 ~1 minute after launch while
+# the backend generation thread was still running fine.
+
+
+def test_transient_phase_timestamp_survives_status_polling(tmp_path, monkeypatch):
+    backend_dir = tmp_path / "backend"
+    backend_dir.mkdir()
+    _write_ready_dossier(tmp_path)
+    monkeypatch.chdir(backend_dir)
+    async_dossier._dossier_registry.clear()
+
+    async_dossier.set_dossier_phase("AAPL", async_dossier.DossierPhase.PDF_GENERATING)
+
+    for poll in range(3):
+        status = async_dossier.get_dossier_status("AAPL")
+        assert status["phase"] == async_dossier.DossierPhase.PDF_GENERATING, \
+            f"poll {poll + 1} flipped a fresh in-flight generation to {status['phase']}"
+        assert status.get("stage") != "failed", f"poll {poll + 1} reported stage=failed"
+        assert async_dossier._dossier_registry["AAPL"].get("phase_set_at"), \
+            f"phase_set_at lost from registry after poll {poll + 1}"
+
+
+def test_missing_transient_timestamp_is_not_treated_as_failed(tmp_path, monkeypatch):
+    """An entry that lost its timestamp must not flip to failed; it is
+    re-stamped so the stale window restarts (and still terminates later)."""
+    backend_dir = tmp_path / "backend"
+    backend_dir.mkdir()
+    _write_ready_dossier(tmp_path)
+    monkeypatch.chdir(backend_dir)
+    async_dossier._dossier_registry.clear()
+    async_dossier._dossier_registry["AAPL"] = {
+        "phase": async_dossier.DossierPhase.PDF_GENERATING,
+    }
+
+    status = async_dossier.get_dossier_status("AAPL")
+
+    assert status["phase"] == async_dossier.DossierPhase.PDF_GENERATING
+    assert async_dossier._dossier_registry["AAPL"].get("phase_set_at"), \
+        "missing timestamp must be re-stamped, not treated as terminal failure"
+
+
+def test_truly_stale_transient_phase_still_fails(tmp_path, monkeypatch):
+    """The legitimate stale guard is untouched: a transient phase older than
+    PDF_TRANSIENT_STALE_SECONDS still becomes a terminal failure."""
+    from datetime import datetime, timedelta
+
+    backend_dir = tmp_path / "backend"
+    backend_dir.mkdir()
+    _write_ready_dossier(tmp_path)
+    monkeypatch.chdir(backend_dir)
+    async_dossier._dossier_registry.clear()
+
+    async_dossier.set_dossier_phase("AAPL", async_dossier.DossierPhase.PDF_GENERATING)
+    stale_stamp = (
+        datetime.now(async_dossier.PARIS)
+        - timedelta(seconds=async_dossier.PDF_TRANSIENT_STALE_SECONDS + 60)
+    ).isoformat()
+    async_dossier._dossier_registry["AAPL"]["phase_set_at"] = stale_stamp
+
+    status = async_dossier.get_dossier_status("AAPL")
+
+    assert status["phase"] == async_dossier.DossierPhase.FAILED
+    assert status["stage"] == "failed"

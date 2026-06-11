@@ -116,9 +116,14 @@ def _transient_phase_age_seconds(entry: dict) -> float | None:
 
 
 def _transient_phase_is_stale(entry: dict) -> bool:
-    """True when a PDF transient phase has exceeded the allowed poll window."""
+    """True when a PDF transient phase has exceeded the allowed poll window.
+
+    A missing/unparseable timestamp is NOT staleness: it means the timestamp
+    was lost (e.g. a status cache write), not that the generation thread died.
+    Callers re-stamp such entries so the stale window still terminates.
+    """
     age = _transient_phase_age_seconds(entry)
-    return age is None or age > PDF_TRANSIENT_STALE_SECONDS
+    return age is not None and age > PDF_TRANSIENT_STALE_SECONDS
 
 
 def _analyses_dir() -> Path:
@@ -303,6 +308,12 @@ def get_dossier_status(ticker: str) -> dict:
         # Background thread state is authoritative only while fresh. If the
         # thread died or the server kept a stale registry entry, stop returning
         # endless 202/generating and expose a terminal failure that can be fixed.
+        if not reg_entry.get("phase_set_at"):
+            # Timestamp lost (e.g. an older cache write) — re-stamp instead of
+            # declaring failure; the stale window restarts from now so a dead
+            # thread still terminates PDF_TRANSIENT_STALE_SECONDS later.
+            with _registry_lock:
+                reg_entry["phase_set_at"] = datetime.now(PARIS).isoformat()
         if _transient_phase_is_stale(reg_entry):
             status["phase"] = DossierPhase.FAILED
             status["error"] = reg_entry.get("error") or f"PDF generation stale for more than {PDF_TRANSIENT_STALE_SECONDS}s"
@@ -341,10 +352,17 @@ def get_dossier_status(ticker: str) -> dict:
     # Phase is set, now apply verification status
 
     _apply_verification_status(status)
-    
+
     with _registry_lock:
+        # Preserve the phase timestamp when replacing the registry entry with
+        # the computed status: losing it made the next poll see age=None and
+        # flip a healthy in-flight generation to failed. Never overwrite an
+        # existing phase_set_at with None/missing.
+        previous = _dossier_registry.get(ticker_clean, {})
+        if not status.get("phase_set_at") and previous.get("phase_set_at"):
+            status["phase_set_at"] = previous["phase_set_at"]
         _dossier_registry[ticker_clean] = status
-    
+
     return status
 
 
