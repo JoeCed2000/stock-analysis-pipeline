@@ -1493,3 +1493,30 @@ but no PDF was produced.
 ## Notes
 - Financial data must remain sourced/auditable through generated source manifests.
 - Do not commit `analyses/`, logs, `.env`, or generated binary artifacts.
+
+
+## 2026-06-11 — Clôture des cartes feedback SA auto-intake bloquées
+
+### Status
+- Correction opérationnelle effectuée sans relancer de workers Kanban SA.
+- Backup Kanban DB: `/home/ced/.hermes/kanban/boards/sa-pipeline/kanban.db.bak.close-stale-sa-feedback-20260611-2121`.
+
+### Root cause
+- Les alertes `kanban-healthcheck` visaient deux cartes d'auto-intake feedback (`GENERAL`, `GLW`) restées bloquées alors que Ced préfère un traitement manuel pour les feedbacks SA.
+- Une carte était en état `PANIC_FREEZE`; l'autre référencait encore le skill ambigu `ced-sa-pipeline-dev`.
+
+### Changement
+- Cartes normalisées en `done`, sans spawn worker:
+  - `t_b3d9a3bc` — `Triage PDF access bug feedback (GENERAL, 2026-06-09_064005)`
+  - `t_53e8b95a` — `Triage feedback GLW — 2026-06-09_214416`
+  - enfants GLW vides: `t_b42e760b`, `t_2d7d15c4`
+- Entrées feedback nettoyées pour retirer le wording interne `Kanban` / `Auto-intake` / task id et conserver une note user-facing.
+
+### Vérification
+- `tb preflight -q` → GO.
+- `sa-pipeline` blocked total → `0`.
+- Les 4 tâches ciblées sont en statut `done`.
+
+### Undo path
+- Restaurer la DB depuis le backup ci-dessus si nécessaire.
+- Les fichiers feedback sont sous `analyses/` et peuvent être restaurés depuis backup/provenance locale si besoin.
