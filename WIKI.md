@@ -1554,4 +1554,9 @@ but no PDF was produced.
 Follow-up to cookie-store hardening: live `/api/admin/seeking-alpha/test` revealed a diagnostic bug where negative Playwright outcomes without an explicit `authenticated` field collapsed into `request_error: '''authenticated'''`. Fixed `backend/seeking_alpha_access.py` so Playwright failure branches return normalized `ok/authenticated/reachable/blocked/url/reason` fields and `probe_access_async()` no longer indexes `probe_result["authenticated"]` directly. Regression test added in `tests/test_seeking_alpha_access.py`.
 
 Verification: `pytest tests/test_sa_cookie_longevity.py tests/test_seeking_alpha_access.py -q` → 56 passed; runtime health serves commit `77a3829`; live SA probe now returns clean `reason=blocked_perimeterx` plus `freshness.status=missing_long_lived_auth` and `missing_families=["session"]`.
+### 2026-06-11 — Feedback/Admin quick wins for SA cookies
+
+UI quick wins applied to the feedback/admin surfaces: Seeking Alpha cookie badge now distinguishes incomplete cookies from verified access, failure messages explain missing `session` cookies and HAR re-export action, Edge/Chrome HAR instructions explicitly define the Network request list, a copy-diagnostic button was added, admin feedback wording no longer says "Client Feedback", and public feedback notes strip internal auto-intake/tracking prefixes into Cause/Update text.
+
+Verification: `cd frontend && npm run build` passed; `node src/components/AdminPage.feedbackPublic.test.cjs`, `node src/components/FeedbackPage.publicHistory.test.cjs`, and `node src/components/chartUtils.test.cjs` passed; browser verification on `https://sa.cedlabusa.net/?v=quickwins-a13f38d#feedback` showed `Cookies incomplete · missing session`, the actionable Japanese PerimeterX/session message, `MISSING=session`, Edge/Chrome HAR wording, and cleaned Cause/Update feedback notes.
 

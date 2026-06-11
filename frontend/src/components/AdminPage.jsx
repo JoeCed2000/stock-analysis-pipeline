@@ -59,7 +59,7 @@ export default function AdminPage({ t, onClose }) {
   };
 
   return (
-    <div style={{ padding: '24px 16px', maxWidth: 1100, margin: '0 auto' }}>
+    <div style={{ padding: '24px 16px', maxWidth: 1440, margin: '0 auto' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h2 style={{ fontSize: 20, fontWeight: 700, color: '#e1e4e8', margin: 0 }}>
@@ -161,7 +161,7 @@ export default function AdminPage({ t, onClose }) {
       <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 8, overflow: 'hidden', marginBottom: 24 }}>
         <div style={{ padding: '10px 16px', borderBottom: '1px solid #30363d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>
-            <span style={{ fontSize: 14, fontWeight: 600, color: '#e1e4e8' }}>💬 Client Feedback</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#e1e4e8' }}>💬 Feedback</span>
             <span style={{ fontSize: 11, color: '#484f58', marginLeft: 8 }}>(auto-refresh 5s)</span>
           </span>
           <span style={{
@@ -178,7 +178,7 @@ export default function AdminPage({ t, onClose }) {
           </div>
         ) : feedbacks.length === 0 ? (
           <div style={{ padding: 24, textAlign: 'center', color: '#484f58', fontSize: 13 }}>
-            No feedback yet — client notes will appear here
+            Submitted notes will appear here
           </div>
         ) : (
           <div style={{ maxHeight: 400, overflowY: 'auto' }}>

@@ -86,13 +86,34 @@ function publicNote(entry, lang) {
       : 'The access issue has been resolved and the site is available again.';
   }
 
-  const sanitized = note
+  const cleaned = note
+    .replace(/^\s*\[[^\]]+\]\s*/g, '')
+    .replace(/Auto-intake by [^.\n]+\.\s*/gi, '')
     .replace(/Auto-intake:\s*/gi, '')
     .replace(/Kanban task\s+\S+\s+created and promoted by\s+\S+\.\s*/gi, '')
     .replace(/processing_task_id\s*[:=]\s*\S+/gi, '')
     .replace(/Cloudflare tunnel/gi, 'access service')
     .replace(/\bKanban\b/gi, 'tracking')
+    .replace(/\bno tracking\b\.?/gi, '')
     .replace(/\s+/g, ' ')
+    .trim();
+
+  const causeMatch = cleaned.match(/(?:Root cause|Cause):\s*(.*?)(?=\s*(?:Resolution|Correction):|$)/i);
+  const resolutionMatch = cleaned.match(/(?:Resolution|Correction):\s*(.*)$/i);
+  if (causeMatch || resolutionMatch) {
+    const parts = [];
+    if (causeMatch?.[1]) {
+      parts.push(`${lang === 'jp' ? '原因' : 'Cause'}: ${causeMatch[1].trim().replace(/\.$/, '')}.`);
+    }
+    if (resolutionMatch?.[1]) {
+      parts.push(`${lang === 'jp' ? '対応' : 'Update'}: ${resolutionMatch[1].trim().replace(/\.$/, '')}.`);
+    }
+    return parts.join(' ');
+  }
+
+  const sanitized = cleaned
+    .replace(/Status:\s*Taken into account\.?\s*/gi, '')
+    .replace(/Status:\s*[^.]+\.\s*/gi, '')
     .trim();
 
   if (!sanitized) {
