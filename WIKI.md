@@ -1549,3 +1549,9 @@ but no PDF was produced.
 ### Undo path
 - Restaurer la DB depuis le backup ci-dessus si nécessaire.
 - Les fichiers feedback sont sous `analyses/` et peuvent être restaurés depuis backup/provenance locale si besoin.
+### 2026-06-11 — Seeking Alpha probe failure normalization
+
+Follow-up to cookie-store hardening: live `/api/admin/seeking-alpha/test` revealed a diagnostic bug where negative Playwright outcomes without an explicit `authenticated` field collapsed into `request_error: '''authenticated'''`. Fixed `backend/seeking_alpha_access.py` so Playwright failure branches return normalized `ok/authenticated/reachable/blocked/url/reason` fields and `probe_access_async()` no longer indexes `probe_result["authenticated"]` directly. Regression test added in `tests/test_seeking_alpha_access.py`.
+
+Verification: `pytest tests/test_sa_cookie_longevity.py tests/test_seeking_alpha_access.py -q` → 56 passed; runtime health serves commit `77a3829`; live SA probe now returns clean `reason=blocked_perimeterx` plus `freshness.status=missing_long_lived_auth` and `missing_families=["session"]`.
+
