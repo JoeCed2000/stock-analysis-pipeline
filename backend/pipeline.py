@@ -1184,6 +1184,15 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
             if cur is not None and pri is not None:
                 result[f"{margin_key}_yoy"] = cur - pri
 
+        # GAAP-to-GAAP EPS YoY from the income statement: same basis on both
+        # sides, used when the adjusted history lacks the year-ago quarter
+        # (earnings_history only carries 4 rows). No-NA policy.
+        if result.get("eps_yoy") is None:
+            result["eps_yoy"] = _yoy_change(
+                financial_value(("Diluted EPS", "Basic EPS"), 0),
+                financial_value(("Diluted EPS", "Basic EPS"), 4),
+            )
+
         return result
     except Exception as exc:
         logger.warning("Failed to extract quarterly comparison for %s: %s", ticker, exc)

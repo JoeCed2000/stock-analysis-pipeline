@@ -1036,10 +1036,16 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
             # year-ago quarter. Never leave YoY 'Not disclosed' when the
             # history is available.
             try:
-                if len(eh) >= 4 and financials.get("eps_yoy") is None:
-                    year_ago_eps = float(eh.iloc[-4]["epsActual"])
-                    if year_ago_eps:
-                        financials["eps_yoy"] = (adj_eps - year_ago_eps) / abs(year_ago_eps)
+                if financials.get("eps_yoy") is None:
+                    import pandas as _pd
+                    latest_dt = _pd.Timestamp(eh.index[-1])
+                    target = latest_dt - _pd.DateOffset(years=1)
+                    for dt, row_ in eh.iloc[:-1].iterrows():
+                        if abs((_pd.Timestamp(dt) - target).days) <= 45:
+                            year_ago_eps = float(row_["epsActual"])
+                            if year_ago_eps:
+                                financials["eps_yoy"] = (adj_eps - year_ago_eps) / abs(year_ago_eps)
+                            break
             except (KeyError, TypeError, ValueError) as _yoy_exc:
                 logger.debug(f"eps_yoy from earnings_history unavailable: {_yoy_exc}")
             if adj_eps is not None and adj_eps > 0:
