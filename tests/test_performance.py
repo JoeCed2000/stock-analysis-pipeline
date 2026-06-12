@@ -37,7 +37,8 @@ print(f"{{t1 - t0:.3f}}")
     if result.returncode != 0:
         raise RuntimeError(f"Import failed (exit {result.returncode}): {result.stderr[:500]}")
     try:
-        return float(output)
+        # Last stdout line only — startup banners must not break the parse
+        return float(output.split("\n")[-1])
     except ValueError:
         raise RuntimeError(f"Could not parse timing from: {output!r} | stderr: {result.stderr[:200]}")
 

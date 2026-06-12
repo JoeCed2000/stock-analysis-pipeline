@@ -2,13 +2,35 @@
 API pipeline smoke test — HTTP-level flow (requires running backend).
 Tests the orchestration/cache/root_path/browser-flow bugs that SA historically suffered.
 Marked 'integration' — not mandatory on every commit.
+
+Tests auto-skip when no backend listens on 127.0.0.1:8780. The two
+analyze tests trigger REAL pipeline runs (LLM cost, several minutes):
+they additionally require SA_RUN_LIVE_SMOKE=1.
 """
+import os
 import pytest
 import time
 import requests
 
 BASE = "http://127.0.0.1:8780/stock-analysis"
-pytestmark = pytest.mark.integration
+
+
+def _backend_up() -> bool:
+    try:
+        return requests.get(f"{BASE}/api/health", timeout=5).status_code == 200
+    except requests.RequestException:
+        return False
+
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(not _backend_up(), reason="live backend not reachable on 127.0.0.1:8780"),
+]
+
+requires_live_generation = pytest.mark.skipif(
+    os.getenv("SA_RUN_LIVE_SMOKE") != "1",
+    reason="triggers a real analysis pipeline run (LLM cost) — set SA_RUN_LIVE_SMOKE=1 to enable",
+)
 
 
 def _wait_for_job(job_id: str, timeout: int = 120) -> dict:
@@ -27,10 +49,14 @@ def _wait_for_job(job_id: str, timeout: int = 120) -> dict:
 class TestAPIPipelineSmoke:
     """Full HTTP flow: async analyze → poll → PDF/download."""
 
+    @requires_live_generation
     def test_async_analyze_and_poll(self):
-        """POST /api/analyze/async for NVDA → poll until complete."""
+        """POST /api/analyze/async for NVDA → poll until complete.
+
+        A full dossier run includes the LLM deep-dive (4-8 min in
+        production) — 180s was a guaranteed timeout."""
         r = requests.post(f"{BASE}/api/analyze/async", json={
-            "ticker": "NVDA",
+            "tickers": ["NVDA"],
             "language": "en",
         })
         assert r.status_code in (200, 202), f"Async analyze failed: {r.status_code} {r.text[:200]}"
@@ -38,13 +64,26 @@ class TestAPIPipelineSmoke:
         job_id = data.get("job_id")
         assert job_id, f"No job_id in response: {data}"
 
-        result = _wait_for_job(job_id, timeout=180)
+        result = _wait_for_job(job_id, timeout=600)
         assert result.get("status") == "completed", \
             f"Job failed: {result.get('error', 'unknown')}"
 
     def test_pdf_endpoint_returns_pdf(self):
-        """GET /api/report/NVDA/pdf returns valid PDF."""
+        """GET /api/report/NVDA/pdf returns valid PDF.
+
+        202 means the endpoint spawned/joined a background generation —
+        without the live-generation opt-in we skip instead of timing out,
+        with it we poll to completion (4-8 min for a full deep-dive)."""
         r = requests.get(f"{BASE}/api/report/NVDA/pdf")
+        if r.status_code in (202, 422) and os.getenv("SA_RUN_LIVE_SMOKE") != "1":
+            pytest.skip(
+                f"PDF not immediately servable (HTTP {r.status_code}) — requires a "
+                "generation run; set SA_RUN_LIVE_SMOKE=1 to wait for it"
+            )
+        deadline = time.time() + 600
+        while r.status_code == 202 and time.time() < deadline:
+            time.sleep(10)
+            r = requests.get(f"{BASE}/api/report/NVDA/pdf")
         assert r.status_code == 200, f"PDF endpoint failed: {r.status_code}"
         assert "application/pdf" in r.headers.get("content-type", ""), \
             f"Not a PDF: {r.headers.get('content-type')}"
@@ -81,16 +120,24 @@ class TestAPIAnalyzeSync:
     """Sync analyze endpoint (may be slow — use with long timeout)."""
 
     @pytest.mark.slow
+    @requires_live_generation
     def test_sync_analyze_returns_result(self):
-        """POST /api/analyze returns full analysis result."""
+        """POST /api/analyze returns the batch analysis shape.
+
+        Contract: the endpoint takes {"tickers": [...]} and answers
+        {"results": [...], "errors": [...]} with per-result scoring.total
+        on the /40 scale (the flat top-level ticker/score shape is gone)."""
         r = requests.post(f"{BASE}/api/analyze", json={
-            "ticker": "AAPL",
+            "tickers": ["AAPL"],
             "language": "en",
-        }, timeout=300)
+        }, timeout=600)
         assert r.status_code in (200, 422), \
             f"Sync analyze failed: {r.status_code} {r.text[:200]}"
         if r.status_code == 200:
             data = r.json()
-            assert data.get("ticker") == "AAPL"
-            assert "score" in data, f"No score in response: {list(data.keys())[:10]}"
-            assert "decision" in data
+            assert data.get("results"), f"No results in response: {list(data.keys())[:10]}"
+            result = data["results"][0]
+            assert result.get("ticker") == "AAPL"
+            assert "scoring" in result, f"No scoring in result: {list(result.keys())[:10]}"
+            assert 0 <= result["scoring"]["total"] <= 40
+            assert "decision" in result

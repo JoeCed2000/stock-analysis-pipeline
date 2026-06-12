@@ -99,15 +99,20 @@ class TestAnalyzeEndpoint:
         assert "total" in result["scoring"]
         assert 0 <= result["scoring"]["total"] <= 40
 
+    @patch("backend.main._ticker_exists", return_value=True)
     @patch("backend.sources_collector.get_stock_data")
     @patch("backend.sources_collector.extract_10k_sections")
-    def test_analyze_handles_missing_data_gracefully(self, mock_10k, mock_yf):
-        """RED: Should not crash when Yahoo Finance returns nothing."""
+    def test_analyze_handles_missing_data_gracefully(self, mock_10k, mock_yf, mock_exists):
+        """Should not crash when Yahoo Finance returns nothing.
+
+        The endpoint now pre-validates ticker existence (anti-typo gate) —
+        bypassed here so the test exercises its actual target: graceful
+        degradation when market data is missing for a real ticker."""
         mock_yf.return_value = mock_yf_data_failing("FAIL")
         mock_10k.return_value = {"mda": "", "risk_factors": "", "local_path": ""}
 
         response = client.post("/api/analyze", json={"tickers": ["FAIL"]})
-        
+
         assert response.status_code == 200
         data = response.json()
         assert len(data["results"]) == 1
@@ -115,6 +120,14 @@ class TestAnalyzeEndpoint:
         # Should still return a result, just with low score / N/A
         assert result["ticker"] == "FAIL"
         assert "decision" in result
+
+    def test_analyze_unknown_ticker_rejected_422(self):
+        """The anti-typo existence gate: ticker-shaped but unknown symbols
+        get a clean 422 before reaching the expensive analysis path."""
+        with patch("backend.main._ticker_exists", return_value=False):
+            response = client.post("/api/analyze", json={"tickers": ["FAIL"]})
+        assert response.status_code == 422
+        assert response.json()["detail"]["error"] == "Ticker not found"
 
     def test_analyze_invalid_ticker_format_422(self):
         """RED: Invalid ticker format should return 422."""
@@ -146,12 +159,17 @@ class TestRateLimit:
     """Integration tests for rate limiting middleware."""
 
     def test_rate_limit_analyze_endpoint(self):
-        """RED: After 30 rapid requests to /api/analyze, should get 429."""
+        """After 30 rapid requests to /api/analyze, should get 429.
+
+        The middleware deliberately skips the synthetic 'testclient' host,
+        so this test uses an ASGI transport with a routable client IP to
+        exercise the production rate-limit path."""
         responses = []
-        for _ in range(35):
-            resp = client.post("/api/analyze", json={"tickers": ["ZZZZ"]})
-            responses.append(resp.status_code)
-        
+        with TestClient(app, client=("203.0.113.9", 51234)) as limited_client:
+            for _ in range(35):
+                resp = limited_client.post("/api/analyze", json={"tickers": ["ZZZZ"]})
+                responses.append(resp.status_code)
+
         # At least one should be 429 (rate limited)
         assert 429 in responses, f"Expected 429 in responses, got: {set(responses)}"
 
