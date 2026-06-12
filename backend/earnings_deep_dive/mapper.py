@@ -523,6 +523,26 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
 
     for index, row_label in enumerate(labels):
         if index >= len(segment_items):
+            # No-NA policy: the trailing 'Total' label row is derivable from
+            # known metrics — never render it as a wall of placeholders.
+            if str(row_label).strip().lower() in ("total", "合計") and _has(total_rev):
+                total_yoy = getattr(metrics, "revenue_yoy", None)
+                total_prior = getattr(metrics, "revenue_quarterly_prior_year", None)
+                if total_prior is None and total_yoy:
+                    try:
+                        total_prior = float(total_rev) / (1.0 + float(total_yoy) / (100.0 if abs(float(total_yoy)) > 1.5 else 1.0))
+                    except (TypeError, ValueError, ZeroDivisionError):
+                        total_prior = None
+                rows.append([
+                    row_label,
+                    _money(total_rev),
+                    _money(total_prior),
+                    _yoy_pct(total_yoy),
+                    "100.0%",
+                    "Total reported revenue",
+                    "Calculated (sum of reported segments)",
+                ])
+                continue
             rows.append([row_label, MISSING, MISSING, MISSING, MISSING, MISSING, MISSING])
             continue
 

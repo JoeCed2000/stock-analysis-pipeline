@@ -1243,8 +1243,13 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
         eps_vs_estimate=pick("eps_vs_estimate"),
         # B14: if the displayed actual is the adjusted EPS from earnings_history,
         # only a same-basis YoY may be shown — never the GAAP-based fallback.
+        # B14 same-basis rule: when the displayed actual is the adjusted EPS,
+        # the snapshot eps_yoy (earnings_history, same adjusted basis) is a
+        # valid fallback — both sides are adjusted, never GAAP-mixed.
         eps_yoy=(
-            quarterly_comparison.get("eps_yoy")
+            (quarterly_comparison.get("eps_yoy")
+             if quarterly_comparison.get("eps_yoy") is not None
+             else pick("eps_yoy"))
             if quarterly_comparison.get("eps_actual") is not None
             else comparison_pick("eps_yoy", pick("eps_yoy"))
         ),
