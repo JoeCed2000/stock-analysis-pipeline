@@ -1,6 +1,7 @@
 """FastAPI application for Stock Analysis Pipeline."""
 import os
 import resource
+import sys as _sys
 
 # Raise file descriptor limit BEFORE any connections are opened (P0 fix 2026-05-30).
 # Default soft limit is 1024. Running 2+ parallel analyses with Codex PTYs and
@@ -10,7 +11,9 @@ try:
     resource.setrlimit(resource.RLIMIT_NOFILE, (max(_soft, 4096), _hard))
     _new_soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
     if _new_soft >= 4096:
-        print(f"[main] ulimit NOFILE raised: {_soft} → {_new_soft}")
+        # stderr: a startup diagnostic must not pollute stdout (scripts and
+        # the cold-import timing test parse stdout of `import backend.main`)
+        print(f"[main] ulimit NOFILE raised: {_soft} → {_new_soft}", file=_sys.stderr)
 except Exception:
     pass
 

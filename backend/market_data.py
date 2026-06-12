@@ -16,8 +16,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-import yfinance as yf
-
 from backend import market_cache
 from backend.models import MarketSnapshot
 
@@ -105,6 +103,11 @@ def _fetch_from_yfinance(ticker: str) -> Optional[Dict[str, Any]]:
     Catches all exceptions — the caller decides fallback strategy.
     """
     try:
+        # Lazy import: module-level yfinance (pulls pandas) added ~4.7s to
+        # backend.main cold start via the peer_benchmark route. Every other
+        # module already defers this import to call time.
+        import yfinance as yf
+
         yt = yf.Ticker(ticker)
         info = yt.info or {}
 
