@@ -108,6 +108,9 @@ SECTION_METRIC_KEYS = {
         "revenue_estimate",
         "revenue_actual",
         "revenue_yoy",
+        # The prompt asks the LLM to name the consensus source — give it the
+        # real one or it invents a vendor (FactSet vs Investing.com drift).
+        "consensus_provider",
     },
     "Highlights": {
         "eps_actual",
@@ -120,6 +123,7 @@ SECTION_METRIC_KEYS = {
         "gross_margin",
         "operating_margin",
         "guidance",
+        "consensus_provider",
     },
     "Operating Metrics": {
         "revenue_actual",

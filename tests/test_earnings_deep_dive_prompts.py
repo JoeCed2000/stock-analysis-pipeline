@@ -70,3 +70,27 @@ def test_verdict_prompt_requires_one_explicit_recommendation_label_jp():
     assert "Recommendation: HOLD" in prompt
     assert "Recommendation: SELL" in prompt
     assert "without making buy/sell advice" not in prompt
+
+
+def test_eps_revenue_prompt_carries_consensus_provider():
+    """The EPS & Revenue prompt says 'name the consensus source' — the
+    actual provider must therefore be IN the prompt, otherwise the LLM
+    invents one (observed: 'FactSet consensus' in a client PDF whose table
+    said 'Investing.com')."""
+    from backend.earnings_deep_dive.generator import _section_metrics
+
+    metrics = {
+        "eps_estimate": 1.77, "eps_actual": 1.87,
+        "revenue_estimate": 79.19e9, "revenue_actual": 81.6e9,
+        "consensus_provider": "Investing.com (analyst consensus)",
+    }
+    section_metrics = _section_metrics("EPS & Revenue", metrics)
+    assert section_metrics.get("consensus_provider") == "Investing.com (analyst consensus)"
+
+    from backend.earnings_deep_dive.prompts import build_prompt
+    prompt = build_prompt(
+        "EPS & Revenue", "en", "ACME", "Acme Corp", "FY2027 Q1",
+        section_metrics, "Revenue beat expectations.",
+    )
+    assert "Investing.com (analyst consensus)" in prompt
+    assert "never invent" in prompt.lower() or "do not invent" in prompt.lower()

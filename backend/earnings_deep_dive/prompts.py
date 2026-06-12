@@ -411,7 +411,7 @@ EN_SECTION_FORMATS: Dict[str, str] = {
 | Revenue | ... | ... | ... | ... | ... |
 
 Required analysis format (CONCISE — max ~120 words total, no long paragraphs):
-① EPS: actual vs consensus estimate (name the consensus source), surprise %, YoY direction.
+① EPS: actual vs consensus estimate (name the consensus source EXACTLY as given in the consensus_provider metric — never invent a vendor name like FactSet/Refinitiv/Bloomberg), surprise %, YoY direction.
 ② Revenue: actual vs consensus estimate, surprise %, YoY direction.
 ③ Then 2-3 one-line bullets only: the key positives and negatives of the quarter.
 Detailed discussion belongs in Highlights & Lowlights below — do not repeat it here.
