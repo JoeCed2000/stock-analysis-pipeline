@@ -387,3 +387,31 @@ def test_revenue_estimate_is_never_fabricated_from_actuals(monkeypatch):
         f"fabricated estimate {result.get('revenue_estimate')} "
         f"(actual is {result.get('revenue_quarterly')})"
     )
+
+
+def test_net_debt_computed_when_yfinance_omits_net_debt_row(monkeypatch):
+    """yfinance omits the 'Net Debt' balance row for net-cash companies —
+    the prior-year/YoY Net Cash cells rendered 'Not disclosed'. Fallback:
+    Total Debt minus cash & marketable, current and prior."""
+    class NetCashTicker(_FakeTicker):
+        def __init__(self, ticker):
+            super().__init__(ticker)
+            self.quarterly_balance_sheet = _quarterly_frame(
+                {"Stockholders Equity": 400.0, "Total Assets": 1000.0,
+                 "Tangible Book Value": 250.0, "Invested Capital": 500.0,
+                 "Total Debt": 8.0,
+                 "Cash Cash Equivalents And Short Term Investments": 80.0},
+                {"Stockholders Equity": 320.0, "Total Assets": 800.0,
+                 "Tangible Book Value": 200.0, "Invested Capital": 400.0,
+                 "Total Debt": 9.0,
+                 "Cash Cash Equivalents And Short Term Investments": 52.0},
+            )
+
+    fake_yfinance = types.SimpleNamespace(Ticker=NetCashTicker)
+    monkeypatch.setitem(sys.modules, "yfinance", fake_yfinance)
+
+    result = pipeline._extract_quarterly_comparison("MSFT")
+
+    assert result["net_debt"] == pytest.approx(8.0 - 80.0)
+    assert result["net_debt_prior_year"] == pytest.approx(9.0 - 52.0)
+    assert result["net_debt_yoy"] is not None

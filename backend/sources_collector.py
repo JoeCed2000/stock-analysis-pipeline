@@ -1031,6 +1031,17 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
         if eh is not None and not eh.empty:
             latest = eh.iloc[-1]
             adj_eps = float(latest["epsActual"])
+            # Same-basis EPS YoY: earnings_history rows are the last 4
+            # reported quarters on the adjusted basis, so iloc[-4] is the
+            # year-ago quarter. Never leave YoY 'Not disclosed' when the
+            # history is available.
+            try:
+                if len(eh) >= 4 and financials.get("eps_yoy") is None:
+                    year_ago_eps = float(eh.iloc[-4]["epsActual"])
+                    if year_ago_eps:
+                        financials["eps_yoy"] = (adj_eps - year_ago_eps) / abs(year_ago_eps)
+            except (KeyError, TypeError, ValueError) as _yoy_exc:
+                logger.debug(f"eps_yoy from earnings_history unavailable: {_yoy_exc}")
             if adj_eps is not None and adj_eps > 0:
                 gaap_eps = financials.get("eps_actual")
                 financials["eps_actual_gaap"] = gaap_eps  # preserve GAAP for reference

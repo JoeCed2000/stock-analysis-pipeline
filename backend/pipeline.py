@@ -992,6 +992,26 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
             value = _statement_value(cashflow, labels, column_index)
             return abs(value) if value is not None else None
 
+        _CASH_LABELS = (
+            "Cash Cash Equivalents And Short Term Investments",
+            "Cash And Cash Equivalents",
+            "Cash And Short Term Investments",
+            "Cash Financial",
+        )
+
+        def net_debt_at(column_index: int) -> Optional[float]:
+            """Net debt with a generic fallback: yfinance omits the 'Net Debt'
+            row entirely for net-cash companies — compute Total Debt minus
+            cash & marketable so the prior-year/YoY cells never go missing."""
+            direct = balance_value(("Net Debt",), column_index)
+            if direct is not None:
+                return direct
+            total_debt = balance_value(("Total Debt",), column_index)
+            cash_total = balance_value(_CASH_LABELS, column_index)
+            if total_debt is not None and cash_total is not None:
+                return total_debt - cash_total
+            return None
+
         current_net_income = net_income(0)
         prior_net_income = net_income(4)
 
@@ -1103,7 +1123,7 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
             "operating_cash_flow": current_operating_cash_flow,
             "capex": current_capex,
             "free_cash_flow": current_free_cash_flow,
-            "net_debt": balance_value(("Net Debt",), 0),
+            "net_debt": net_debt_at(0),
             "cash_and_marketable_securities": balance_value((
                 "Cash Cash Equivalents And Short Term Investments",
                 "Cash And Cash Equivalents",
@@ -1127,7 +1147,7 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
             "operating_cash_flow": prior_operating_cash_flow,
             "capex": prior_capex,
             "free_cash_flow": prior_free_cash_flow,
-            "net_debt": balance_value(("Net Debt",), 4),
+            "net_debt": net_debt_at(4),
             "cash_and_marketable_securities": balance_value((
                 "Cash Cash Equivalents And Short Term Investments",
                 "Cash And Cash Equivalents",
