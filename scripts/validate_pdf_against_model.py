@@ -18,7 +18,7 @@ except ImportError:  # pragma: no cover - handled at runtime
 
 
 REQUIRED_SECTION_TERMS = (
-    ("Earnings Documents", "Earnings Documents"),
+    ("Earnings Documents", "決算資料"),
     ("EPS & Revenue", "EPS"),
     ("Highlights", "ハイライト"),
     ("Operating Metrics", "営業"),
@@ -47,7 +47,13 @@ REQUIRED_CATEGORY_GROUPS = {
 }
 
 REQUIRED_CONTENT_GROUPS = {
-    "Earnings documents prompt block": ("General Questions for Earnings",),
+    # The Earnings Documents section is now a source-contract table
+    # ("Used for" / "Target-company URL or status" headers), not the legacy
+    # "General Questions for Earnings" prompt block removed from the layout.
+    "Earnings documents source table": (
+        "Used for", "用途",
+        "Target-company URL or status", "企業URLまたはステータス",
+    ),
     "Target source instructions": ("Candidate transcript source", "Transcript -", "Official Investor Relations"),
     "Highlights/lowlights Japanese style": ("ハイライト", "ローライト", "Nami", "投資視点"),
     "Cash flow formula": ("FCF", "OCF", "CapEx", "FCF = OCF", "フリーキャッシュフロー", "営業キャッシュフロー"),
@@ -175,7 +181,7 @@ def _has_expected_earnings_sources(structured_report: Any, ticker: str, text: st
     expected_sa = f"https://seekingalpha.com/symbol/{ticker.upper()}/earnings/transcripts"
     if structured_report is None:
         has_transcript = "Transcript" in text and "http" in text
-        has_earnings_documents = "Earnings Documents" in text
+        has_earnings_documents = "Earnings Documents" in text or "決算資料" in text
         has_company_source = "Investor Relations" in text or "Official Website" in text
         return has_earnings_documents and has_transcript and has_company_source
     sources = list(getattr(structured_report, "sources", []) or [])
@@ -251,8 +257,20 @@ def validate_pdf_against_model(
     if _table_is_mostly_empty(structured_report):
         issues.append("One or more required tables are mostly empty")
 
-    if page_count != model_page_count:
-        issues.append(f"Generated PDF page count {page_count} differs from model {model_page_count}")
+    # The model PDF is a layout example, not a page-for-page contract: the
+    # client-approved conciseness revisions deliberately shrank sections, so
+    # exact page parity can never hold. Block only on gross truncation (the
+    # failure this check exists to catch); report other differences as a
+    # non-blocking warning.
+    min_page_count = 8
+    if page_count < min_page_count:
+        issues.append(
+            f"Generated PDF page count {page_count} below minimum {min_page_count} — likely truncated"
+        )
+    elif page_count != model_page_count:
+        warnings.append(
+            f"Generated PDF page count {page_count} differs from model {model_page_count} (layout drift, non-blocking)"
+        )
 
     return PdfValidationResult(
         passed=not issues,

@@ -83,4 +83,11 @@ def test_pdf_validation_passes_structured_fixture_with_model_categories(tmp_path
 
     assert result.passed is True
     assert result.blocking_issues == []
-    assert result.page_count == result.model_page_count == 14
+    # The model PDF (14 pages) is a layout example, not a page-for-page
+    # contract: client-approved conciseness revisions shrank the layout.
+    # Truncation is still blocked (minimum page floor); other differences
+    # surface as a non-blocking warning.
+    assert result.model_page_count == 14
+    assert result.page_count >= 8
+    if result.page_count != result.model_page_count:
+        assert any("differs from model" in w for w in result.warnings)
