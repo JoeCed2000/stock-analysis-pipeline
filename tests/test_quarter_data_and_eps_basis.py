@@ -81,12 +81,15 @@ class TestEpsYoyBasis:
         result = type("R", (), {"ticker": "NVDA", "financials": None, "valuation": None})()
         return pl._deep_dive_metrics(result, {"ticker": "NVDA", "financials": fin_data})
 
-    def test_adjusted_actual_without_comparable_prior_hides_yoy(self, monkeypatch):
+    def test_adjusted_actual_without_comparison_yoy_uses_snapshot_fallback(self, monkeypatch):
+        # B14 refined (a813f33): the snapshot eps_yoy is computed from
+        # earnings_history — same adjusted basis as the displayed actual —
+        # so it is a valid fallback when the comparison provides no YoY.
         m = self._metrics(monkeypatch,
-                          {"eps_actual": 1.87},               # adjusted, no same-basis YoY
-                          {"eps_actual": 1.76, "eps_yoy": 0.021})  # GAAP fallback must NOT leak
+                          {"eps_actual": 1.87},               # adjusted, no comparison YoY
+                          {"eps_actual": 1.76, "eps_yoy": 0.021})  # snapshot, adjusted basis
         assert m.eps_actual == 1.87
-        assert m.eps_yoy is None
+        assert m.eps_yoy == 0.021
 
     def test_adjusted_actual_with_same_basis_yoy_kept(self, monkeypatch):
         m = self._metrics(monkeypatch,

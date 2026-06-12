@@ -30,7 +30,9 @@ def test_pipeline_adds_earnings_deep_dive_when_transcript_text_exists(tmp_path, 
         md_path = report_dir / "earnings_deep_dive.md"
         meta_path = report_dir / "earnings_deep_dive_meta.json"
         sections_md = "\n\n".join(
-            f"## {name}\n\n| Col A | Col B |\n|---|---|\n| Data | Data |\n\n> One-line summary: ok"
+            f"## {name}\n\n| Col A | Col B |\n|---|---|\n| Data | Data |\n\n"
+            + ("Recommendation: HOLD.\n\n" if name == "Verdict" else "")
+            + "> One-line summary: ok"
             for name in ["EPS & Revenue", "Highlights & Lowlights", "Operating Metrics",
                          "Cash Flow", "Capital Efficiency", "Segments",
                          "Forward P/E", "Backlog Quality", "Guidance", "Verdict"]
@@ -46,7 +48,9 @@ def test_pipeline_adds_earnings_deep_dive_when_transcript_text_exists(tmp_path, 
             markdown_path=str(md_path),
             meta_path=str(meta_path),
             report_markdown=full_md,
-            sections={name: f"## {name}\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n> One-line summary: ok"
+            sections={name: f"## {name}\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n"
+                            + ("Recommendation: HOLD.\n\n" if name == "Verdict" else "")
+                            + "> One-line summary: ok"
                      for name in ["EPS & Revenue", "Highlights & Lowlights", "Operating Metrics",
                                   "Cash Flow", "Capital Efficiency", "Segments",
                                   "Forward P/E", "Backlog Quality", "Guidance", "Verdict"]},
@@ -65,6 +69,12 @@ def test_pipeline_adds_earnings_deep_dive_when_transcript_text_exists(tmp_path, 
     monkeypatch.setattr(pipeline, "find_transcripts", fake_find_transcripts)
     monkeypatch.setattr(gen_mod, "generate_deep_dive", fake_generate_deep_dive)
     monkeypatch.setattr(pdf_mod, "render_earnings_deep_dive_pdf", fake_render)
+    # Hermetic: a live quarterly comparison or quarter-specific yfinance
+    # fetch (network/cache) overrides the SimpleNamespace fakes with real
+    # NVDA figures and breaks the assertions.
+    monkeypatch.setattr(pipeline, "_extract_quarterly_comparison", lambda t: {})
+    import backend.sources_collector as _sc
+    monkeypatch.setattr(_sc, "get_yahoo_data_for_quarter", lambda ticker, quarter: None)
 
     import tempfile as _tempfile
     _analyses = Path(__file__).parent.parent / "analyses"
@@ -89,7 +99,10 @@ def test_pipeline_adds_earnings_deep_dive_when_transcript_text_exists(tmp_path, 
         company_name="NVIDIA",
         output_dir=out_dir,
         result=result,
-        yf_data={"financials": {"eps_actual": 1.25}},
+        # eps_estimate keeps consensus_status=available: without it the
+        # normalized-content gate blocks on the deterministic "(per the
+        # sourced table above)" note (beat/miss detector matches 'above').
+        yf_data={"financials": {"eps_actual": 1.25, "eps_estimate": 1.20}},
         language="jp",
     )
 
