@@ -220,7 +220,14 @@ def _parse_date(value: Any) -> Optional[datetime]:
 
 
 def _is_forward_quarter(label: str, today: Optional[datetime] = None) -> bool:
-    """Return True when a quarter label points beyond the current calendar quarter."""
+    """Return True when a quarter label points beyond the current calendar quarter.
+
+    FY-prefixed labels are fiscal, not calendar: offset fiscal years (NVDA ends
+    late Jan, AAPL late Sep) legitimately run up to a year ahead of the calendar,
+    so FY{today+1} is a reported period, not a future one. Comparing the fiscal
+    year to the calendar quarter rejected NVDA's correct 'FY2027 Q1' transcript
+    label in June 2026 and let a fabricated calendar fallback title the PDF.
+    """
     if not label:
         return False
     match = re.search(r"(?:FY)?(20\d{2})\s*Q([1-4])", label, re.IGNORECASE)
@@ -231,6 +238,8 @@ def _is_forward_quarter(label: str, today: Optional[datetime] = None) -> bool:
     year = int(match.group(1))
     quarter = int(match.group(2))
     today = today or datetime.now(PARIS)
+    if re.search(r"(?i)FY\s*20\d{2}", label):
+        return year > today.year + 1
     current_quarter = (today.month - 1) // 3 + 1
     return (year, quarter) > (today.year, current_quarter)
 
@@ -245,7 +254,10 @@ def _period_from_filing(filing: Dict[str, Any]) -> Optional[str]:
         return f"FY{fiscal_year} Annual"
     if form == "10-Q":
         quarter = max(1, ((filing_date.month - 1) // 3))
-        return f"FY{filing_date.year} Q{quarter}"
+        # Calendar-derived tag stays an honest calendar tag: an 'FY' prefix
+        # would impersonate a fiscal label and mislabel offset-fiscal-year
+        # companies (NVDA: calendar 2026Q1 filing covers fiscal FY2027 Q1).
+        return f"{filing_date.year}Q{quarter}"
     return None
 
 
@@ -268,6 +280,16 @@ def _resolve_deep_dive_quarter(
     yf_data: Dict[str, Any],
 ) -> str:
     """Prefer reported periods and never use a future-looking transcript label."""
+    # Fiscal label derived from source data is authoritative (same doctrine as
+    # mapper._resolved_quarter_label): it already accounts for offset fiscal
+    # years, which neither the transcript guard nor the filing fallback does.
+    if isinstance(yf_data, dict):
+        fiscal_label = str(
+            ((yf_data.get("financials") or {}).get("fiscal_period_label")) or ""
+        ).strip()
+        if fiscal_label:
+            return fiscal_label
+
     transcript_quarter = str(transcript_source.get("quarter") or "").strip()
     if transcript_quarter and transcript_quarter.lower() != "latest quarter":
         if not _is_forward_quarter(transcript_quarter):
