@@ -47,6 +47,58 @@ def _cache_get(ticker: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _cache_get_stale(ticker: str) -> Optional[Dict[str, Any]]:
+    """Read the cached snapshot ignoring TTL (version still enforced).
+
+    Used by the anti-degradation guard: a stale-but-rich snapshot is a
+    better reference than nothing when a fresh fetch came back degraded.
+    """
+    path = _cache_path(ticker)
+    if not path.exists():
+        return None
+    try:
+        with open(path) as f:
+            entry = json.load(f)
+        if entry.get("version") != CACHE_VERSION:
+            return None
+        return entry["data"]
+    except Exception:
+        return None
+
+
+def _financial_field_count(snapshot: Optional[Dict[str, Any]]) -> int:
+    """Count non-null financial fields — the snapshot richness signal."""
+    fin = (snapshot or {}).get("financials")
+    if not isinstance(fin, dict):
+        return 0
+    return sum(1 for v in fin.values() if v is not None)
+
+
+def _guard_against_degraded_snapshot(ticker: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep the richer snapshot when a fresh fetch came back degraded.
+
+    Partial yfinance failures (rate limits, transient API errors) leave the
+    silent except blocks with None in most financial fields. Persisting that
+    would poison the cache and feed client PDFs with missing
+    fiscal_period_label / net_debt / estimates (observed on NVDA 2026-06-12:
+    wrong fiscal title + inconsistent metrics in a served PDF). The cache
+    timestamp is NOT refreshed when the previous snapshot is kept, so the
+    next call retries a fresh fetch.
+    """
+    previous = _cache_get_stale(ticker)
+    fresh_count = _financial_field_count(result)
+    previous_count = _financial_field_count(previous)
+    if previous is not None and fresh_count < previous_count * 0.7:
+        logger.warning(
+            "Yahoo snapshot for %s degraded (%d non-null financial fields vs %d cached) "
+            "— keeping previous snapshot, not persisting the degraded fetch",
+            ticker, fresh_count, previous_count,
+        )
+        return previous
+    _cache_set(ticker, result)
+    return result
+
+
 def _cache_set(ticker: str, data: Dict[str, Any]) -> None:
     """Write data to cache with version stamp."""
     try:
@@ -1026,10 +1078,9 @@ def get_yahoo_data(ticker: str) -> Dict[str, Any]:
         "_raw_info": info,  # raw yfinance info dict (camelCase keys) for V2.7 valuation context
     }
 
-    # Save to cache
-    _cache_set(ticker, result)
-
-    return result
+    # Save to cache — unless this fetch is materially poorer than the
+    # previous snapshot (anti-degradation guard).
+    return _guard_against_degraded_snapshot(ticker, result)
 
 
 # ── Quarter-aware data (v2.5) ──
