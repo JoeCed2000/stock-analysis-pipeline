@@ -1,5 +1,23 @@
 # Inventaire des échecs préexistants de la suite complète — 11/06/2026
 
+> **STATUT 12/06/2026 — INVENTAIRE SOLDÉ.** Les 29 échecs restants (32 − 3
+> corrigés le 11/06) ont été traités le 12/06, ordre P1 → P3 :
+> - **P1 (13)** : tests validator ×5, fixture scoring ×4, company_overview ×2
+>   (`67ceaed`) ; intégration deep-dive #25 — vrai défaut produit, wording
+>   beat/miss sans consensus dans le mapper (`aeafcaf`) ; harnais
+>   pdf_model_validation #27 (`6e16298`).
+> - **P2 (12)** : main_endpoints #20-21, quarterly flaky #23, codex #29,
+>   valuation #30 (`be53fc8`) ; translator #28 — alias `ja` produit
+>   (`7095228`) ; integration #18-19, smoke API #10-12, smoke live #13-15
+>   (`7c37f91`).
+> - **P3 (2)** : performance #31 — vraie régression cold-start corrigée,
+>   yfinance lazy dans market_data (`f75ad7d`) ; camoufox #32 + les 4 scripts
+>   navigateur hors-inventaire déplacés vers `scripts/manual_browser_probes/`
+>   (`bc3985d`) — `pytest tests/` collecte 954 tests sans erreur.
+> - Les smoke live (#10-15) s'auto-skippent sans backend joignable et exigent
+>   `SA_RUN_LIVE_SMOKE=1` pour les chemins qui déclenchent de vraies
+>   générations LLM.
+
 ## Contexte
 
 Comparaison de deux runs complets de `pytest tests/` (hors 4 scripts navigateur
