@@ -20,6 +20,7 @@ class TranslationUnavailableError(RuntimeError):
 def _target_language_name(target_lang: str) -> str:
     names = {
         "jp": "Japanese",
+        "ja": "Japanese",  # ISO 639-1 alias — public API accepts ?lang=ja
         "fr": "French", "zh": "Chinese",
         "ko": "Korean", "de": "German",
         "en": "English",
@@ -28,7 +29,7 @@ def _target_language_name(target_lang: str) -> str:
 
 
 def _estimate_max_tokens(text: str, target_lang: str) -> int:
-    if target_lang in {"jp", "zh", "ko"}:
+    if target_lang in {"jp", "ja", "zh", "ko"}:
         return min(int(len(text) * 1.5) + 200, 4000)
     return min(len(text) * 2 + 200, 4000)
 
