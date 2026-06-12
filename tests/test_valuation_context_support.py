@@ -41,7 +41,10 @@ def test_valuation_support_dead_heat_without_neutral_is_mixed():
     assert support["dominant"] == "mixed"
 
 
-def test_valuation_support_stays_supportive_when_support_leads():
+def test_valuation_support_with_any_concern_is_mixed():
+    """Contract: 'supportive' requires ZERO concern signals. Any mix of
+    support and concern is reported as 'mixed' — the honest answer — even
+    when support leads 2 to 1 (majority rule was deliberately dropped)."""
     support = calculate_valuation_support(
         peg_signal=_sig("below_1"),
         ps_vs_growth=_sig("strong"),
@@ -50,4 +53,4 @@ def test_valuation_support_stays_supportive_when_support_leads():
 
     assert support["support"] == 2
     assert support["concern"] == 1
-    assert support["dominant"] == "supportive"
+    assert support["dominant"] == "mixed"

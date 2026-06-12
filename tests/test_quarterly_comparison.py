@@ -5,8 +5,22 @@ import pandas as pd
 import pytest
 
 from backend import pipeline
+from backend import sources_collector
 from backend.earnings_deep_dive.mapper import MISSING, _rows_for_section
 from backend.earnings_deep_dive.schemas import FinancialMetrics
+
+
+@pytest.fixture(autouse=True)
+def _clear_yf_ticker_cache():
+    """_yf_ticker_safe memoizes Ticker objects (SA_YF_TICKER_TTL, 300s).
+
+    Tests here stub sys.modules['yfinance'] per-test; without clearing the
+    cache, a test inherits the previous test's fake Ticker for the same
+    symbol (order-dependent flake: missing-prior-year saw the full-data
+    Ticker cached by an earlier test)."""
+    sources_collector._TICKER_CACHE.clear()
+    yield
+    sources_collector._TICKER_CACHE.clear()
 
 
 def _quarterly_frame(current, prior):

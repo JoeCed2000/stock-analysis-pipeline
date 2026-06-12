@@ -292,6 +292,9 @@ def test_record_pdf_client_failure_logs_failed_and_launches_intake(monkeypatch):
 def test_process_pdf_failure_is_idempotent_and_creates_single_task(tmp_path, monkeypatch):
     from backend import feedback_pipeline
 
+    # USE_KANBAN is disabled in production (Ced, 2026-06-09) but the Kanban
+    # path is kept for restoration — force it on so this coverage survives.
+    monkeypatch.setattr(feedback_pipeline, "USE_KANBAN", True)
     monkeypatch.setattr(feedback_pipeline, "PDF_FAILURE_INTAKE_PATH", tmp_path / "intake.json")
     monkeypatch.setattr(feedback_pipeline, "run_preflight_gate", lambda: (True, "GO"))
     created = []
@@ -326,7 +329,7 @@ def test_process_pdf_failure_is_idempotent_and_creates_single_task(tmp_path, mon
     assert len(created) == 1
     assert created[0][2] == "python-builder"
     assert "Root cause analysis" in created[0][1]
-    assert "client-visible PDF failure" in created[0][1]
+    assert "user-visible PDF failure" in created[0][1]
     assert dispatched == [True]
 
 
@@ -360,6 +363,8 @@ def test_process_pdf_failure_other_statuses_still_create_tasks(tmp_path, monkeyp
     """Non-noise statuses should still create Kanban tasks normally."""
     from backend import feedback_pipeline
 
+    # Kanban path forced on (disabled in production since 2026-06-09).
+    monkeypatch.setattr(feedback_pipeline, "USE_KANBAN", True)
     monkeypatch.setattr(feedback_pipeline, "PDF_FAILURE_INTAKE_PATH", tmp_path / "intake.json")
     monkeypatch.setattr(feedback_pipeline, "run_preflight_gate", lambda: (True, "GO"))
     created = []

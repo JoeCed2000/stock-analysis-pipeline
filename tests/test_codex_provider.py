@@ -9,7 +9,7 @@ def test_codex_provider_does_not_use_insecure_mktemp():
     assert "mktemp" not in source
 
 
-def test_codex_provider_defaults_to_spark_low(monkeypatch, tmp_path):
+def test_codex_provider_defaults_to_spark_medium(monkeypatch, tmp_path):
     calls = []
 
     def fake_exists(path):
@@ -38,4 +38,5 @@ def test_codex_provider_defaults_to_spark_low(monkeypatch, tmp_path):
     assert result == "ok"
     args = calls[0]
     assert args[args.index("-m") + 1] == "gpt-5.3-codex-spark"
-    assert "model_reasoning_effort=low" in args
+    # Default effort is deliberately medium (SA_CODEX_DEFAULT_EFFORT fallback)
+    assert "model_reasoning_effort=medium" in args
