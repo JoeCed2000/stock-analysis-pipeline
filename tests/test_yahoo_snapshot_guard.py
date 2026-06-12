@@ -78,3 +78,18 @@ def test_no_previous_cache_persists_whatever_we_got():
     result = sc._guard_against_degraded_snapshot("ACME", fresh)
     assert result is fresh
     assert sc._cache_path("ACME").exists()
+
+
+def test_losing_critical_fields_keeps_previous_even_above_count_ratio():
+    """A rate-limited fetch can keep ~70%+ of field count while losing the
+    fields that drive the client PDF (fiscal label, net_debt, eps_actual)
+    — observed 2026-06-12 14:04. Any lost critical field = degradation."""
+    rich = _snapshot(RICH_FINANCIALS)
+    sc._cache_set("ACME", rich)
+    mostly_full = dict(RICH_FINANCIALS)
+    mostly_full.update({"fiscal_period_label": None, "net_debt": None, "eps_actual": None})
+
+    result = sc._guard_against_degraded_snapshot("ACME", _snapshot(mostly_full))
+
+    assert result["financials"]["fiscal_period_label"] == "FY2027 Q1"
+    assert result["financials"]["net_debt"] == -5.0e9

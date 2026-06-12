@@ -88,6 +88,24 @@ def _guard_against_degraded_snapshot(ticker: str, result: Dict[str, Any]) -> Dic
     previous = _cache_get_stale(ticker)
     fresh_count = _financial_field_count(result)
     previous_count = _financial_field_count(previous)
+    # Field-count ratio alone let a rate-limited fetch through (2026-06-12
+    # 14:04: ~71% of fields kept but fiscal_period_label / net_debt /
+    # eps_actual all lost -> wrong title + missing consensus in the PDF).
+    # Losing ANY critical field the previous snapshot had is a degradation.
+    _CRITICAL = ("fiscal_period_label", "eps_actual", "revenue_quarterly",
+                 "net_debt", "operating_cash_flow")
+    prev_fin = (previous or {}).get("financials") or {}
+    fresh_fin = (result or {}).get("financials") or {}
+    lost_critical = [
+        k for k in _CRITICAL
+        if prev_fin.get(k) is not None and fresh_fin.get(k) is None
+    ]
+    if previous is not None and lost_critical:
+        logger.warning(
+            "Yahoo snapshot for %s lost critical fields %s — keeping previous snapshot",
+            ticker, lost_critical,
+        )
+        return previous
     if previous is not None and fresh_count < previous_count * 0.7:
         logger.warning(
             "Yahoo snapshot for %s degraded (%d non-null financial fields vs %d cached) "
