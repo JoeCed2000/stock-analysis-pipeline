@@ -328,7 +328,9 @@ def test_japanese_template_outputs_nami_style_explanation_markers():
     highlights = next(section for section in report.sections if section.key == "Highlights")
     rendered = "\n".join(highlights.analysis + [highlights.summary])
 
-    assert "ハイライト" in rendered
+    # The leading 'ハイライト' label was removed: the PDF renders the section
+    # heading right above the fallback (duplicate-heading fix, 2df34dc).
+    assert rendered.lstrip().startswith("1. 売上・EPSの実績")
     assert "ローライト / 注視点" in rendered
     assert "👉" in rendered
     assert rendered.count("•") >= 6
