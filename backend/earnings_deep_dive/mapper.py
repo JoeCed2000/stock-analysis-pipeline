@@ -1927,8 +1927,11 @@ def _resolved_quarter_label(quarter: str, metrics: FinancialMetrics) -> str:
     fiscal = _metric_text(metrics, "fiscal_period_label")
     if fiscal:
         return fiscal
+    # "latest"/"latest quarter" are routing placeholders (the GET endpoint
+    # default), never client-facing labels.
+    _PLACEHOLDERS = {"latest", "latest quarter"}
     requested = quarter.strip() if isinstance(quarter, str) else ""
-    if requested and requested.lower() != "latest quarter":
+    if requested and requested.lower() not in _PLACEHOLDERS:
         return requested
     explicit = _metric_text(
         metrics,
@@ -1939,24 +1942,25 @@ def _resolved_quarter_label(quarter: str, metrics: FinancialMetrics) -> str:
         "period",
         "transcript_quarter",
     )
-    if explicit and explicit.lower() != "latest quarter":
+    if explicit and explicit.lower() not in _PLACEHOLDERS:
         return explicit
-    # Fallback: derive from metrics available financial data, not calendar
+    # Fallback: a calendar-derived tag must stay an honest calendar tag
+    # ('2026Q2'). Prefixing it 'FY' would impersonate a fiscal label and
+    # mislabel offset-fiscal-year companies (NVDA: calendar 2026Q2 is
+    # fiscal FY2027 Q1) — the exact failure this function exists to avoid.
     from datetime import date
-    # Try to extract fiscal quarter from yfinance filing date in metrics
     filing_date = _metric_text(metrics, "filing_date", "latest_filing_date", "period_end_date")
     if filing_date:
         try:
             fd = date.fromisoformat(filing_date[:10])
-            # Fiscal quarter: use the actual period end month/year from the filing
             fq = (fd.month - 1) // 3 + 1
-            return f"FY{fd.year} Q{fq}"
+            return f"{fd.year}Q{fq}"
         except (ValueError, TypeError):
             pass
-    # Last resort: today's date but mark as estimated
+    # Last resort: today's date, explicitly marked as estimated
     today = date.today()
     q = (today.month - 1) // 3 + 1
-    return f"FY{today.year} Q{q} (est.)"
+    return f"{today.year}Q{q} (est.)"
 
 
 def _quarter_labels_from_resolved(resolved_quarter: str) -> tuple[str, str, str, str]:

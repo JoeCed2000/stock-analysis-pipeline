@@ -140,3 +140,30 @@ class TestPeriodLabels:
 
     def test_requested_kept_without_fiscal_data(self):
         assert _resolved_quarter_label("FY2026 Q3", FinancialMetrics()) == "FY2026 Q3"
+
+
+class TestLatestQuarterLabelResolution:
+    """quarter='latest' (the GET endpoint default) must never leak literally
+    into the client title, and derived fallbacks must never fabricate a
+    confident calendar-based 'FY...' label (NVDA regression 2026-06-12:
+    a 'latest' generation shipped a wrong fiscal title)."""
+
+    def test_latest_uses_fiscal_label_when_available(self):
+        m = FinancialMetrics(fiscal_period_label="FY2027 Q1")
+        assert _resolved_quarter_label("latest", m) == "FY2027 Q1"
+
+    def test_latest_never_returned_literally(self):
+        label = _resolved_quarter_label("latest", FinancialMetrics())
+        assert label.lower() not in ("latest", "latest quarter")
+
+    def test_period_end_fallback_is_calendar_tag_not_fake_fiscal(self):
+        m = FinancialMetrics(period_end_date="2026-04-27")
+        label = _resolved_quarter_label("latest", m)
+        assert label == "2026Q2", label
+        assert not label.startswith("FY"), \
+            "calendar-derived fallback must not impersonate a fiscal label"
+
+    def test_last_resort_is_estimated_calendar_tag(self):
+        label = _resolved_quarter_label("latest", FinancialMetrics())
+        assert label.endswith("(est.)")
+        assert not label.startswith("FY")
