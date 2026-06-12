@@ -163,3 +163,23 @@ def test_valid_sections_are_not_penalized(monkeypatch):
     assert all(s.attempts == 1 for s in response.statuses)
     assert all(not s.warnings for s in response.statuses)
     assert all(t == 0.3 for t in calls), "normal generation temperature must stay 0.3"
+
+
+def test_clean_section_output_normalizes_unrenderable_punctuation():
+    """DeepSeek emits typographic punctuation with no glyph in the PDF body
+    font: U+2011 NON-BREAKING HYPHEN rendered as a box (274 of them in the
+    2026-06-12 NVDA report: 'near□monopoly', 'data□center'). Normalize to
+    renderable ASCII equivalents at section-cleaning time."""
+    from backend.earnings_deep_dive.generator import _clean_section_output
+
+    raw = (
+        "## Segments\n\nNVIDIA's near‑monopoly in data‑center GPUs "
+        "(supply‐chain, −5% move, 12 GW, 3 9nm)."
+    )
+    cleaned = _clean_section_output(raw, 6000)
+    assert "‑" not in cleaned
+    assert "‐" not in cleaned
+    assert "−" not in cleaned
+    assert " " not in cleaned
+    assert " " not in cleaned
+    assert "near-monopoly" in cleaned and "data-center" in cleaned

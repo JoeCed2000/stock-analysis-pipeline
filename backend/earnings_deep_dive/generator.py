@@ -775,6 +775,19 @@ def _clean_section_output(output: str, max_chars: int, audience_mode: str = "nam
     cleaned = cleaned.replace("For\nNami-san", "For Nami-san")
     # Strip replacement character
     cleaned = cleaned.replace("\ufffd", "")
+    # Normalize typographic punctuation with no glyph in the PDF body font.
+    # DeepSeek emits U+2011 NON-BREAKING HYPHEN liberally (274 in one NVDA
+    # report) \u2014 rendered as a box: 'near\u25a1monopoly', 'data\u25a1center'.
+    for bad, good in (
+        ("\u2011", "-"),   # non-breaking hyphen
+        ("\u2010", "-"),   # hyphen
+        ("\u2212", "-"),   # minus sign
+        ("\u202f", " "),   # narrow no-break space
+        ("\u2009", " "),   # thin space
+        ("\u00ad", ""),    # soft hyphen
+        ("\u200b", ""),    # zero-width space
+    ):
+        cleaned = cleaned.replace(bad, good)
     # Audience mode sanitization
     cleaned = _sanitize_for_audience(cleaned, audience_mode)
     if len(cleaned) <= max_chars:
