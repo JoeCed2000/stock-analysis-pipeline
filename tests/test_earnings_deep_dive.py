@@ -141,6 +141,11 @@ def test_generate_deep_dive_writes_report_and_meta(tmp_path, monkeypatch):
 
     monkeypatch.setattr("backend.earnings_deep_dive.generator.find_transcripts", fake_find_transcripts)
     monkeypatch.setattr("backend.earnings_deep_dive.generator.primary_chat", fake_kimi)
+    # This test asserts the CODEX DEFAULT provider labels. Any earlier test
+    # importing backend.main/kimi_provider loads the project .env, which may
+    # set SA_DEEP_DIVE_PROVIDER=deepseek into the process env — pin the
+    # premise so the test is order- and operator-env-independent.
+    monkeypatch.delenv("SA_DEEP_DIVE_PROVIDER", raising=False)
 
     import tempfile
     from pathlib import Path as _Path
