@@ -370,3 +370,20 @@ def test_deep_dive_metrics_passes_quarterly_comparison_fields(monkeypatch):
     assert metrics.free_cash_flow_yoy == -22.2
     assert metrics.net_debt_prior_year == 141.0
     assert metrics.pe_forward == 21.8
+
+
+def test_revenue_estimate_is_never_fabricated_from_actuals(monkeypatch):
+    """Without a real yfinance revenueEstimate, revenue_estimate must stay
+    None. The old fallback projected prior_year x (1 + computed growth),
+    which mathematically equals the actual itself — a fake 'consensus'
+    that rendered Estimate == Actual (+0.0%) in client PDFs."""
+    fake_yfinance = types.SimpleNamespace(Ticker=_FakeTicker)
+    monkeypatch.setitem(sys.modules, "yfinance", fake_yfinance)
+
+    result = pipeline._extract_quarterly_comparison("MSFT")
+
+    # _FakeTicker.info has no revenueEstimate — nothing must be invented
+    assert result.get("revenue_estimate") is None, (
+        f"fabricated estimate {result.get('revenue_estimate')} "
+        f"(actual is {result.get('revenue_quarterly')})"
+    )

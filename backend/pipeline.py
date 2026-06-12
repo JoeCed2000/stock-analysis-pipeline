@@ -1075,27 +1075,17 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
                 if forward_eps:
                     result["eps_estimate"] = forward_eps / 4.0
 
-            # Populate revenue_estimate from yfinance info (consensus estimate)
+            # Populate revenue_estimate from yfinance info (consensus estimate).
+            # NEVER fabricate one: the old fallback projected
+            # prior_year x (1 + computed growth), which equals the actual
+            # itself when growth is derived from actuals — a fake consensus
+            # that rendered Estimate == Actual (+0.0%) in client PDFs.
+            # Missing consensus stays None: the mapper says 'not calculable
+            # from reviewed sources' and check 25c keeps beat/miss honest.
             if not result.get("revenue_estimate"):
                 rev_est = info.get("revenueEstimate")
                 if rev_est:
                     result["revenue_estimate"] = float(rev_est)
-                else:
-                    # Fallback: compute a rough quarterly estimate from annual data
-                    # Some tickers have revenueQuarterlyGrowth; use prior year quarter
-                    rev_q = result.get("revenue_quarterly")
-                    rev_prior = result.get("revenue_quarterly_prior_year")
-                    if rev_q is not None and rev_prior is not None and rev_prior > 0:
-                        # Use revenue growth (not earnings growth!) to project revenue estimate
-                        rev_growth = info.get("revenueGrowth")
-                        if rev_growth is not None:
-                            rev_growth = float(rev_growth)
-                        else:
-                            # Fallback: compute from current vs prior revenue
-                            rev_growth = (rev_q - rev_prior) / rev_prior if rev_prior > 0 else 0.0
-                        # Estimate: prior year same quarter × (1 + revenue growth)
-                        rev_estimate = rev_prior * (1 + rev_growth)
-                        result["revenue_estimate"] = rev_estimate
 
         current_values = {
             "roe": _ratio(efficiency_current_net_income, balance_value(("Stockholders Equity", "Common Stock Equity"), 0)),
