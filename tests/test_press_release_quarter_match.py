@@ -69,3 +69,35 @@ class TestFindPressReleaseUrl:
         src = inspect.getsource(prf)
         assert "_nvidia_candidate_urls" not in src
         assert 'ticker_clean == "NVDA"' not in src
+
+
+class TestMultiQuerySearch:
+    def test_site_restricted_query_finds_hinted_release(self, monkeypatch):
+        """The generic query can miss the official newsroom page; a second,
+        site-restricted query must be tried before giving up (no-NA policy:
+        the release exists, find it)."""
+        right = "https://newsroom.acme.example/acme-announces-financial-results-first-quarter-fiscal-2027"
+        calls = []
+
+        def fake_search(ticker, query):
+            calls.append(query)
+            return [right] if query.startswith("site:") else []
+
+        monkeypatch.setattr(prf, "_search_press_release_urls", fake_search)
+        url = prf.find_press_release_url(
+            "ACME", fiscal_label="FY2027 Q1", company_website="https://www.acme.example",
+        )
+        assert url == right
+        assert any(q.startswith("site:acme.example") for q in calls)
+
+    def test_stops_querying_once_positive_candidate_found(self, monkeypatch):
+        right = "https://ir.acme.example/acme-first-quarter-fiscal-2027-results"
+        calls = []
+
+        def fake_search(ticker, query):
+            calls.append(query)
+            return [right]
+
+        monkeypatch.setattr(prf, "_search_press_release_urls", fake_search)
+        assert prf.find_press_release_url("ACME", fiscal_label="FY2027 Q1") == right
+        assert len(calls) == 1

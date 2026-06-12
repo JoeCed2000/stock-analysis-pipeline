@@ -1007,6 +1007,18 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
             if direct is not None:
                 return direct
             total_debt = balance_value(("Total Debt",), column_index)
+            if total_debt is None:
+                # Some balance sheets carry only the split debt lines
+                long_term = balance_value((
+                    "Long Term Debt And Capital Lease Obligation",
+                    "Long Term Debt",
+                ), column_index)
+                current = balance_value((
+                    "Current Debt And Capital Lease Obligation",
+                    "Current Debt",
+                ), column_index)
+                if long_term is not None or current is not None:
+                    total_debt = (long_term or 0.0) + (current or 0.0)
             cash_total = balance_value(_CASH_LABELS, column_index)
             if total_debt is not None and cash_total is not None:
                 return total_debt - cash_total
@@ -1564,6 +1576,7 @@ def _add_earnings_deep_dive_if_transcript(
                 _pr_fiscal_hint = (yf_data.get("financials") or {}).get("fiscal_period_label")
             press_release_data = fetch_press_release_for_ticker(
                 ticker, output_dir=output_dir, fiscal_label=_pr_fiscal_hint,
+                company_website=_company_website(yf_data) if isinstance(yf_data, dict) else None,
             )
         except Exception as exc:
             logger.warning(f"[{ticker}] Press release fetch failed: {exc}")

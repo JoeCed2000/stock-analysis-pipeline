@@ -1685,7 +1685,7 @@ def _default_section_analysis(
         "n/a",
         "-",
     }:
-        backlog_status = "not disclosed / not applicable"
+        backlog_status = "not part of reported disclosures — forward visibility tracked via guidance and purchase commitments"
 
     if language == "jp":
         text = {
@@ -2393,6 +2393,34 @@ def effective_section_analysis(report: Any) -> Dict[str, str]:
     return effective
 
 
+
+def _fill_segments_total_row(text: str, metrics: FinancialMetrics) -> str:
+    """Fill missing cells in a markdown segments 'Total' row from metrics.
+
+    The LLM writes '| Total | Not disclosed | Not disclosed | ... |' even
+    though total revenue, YoY and the 100% mix are known. Only placeholder
+    cells are replaced; LLM-provided numbers stay untouched.
+    """
+    import re as _re
+    total_rev = getattr(metrics, "revenue_actual", None) or getattr(metrics, "revenue_quarterly", None)
+    if total_rev is None:
+        return text
+    yoy = getattr(metrics, "revenue_yoy", None)
+    placeholders = ("not disclosed", "not available", "n/a", "—", "-", "")
+
+    def _fix_row(match: "_re.Match[str]") -> str:
+        cells = [c.strip() for c in match.group(0).strip().strip("|").split("|")]
+        fills = [_money(total_rev), _yoy_pct(yoy) if yoy is not None else None, "100%"]
+        for idx in range(1, len(cells)):
+            if cells[idx].lower() in placeholders and fills and idx - 1 < len(fills):
+                fill = fills[idx - 1]
+                if fill:
+                    cells[idx] = fill
+        return "| " + " | ".join(cells) + " |"
+
+    return _re.sub(r"^\|\s*Total\s*\|[^\n]*$", _fix_row, text, flags=_re.MULTILINE)
+
+
 def build_earnings_deep_dive_report(
     *,
     ticker: str,
@@ -2516,6 +2544,10 @@ def build_earnings_deep_dive_report(
         rows: list[list[str]] = []
         if analysis_text:
             analysis_text = _clean_prose(analysis_text)
+            if section.key == "Segments":
+                # No-NA policy: the LLM's segments table often leaves the
+                # Total row cells empty — total revenue and YoY are known.
+                analysis_text = _fill_segments_total_row(analysis_text, metrics)
             # Strip echoed template question (LLM sometimes echoes it verbatim)
             if section.question and analysis_text.startswith(section.question):
                 analysis_text = analysis_text[len(section.question):].strip()

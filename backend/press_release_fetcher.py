@@ -223,7 +223,7 @@ def _extract_search_urls(html_text: str, limit: int = 8) -> List[str]:
     return urls
 
 
-def find_press_release_url(ticker: str, fiscal_label: Any = None) -> Optional[str]:
+def find_press_release_url(ticker: str, fiscal_label: Any = None, company_website: Optional[str] = None) -> Optional[str]:
     """Find the official earnings press release URL for the resolved period.
 
     Ticker-generic: no per-company URL patterns. When a fiscal label is
@@ -236,15 +236,34 @@ def find_press_release_url(ticker: str, fiscal_label: Any = None) -> Optional[st
         return None
 
     year, quarter = _parse_fiscal_hint(fiscal_label)
+    queries: List[str] = []
+    site_host = ""
+    if company_website:
+        host = urlparse(str(company_website)).hostname or ""
+        site_host = host.removeprefix("www.")
     if year is not None and quarter is not None:
-        query = (
-            f"{ticker_clean} {_QUARTER_WORDS[quarter]} quarter fiscal {year} "
-            "earnings press release financial results"
+        qword = _QUARTER_WORDS[quarter]
+        queries.append(
+            f"{ticker_clean} {qword} quarter fiscal {year} earnings press release financial results"
         )
+        queries.append(
+            f"{ticker_clean} announces financial results {qword} quarter {year}"
+        )
+        if site_host:
+            queries.append(
+                f"site:{site_host} financial results {qword} quarter fiscal {year}"
+            )
     else:
-        query = f"{ticker_clean} latest quarterly earnings press release financial results"
+        queries.append(f"{ticker_clean} latest quarterly earnings press release financial results")
 
-    candidates = _search_press_release_urls(ticker_clean, query)
+    candidates: List[str] = []
+    for q in queries:
+        for url in _search_press_release_urls(ticker_clean, q):
+            if url not in candidates:
+                candidates.append(url)
+        # Stop early once a positively-scored candidate exists
+        if year is not None and any(_url_quarter_score(u, year, quarter) > 0 for u in candidates):
+            break
     if not candidates:
         return None
     if year is None or quarter is None:
@@ -408,9 +427,9 @@ def fetch_press_release_data(
     }
 
 
-def fetch_press_release_for_ticker(ticker: str, output_dir: Optional[str] = None, fiscal_label: Any = None) -> Dict[str, Any]:
+def fetch_press_release_for_ticker(ticker: str, output_dir: Optional[str] = None, fiscal_label: Any = None, company_website: Optional[str] = None) -> Dict[str, Any]:
     """Find and fetch the earnings press release for the resolved period."""
-    url = find_press_release_url(ticker, fiscal_label=fiscal_label)
+    url = find_press_release_url(ticker, fiscal_label=fiscal_label, company_website=company_website)
     if not url:
         return {"source": "Press release", "url": None, "error": "not_found"}
     return fetch_press_release_data(url, ticker=ticker, output_dir=output_dir)

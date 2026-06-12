@@ -7,5 +7,8 @@ def test_backlog_fallback_wording_avoids_titlecase_not_available():
 
     text = _default_section_analysis("en", "NVDA", "Backlog", metrics)[0]
 
-    assert "Backlog status is not disclosed / not applicable" in text
+    # No-NA policy (Ced 2026-06-12): placeholder labels are replaced by an
+    # informative sentence pointing to the actual forward-visibility sources.
+    assert "Backlog status is not part of reported disclosures" in text
+    assert "guidance and purchase commitments" in text
     assert "Backlog is Not available" not in text
