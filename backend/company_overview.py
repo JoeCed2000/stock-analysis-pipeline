@@ -441,7 +441,11 @@ def _resolve_key_financials(
         return value
 
     select("market_cap", [("ledger", "market_cap", ledger), ("yahoo_snapshot", "market_cap", yahoo), ("yahoo_snapshot", "_raw_info.marketCap", yahoo)], unit="USD", period="market_data", display_kind="money", tolerance_abs=1_000_000)
-    select("revenue", [("ledger", "financials.revenue_annual", ledger), ("ledger", "financials.revenue_quarterly", ledger), ("yahoo_snapshot", "total_revenue", yahoo), ("yahoo_snapshot", "_raw_info.totalRevenue", yahoo)], unit="USD", period="annual_or_ttm", display_kind="money", tolerance_abs=1_000_000)
+    # Revenue card is labeled TTM — candidates must be same-basis (TTM).
+    # Mixing fiscal-year annual and single-quarter ledger figures made the
+    # comparator see a 62% "mismatch" on fast growers and block the metric
+    # (NVDA 2026-06-12: 'Revenue (TTM): Not available / Under review').
+    select("revenue", [("yahoo_snapshot", "total_revenue", yahoo), ("yahoo_snapshot", "_raw_info.totalRevenue", yahoo)], unit="USD", period="ttm", display_kind="money", tolerance_abs=1_000_000)
     select("revenue_growth", [("ledger", "financials.revenue_yoy_growth", ledger), ("ledger", "financials.revenue_annual_growth", ledger), ("yahoo_snapshot", "revenue_growth", yahoo), ("yahoo_snapshot", "_raw_info.revenueGrowth", yahoo)], unit="ratio", period="yoy", display_kind="percent", ratio=True, tolerance_rel=0.20)
     select("gross_margin", [("ledger", "financials.gross_margin", ledger), ("yahoo_snapshot", "gross_margins", yahoo), ("yahoo_snapshot", "_raw_info.grossMargins", yahoo)], unit="ratio", period="ttm", display_kind="percent", ratio=True, tolerance_abs=0.02)
     select("operating_margin", [("ledger", "financials.operating_margin", ledger), ("yahoo_snapshot", "operating_margins", yahoo), ("yahoo_snapshot", "_raw_info.operatingMargins", yahoo)], unit="ratio", period="ttm", display_kind="percent", ratio=True, tolerance_abs=0.02)
@@ -495,6 +499,43 @@ def _resolve_key_financials(
     return selected, provenance
 
 
+def _ceo_from_officers(yahoo_snapshot: Dict[str, Any]) -> Optional[str]:
+    """Pick the CEO name from yfinance companyOfficers, if present."""
+    for officer in yahoo_snapshot.get("company_officers") or []:
+        title = str(officer.get("title", ""))
+        if "CEO" in title.upper() and officer.get("name"):
+            return str(officer["name"])
+    return None
+
+
+def _backfill_company_profile(overview: Dict[str, Any], yahoo_snapshot: Dict[str, Any]) -> None:
+    """Fill missing company_profile facts from the yahoo snapshot.
+
+    LLM overviews often return a sparse profile (sector/industry only);
+    the snapshot already carries the factual fields. LLM-provided values
+    are never overwritten — only None/missing keys are backfilled.
+    (NVDA 2026-06-12 investor PDF shipped Exchange/HQ/Country/Employees/
+    Website as '—' while the snapshot had them all.)
+    """
+    profile = overview.setdefault("company_profile", {})
+    if not isinstance(profile, dict):
+        return
+    backfill = {
+        "name": yahoo_snapshot.get("name"),
+        "sector": yahoo_snapshot.get("sector"),
+        "industry": yahoo_snapshot.get("industry"),
+        "country": yahoo_snapshot.get("country"),
+        "website": yahoo_snapshot.get("website"),
+        "employees": yahoo_snapshot.get("employees"),
+        "headquarters": yahoo_snapshot.get("headquarters"),
+        "exchange": yahoo_snapshot.get("exchange"),
+        "ceo": _ceo_from_officers(yahoo_snapshot),
+    }
+    for key, value in backfill.items():
+        if value is not None and profile.get(key) is None:
+            profile[key] = value
+
+
 def _apply_key_financials_provenance(
     overview: Dict[str, Any],
     ticker: str,
@@ -504,6 +545,7 @@ def _apply_key_financials_provenance(
     """Overlay canonical selected key_financials onto an overview payload."""
     if not isinstance(overview, dict):
         return overview
+    _backfill_company_profile(overview, yahoo_snapshot or {})
     selected, provenance = _resolve_key_financials(
         ticker=ticker,
         yahoo_snapshot=yahoo_snapshot or {},

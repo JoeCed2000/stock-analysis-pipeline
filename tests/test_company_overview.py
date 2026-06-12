@@ -514,3 +514,83 @@ class TestGetCompanyOverview:
         jp_cached = _overview_cache_get("AAPL", "jp")
         assert jp_cached is not None
         assert jp_cached["company_profile"] == jp_data["company_profile"]
+
+
+class TestRevenueTtmBasisConsistency:
+    """The 'Revenue (TTM)' card must compare same-basis candidates only.
+
+    Regression (NVDA 2026-06-12): the candidate list mixed fiscal-year
+    annual ($215.9B), single-quarter ($81.6B) and Yahoo TTM ($253.5B)
+    figures; the comparator saw annual vs quarterly (62% delta) and
+    blocked the flagship metric as mismatch_blocked -> the investor PDF
+    showed 'Revenue (TTM): Not available / Under review'."""
+
+    def test_fast_grower_revenue_not_blocked_by_mixed_basis(self):
+        selected, provenance = _resolve_key_financials(
+            "ACME",
+            yahoo_snapshot={
+                "total_revenue": 253_491_003_392.0,
+                "_raw_info": {"totalRevenue": 253_491_003_392.0},
+                "financials": {},
+            },
+            ledger={
+                "financials": {
+                    "revenue_annual": 215_938_000_000.0,
+                    "revenue_quarterly": 81_615_000_000.0,
+                }
+            },
+        )
+
+        rev = provenance["fields"]["revenue"]
+        assert rev["status"] != "blocked", rev.get("reason_code")
+        assert selected["revenue"] == 253_491_003_392.0, \
+            "TTM card must carry the TTM figure"
+
+
+class TestCompanyProfileBackfill:
+    """LLM overviews often return a sparse company_profile (sector only).
+    The canonical overlay receives the rich yahoo snapshot — missing
+    profile facts must be backfilled from it instead of rendering '—'
+    (NVDA 2026-06-12 investor PDF: Exchange/HQ/Country/Employees/Website
+    all empty)."""
+
+    def _yahoo(self):
+        return {
+            "name": "Acme Corp",
+            "country": "United States",
+            "website": "https://www.acme.com",
+            "employees": 29600,
+            "headquarters": "Santa Clara, CA, United States",
+            "exchange": "NMS",
+            "company_officers": [
+                {"title": "Co-Founder, CEO & President", "name": "Ms. Jane Doe"},
+                {"title": "CFO", "name": "Mr. John Roe"},
+            ],
+            "_raw_info": {},
+        }
+
+    def test_sparse_llm_profile_backfilled_from_yahoo(self):
+        overview = {
+            "company_profile": {"sector": "Technology", "industry": "Semiconductors"},
+            "key_financials": {},
+        }
+        out = _apply_key_financials_provenance(overview, "ACME", self._yahoo())
+        cp = out["company_profile"]
+        assert cp["country"] == "United States"
+        assert cp["website"] == "https://www.acme.com"
+        assert cp["employees"] == 29600
+        assert cp["headquarters"] == "Santa Clara, CA, United States"
+        assert cp["exchange"] == "NMS"
+        assert cp["ceo"] == "Ms. Jane Doe"
+        # LLM-provided values must never be overwritten
+        assert cp["sector"] == "Technology"
+
+    def test_llm_values_take_precedence_over_backfill(self):
+        overview = {
+            "company_profile": {"website": "https://ir.acme.com", "country": "USA"},
+            "key_financials": {},
+        }
+        out = _apply_key_financials_provenance(overview, "ACME", self._yahoo())
+        cp = out["company_profile"]
+        assert cp["website"] == "https://ir.acme.com"
+        assert cp["country"] == "USA"

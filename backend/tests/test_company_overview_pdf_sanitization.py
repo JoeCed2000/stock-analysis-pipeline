@@ -48,3 +48,22 @@ def test_metric_source_labels_are_client_safe():
     })
     assert unavailable == "Not disclosed"
     assert "source_absent" not in unavailable
+
+
+def test_card_values_contain_no_zero_width_space():
+    """U+200B has no glyph in the base-14 Helvetica fonts used by the
+    overview PDF and renders as a black square (■) — 49 of them shipped in
+    the 2026-06-12 NVDA investor profile ('Mr.■ Jen-■Hsun', '$4.■96T').
+    ReportLab's default splitLongWords already wraps long tokens; no manual
+    soft-break injection is needed."""
+    from backend.company_overview_pdf import _card_value_text
+
+    for label, value in [
+        ("CEO", "Mr. Jen-Hsun Huang"),
+        ("Market Cap", "$4.96T"),
+        ("52W Range", "$140.85 — $236.54"),
+        ("Website", "https://www.nvidia.com/en-us/investors/"),
+        ("Data as of", "2026-06-12"),
+    ]:
+        rendered = _card_value_text(label, value)
+        assert "​" not in rendered, f"{label}: ZWSP leaked into {rendered!r}"

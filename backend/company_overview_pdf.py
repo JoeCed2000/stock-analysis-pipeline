@@ -189,13 +189,17 @@ def _clean_text(text, default=""):
 
 
 def _soft_wrap_text(text: str) -> str:
-    """Insert soft-break opportunities for long tokens."""
+    """Normalize card text for rendering \u2014 NO soft-break injection.
+
+    This used to insert U+200B after '/', '-', '_', '.', ':'. The overview
+    PDF renders cards with base-14 Helvetica, which has no ZWSP glyph: every
+    injected break showed as a black square (\u25a0) in client PDFs ('Mr.\u25a0
+    Jen-\u25a0Hsun', '$4.\u25a096T'). ReportLab paragraphs already hard-wrap overlong
+    tokens via the default splitLongWords, so the injection is unnecessary.
+    """
     if not text:
         return ""
-    wrapped = str(text)
-    for token in ('/', '-', '_', '.', ':'):
-        wrapped = wrapped.replace(token, f"{token}\u200b")
-    return wrapped
+    return str(text).replace("\u200b", "")
 
 
 def _card_value_text(label: str, value: Any) -> str:
@@ -544,15 +548,17 @@ def _render_executive_snapshot(story, styles, ticker, company_name, overview, yf
     sector = profile.get('sector') or yf_data.get('sector', '—')
     industry = profile.get('industry') or yf_data.get('industry', '—')
     hq = profile.get('headquarters') or yf_data.get('headquarters', '—')
-    ceo_name = ""
-    # 1) Try to extract CEO from Spark overview (most reliable)
-    ceo_style = overview.get('ceo_leadership_style', '') or ''
-    if ceo_style and ceo_style != 'N/A':
-        import re as _re
-        m = _re.search(r'CEO\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)', ceo_style)
-        if m:
-            ceo_name = m.group(1)
-    # 2) Fall back to yfinance companyOfficers (via _raw_info) for identity only
+    # 1) Backfilled canonical profile (company_overview._backfill_company_profile)
+    ceo_name = profile.get('ceo') or ""
+    # 2) Try to extract CEO from Spark overview prose
+    if not ceo_name:
+        ceo_style = overview.get('ceo_leadership_style', '') or ''
+        if ceo_style and ceo_style != 'N/A':
+            import re as _re
+            m = _re.search(r'CEO\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)', ceo_style)
+            if m:
+                ceo_name = m.group(1)
+    # 3) Fall back to yfinance companyOfficers (via _raw_info) for identity only
     if not ceo_name:
         raw_info = yf_data.get('_raw_info', {}) or {}
         officers = raw_info.get('companyOfficers', []) or []
@@ -560,7 +566,7 @@ def _render_executive_snapshot(story, styles, ticker, company_name, overview, yf
             if o and isinstance(o, dict) and ('chief executive' in (o.get('title') or '').lower() or 'ceo' in (o.get('title') or '').lower()):
                 ceo_name = o.get('name', '')
                 break
-    exchange = yf_data.get('exchange', '—')
+    exchange = profile.get('exchange') or yf_data.get('exchange', '—')
     country = profile.get('country') or yf_data.get('country', '—')
 
     # Build metrics card as a table. Financial metrics intentionally consume
