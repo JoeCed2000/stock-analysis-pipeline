@@ -126,14 +126,69 @@ def _fetch_url(url: str, timeout: int = 15) -> Optional[httpx.Response]:
     return response if response.status_code == 200 else None
 
 
-def _nvidia_candidate_urls() -> List[str]:
-    year = datetime.now().year
-    return [
-        f"https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-fourth-quarter-and-fiscal-{year}",
-        f"https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-third-quarter-fiscal-{year}",
-        f"https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-second-quarter-fiscal-{year}",
-        f"https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-first-quarter-fiscal-{year}",
+_QUARTER_WORDS = {1: "first", 2: "second", 3: "third", 4: "fourth"}
+
+
+def _parse_fiscal_hint(fiscal_label: Any) -> tuple[Optional[int], Optional[int]]:
+    """Parse 'FY2027 Q1' / '2026Q2' / 'Q3 2025' into (year, quarter)."""
+    text = str(fiscal_label or "")
+    m = re.search(r"(?:FY)?\s*(\d{4})\s*[- ]?Q([1-4])", text, re.IGNORECASE)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    m = re.search(r"Q([1-4])\s*[- ]?(?:FY)?\s*(\d{4})", text, re.IGNORECASE)
+    if m:
+        return int(m.group(2)), int(m.group(1))
+    return None, None
+
+
+def _url_quarter_score(url: str, year: Optional[int], quarter: Optional[int]) -> int:
+    """Score a candidate press-release URL against the resolved period.
+
+    Positive = matches the requested quarter/year; negative = explicitly a
+    DIFFERENT quarter (a wrong-period press release is worse than none —
+    a Q4 FY2026 release shipped in a Q1 FY2027 client report on 2026-06-12).
+    Zero = no period signal either way.
+    """
+    if year is None or quarter is None:
+        return 0
+    lowered = url.lower()
+    score = 0
+    quarter_tokens = (f"q{quarter}", f"{_QUARTER_WORDS[quarter]}-quarter", f"{_QUARTER_WORDS[quarter]} quarter")
+    other_tokens = [
+        tok
+        for q, word in _QUARTER_WORDS.items()
+        if q != quarter
+        for tok in (f"q{q}-", f"q{q}_", f"-q{q}", f"{word}-quarter")
     ]
+    if any(tok in lowered for tok in quarter_tokens):
+        score += 2
+    elif any(tok in lowered for tok in other_tokens):
+        score -= 3
+    if str(year) in lowered:
+        score += 1
+    elif re.search(r"(?:19|20)\d{2}", lowered):
+        score -= 1
+    return score
+
+
+def _search_press_release_urls(ticker_clean: str, query: str) -> List[str]:
+    """Run the press-release web search and return trusted candidate URLs."""
+    ddg_url = "https://html.duckduckgo.com/html/"
+    try:
+        response = http.get(
+            ddg_url,
+            params={"q": query},
+            headers={"User-Agent": PRESS_RELEASE_USER_AGENT},
+            timeout=8,
+            follow_redirects=True,
+        )
+    except httpx.RequestError as exc:
+        logger.warning("Press release search failed for %s: %s", ticker_clean, exc)
+        return []
+    if response.status_code != 200:
+        logger.warning("Press release search returned HTTP %s for %s", response.status_code, ticker_clean)
+        return []
+    return _extract_search_urls(response.text)
 
 
 def _normalize_ddg_href(href: str) -> Optional[str]:
@@ -168,46 +223,45 @@ def _extract_search_urls(html_text: str, limit: int = 8) -> List[str]:
     return urls
 
 
-def find_press_release_url(ticker: str) -> Optional[str]:
-    """Find the most likely official earnings press release URL."""
+def find_press_release_url(ticker: str, fiscal_label: Any = None) -> Optional[str]:
+    """Find the official earnings press release URL for the resolved period.
+
+    Ticker-generic: no per-company URL patterns. When a fiscal label is
+    provided ('FY2027 Q1', '2026Q2'), the search query carries the quarter
+    hint and candidates are scored against it; an explicitly wrong-period
+    candidate is rejected rather than cited.
+    """
     ticker_clean = ticker.strip().upper()
     if not ticker_clean:
         return None
 
-    if ticker_clean == "NVDA":
-        for candidate in _nvidia_candidate_urls():
-            response = _fetch_url(candidate, timeout=4)
-            if response is not None and "financial results" in response.text.lower():
-                return str(response.url)
-
-    query = f"{ticker_clean} latest quarterly earnings press release financial results"
-    ddg_url = "https://html.duckduckgo.com/html/"
-    try:
-        response = http.get(
-            ddg_url,
-            params={"q": query},
-            headers={"User-Agent": PRESS_RELEASE_USER_AGENT},
-            timeout=8,
-            follow_redirects=True,
+    year, quarter = _parse_fiscal_hint(fiscal_label)
+    if year is not None and quarter is not None:
+        query = (
+            f"{ticker_clean} {_QUARTER_WORDS[quarter]} quarter fiscal {year} "
+            "earnings press release financial results"
         )
-    except httpx.RequestError as exc:
-        logger.warning("DuckDuckGo press release search failed for %s: %s", ticker_clean, exc)
-        if ticker_clean == "NVDA":
-            return _nvidia_candidate_urls()[0]
+    else:
+        query = f"{ticker_clean} latest quarterly earnings press release financial results"
+
+    candidates = _search_press_release_urls(ticker_clean, query)
+    if not candidates:
         return None
+    if year is None or quarter is None:
+        return candidates[0]
 
-    if response.status_code != 200:
-        logger.warning("DuckDuckGo press release search returned HTTP %s for %s", response.status_code, ticker_clean)
-        if ticker_clean == "NVDA":
-            return _nvidia_candidate_urls()[0]
+    scored = sorted(
+        ((_url_quarter_score(url, year, quarter), idx, url) for idx, url in enumerate(candidates)),
+        key=lambda item: (-item[0], item[1]),
+    )
+    best_score, _, best_url = scored[0]
+    if best_score < 0:
+        logger.warning(
+            "Press release candidates for %s all look like a different period than %s — skipping",
+            ticker_clean, fiscal_label,
+        )
         return None
-
-    for url in _extract_search_urls(response.text):
-        if ticker_clean == "NVDA" and "nvidianews.nvidia.com" not in url.lower():
-            continue
-        return url
-
-    return _nvidia_candidate_urls()[0] if ticker_clean == "NVDA" else None
+    return best_url
 
 
 def _money_to_int(match: re.Match[str], *, default_unit: Optional[str] = None) -> int:
@@ -354,9 +408,9 @@ def fetch_press_release_data(
     }
 
 
-def fetch_press_release_for_ticker(ticker: str, output_dir: Optional[str] = None) -> Dict[str, Any]:
-    """Find and fetch the latest earnings press release for a ticker."""
-    url = find_press_release_url(ticker)
+def fetch_press_release_for_ticker(ticker: str, output_dir: Optional[str] = None, fiscal_label: Any = None) -> Dict[str, Any]:
+    """Find and fetch the earnings press release for the resolved period."""
+    url = find_press_release_url(ticker, fiscal_label=fiscal_label)
     if not url:
         return {"source": "Press release", "url": None, "error": "not_found"}
     return fetch_press_release_data(url, ticker=ticker, output_dir=output_dir)

@@ -1537,7 +1537,14 @@ def _add_earnings_deep_dive_if_transcript(
 
         try:
             from backend.press_release_fetcher import fetch_press_release_for_ticker
-            press_release_data = fetch_press_release_for_ticker(ticker, output_dir=output_dir)
+            # Quarter hint keeps the press release on the REPORTED period —
+            # without it a previous-quarter release can outrank the right one.
+            _pr_fiscal_hint = None
+            if isinstance(yf_data, dict):
+                _pr_fiscal_hint = (yf_data.get("financials") or {}).get("fiscal_period_label")
+            press_release_data = fetch_press_release_for_ticker(
+                ticker, output_dir=output_dir, fiscal_label=_pr_fiscal_hint,
+            )
         except Exception as exc:
             logger.warning(f"[{ticker}] Press release fetch failed: {exc}")
             press_release_data = {}

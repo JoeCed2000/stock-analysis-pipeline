@@ -1858,7 +1858,6 @@ def _concise_highlights_fallback(language: TemplateLanguage, metrics: FinancialM
     pe = _multiple(getattr(metrics, "pe_forward", None))
     if language == "jp":
         text = (
-            "ハイライト\n"
             "1. 売上・EPSの実績\n"
             f"   • 売上高{revenue}（コンセンサス{revenue_est}）、前年同期比{revenue_yoy}。\n"
             f"   • EPSは{eps}（コンセンサス{eps_est}）。\n"
@@ -1878,7 +1877,6 @@ def _concise_highlights_fallback(language: TemplateLanguage, metrics: FinancialM
         )
     else:
         text = (
-            "Highlights\n"
             "1. Revenue and EPS delivery\n"
             f"   • Revenue of {revenue} vs consensus {revenue_est}; YoY growth {revenue_yoy}.\n"
             f"   • EPS of {eps} vs consensus {eps_est}.\n"
@@ -1892,7 +1890,7 @@ def _concise_highlights_fallback(language: TemplateLanguage, metrics: FinancialM
             "1. High market expectations\n"
             f"   • Forward P/E of {pe} embeds high expectations; growth slowdowns get amplified.\n"
             "2. Concentration\n"
-            "   • Watch segment concentration and customer mix in the table above.\n"
+            "   • Watch segment concentration and customer mix in the Segments section.\n"
             "3. Data limitations\n"
             "   • Cells marked Not disclosed remain source gaps, not inferred values."
         )
@@ -2666,7 +2664,7 @@ def build_earnings_deep_dive_report(
             if section.key == "EPS & Revenue" and len(rows) > 0 and len(rows[0]) > value_col_idx:
                 eps_actual = rows[0][value_col_idx]
                 if eps_actual and eps_actual not in (MISSING, MISSING_EN, NOT_APPLICABLE, NOT_APPLICABLE_EN, NOT_DISCLOSED, NOT_DISCLOSED_EN):
-                    eps_note = f"EPS actual: {eps_actual} (validated from source data)"
+                    eps_note = f"Reported EPS: {eps_actual} (per the sourced table above)."
                     if analysis_items:
                         analysis_items[-1] = analysis_items[-1] + "\n\n" + eps_note
                     else:
