@@ -2481,6 +2481,27 @@ def _generate_report(result: AnalysisResult, yf_data: Dict, sources: List[Source
     # 9. Sources
     lines.append(f"## 9. Sources")
     lines.append(f"")
+    if not sources:
+        actual_source = yf_data.get("_source", "yfinance") if isinstance(yf_data, dict) else "yfinance"
+        source_names = {
+            "finnhub": ("Finnhub", "https://finnhub.io/", "financial_data_api"),
+            "twelvedata": ("Twelve Data", "https://twelvedata.com/", "financial_data_api"),
+            "eodhd": ("EODHD", "https://eodhd.com/", "financial_data_api"),
+            "yfinance": ("Yahoo Finance", f"https://finance.yahoo.com/quote/{result.ticker}/", "financial_aggregator"),
+            "cache": ("Yahoo Finance (cache)", f"https://finance.yahoo.com/quote/{result.ticker}/", "financial_aggregator"),
+        }
+        name, url, stype = source_names.get(actual_source, source_names["yfinance"])
+        sources = [Source(
+            id="SRC-001",
+            category="financial_data_sources",
+            title=f"{name} — {result.ticker} snapshot",
+            url=url,
+            retrieved_at=result.retrieved_at,
+            source_type=stype,
+            publisher=name,
+            used_for=["price", "financials", "valuation", "identification"],
+            reliability="medium",
+        )]
     for s in sources:
         lines.append(f"- [{s.id}] **{s.title}** ({s.publisher}) — fiabilité: {s.reliability}")
         lines.append(f"  URL: {s.url}")

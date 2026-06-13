@@ -23,6 +23,8 @@ from backend.company_overview import (
     _build_yahoo_info_dict,
     _resolve_key_financials,
     _apply_key_financials_provenance,
+    _needs_rich_profile_fetch,
+    _merge_rich_profile_snapshot,
     _parse_llm_response,
     _synthesize_overview_en,
     _translate_overview_to_jp,
@@ -429,7 +431,12 @@ class TestGetCompanyOverview:
         monkeypatch.setattr(cov, "CACHE_DIR", tmp_path)
         monkeypatch.setattr(cov, "OVERVIEW_CACHE_VERSION", 99)
 
-        mock_yf.return_value = {"ticker": "AAPL", "name": "Apple Inc."}
+        mock_yf.return_value = {
+            "ticker": "AAPL",
+            "name": "Apple Inc.",
+            "website": "https://www.apple.com",
+            "description": "Apple designs consumer electronics and services.",
+        }
         mock_tavily.return_value = [{"title": "News", "url": "https://x.com"}]
         mock_synth.return_value = {"company_profile": {"name": "Apple Inc."}, "business_description": "..."}
 
@@ -594,3 +601,20 @@ class TestCompanyProfileBackfill:
         cp = out["company_profile"]
         assert cp["website"] == "https://ir.acme.com"
         assert cp["country"] == "USA"
+
+    def test_sparse_pipeline_snapshot_triggers_rich_profile_fetch(self):
+        sparse = {
+            "ticker": "NVDA",
+            "company_name": "NVIDIA Corp",
+            "sector": "Semiconductors",
+            "financials": {"revenue_quarterly": 81_615_000_000},
+        }
+        assert _needs_rich_profile_fetch(sparse) is True
+        rich = self._yahoo() | {"description": "Detailed business summary."}
+        merged = _merge_rich_profile_snapshot(sparse, rich)
+        assert merged["website"] == "https://www.acme.com"
+        assert merged["company_officers"][0]["name"] == "Ms. Jane Doe"
+        assert merged["description"] == "Detailed business summary."
+        # Financial facts from the pipeline snapshot remain authoritative.
+        assert merged["financials"]["revenue_quarterly"] == 81_615_000_000
+        assert _needs_rich_profile_fetch(merged) is False

@@ -1,5 +1,40 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-13 — NVDA Company Overview richness + Sources fallback
+
+**Status:** Implemented and verified on the latest NVDA analysis folder.
+
+**Defect:**
+- Latest NVDA Company Overview PDF was too poor: factual identity fields were missing in the rendered PDF, including the CEO name.
+- The final page of the standard report could render `9. Sources` without any source rows when `AnalysisResult.sources` was empty.
+- The earnings Deep Dive itself was re-verified: latest `earnings_deep_dive.pdf` already contains a populated Sources page and source legend.
+
+**Root cause:**
+- The pipeline passed a financially rich but descriptively sparse market snapshot into Company Overview. Finnhub/cache snapshots are adequate for price/financials, but often lack yfinance profile fields (`longBusinessSummary`, `website`, HQ, employees, `companyOfficers`).
+- `get_company_overview()` trusted any supplied `yahoo_snapshot` and therefore skipped fetching richer yfinance identity data.
+- `_generate_report()` iterated `sources` directly; when the list was empty, the Sources heading stayed empty instead of falling back to the actual market-data provider.
+
+**Change:**
+- `backend/company_overview.py`:
+  - Added `_needs_rich_profile_fetch()` and `_merge_rich_profile_snapshot()` so sparse pipeline snapshots are enriched from yfinance identity fields before Company Overview synthesis/rendering.
+  - CEO extraction now also checks raw yfinance `_raw_info.companyOfficers` and accepts both `CEO` and `Chief Executive` titles.
+- `backend/sources_collector.py`:
+  - Finnhub/cache market snapshots are now enriched with yfinance profile fields from cron cache or live yfinance, even when financial metrics are already complete.
+- `backend/pipeline.py`:
+  - `_generate_report()` now creates a deterministic `SRC-001` fallback row from the actual provider (`Finnhub`, `Yahoo Finance`, etc.) when no explicit sources list is present.
+- Tests added/updated:
+  - `tests/test_company_overview.py`: sparse snapshot triggers profile enrichment; financial facts remain authoritative.
+  - `tests/test_circuit_breaker.py`: Finnhub result gets yfinance profile enrichment even when financials are complete.
+  - `tests/test_report_sources_fallback.py`: report sources section can never be empty.
+
+**Verification:**
+- `PYTHONPATH=. backend/.venv/bin/pytest tests/test_company_overview.py tests/test_report_sources_fallback.py tests/test_circuit_breaker.py backend/tests/test_company_overview_pdf_sanitization.py -q` → **43 passed**.
+- `backend/.venv/bin/python -m py_compile backend/company_overview.py backend/sources_collector.py backend/pipeline.py` → OK.
+- PyMuPDF audit on latest NVDA artifacts (`analyses/2026-06-13_153813_NVDA_NVIDIA_Corp`):
+  - Company Overview PDF regenerated: 4 pages, CEO present as `Mr. Jen-Hsun Huang`, no `Not identified`, no `CEO information not available`, no generic `NVDA — data from Yahoo Finance` marker.
+  - Standard report PDF regenerated: Sources section includes `SRC-001` / Finnhub URL, no empty `9. Sources` page.
+  - Earnings Deep Dive PDF verified: 20 pages, last page includes transcript, IR, official website, Yahoo Finance, SEC EDGAR, Finnhub, and Source Legend.
+
 ## 2026-06-11 — Admin search filters for User Agent and Error
 
 **Status:** Implemented and verified.

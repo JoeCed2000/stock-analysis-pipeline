@@ -188,6 +188,29 @@ def _pct_to_decimal(val) -> Optional[float]:
         return None
 
 
+def _merge_yfinance_profile_fields(base: Dict[str, Any], yf_snapshot: Optional[Dict[str, Any]]) -> bool:
+    """Fill non-financial company identity fields from a rich yfinance snapshot.
+
+    Finnhub is a good first source for price/sector/market cap but its profile
+    payload lacks longBusinessSummary, website, HQ, employees and companyOfficers.
+    Company Overview PDFs depend on those fields for the CEO card and narrative;
+    without this merge the cache can stay financially rich but descriptively poor.
+    Returns True when at least one field was added.
+    """
+    if not isinstance(base, dict) or not isinstance(yf_snapshot, dict):
+        return False
+    changed = False
+    for key in (
+        "description", "website", "employees", "headquarters", "exchange",
+        "country", "company_officers", "_raw_info",
+    ):
+        value = yf_snapshot.get(key)
+        if value is not None and not base.get(key):
+            base[key] = value
+            changed = True
+    return changed
+
+
 def get_stock_data(ticker: str, force_refresh: bool = False) -> Dict[str, Any]:
     """Fetch fundamental + price data. Multi-source chain:
     1. Finnhub (US equities, 60 calls/min, free) — price, sector, market cap
@@ -207,7 +230,7 @@ def get_stock_data(ticker: str, force_refresh: bool = False) -> Dict[str, Any]:
             if yf_cached:
                 yf_fin = yf_cached.get("financials", {})
                 fin_cached = cached.get("financials", {})
-                enriched = False
+                enriched = _merge_yfinance_profile_fields(cached, yf_cached)
                 for key in ["revenue_quarterly", "revenue_annual", "net_income",
                            "free_cash_flow", "net_debt", "revenue_estimate", "eps_estimate"]:
                     if fin_cached.get(key) is None and yf_fin.get(key) is not None:
@@ -275,13 +298,17 @@ def get_stock_data(ticker: str, force_refresh: bool = False) -> Dict[str, Any]:
     _needs_enrichment = any(
         result["financials"].get(k) is None for k in FINNHUB_MISSING_FINANCIALS
     ) or any(result.get(k) is None for k in FINNHUB_MISSING_VALUATION)
+    _needs_profile_enrichment = not any(
+        result.get(k) for k in ("description", "website", "employees", "headquarters", "company_officers")
+    )
     
-    if _needs_enrichment:
+    if _needs_enrichment or _needs_profile_enrichment:
         try:
             # Step 1: Try cron-pushed cache (fast, no network) 
             yf_cached = _cache_get_yf(ticker)
             if yf_cached:
                 logger.info(f"Enriching from yfinance cron cache for {ticker}")
+                _merge_yfinance_profile_fields(result, yf_cached)
                 yf_fin_cached = yf_cached.get("financials", {})
                 for key in FINNHUB_MISSING_FINANCIALS + ["revenue_estimate", "eps_estimate", "net_debt"]:
                     if result["financials"].get(key) is None and yf_fin_cached.get(key) is not None:
@@ -293,11 +320,14 @@ def get_stock_data(ticker: str, force_refresh: bool = False) -> Dict[str, Any]:
             # Step 2: Recheck — still missing data? Try live yfinance 
             _still_needs = any(
                 result["financials"].get(k) is None for k in FINNHUB_MISSING_FINANCIALS
+            ) or not any(
+                result.get(k) for k in ("description", "website", "employees", "headquarters", "company_officers")
             )
             if _still_needs:
                 logger.info(f"Cron cache insufficient for {ticker}, trying live yfinance")
                 yf_data = get_yahoo_data(ticker)
                 if yf_data:
+                    _merge_yfinance_profile_fields(result, yf_data)
                     yf_fin = yf_data.get("financials", {})
                     for key in FINNHUB_MISSING_FINANCIALS + ["revenue_estimate", "eps_estimate"]:
                         if result["financials"].get(key) is None:

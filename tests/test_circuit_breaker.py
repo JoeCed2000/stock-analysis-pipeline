@@ -97,3 +97,41 @@ class TestSourcesManifestAccuracy:
             result = get_stock_data("AAPL")
             assert "_source" in result, f"Expected _source in result, got keys: {list(result.keys())}"
             assert result["_source"] in ("cache", "yfinance", "finnhub", "twelvedata")
+
+    def test_finnhub_result_enriched_with_yfinance_profile_even_when_financials_complete(self):
+        """Company Overview needs rich identity fields, not just financials."""
+        from backend.sources_collector import get_stock_data
+
+        finnhub_result = {
+            "ticker": "NVDA",
+            "company_name": "NVIDIA Corp",
+            "price": 180.0,
+            "currency": "USD",
+            "sector": "Technology",
+            "market_cap": 4.4e12,
+            "financials": {
+                "revenue_quarterly": 81_615_000_000,
+                "revenue_annual": 130_497_000_000,
+                "net_income": 72_880_000_000,
+                "free_cash_flow": 60_853_000_000,
+            },
+            "pe_current": 50.0,
+            "pe_forward": 30.0,
+            "peg_ratio": 0.7,
+        }
+        yfinance_profile = {
+            "website": "https://www.nvidia.com",
+            "employees": 36_000,
+            "headquarters": "Santa Clara, CA, United States",
+            "company_officers": [{"title": "President and CEO", "name": "Mr. Jen-Hsun Huang"}],
+        }
+
+        with patch("backend.sources_collector._cache_get", return_value=None), \
+             patch("backend.sources_collector._get_stock_data_finnhub", return_value=finnhub_result), \
+             patch("backend.sources_collector._cache_get_yf", return_value=yfinance_profile), \
+             patch("backend.sources_collector._cache_set"):
+            result = get_stock_data("NVDA")
+
+        assert result["website"] == "https://www.nvidia.com"
+        assert result["company_officers"][0]["name"] == "Mr. Jen-Hsun Huang"
+        assert result["financials"]["revenue_quarterly"] == 81_615_000_000

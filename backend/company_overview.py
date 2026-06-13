@@ -501,11 +501,59 @@ def _resolve_key_financials(
 
 def _ceo_from_officers(yahoo_snapshot: Dict[str, Any]) -> Optional[str]:
     """Pick the CEO name from yfinance companyOfficers, if present."""
-    for officer in yahoo_snapshot.get("company_officers") or []:
+    officers = yahoo_snapshot.get("company_officers") or []
+    if not officers and isinstance(yahoo_snapshot.get("_raw_info"), dict):
+        officers = yahoo_snapshot["_raw_info"].get("companyOfficers") or []
+    for officer in officers:
         title = str(officer.get("title", ""))
-        if "CEO" in title.upper() and officer.get("name"):
+        if ("CEO" in title.upper() or "CHIEF EXECUTIVE" in title.upper()) and officer.get("name"):
             return str(officer["name"])
     return None
+
+
+def _needs_rich_profile_fetch(snapshot: Optional[Dict[str, Any]]) -> bool:
+    """Return True when a pipeline market snapshot is too thin for Company Overview.
+
+    Finnhub/cache snapshots are sufficient for price and financials but often lack
+    yfinance identity fields (longBusinessSummary, website, HQ, employees,
+    companyOfficers). Passing those sparse snapshots directly into Company
+    Overview caused client PDFs to render "CEO Not identified" and generic
+    "NVDA — data from Yahoo Finance" prose even though yfinance had the data.
+    """
+    if not isinstance(snapshot, dict):
+        return True
+    raw_info_obj = snapshot.get("_raw_info")
+    raw_info: Dict[str, Any] = raw_info_obj if isinstance(raw_info_obj, dict) else {}
+    return not any(
+        snapshot.get(key) or raw_info.get(raw_key)
+        for key, raw_key in (
+            ("description", "longBusinessSummary"),
+            ("website", "website"),
+            ("employees", "fullTimeEmployees"),
+            ("headquarters", "city"),
+            ("company_officers", "companyOfficers"),
+        )
+    )
+
+
+def _merge_rich_profile_snapshot(base: Optional[Dict[str, Any]], rich: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Merge yfinance identity/profile fields into an existing market snapshot.
+
+    Financial and valuation fields from the pipeline ledger/Finnhub snapshot stay
+    authoritative; this only fills descriptive identity fields used by Company
+    Overview rendering and validation.
+    """
+    merged = dict(base or {})
+    if not isinstance(rich, dict):
+        return merged
+    for key in (
+        "name", "sector", "industry", "country", "website", "employees",
+        "description", "exchange", "company_officers", "headquarters",
+        "source_snapshot_metadata", "_raw_info",
+    ):
+        if rich.get(key) is not None and not merged.get(key):
+            merged[key] = rich[key]
+    return merged
 
 
 def _backfill_company_profile(overview: Dict[str, Any], yahoo_snapshot: Dict[str, Any]) -> None:
@@ -1413,6 +1461,13 @@ async def get_company_overview(
 
     # ── Phase 1: Fetch raw data ─────────────────────────────────────
     yf_info = yahoo_snapshot or await _fetch_yahoo_info(ticker)
+    if _needs_rich_profile_fetch(yf_info):
+        try:
+            rich_profile = await _fetch_yahoo_info(ticker)
+            yf_info = _merge_rich_profile_snapshot(yf_info, rich_profile)
+            logger.info(f"[{ticker}] Company Overview profile enriched from yfinance identity fields")
+        except Exception as e:
+            logger.warning(f"[{ticker}] Company Overview rich profile fetch failed: {e}")
     tavily_results = await _search_tavily_overview(ticker, yf_info)
 
     if lang == "en":
