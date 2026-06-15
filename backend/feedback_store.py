@@ -175,6 +175,40 @@ def _attach_latest_pdf(ticker: str, fb_dir: Path, entry_id: str) -> str | None:
     return dest_name
 
 
+# Lifecycle status values — canonical list
+_LIFECYCLE_STATUSES = {
+    "pending", "taken_into_account", "needs_clarification",
+    "in_progress", "blocked", "corrected", "closed",
+    "rejected", "not_reproducible",
+}
+
+# Mapping from orchestration lifecycle status → backward-compatible fix_status
+_ORCHESTRATION_TO_FIX_STATUS: dict[str, str | None] = {
+    "pending": "pending",
+    "taken_into_account": "pending",
+    "needs_clarification": "pending",
+    "in_progress": "in_progress",
+    "blocked": "in_progress",
+    "corrected": "corrected",
+    "closed": "corrected",
+    "rejected": None,
+    "not_reproducible": None,
+}
+
+
+def _get_orchestration_status(entry: dict[str, Any]) -> str | None:
+    """Extract orchestration status from entry, or None if not set."""
+    orch = entry.get("orchestration")
+    if isinstance(orch, dict):
+        return orch.get("status")
+    return None
+
+
+def _derive_fix_status_from_orchestration(orchestration_status: str) -> str | None:
+    """Derive backward-compatible fix_status from a lifecycle status."""
+    return _ORCHESTRATION_TO_FIX_STATUS.get(orchestration_status)
+
+
 def _decorate_entry(entry: dict[str, Any], bucket: str) -> dict[str, Any]:
     decorated = dict(entry)
     ticker = decorated.get("ticker") or (None if bucket == GENERAL_FEEDBACK_BUCKET else bucket)
@@ -182,10 +216,24 @@ def _decorate_entry(entry: dict[str, Any], bucket: str) -> dict[str, Any]:
     decorated["_ticker"] = bucket
     decorated["is_general"] = ticker is None
     decorated["category"] = decorated.get("category") or "general"
-    decorated["status"] = "taken_into_account" if decorated.get("processed") else "pending"
-    # Track fix progression separately from intake status
-    if decorated.get("processed") and not decorated.get("fix_status"):
-        decorated["fix_status"] = "pending"  # pending | in_progress | corrected
+
+    lifecycle_status = _get_orchestration_status(entry)
+
+    if lifecycle_status:
+        # Lifecycle-driven decoration
+        decorated["status"] = lifecycle_status
+        decorated["processed"] = lifecycle_status != "pending"
+        # Derive fix_status if not explicitly set
+        if "fix_status" not in decorated or not decorated.get("fix_status"):
+            derived = _derive_fix_status_from_orchestration(lifecycle_status)
+            if derived is not None:
+                decorated["fix_status"] = derived
+    else:
+        # Legacy decoration (no orchestration)
+        decorated["status"] = "taken_into_account" if decorated.get("processed") else "pending"
+        if decorated.get("processed") and not decorated.get("fix_status"):
+            decorated["fix_status"] = "pending"
+
     return decorated
 
 
@@ -266,6 +314,11 @@ async def save_feedback(
         "processed": False,
         "processed_at": None,
         "notes": "",
+        "orchestration": {
+            "status": "pending",
+            "source": "feedback_page",
+            "severity": "low",
+        },
     }
 
     index = _read_index(bucket)
@@ -309,11 +362,12 @@ def list_all_feedback() -> list[dict[str, Any]]:
     all_entries.sort(key=lambda e: e.get("submitted_at", ""), reverse=True)
     return all_entries
 
-def mark_processed(ticker: str, entry_id: str, notes: str = "", fix_status: str = "pending", correction: str = "") -> bool:
+def mark_processed(ticker: str, entry_id: str, notes: str = "", fix_status: str = "pending", correction: str = "", orchestration_status: str | None = None) -> bool:
     """Mark a feedback entry as processed with fix tracking.
     
     fix_status: pending | in_progress | corrected
     correction: description of what was fixed
+    orchestration_status: optional lifecycle status update (pending | taken_into_account | in_progress | blocked | corrected | closed | rejected | not_reproducible)
     """
     bucket = _normalize_feedback_bucket(ticker)
     index = _read_index(bucket)
@@ -327,6 +381,10 @@ def mark_processed(ticker: str, entry_id: str, notes: str = "", fix_status: str 
                 entry["fix_status"] = fix_status
             if correction:
                 entry["correction"] = correction
+            if orchestration_status:
+                if "orchestration" not in entry or not isinstance(entry.get("orchestration"), dict):
+                    entry["orchestration"] = {}
+                entry["orchestration"]["status"] = orchestration_status
             _write_index(bucket, index)
             logger.info("[%s] Feedback %s marked as processed (fix_status=%s)", bucket, entry_id, fix_status)
             return True

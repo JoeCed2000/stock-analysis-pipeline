@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.main import app
+from backend.feedback_store import _decorate_entry, _normalize_feedback_bucket
 
 TEST_KEY = "test-feedback-key"
 
@@ -272,3 +273,181 @@ class TestFeedbackEndpoint:
     def test_feedback_file_download_missing_returns_404(self, client):
         resp = client.get("/api/feedback-file/AAPL/missing.pdf", headers={"X-API-Key": TEST_KEY})
         assert resp.status_code == 404
+
+
+class TestFeedbackLifecycleMetadata:
+    """Tests for feedback orchestration lifecycle metadata (Card 1)."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self, tmp_path, monkeypatch):
+        self.feedback_root = tmp_path / "analyses"
+        monkeypatch.setattr("backend.feedback_store.ANALYSES_DIR", self.feedback_root)
+        from backend.feedback_store import save_feedback
+        self.save_feedback = save_feedback
+
+    @pytest.fixture
+    def client(self):
+        return TestClient(app)
+
+    def _submit(self, client, ticker=None, text=""):
+        data = {}
+        if ticker is not None:
+            data["ticker"] = ticker
+        if text:
+            data["text"] = text
+        headers = {"X-API-Key": TEST_KEY}
+        return client.post("/api/feedback", data=data, headers=headers)
+
+    # ── Raw entry tests (disk-level) ──────────────────────────────────
+
+    def test_new_entries_have_orchestration_defaults(self, client):
+        """New feedback entries must include an orchestration field with defaults."""
+        self._submit(client, ticker="NVDA", text="test orchestration defaults")
+        bucket = "NVDA"
+        entries = json.loads((self.feedback_root / f"feedback_{bucket}" / "index.json").read_text())
+        entry = entries[-1]
+
+        assert "orchestration" in entry, "New entries must have orchestration field"
+        orch = entry["orchestration"]
+        assert isinstance(orch, dict), "orchestration must be a dict"
+        assert orch.get("status") == "pending", "New entries must start with orchestration.status=pending"
+
+    def test_orchestration_defaults_include_source(self, client):
+        """Orchestration must include a source field on new entries."""
+        self._submit(client, ticker="NVDA", text="check source field")
+        bucket = "NVDA"
+        entry = json.loads((self.feedback_root / f"feedback_{bucket}" / "index.json").read_text())[-1]
+        orch = entry["orchestration"]
+        assert "source" in orch, "orchestration must include a source field"
+        assert orch["source"] == "feedback_page", "Default source should be feedback_page"
+
+    def test_orchestration_defaults_include_severity(self, client):
+        """Orchestration must include a default severity."""
+        self._submit(client, ticker="NVDA", text="check severity")
+        bucket = "NVDA"
+        entry = json.loads((self.feedback_root / f"feedback_{bucket}" / "index.json").read_text())[-1]
+        orch = entry["orchestration"]
+        assert "severity" in orch, "orchestration must include a severity field"
+        assert orch["severity"] == "low", "Default severity should be low"
+
+    # ── Decoration tests ──────────────────────────────────────────────
+
+    def test_decorate_entry_shows_pending_status_from_raw_entry(self):
+        """A raw entry with processed=False should decorate as status=pending."""
+        raw = {"id": "test-1", "processed": False}
+        decorated = _decorate_entry(raw, "NVDA")
+        assert decorated["status"] == "pending"
+
+    def test_decorate_entry_shows_taken_into_account_for_orchestration_in_progress(self):
+        """When orchestration.status=in_progress, decorated status should reflect it."""
+        raw = {
+            "id": "test-2",
+            "orchestration": {"status": "in_progress"},
+            "processed": False,  # orchestration overrides raw processed
+        }
+        decorated = _decorate_entry(raw, "NVDA")
+        assert decorated["status"] == "in_progress"
+
+    def test_decorate_entry_shows_blocked_from_orchestration(self):
+        """orchestration.status=blocked should decorate as status=blocked."""
+        raw = {"id": "test-3", "orchestration": {"status": "blocked"}}
+        decorated = _decorate_entry(raw, "NVDA")
+        assert decorated["status"] == "blocked"
+
+    def test_decorate_entry_shows_corrected_from_orchestration(self):
+        """orchestration.status=corrected should decorate as status=corrected."""
+        raw = {"id": "test-4", "orchestration": {"status": "corrected"}}
+        decorated = _decorate_entry(raw, "NVDA")
+        assert decorated["status"] == "corrected"
+
+    def test_decorate_entry_shows_closed_from_orchestration(self):
+        """orchestration.status=closed should decorate as status=closed."""
+        raw = {"id": "test-5", "orchestration": {"status": "closed"}}
+        decorated = _decorate_entry(raw, "NVDA")
+        assert decorated["status"] == "closed"
+
+    def test_decorate_entry_shows_rejected_from_orchestration(self):
+        """orchestration.status=rejected should decorate as status=rejected."""
+        raw = {"id": "test-6", "orchestration": {"status": "rejected"}}
+        decorated = _decorate_entry(raw, "NVDA")
+        assert decorated["status"] == "rejected"
+
+    def test_decorate_entry_shows_not_reproducible(self):
+        """orchestration.status=not_reproducible should decorate as status=not_reproducible."""
+        raw = {"id": "test-7", "orchestration": {"status": "not_reproducible"}}
+        decorated = _decorate_entry(raw, "NVDA")
+        assert decorated["status"] == "not_reproducible"
+
+    # ── Backward compatibility tests ─────────────────────────────────
+
+    def test_decorate_entry_backward_compat_no_orchestration(self):
+        """Entry without orchestration should still get status from processed."""
+        raw = {"id": "test-8", "processed": False}
+        decorated = _decorate_entry(raw, "NVDA")
+        assert decorated["status"] == "pending"
+
+        raw2 = {"id": "test-9", "processed": True}
+        decorated2 = _decorate_entry(raw2, "NVDA")
+        assert decorated2["status"] == "taken_into_account"
+
+    def test_decorate_entry_backward_compat_fix_status(self):
+        """fix_status should still work alongside orchestration."""
+        raw = {
+            "id": "test-10",
+            "processed": True,
+            "fix_status": "in_progress",
+        }
+        decorated = _decorate_entry(raw, "NVDA")
+        assert decorated["fix_status"] == "in_progress"
+
+    def test_decorate_entry_derives_fix_status_from_orchestration(self):
+        """When no fix_status but orchestration present, fix_status should be derived."""
+        raw = {"id": "test-11", "orchestration": {"status": "corrected"}}
+        decorated = _decorate_entry(raw, "NVDA")
+        assert "fix_status" in decorated, "fix_status should be present for backward compatibility"
+        assert decorated["fix_status"] == "corrected"
+
+    def test_decorate_entry_derives_fix_status_blocked(self):
+        """orchestration.status=blocked → fix_status=in_progress (still being worked on)."""
+        raw = {"id": "test-12", "orchestration": {"status": "blocked"}}
+        decorated = _decorate_entry(raw, "NVDA")
+        assert decorated["fix_status"] == "in_progress"
+
+    def test_decorate_entry_derives_fix_status_rejected(self):
+        """orchestration.status=rejected → fix_status=None (no fix applied)."""
+        raw = {"id": "test-13", "orchestration": {"status": "rejected"}}
+        decorated = _decorate_entry(raw, "NVDA")
+        assert decorated.get("fix_status") is None or decorated.get("fix_status") == ""
+
+    def test_decorate_entry_derives_processed_from_orchestration(self):
+        """processed should be True when orchestration status is not pending."""
+        raw = {"id": "test-14", "orchestration": {"status": "corrected"}}
+        decorated = _decorate_entry(raw, "NVDA")
+        assert decorated["processed"] is True
+
+    def test_decorate_entry_processed_false_for_pending_orchestration(self):
+        """processed should be False when orchestration.status is still pending."""
+        raw = {"id": "test-15", "orchestration": {"status": "pending"}}
+        decorated = _decorate_entry(raw, "NVDA")
+        assert decorated["processed"] is False
+
+    # ── Endpoint shape tests ─────────────────────────────────────────
+
+    def test_feedback_list_exposes_orchestration_status_safely(self, client):
+        """The public /api/feedback endpoint should expose orchestration.status safely."""
+        self._submit(client, ticker="NVDA", text="Lifecycle check")
+        resp = client.get("/api/feedback", headers={"X-API-Key": TEST_KEY})
+        assert resp.status_code == 200
+        entries = resp.json()["entries"]
+        decorated = next(e for e in entries if e["text"] == "Lifecycle check")
+        assert "status" in decorated
+        assert decorated["status"] == "pending"
+
+    def test_admin_feedback_exposes_orchestration_metadata(self, client):
+        """The admin endpoint should expose orchestration metadata."""
+        self._submit(client, ticker="NVDA", text="Admin lifecycle check")
+        resp = client.get("/api/admin/feedback", headers={"X-API-Key": TEST_KEY})
+        assert resp.status_code == 200
+        entries = resp.json()
+        decorated = next(e for e in entries if e["text"] == "Admin lifecycle check")
+        assert "status" in decorated
