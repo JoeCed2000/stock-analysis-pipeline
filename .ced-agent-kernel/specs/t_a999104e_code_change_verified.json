@@ -1,0 +1,44 @@
+{
+  "claim": "Code change artifacts exist and requested deterministic verification evidence is present.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: deep_dive_validator.py",
+      "path": "backend/earnings_deep_dive/deep_dive_validator.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: spec_v27_forbidden_headings.py",
+      "path": "tests/spec_v27_forbidden_headings.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: WIKI.md",
+      "path": "WIKI.md"
+    },
+    {
+      "kind": "python_compile",
+      "name": "python compiles: deep_dive_validator.py",
+      "path": "backend/earnings_deep_dive/deep_dive_validator.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "test command succeeds",
+      "command": "/home/ced/codex-projects/stock-analysis-pipeline/.venv/bin/python3 -m pytest tests/spec_v27_forbidden_headings.py -q",
+      "stdout_pattern": "12 passed",
+      "timeout": "120"
+    },
+    {
+      "kind": "path_exists",
+      "name": "verification log exists",
+      "path": "/tmp/spec_v27_kernel_proof.log"
+    },
+    {
+      "kind": "file_contains",
+      "name": "verification log proves success",
+      "path": "/tmp/spec_v27_kernel_proof.log",
+      "pattern": "12 passed"
+    }
+  ]
+}

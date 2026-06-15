@@ -131,6 +131,26 @@ TABLE_SECTIONS = {
 
 TABLE_PATTERN = re.compile(r"^\|.+\|$", re.MULTILINE)
 SECTION_HEADING = re.compile(r"^##\s+(.+)$", re.MULTILINE)
+SUB_HEADING = re.compile(r"^###\s+(.+)$", re.MULTILINE)
+
+# ── Forbidden background headings (EDP-004) ────────────────────────────────────
+# Stable background sections that belong in Company Overview, not Earnings Deep Dive.
+# Each entry is matched case-insensitively as a substring against section headings.
+FORBIDDEN_BACKGROUND_HEADINGS: List[str] = [
+    "Company Overview",
+    "Business Model",
+    "Revenue Generation Overview",
+    "Revenue Generation",
+    "Competitive Landscape",
+]
+
+# ── Forbidden generic Quality subheadings (EDP-011) ────────────────────────────
+# When an LLM generates a standalone "Quality" heading/section that is boilerplate,
+# it should be flagged. Excluded: canonical required sections (e.g. "Backlog Quality")
+# and headings that contain ticker-specific earnings language (e.g. "Earnings Quality").
+FORBIDDEN_QUALITY_PATTERNS = [
+    re.compile(r"\bQuality\b", re.IGNORECASE),       # standalone "Quality" word
+]
 
 
 def _heading_matches_section(heading: str, emoji_key: str, canonical_name: str, keywords: List[str]) -> bool:
@@ -150,6 +170,49 @@ def _heading_matches_section(heading: str, emoji_key: str, canonical_name: str, 
         return True
     keyword_hits = sum(1 for kw in keywords if kw.lower() in h_lower)
     return keyword_hits >= 2
+
+
+# ── Forbidden heading checks (EDP-004, EDP-011) ────────────────────────────────
+# These run inside validate_deep_dive() to catch stable background headings
+# and generic Quality subsections that shouldn't appear in Earnings Deep Dive.
+
+
+def _check_forbidden_headings(content: str) -> List[str]:
+    """Check markdown content for forbidden background and Quality headings.
+
+    Returns a list of issue strings for each forbidden heading found.
+    EDP-004: stable background sections (Company Overview, Business Model, etc.)
+    EDP-011: generic Quality subsections that are boilerplate, not earnings-specific.
+    """
+    issues: List[str] = []
+    required_names = set(REQUIRED_SECTIONS.values())
+
+    # ── EDP-004: Forbidden background headings (section level) ──
+    for heading_match in SECTION_HEADING.finditer(content):
+        heading_text = heading_match.group(1).strip()
+        for forbidden in FORBIDDEN_BACKGROUND_HEADINGS:
+            if forbidden.lower() in heading_text.lower():
+                issues.append(f"Forbidden background heading '{heading_text}' (matches '{forbidden}')")
+
+    # ── EDP-011: Forbidden generic Quality subheadings (any heading level) ──
+    all_headings = list(SECTION_HEADING.finditer(content)) + list(SUB_HEADING.finditer(content))
+    for heading_match in all_headings:
+        heading_text = heading_match.group(1).strip()
+        canonical = heading_text.lstrip("🌟⚠️✨").strip()
+
+        # Skip required canonical sections (e.g. "Backlog Quality")
+        if canonical in required_names:
+            continue
+
+        for pattern in FORBIDDEN_QUALITY_PATTERNS:
+            if pattern.search(canonical):
+                # Exclude "Earnings Quality" — it's a ticker-specific concept
+                if "Earnings" in canonical or "earnings" in canonical:
+                    continue
+                issues.append(f"Forbidden generic Quality heading '{heading_text}' (boilerplate)")
+                break
+
+    return issues
 
 
 def normalize_markdown_headings(md_path: str) -> List[Tuple[str, str]]:
@@ -224,6 +287,9 @@ def validate_deep_dive(md_path: str) -> Tuple[bool, List[str]]:
 
     with open(md_path, encoding="utf-8") as f:
         content = f.read()
+
+    # ── 0.5. Check for forbidden background/Quality headings (EDP-004, EDP-011) ──
+    issues.extend(_check_forbidden_headings(content))
 
     # ── 1. Check all 10 Nami sections are present ──
     found_sections: List[str] = []

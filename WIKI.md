@@ -1,5 +1,23 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-15 — Forbidden-heading validator checks (EDP-004, EDP-011)
+
+**Status:** Implemented and verified (t_d282872c).
+
+**Change:**
+- `backend/earnings_deep_dive/deep_dive_validator.py`:
+  - Added `_check_forbidden_headings(content)` — deterministic heading scanner that flags forbidden background sections and generic Quality boilerplate.
+  - Added `FORBIDDEN_BACKGROUND_HEADINGS` for EDP-004: blocks `Company Overview`, `Business Model`, `Revenue Generation Overview`, `Revenue Generation`, `Competitive Landscape`.
+  - Added `FORBIDDEN_QUALITY_PATTERNS` for EDP-011: blocks generic `Quality` headings/subheadings (excludes canonical `Backlog Quality` and ticker-specific `Earnings Quality`).
+  - Wired into `validate_deep_dive()` as step 0.5 (runs after file read, before section presence checks).
+- `tests/spec_v27_forbidden_headings.py` — 12 tests covering EDP-004 detection (5 background headings), EDP-011 detection (3 Quality patterns), negative cases (Backlog Quality allowed, Earnings Quality allowed, Competitive Context allowed).
+
+**Verification:**
+- `pytest tests/spec_v27_forbidden_headings.py -q` → **12 passed**.
+- `pytest tests/spec_v27_forbidden_headings.py tests/spec_v27_missing_data_leaks.py tests/test_validator.py tests/spec_v27_verdict_valuation_dq_segments.py tests/spec_v27_period_consistency.py tests/spec_v27_metrics_ledger.py tests/spec_v27_source_registry.py -q` → **157 passed** (0 regressions).
+- `py_compile backend/earnings_deep_dive/deep_dive_validator.py` → OK.
+- `kverify` strict → **READY** (5/5 checks passed).
+
 ## 2026-06-15 — Feedback UI lifecycle labels (Card 2)
 
 **Status:** Implemented and browser-verified (t_8bc43bb3).
