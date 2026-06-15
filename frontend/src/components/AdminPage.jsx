@@ -7,6 +7,30 @@ const POLL_MS = 5000;
 const API = '/api';
 const PAGE_SIZE = 50;
 
+const FEEDBACK_LIFECYCLE = {
+  pending: { bg: '#d2992220', color: '#d29922', border: '#d2992240' },
+  taken_into_account: { bg: '#1f6feb20', color: '#58a6ff', border: '#1f6feb40' },
+  in_progress: { bg: '#8957e520', color: '#a371f7', border: '#8957e540' },
+  corrected: { bg: '#23863620', color: '#3fb950', border: '#2ea04340' },
+  closed: { bg: '#23863620', color: '#3fb950', border: '#2ea04340' },
+  blocked: { bg: '#da363320', color: '#f85149', border: '#da363340' },
+};
+
+function feedbackLifecycleStatus(feedback) {
+  return feedback?.orchestration?.status || feedback?.status || (feedback?.processed ? 'taken_into_account' : 'pending');
+}
+
+function feedbackLifecycleMeta(feedback, t) {
+  const rawStatus = feedbackLifecycleStatus(feedback);
+  const status = FEEDBACK_LIFECYCLE[rawStatus] ? rawStatus : 'pending';
+  const style = FEEDBACK_LIFECYCLE[status];
+  return {
+    status,
+    label: t?.(`feedbackLifecycle_${status}`) || status.replaceAll('_', ' '),
+    ...style,
+  };
+}
+
 export default function AdminPage({ t, onClose }) {
   const [stats, setStats] = useState(null);
   const [searches, setSearches] = useState([]);
@@ -239,11 +263,13 @@ export default function AdminPage({ t, onClose }) {
           </div>
         ) : (
           <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-            {feedbacks.map((fb, i) => (
+            {feedbacks.map((fb, i) => {
+              const lifecycle = feedbackLifecycleMeta(fb, t);
+              return (
               <div key={fb.id || i} style={{
                 padding: '12px 16px',
                 borderBottom: i < feedbacks.length - 1 ? '1px solid #21262d' : 'none',
-                background: !fb.processed ? '#1a1d27' : 'transparent',
+                background: lifecycle.status === 'pending' ? '#1a1d27' : 'transparent',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -256,22 +282,13 @@ export default function AdminPage({ t, onClose }) {
                     <span style={{ fontSize: 11, color: '#8b949e' }}>
                       {formatTime(fb.submitted_at)}
                     </span>
-                    {!fb.processed && (
-                      <span style={{
-                        fontSize: 10, padding: '1px 6px', borderRadius: 3,
-                        background: '#da363320', color: '#f85149',
-                      }}>
-                        NEW
-                      </span>
-                    )}
-                    {fb.processed && (
-                      <span style={{
-                        fontSize: 10, padding: '1px 6px', borderRadius: 3,
-                        background: '#23863620', color: '#3fb950',
-                      }}>
-                        processed
-                      </span>
-                    )}
+                    <span style={{
+                      fontSize: 10, padding: '2px 7px', borderRadius: 999,
+                      background: lifecycle.bg, color: lifecycle.color, border: `1px solid ${lifecycle.border}`,
+                      fontWeight: 600, textTransform: 'none',
+                    }}>
+                      {lifecycle.label}
+                    </span>
                   </div>
                   {fb.files?.length > 0 && (
                     <span style={{ fontSize: 11, color: '#8b949e' }}>
@@ -313,7 +330,8 @@ export default function AdminPage({ t, onClose }) {
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

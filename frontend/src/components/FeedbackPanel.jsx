@@ -234,8 +234,14 @@ export default function FeedbackPanel({ ticker, t, lang }) {
               opacity: sending ? 0.7 : 1,
             }}
           >
-            {sent ? '✅ Sent!' : sending ? '⏳ Sending…' : '📤 Send Feedback'}
+            {sent ? `✅ ${t?.('feedbackSubmitted') || 'Sent!'}` : sending ? `⏳ ${t?.('feedbackSubmitting') || 'Sending…'}` : `📤 ${t?.('feedbackSend') || 'Send Feedback'}`}
           </button>
+
+          {sent && (
+            <span style={{ color: '#58a6ff', fontSize: 12 }}>
+              {t?.('feedbackSubmittedLifecycle') || 'Status: Pending review'}
+            </span>
+          )}
 
           {error && (
             <span style={{ color: '#f85149', fontSize: 12 }}>❌ {error}</span>

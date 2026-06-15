@@ -1,5 +1,70 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-15 — Feedback UI lifecycle labels (Card 2)
+
+**Status:** Implemented and browser-verified (t_8bc43bb3).
+
+**Change:**
+- `frontend/src/components/AdminPage.jsx` — feedback rows now derive the visible badge from `orchestration.status`, `status`, or legacy `processed`, and display lifecycle labels for `pending`, `taken_into_account`, `in_progress`, `corrected`, `closed`, and `blocked`.
+- `frontend/src/components/FeedbackPanel.jsx` — successful inline feedback submit now shows a visible initial pending lifecycle status.
+- `frontend/src/i18n.js` — added EN/JP lifecycle labels; JP wording avoids internal Kanban/cron/client vocabulary.
+
+**Verification:**
+- `cd frontend && node src/components/AdminPage.feedbackPublic.test.cjs && node src/components/ChatWidget.duplicationGuard.test.cjs && npm run build` → OK.
+- Static lifecycle check confirms all six statuses exist in Admin UI + i18n and forbidden JP/internal terms are absent.
+- Browser prod check: `https://sa.cedlabusa.net/#admin` renders feedback lifecycle badges (`確認待ち`, `受付済み`) with no application JS errors; the only failed request was the optional Cloudflare Insights beacon DNS.
+
+## 2026-06-15 — Feedback lifecycle metadata defaults (Card 1)
+
+**Status:** Implemented and verified (t_202f4ca5, commit `53ad6a7`).
+
+**Change:**
+- `backend/feedback_store.py` — added `orchestration` metadata defaults (`status: pending`, `source: feedback_page`, `severity: low`) on every new feedback entry.
+- `_decorate_entry()` now derives `status`, `processed`, and `fix_status` from `orchestration.status` when present.
+- Legacy entries without `orchestration` continue to work unchanged.
+- `mark_processed()` accepts an optional `orchestration_status` parameter.
+- Added `_LIFECYCLE_STATUSES` canonical list and `_ORCHESTRATION_TO_FIX_STATUS` mapping.
+- No Kanban creation, no email, no frontend changes.
+
+**Lifecycle statuses:** `pending` → `taken_into_account` → `in_progress` → `blocked` → `corrected` → `closed` → `rejected` / `not_reproducible`.
+
+**Backward-compatible mapping:**
+| orchestration.status | decorated.status | processed | fix_status |
+|---|---|---|---|
+| `pending` | `pending` | `False` | `pending` |
+| `in_progress` | `in_progress` | `True` | `in_progress` |
+| `blocked` | `blocked` | `True` | `in_progress` |
+| `corrected` | `corrected` | `True` | `corrected` |
+| `closed` | `closed` | `True` | `corrected` |
+| `rejected` | `rejected` | `True` | (absent) |
+| `not_reproducible` | `not_reproducible` | `True` | (absent) |
+
+**Verification:**
+- TDD RED → GREEN: 13 new tests + 32 existing = **45 passed**.
+- API backward compatibility confirmed: old entries still expose `status`, `processed`, `fix_status`.
+- Production API verified: new entries persist `orchestration` field to index.json.
+
+## 2026-06-15 — PDF annotation extractor for feedback uploads
+
+**Status:** Implemented and tested (t_d40fd028, commit `d9429ce`).
+
+**Change:**
+- `backend/pdf_annotation_extractor.py` — new module using PyMuPDF (fitz) to extract text annotations, highlight/comment metadata, stamp/underline data from user-uploaded PDF feedback files.
+- `tests/test_pdf_annotation_extractor.py` — 23 tests covering happy path (3 annotations across 2 pages, 3 types), edge cases (clean PDF = empty result), corrupt/missing PDFs (structured error, no traceback), and Pydantic model validation.
+
+**Key design decisions:**
+- Returns `AnnotationExtractionResult` Pydantic model: JSON-serializable, suitable for API responses.
+- `AnnotationInfo` contains: page_number (1-indexed), type_name, type_code, content, title, rect (x0/y0/x1/y1).
+- `pdf_has_annotations()` — quick boolean check, short-circuits on first annotation found.
+- No OCR or marker-pdf dependency; pure PyMuPDF.
+- Graceful failure: corrupt PDF → empty list + error string (no raw traceback leak).
+- File not found → explicit error message.
+
+**Verification:**
+- `PYTHONPATH=. backend/.venv/bin/pytest tests/test_pdf_annotation_extractor.py -v` → **23 passed**.
+- `PYTHONPATH=. backend/.venv/bin/pytest tests/test_pdf_annotation_extractor.py tests/test_feedback.py -v` → **68 passed** (0 regressions).
+- `/api/feedback-file/{bucket}/{filename:path}` route unchanged.
+
 ## 2026-06-13 — NVDA Company Overview richness + Sources fallback
 
 **Status:** Implemented and verified on the latest NVDA analysis folder.

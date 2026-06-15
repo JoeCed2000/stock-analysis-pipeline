@@ -188,6 +188,18 @@ const translations = {
     exportFailed: "Export failed",
     exportPngLoading: "Generating PNG\u2026",
 
+    // Feedback lifecycle
+    feedbackLifecycle_pending: "Pending review",
+    feedbackLifecycle_taken_into_account: "Taken into account",
+    feedbackLifecycle_in_progress: "In progress",
+    feedbackLifecycle_corrected: "Corrected",
+    feedbackLifecycle_closed: "Closed",
+    feedbackLifecycle_blocked: "Needs attention",
+    feedbackSubmitted: "Sent!",
+    feedbackSubmitting: "Sending…",
+    feedbackSend: "Send Feedback",
+    feedbackSubmittedLifecycle: "Status: Pending review",
+
     // HAR export help
     harHelpLabel: "\uD83D\uDD0E How to export HAR from Chrome?",
     harHelpStep1: "Press F12 (or Ctrl+Shift+I) to open Chrome DevTools",
@@ -382,6 +394,18 @@ const translations = {
     exportCopyOk: "コピー完了",
     exportFailed: "エクスポート失敗",
     exportPngLoading: "PNG生成中…",
+
+    // Feedback lifecycle
+    feedbackLifecycle_pending: "確認待ち",
+    feedbackLifecycle_taken_into_account: "受付済み",
+    feedbackLifecycle_in_progress: "対応中",
+    feedbackLifecycle_corrected: "修正済み",
+    feedbackLifecycle_closed: "完了",
+    feedbackLifecycle_blocked: "確認が必要",
+    feedbackSubmitted: "送信しました",
+    feedbackSubmitting: "送信中…",
+    feedbackSend: "フィードバックを送信",
+    feedbackSubmittedLifecycle: "ステータス: 確認待ち",
 
     // HAR export help
     harHelpLabel: "\uD83D\uDD0E Chrome\u304B\u3089HAR\u3092\u30A8\u30AF\u30B9\u30DD\u30FC\u30C8\u3059\u308B\u65B9\u6CD5",
