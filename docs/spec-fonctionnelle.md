@@ -673,3 +673,37 @@ Le mapper (`backend/earnings_deep_dive/mapper.py`) peuple les modèles V2.7 :
 - **382 tests** V2.x passants
 - **7 commits** cette session
 - Couverture corrections.txt : **22 sections / 30** (hors §§0-2 meta, §§27-30 livrables)
+
+## 23. Feedback Notification Outbox (Card 7) — 2026-06-15
+
+### 23.1 Nouveaux fichiers
+- `backend/feedback_notifications.py` — NotificationOutbox, outbox persistence, email body generation
+- `tests/test_feedback_notifications.py` — 15 tests
+
+### 23.2 Composants
+- **NotificationOutbox** — API : `prepare(feedback_entry)`, `send(entry)`, `list_entries()`
+- **Outbox persistence** — `analyses/feedback_notifications/outbox.json`
+- **_check_email_config()** — détecte SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, NOTIFICATION_EMAIL_TO
+- **_build_email_body()** — génère corps email user-facing (issue, action, verification, next step)
+
+### 23.3 Règles métier
+- Config manquante → `status=pending_config` + `config_missing_reason` descriptif
+- Config présente → `status=pending` (stub — pas d'envoi réel)
+- `send()` marque `sent` avec `email_sent_at` + `email_log_id` (stub uuid)
+- Aucun secret dans logs/tests — les valeurs de config ne sont jamais loggées
+- Le corps email n'utilise pas de langage interne (kanban, preflight, mapper)
+
+### 23.4 Tests
+```
+tests/test_feedback_notifications.py: 15 passed in 0.07s
+```
+- TestNotificationOutboxConfig (3) — config manquante, pending_config, pas d'envoi
+- TestNotificationEmailBody (5) — issue, action, verification, next step, pas de secrets
+- TestNotificationOutboxPersistence (4) — persistance disque, ordre, timestamp send, send sans config
+- TestNotificationEdgeCases (3) — sans ticker, pas de langage interne, retry pending_config
+
+### 23.5 Commit
+```
+ee32f9f feat(notifications): add feedback notification outbox abstraction
+```
+
