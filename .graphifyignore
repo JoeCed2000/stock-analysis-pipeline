@@ -1,0 +1,44 @@
+# graphify ignore — added 2026-06-14 to cut data/artifact noise from code-graph queries.
+# Gitignore-style. Keeps the graph to actual source + specs; drops generated pipeline data.
+
+# Generated pipeline outputs / smoke runs / PDF analyses (pure data, polluted query results)
+reports/
+**/*_meta.json
+**/pdf-analysis.json
+
+# graphify's own output (also auto-skipped, explicit for clarity)
+graphify-out/
+
+# vendored skills kit + spec docs (markdown headers were anchoring queries onto non-code)
+skills-starter-kit/
+**/SKILL.md
+DESIGN.md
+
+# old code copies — graphify was indexing backups/ as if live (duplicate generate_pdf nodes)
+backups/
+
+# all docs/markdown: keep the graph CODE-only for navigation queries.
+# (If wiring graphify↔Smart Connections for a docs+code knowledge graph, drop the lines below.)
+docs/
+**/*.md
+
+# envs / vendored / build (recursive — backend/.venv was being walked → 128k-node blowup)
+**/.venv/
+**/node_modules/
+frontend/build/
+frontend/dist/
+
+# generated analysis data (markdown + json per-ticker runs) — pure data, not code
+analyses/
+
+# build/deploy output + minified vendor bundles (the REAL node blowup: 108k→~8k)
+.vercel/
+**/*.min.js
+**/*.esm-*.js
+**/assets/*.js
+**/.next/
+**/out/
+
+# caches
+**/__pycache__/
+.pytest_cache/
