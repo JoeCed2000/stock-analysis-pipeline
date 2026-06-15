@@ -1677,5 +1677,28 @@ Verification: `pytest tests/test_sa_cookie_longevity.py tests/test_seeking_alpha
 
 UI quick wins applied to the feedback/admin surfaces: Seeking Alpha cookie badge now distinguishes incomplete cookies from verified access, failure messages explain missing `session` cookies and HAR re-export action, Edge/Chrome HAR instructions explicitly define the Network request list, a copy-diagnostic button was added, admin feedback wording no longer says "Client Feedback", and public feedback notes strip internal auto-intake/tracking prefixes into Cause/Update text.
 
+### 2026-06-15 — SA feedback auto-intake orchestration wire (Card 4, t_812a97dd)
+
+**Status:** Implemented and verified (t_812a97dd).
+
+**Change:**
+- Rewrote `~/.hermes/shared/scripts/sa_feedback_auto_intake.py` to use `backend.feedback_orchestration` for classification instead of its own regex rules.
+- **DIRECT_OPS** (pdf_access, site_availability): reanalyzes ticker / restarts backend (same as before).
+- **COUNCIL_REQUIRED** (correction_request, bug_report, feature_request): marks as `taken_into_account` with full hermes-routing metadata block in notes — does NOT silently reanalyze.
+- **ACK_ONLY** / **CLARIFY** / **REJECT**: handled with appropriate lifecycle status.
+- Silent when idle (no output, no side effects).
+- Created `tests/test_sa_feedback_auto_intake.py` — 19 TDD tests.
+
+**Files changed:**
+- `~/.hermes/shared/scripts/sa_feedback_auto_intake.py` — rewired to use orchestration module
+- `tests/test_sa_feedback_auto_intake.py` — new test file (19 tests)
+
+**Cron jobs:** 3 staggered cron jobs re-created (codex-first, default, deepseek-first), every 5 min, no_agent, deliver=local.
+
+**Verification:**
+- `pytest tests/test_sa_feedback_auto_intake.py tests/test_feedback.py tests/test_feedback_orchestration.py` → 101/101 passed.
+- `HOME=/home/ced python3 sa_feedback_auto_intake.py --dry-run` → silent (no unprocessed).
+- `curl /api/feedback` → unchanged contract.
+
 Verification: `cd frontend && npm run build` passed; `node src/components/AdminPage.feedbackPublic.test.cjs`, `node src/components/FeedbackPage.publicHistory.test.cjs`, and `node src/components/chartUtils.test.cjs` passed; browser verification on `https://sa.cedlabusa.net/?v=quickwins-a13f38d#feedback` showed `Cookies incomplete · missing session`, the actionable Japanese PerimeterX/session message, `MISSING=session`, Edge/Chrome HAR wording, and cleaned Cause/Update feedback notes.
 
