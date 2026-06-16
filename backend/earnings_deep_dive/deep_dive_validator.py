@@ -346,6 +346,10 @@ def _parse_dollar_amount(text: str) -> tuple[float | None, str | None]:
 def _parse_table_values(body: str) -> dict[str, tuple[float | None, str]]:
     """Parse EPS and Revenue actual values from a markdown table.
 
+    The EPS & Revenue table uses this column layout:
+      | Metric | Estimate | Actual | vs Estimate | YoY Change | Source |
+    The Actual column is at index 2 (after Metric at 0, Estimate at 1).
+
     Returns dict mapping metric name (uppercase) to (value_in_dollars, raw_cell).
     Only EPS and Revenue are extracted.
     """
@@ -363,7 +367,8 @@ def _parse_table_values(body: str) -> dict[str, tuple[float | None, str]]:
         metric_name = cells[0].strip().lower()
         if metric_name not in ("eps", "revenue"):
             continue
-        actual_cell = cells[1] if len(cells) > 1 else ""
+        # Actual column is at index 2 (0=Metric, 1=Estimate, 2=Actual)
+        actual_cell = cells[2] if len(cells) > 2 else ""
         value, _ = _parse_dollar_amount(actual_cell)
         values[metric_name] = (value, actual_cell)
     return values

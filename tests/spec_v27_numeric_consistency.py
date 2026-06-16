@@ -5,6 +5,10 @@ Tests the post-generation validator's numeric consistency enforcement for:
   across table values, prose, and calculations.
 
 Call path: validate_deep_dive(md_path) → _check_numeric_consistency(content)
+
+The EPS & Revenue table uses this column layout (production format):
+  | Metric | Estimate | Actual | vs Estimate | YoY Change | Source |
+The Actual column is at index 2. _parse_table_values reads from index 2.
 """
 
 import pytest
@@ -19,10 +23,10 @@ _VALID_SECTIONS = """
 
 ## EPS & Revenue
 
-| Metric | Actual | Estimate |
-|--------|--------|----------|
-| EPS | $1.23 | $1.15 |
-| Revenue | $10.0B | $9.5B |
+| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |
+|--------|----------|--------|-------------|------------|--------|
+| EPS | $1.15 | $1.23 | +$0.08 | +20% | Consensus |
+| Revenue | $9.5B | $10.0B | +$0.5B | +15% | Earnings release |
 
 > Revenue of $10.0B exceeded estimates driven by Data Center strength.
 
@@ -125,10 +129,10 @@ class TestEdp006EpsRevenueNumericConsistency:
         extra = """
 ## EPS & Revenue
 
-| Metric | Actual | Estimate |
-|--------|--------|----------|
-| EPS | $2.34 | $2.20 |
-| Revenue | $12.5B | $12.0B |
+| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |
+|--------|----------|--------|-------------|------------|--------|
+| EPS | $2.20 | $2.34 | +$0.14 | +12% | Consensus |
+| Revenue | $12.0B | $12.5B | +$0.5B | +10% | Earnings release |
 
 > Revenue came in at $12.5B, above the $12.0B estimate.
 
@@ -146,10 +150,10 @@ class TestEdp006EpsRevenueNumericConsistency:
         extra = """
 ## EPS & Revenue
 
-| Metric | Actual | Estimate |
-|--------|--------|----------|
-| EPS | $1.23 | $1.15 |
-| Revenue | $10.0B | $9.5B |
+| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |
+|--------|----------|--------|-------------|------------|--------|
+| EPS | $1.15 | $1.23 | +$0.08 | +20% | Consensus |
+| Revenue | $9.5B | $10.0B | +$0.5B | +15% | Earnings release |
 
 > Revenue of $10.0B exceeded expectations.
 
@@ -169,10 +173,10 @@ class TestEdp006EpsRevenueNumericConsistency:
         extra = """
 ## EPS & Revenue
 
-| Metric | Actual | Estimate |
-|--------|--------|----------|
-| EPS | $1.23 | $1.15 |
-| Revenue | $10.0B | $9.5B |
+| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |
+|--------|----------|--------|-------------|------------|--------|
+| EPS | $1.15 | $1.23 | +$0.08 | +20% | Consensus |
+| Revenue | $9.5B | $10.0B | +$0.5B | +15% | Earnings release |
 
 > Revenue of $9.8B was slightly below expectations.
 
@@ -192,10 +196,10 @@ class TestEdp006EpsRevenueNumericConsistency:
         extra = """
 ## EPS & Revenue
 
-| Metric | Actual | Estimate |
-|--------|--------|----------|
-| EPS | $1.23 | $1.15 |
-| Revenue | $10.0B | $9.5B |
+| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |
+|--------|----------|--------|-------------|------------|--------|
+| EPS | $1.15 | $1.23 | +$0.08 | +20% | Consensus |
+| Revenue | $9.5B | $10.0B | +$0.5B | +15% | Earnings release |
 
 > The company beat on both top and bottom lines this quarter.
 
@@ -213,10 +217,10 @@ class TestEdp006EpsRevenueNumericConsistency:
         extra = """
 ## EPS & Revenue
 
-| Metric | Actual | Estimate |
-|--------|--------|----------|
-| EPS | $1.23 | $1.15 |
-| Revenue | $10.0B | $9.5B |
+| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |
+|--------|----------|--------|-------------|------------|--------|
+| EPS | $1.15 | $1.23 | +$0.08 | +20% | Consensus |
+| Revenue | $9.5B | $10.0B | +$0.5B | +15% | Earnings release |
 
 > Over 70% of revenue came from recurring sources.
 
@@ -228,3 +232,29 @@ class TestEdp006EpsRevenueNumericConsistency:
         passed, issues = validate_deep_dive(md_path)
         numeric_issues = [i for i in issues if "numeric" in i.lower() or "EDP-006" in i]
         assert len(numeric_issues) == 0
+
+    def test_nvda_edp006_no_false_positive(self, tmp_path):
+        """NVDA-style prose with EPS beat ($1.87 actual vs $1.77 estimate) should NOT trigger EDP-006.
+        
+        Regression test for the _parse_table_values cell index bug: the function was reading
+        cells[1] (Estimate = $1.77) instead of cells[2] (Actual = $1.87). When prose says
+        "EPS of $1.87", it correctly matches the table's Actual column.
+        """
+        extra = """
+## EPS & Revenue
+
+| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |
+|--------|----------|--------|-------------|------------|--------|
+| EPS | $1.77 | $1.87 | +$0.10 (+5.5%) | +214.5% | Estimate: Company-supplied consensus; Actual: Earnings release |
+| Revenue | — | $81.61B | — | +85.2% | Revenue Actual: Earnings release; YoY Change: Calculated |
+
+> EPS: NVIDIA reported EPS of $1.87, beating the consensus estimate of $1.77 by 5.5%
+
+> Revenue reached $81.61 billion, up 85.2% YoY.
+
+> One-line summary: Strong beat on both top and bottom lines.
+"""
+        md_path = _make_deep_dive(tmp_path, extra_content=extra)
+        passed, issues = validate_deep_dive(md_path)
+        numeric_issues = [i for i in issues if "numeric" in i.lower() or "EDP-006" in i]
+        assert len(numeric_issues) == 0, f"Got false positive: {numeric_issues}"

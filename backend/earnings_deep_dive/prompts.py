@@ -410,10 +410,11 @@ EN_SECTION_FORMATS: Dict[str, str] = {
 | EPS | ... | ... | ... | ... | ... |
 | Revenue | ... | ... | ... | ... | ... |
 
-Required analysis format (CONCISE — max ~120 words total, no long paragraphs):
-① EPS: actual vs consensus estimate (name the consensus source EXACTLY as given in the consensus_provider metric — never invent a vendor name like FactSet/Refinitiv/Bloomberg), surprise %, YoY direction.
-② Revenue: actual vs consensus estimate, surprise %, YoY direction.
-③ Then 2-3 one-line bullets only: the key positives and negatives of the quarter.
+Required analysis format (CONCISE — max ~120 words total, ONE short paragraph only):
+① EPS beat/miss vs consensus estimate (name the consensus source EXACTLY as given in the consensus_provider metric — never invent a vendor name like FactSet/Refinitiv/Bloomberg), with surprise % and YoY direction. One sentence only.
+② Revenue beat/miss vs consensus estimate, with surprise % and YoY direction. One sentence only.
+③ Then 2-3 one-line bullets only: the key positives and negatives of the quarter. No ⚠️ Risk/Implications block.
+
 Detailed discussion belongs in Highlights & Lowlights below — do not repeat it here.
 > One-line summary: [your one-line summary here]""",
     "Highlights": """Required table:
@@ -422,7 +423,7 @@ Detailed discussion belongs in Highlights & Lowlights below — do not repeat it
 | 🌟 Highlight | ① | ... | ... | ... | Low / Medium / High |
 | ⚠️ Lowlight | ① | ... | ... | ... | Low / Medium / High |
 
-Required analysis format (CONCISE — short numbered headings + bullets, NO paragraphs):
+Required analysis format (CONCISE — short numbered headings + bullets ONLY, NO paragraphs, each bullet is ONE line):
 Highlights
 1. <Short heading for the most important positive>
    • 2-3 one-line bullets with the specific metric or transcript evidence.
@@ -439,7 +440,11 @@ Lowlights
 3. <Third concern — short heading>
    • 2-3 one-line bullets.
 
-Each bullet is ONE line. Do not write 3-5 sentence paragraphs per item.
+STRICT RULES — VIOLATION WILL BE FLAGGED:
+- Each bullet is MAXIMUM ONE LINE (not 3-5 sentences).
+- NO prose paragraphs under any heading. Each bullet must start with "•".
+- NO detailed explanations, NO multi-sentence analysis, NO "For the investor" prose blocks.
+- The table carries the key evidence. Bullets add ONE line of context per point.
 > One-line summary: [your one-line summary here]""",
     "Operating Metrics": """Required table:
 {table_header}
@@ -452,24 +457,14 @@ Each bullet is ONE line. Do not write 3-5 sentence paragraphs per item.
 | Operating Margin | ... | ... | ... | ... |
 | Net Income | ... | ... | ... | ... |
 
-Required analysis format:
-🧠 Explanation and analysis (3-5 sentences each point)
-① Gross Profit & Margin Analysis: State the gross margin with exact percentage and source. Compare to prior quarter AND same quarter last year (show 3-quarter trend). Explain drivers — pricing power, input costs, scale benefits, product mix shift. Contrast with sector peers. Implication for earnings quality trajectory.
-② Operating Income & Margin: Operating margin with exact percentage. Whether operating leverage is positive (revenue growth > OpEx growth) or negative. Fixed vs variable cost structure impact. Compare to sector operating margin norms.
-③ OpEx & Net Income: Key OpEx categories (R&D, SG&A) and their trajectory. Any one-time items affecting net income. Tax rate impact. Sustainability of current cost structure.
-④⑤ Additional analysis: Revenue quality (recurring vs one-time), margin durability factors, management cost outlook from transcript.
+Required analysis format — Key Takeaways only (max 5 bullets, one line each):
+• Gross margin level and what it signals vs sector norms.
+• Operating leverage: revenue growth vs expense growth.
+• Operating margin level in context (e.g. comparable to leading software peers, only if true).
+• Net income vs operating income — name the driver (e.g. unrealized investment gains) ONLY if supported by source data.
+• Core message: revenue growth AND margin direction together (growth quality).
 
-3-Quarter Margin Trend: Show gross margin and operating margin trajectory over the last 3 quarters (compact table or prose).
-
-Competitive context: Margin positioning vs sector peers — above/at/below average?
-
-Operating structure: Summarize revenue growth trajectory × margin profile × cost structure interaction.
-
-Essential insight for Nami-san: Explain whether earnings quality is high (operationally driven, sustainable) or fragile (cost-cutting, one-time benefits, cyclical).
-
-⚠️ Risk/Implications: 1-2 specific margin or cost risks. Not generic.
-
-Caution: List the next 2 monitoring checkpoints.
+The table carries the detail — no multi-paragraph analysis, no INFERRED paragraphs, no competitive context essay, no 3-quarter margin trend narrative, no risk/caution section. Each bullet is ONE sentence only. Total: max ~120 words.
 > One-line summary: [your one-line summary here]""",
     "Cash Flow": """Required table:
 {table_header}
