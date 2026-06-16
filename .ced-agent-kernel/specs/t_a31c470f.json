@@ -1,0 +1,33 @@
+{
+  "claim": "Generic EPS Revenue canonicalization implemented — _normalize_eps_revenue strips non-canonical bullet markup (segment revenue figures, bold labels) while preserving table, numbered items, one-line summary, and prose paragraphs. 5 new regression tests, 645 V2.x bundle tests pass, NVDA dossier passes with 0 issues.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: deep_dive_validator.py",
+      "path": "backend/earnings_deep_dive/deep_dive_validator.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: concision tests",
+      "path": "tests/spec_v27_concision.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "kernel verifier script exists",
+      "path": "ops/kernel_checks/verify_t_a31c470f.py"
+    },
+    {
+      "kind": "python_compile",
+      "name": "validator compiles",
+      "path": "backend/earnings_deep_dive/deep_dive_validator.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "deterministic proof script",
+      "command": "python3 ops/kernel_checks/verify_t_a31c470f.py",
+      "stdout_pattern": "ALL PASS",
+      "timeout_seconds": 120
+    }
+  ]
+}
