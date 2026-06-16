@@ -1,5 +1,19 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-16 — GOOG annotated PDF manual review completed
+
+**Status:** Fusion Council consensus was `MANUAL_REVIEW_REQUIRED`; manual review completed without creating Kanban tasks.
+
+**Feedback:** `analyses/feedback_GOOG/index.json` entry `2026-05-28_043100` (P1/P5/P7/P9 annotated PDFs).
+
+**Root cause:** The feedback had been marked as taken into account after grouping the annotated PDFs, but the actual report content had not been explicitly checked against those annotations. The council correctly identified that attaching source documents is not the same as proving the requested corrections were applied.
+
+**Manual review result:** Extracted 27 annotations from the four annotated PDFs and compared the themes against the attached 23-page `deep_dive_GOOG.pdf`. Most formatting/metric requests are reflected or partially reflected: explicit quarter columns exist, margin point changes exist, `Net Cash / (Net Debt)` exists, `Cash & Marketable Securities` exists, `Cash Flow & Liquidity` exists, ROE/ROTCE/ROA/ROIC are present, and Capital Allocation is separated. Remaining decisions: Japanese/language toggle is missing, and several annotations requested Q1 2026 while the attached report appears to use newer Q2 2026 labels.
+
+**Closeout:** Updated the public feedback note to say the manual review was completed and to distinguish reflected report requests from remaining separate decisions. Added `analyses/feedback_GOOG/2026-05-28_043100_manual_review_summary.json` as the local review evidence.
+
+**Verification:** `ops/kernel_checks/verify_goog_manual_review.py` checks the feedback note, manual review summary, 5 attachment URLs, forbidden internal terms, and public `/api/feedback`. Kernel spec: `.ced-agent-kernel/specs/goog_manual_review.json`.
+
 ## 2026-06-16 — NVDA transcript URL fiscal-period fallback fixed
 
 **Status:** backend restarted, fresh NVDA PDF regenerated, focused tests passed, Kernel proof persisted.

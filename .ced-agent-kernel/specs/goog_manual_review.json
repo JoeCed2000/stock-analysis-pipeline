@@ -1,0 +1,33 @@
+{
+  "claim": "GOOG annotated PDF manual review and feedback closeout are verified.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "feedback store exists",
+      "path": "analyses/feedback_GOOG/index.json"
+    },
+    {
+      "kind": "path_exists",
+      "name": "manual review summary exists",
+      "path": "analyses/feedback_GOOG/2026-05-28_043100_manual_review_summary.json"
+    },
+    {
+      "kind": "path_exists",
+      "name": "proof script exists",
+      "path": "ops/kernel_checks/verify_goog_manual_review.py"
+    },
+    {
+      "kind": "python_compile",
+      "name": "proof script compiles",
+      "path": "ops/kernel_checks/verify_goog_manual_review.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "deterministic GOOG manual review proof succeeds",
+      "command": "python3 ops/kernel_checks/verify_goog_manual_review.py",
+      "stdout_pattern": "GOOG_MANUAL_REVIEW_READY",
+      "timeout": "300"
+    }
+  ]
+}
