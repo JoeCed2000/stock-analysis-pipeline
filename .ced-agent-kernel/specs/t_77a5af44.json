@@ -1,0 +1,23 @@
+{
+  "claim": "Spec-only decision for NVDA FY2027 Q1 revenue estimate source policy: Investing.com 79.19B is allowed as an audited analyst-consensus override with explicit citation; no implementation in this card.",
+  "workflow": "kanban_task_done",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "policy decision document exists",
+      "path": "docs/feedback-audits/revenue-source-policy.md"
+    },
+    {
+      "kind": "path_exists",
+      "name": "persistent verifier exists",
+      "path": "ops/kernel_checks/verify_t_77a5af44.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "revenue source policy proof script",
+      "command": "python3 ops/kernel_checks/verify_t_77a5af44.py",
+      "stdout_pattern": "READY t_77a5af44",
+      "timeout_seconds": 60
+    }
+  ]
+}
