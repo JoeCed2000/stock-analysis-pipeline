@@ -1,0 +1,50 @@
+{
+  "spec": "t_feee864b — NVDA revenue estimate override verified",
+  "version": 1,
+  "checks": [
+    {
+      "id": "override-data-exists",
+      "label": "consensus_overrides.json has NVDA FY2027 Q1 revenue_estimate",
+      "type": "file_content",
+      "path": "backend/config/consensus_overrides.json",
+      "assert_contains": "79190000000",
+      "assert_contains_not": null
+    },
+    {
+      "id": "apply-override-called",
+      "label": "apply_consensus_overrides is called in pipeline._deep_dive_metrics",
+      "type": "file_content",
+      "path": "backend/pipeline.py",
+      "assert_contains": "apply_consensus_overrides(ticker_for_segments, fin_data)",
+      "assert_contains_not": null
+    },
+    {
+      "id": "hotfix-acceptance-tests-pass",
+      "label": "Hotfix acceptance tests pass (override beats comparison, surprise +3.04%, ticker isolation)",
+      "type": "shell",
+      "command": "cd /home/ced/codex-projects/stock-analysis-pipeline && PYTHONPATH=backend backend/.venv/bin/python -m pytest tests/test_hotfix_acceptance.py -q 2>&1",
+      "expected_stdout": "14 passed"
+    },
+    {
+      "id": "full-v27-bundle-passes",
+      "label": "Full V2.x bundle passes with 0 regressions",
+      "type": "shell",
+      "command": "cd /home/ced/codex-projects/stock-analysis-pipeline && PYTHONPATH=backend backend/.venv/bin/python -m pytest tests/spec_v27_*.py tests/test_hotfix_acceptance.py tests/test_earnings_deep_dive_prompts.py tests/test_quarterly_comparison.py -q 2>&1",
+      "expected_stdout": "559 passed"
+    },
+    {
+      "id": "prompt-carries-consensus-provider",
+      "label": "EPS & Revenue prompt carries consensus provider name",
+      "type": "shell",
+      "command": "cd /home/ced/codex-projects/stock-analysis-pipeline && PYTHONPATH=backend backend/.venv/bin/python -m pytest tests/test_earnings_deep_dive_prompts.py::test_eps_revenue_prompt_carries_consensus_provider -v 2>&1",
+      "expected_stdout": "PASSED"
+    },
+    {
+      "id": "no-invention-guard",
+      "label": "Revenue estimate is never fabricated from actuals",
+      "type": "shell",
+      "command": "cd /home/ced/codex-projects/stock-analysis-pipeline && PYTHONPATH=backend backend/.venv/bin/python -m pytest tests/test_quarterly_comparison.py::test_revenue_estimate_is_never_fabricated_from_actuals -v 2>&1",
+      "expected_stdout": "PASSED"
+    }
+  ]
+}

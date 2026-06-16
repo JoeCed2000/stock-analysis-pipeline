@@ -1,5 +1,23 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-17 — NVDA revenue estimate 79.19B +3.04% override verified (t_feee864b)
+
+**Status:** kverify READY (8/8). Consensus override already committed in `f2d0f5c` + `d5ccb3e` (part of Net Cash hotfix bundle). This task: verified + documented with Kernel proof.
+
+**Acceptance:**
+- `consensus_overrides.json` has NVDA FY2027 Q1 `revenue_estimate: 79190000000` (79.19B), `source: "Investing.com (analyst consensus)"`, `as_of: "2026-05-20"`
+- `pipeline.py::_deep_dive_metrics()` calls `apply_consensus_overrides()` with override_final priority over `_extract_quarterly_comparison` values
+- `test_hotfix_acceptance.py::test_consensus_override_beats_quarterly_comparison` → `revenue_estimate == 79.19e9`, `consensus_provider` contains "investing"
+- `test_surprise_rows_match_acceptance` → `+3.04%` vs Estimate, "Investing.com" in both EPS & Revenue source cells
+- `test_no_override_ticker_keeps_comparison_values` → non-override ticker ZZZZ keeps original yfinance values unchanged
+- `test_revenue_estimate_is_never_fabricated_from_actuals` → when no override or yfinance estimate exists, `revenue_estimate` stays None
+
+**Verification:**
+- `python3 ops/kernel_checks/verify_t_feee864b.py` → **READY** (8/8: override data, pipeline call, hotfix 14 tests, V2.x 559 tests bundle, prompt provider, no-invention guard)
+- Full bundle: **559 passed**, 0 regressions
+
+---
+
 ## 2026-06-17 — NVDA Net Cash value fixed to 72.1B (t_3173af81)
 
 **Status:** kverify READY (5/5). 652 V2.x bundle tests (4 new), 0 regressions.
