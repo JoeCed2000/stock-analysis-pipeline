@@ -1,0 +1,26 @@
+{
+  "claim": "Code change artifacts exist and requested deterministic verification evidence is present.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: deep_dive_validator.py",
+      "path": "backend/earnings_deep_dive/deep_dive_validator.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: spec_v27_concision.py",
+      "path": "tests/spec_v27_concision.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "verifier script succeeds",
+      "command": [
+        "bash",
+        "ops/kernel_checks/verify_t_b959dc6f.sh"
+      ],
+      "stdout_pattern": "ALL CHECKS PASSED",
+      "timeout": 120
+    }
+  ]
+}

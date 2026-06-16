@@ -281,8 +281,10 @@ def _normalize_eps_revenue(content: str) -> str:
                 cleaned_lines.append(line)
                 continue
 
-            # Keep numbered circle items and decimal-numbered items
-            if re.match(r'^[①②③]\s', stripped) or re.match(r'^\d+\.\s', stripped):
+            # Keep only core numbered items: ① (EPS) and ② (Revenue).
+            # Strip ③+ which contains segment-level commentary (e.g. Data Center
+            # revenue) that creates false EDP-006 conflicts with consolidated table values.
+            if re.match(r'^[①②]\s', stripped) or re.match(r'^\d+\.\s', stripped):
                 cleaned_lines.append(line)
                 continue
 
@@ -303,6 +305,13 @@ def _normalize_eps_revenue(content: str) -> str:
 
             # Strip bold labels (**label**) that are pure section labels
             if stripped.startswith("**") and stripped.endswith("**"):
+                continue
+
+            # Strip numbered circle items beyond ① EPS and ② Revenue.
+            # ③+ contains segment-level commentary (e.g. Data Center revenue
+            # $75B) that creates false EDP-006 conflicts with consolidated
+            # table values. Generic: no ticker/company/value-specific logic.
+            if re.match(r'^[③④⑤⑥⑦⑧⑨⑩]\s', stripped):
                 continue
 
             # All remaining lines (regular prose paragraphs) are KEPT
@@ -404,7 +413,7 @@ def _count_prose_words(lines: List[str]) -> int:
         if (stripped.startswith("|") or stripped.startswith(">")
                 or stripped.startswith("- ") or stripped.startswith("* ")
                 or stripped.startswith("##") or stripped.startswith("**")
-                or re.match(r"^[①②③]\s", stripped) or re.match(r"^\d+\.\s", stripped)):
+                or re.match(r"^[①②]\s", stripped) or re.match(r"^\d+\.\s", stripped)):
             continue
         prose_parts.append(stripped)
 
@@ -424,7 +433,7 @@ def _count_paragraphs(lines: List[str]) -> int:
         if (stripped.startswith("|") or stripped.startswith(">")
                 or stripped.startswith("- ") or stripped.startswith("* ")
                 or stripped.startswith("##")
-                or re.match(r"^[①②③]\s", stripped) or re.match(r"^\d+\.\s", stripped)):
+                or re.match(r"^[①②]\s", stripped) or re.match(r"^\d+\.\s", stripped)):
             in_paragraph = False
             continue
         if not in_paragraph:

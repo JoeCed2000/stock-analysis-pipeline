@@ -1,5 +1,24 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-17 — EPS Revenue numbered-item limit: strip ③+ extra commentary (t_b959dc6f)
+
+**Status:** kverify READY (3/3). 22 concision tests (1 new), 188 bundle tests, 0 regressions.
+
+**Root cause:** The EPS & Revenue section kept ALL numbered circle items (①②③) including ③ with Data Center revenue ($75B) vs consolidated table ($81.61B). EDP-006 fired a false positive on the segment-level $75B figure.
+
+**Fix:** Refined `_normalize_eps_revenue()` to keep only ① EPS and ② Revenue as canonical numbered items. Added explicit strip for ③+ numbered circle items (which contain segment-level commentary causing EDP-006 false conflicts). Generic: no ticker/company/value-specific logic. Also updated `_count_prose_words` and `_count_paragraphs` regexes for consistency.
+
+**Changes:**
+- `backend/earnings_deep_dive/deep_dive_validator.py` — (1) changed numbered-item keep regex from `r'^[①②③]\s'` to `r'^[①②]\s'`, (2) added explicit strip for `③④⑤⑥⑦⑧⑨⑩` items, (3) updated same regex in `_count_prose_words` and `_count_paragraphs` for consistency.
+- `tests/spec_v27_concision.py` — added `test_third_numbered_item_stripped_to_prevent_edp006` regression test: ③ with $75B Data Center revenue passes cleanly after normalization.
+- `.ced-agent-kernel/specs/t_b959dc6f.json` — persistent kernel spec.
+- `ops/kernel_checks/verify_t_b959dc6f.sh` — persistent verifier script (3 checks).
+
+**Verification:**
+- `pytest tests/spec_v27_concision.py -q` → **22 passed** (was 21, +1 new test).
+- `pytest` 12-file bundle → **188 passed** (0 regressions).
+- `kverify --strict` → **READY** (3/3 checks: files exist, verifier script passes).
+
 ## 2026-06-17 — Generic EPS Revenue canonicalization (t_a31c470f)
 
 **Status:** kverify READY (5/5). 645 V2.x bundle tests passed (21 concision, 186 validator bundle). 0 regressions. NVDA dossier passes with 0 issues.

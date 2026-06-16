@@ -765,3 +765,32 @@ In terms of profitability, the company reported gross margins of 65%, up 200 bas
         assert len(edp007_issues) == 0, (
             f"Bold labels + bullet items should be stripped: {edp007_issues}"
         )
+
+    def test_third_numbered_item_stripped_to_prevent_edp006(self, tmp_path):
+        """③ (segment-level Data Center revenue) is stripped by normalization,
+        preventing false EDP-006 conflicts ($75B Data Center vs $81.61B table).
+        Only ① EPS and ② Revenue items survive normalization."""
+        extra = """\
+## EPS & Revenue
+
+| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |
+|--------|----------|--------|-------------|------------|--------|
+| EPS | $1.77 | $1.87 | +$0.10 (5.5%) | +214.47% | Company actuals |
+| Revenue | — | $81.61B | — | +85.23% | Company filing |
+
+① EPS of $1.87 beat the consensus estimate of $1.77 by 5.5%.
+
+② Revenue reached $81.61 billion, rising 85.23% from the year-ago quarter.
+
+③ ◆ Key positives: Data Center revenue of $75B (+92% YoY) and a sequential enterprise AI ramp; free cash flow exceeded prior records. Key concern: supply constraints remain a limiting factor for further sequential acceleration.
+
+> One-line summary: NVIDIA delivered a high-quality beat with EPS of $1.87 and revenue of $81.61B.
+"""
+        md_path = _make_deep_dive(tmp_path, extra_content=extra)
+        passed, issues = validate_deep_dive(md_path)
+        # ③ is stripped, so no EDP-006 ($75B vs $81.61B) false positive
+        concision_issues = [i for i in issues if "concision" in i.lower() or "EDP-006" in i or "EDP-007" in i]
+        assert len(concision_issues) == 0, (
+            f"③ should be stripped, preventing EDP-006/007 false positives: "
+            f"{concision_issues}"
+        )
