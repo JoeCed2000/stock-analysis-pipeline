@@ -1,0 +1,37 @@
+{
+  "claim": "EDP-010/012 source display renderer: updated _table() in pdf_renderer.py to hide visible Source column when source_display_policy is table_note, locate Source column by normalized header label (EN+JP), rebuild rendered data without that column, recalculate column widths, and append a compact 'Source:' note paragraph below the table. 6 focused renderer tests pass. No mapper/model/api changes.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "python_compile",
+      "name": "python compiles: pdf_renderer.py",
+      "path": "backend/earnings_deep_dive/pdf_renderer.py"
+    },
+    {
+      "kind": "python_compile",
+      "name": "python compiles: spec_v27_source_display_renderer.py",
+      "path": "tests/spec_v27_source_display_renderer.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "focused renderer tests pass (6 tests)",
+      "command": "/home/ced/codex-projects/stock-analysis-pipeline/backend/.venv/bin/python -m pytest tests/spec_v27_source_display_renderer.py -q",
+      "stdout_pattern": "6 passed",
+      "timeout": "60"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "model policy tests still pass (13 tests, no regression)",
+      "command": "/home/ced/codex-projects/stock-analysis-pipeline/backend/.venv/bin/python -m pytest tests/spec_v27_source_display_policy.py -q",
+      "stdout_pattern": "13 passed",
+      "timeout": "60"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "bundle regression (19 focused tests, all pass)",
+      "command": "/home/ced/codex-projects/stock-analysis-pipeline/backend/.venv/bin/python -m pytest tests/spec_v27_source_display_renderer.py tests/spec_v27_source_display_policy.py tests/spec_v27_fcf_margin_presence.py tests/spec_v27_net_debt_presence.py -q",
+      "stdout_pattern": "passed",
+      "timeout": "120"
+    }
+  ]
+}

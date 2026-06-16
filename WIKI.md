@@ -1,5 +1,33 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-17 — Source display renderer (EDP-010/012)
+
+**Status:** Renderer-level source display policy implemented and verified (t_5994ff82).
+
+**Change:**
+- `backend/earnings_deep_dive/pdf_renderer.py`:
+  - Updated `_table(section, styles, fonts)` to consume `source_display_policy` and `table_source_note` from `RenderedTable`.
+  - When `source_display_policy == "table_note"`, locates Source column by normalized header label (EN: "source", JP: "情報源", "出典"), removes that visible column from rendered header/data, recalculates column widths for the reduced column count, and appends a compact `Source:` note paragraph below the table.
+  - No mutation of row labels or cell values — collapse is renderer-only.
+- `tests/spec_v27_source_display_renderer.py` — 6 focused renderer tests.
+
+**Acceptance:**
+- Homogeneous source table with `table_note` policy hides Source column in rendered table and appends source note.
+- Default `row` policy preserves visible Source column unchanged.
+- `none` policy keeps Source column visible (backward compat).
+- JP column headers (`情報源`) detected correctly.
+- No source note appended when `table_source_note` is None (even with `table_note` policy).
+- Prose rows still extracted alongside source note.
+
+**Verification:**
+- `pytest tests/spec_v27_source_display_renderer.py -q` → **6 passed**.
+- `pytest tests/spec_v27_source_display_policy.py -q` → **13 passed** (no regression).
+- Bundle: **19 passed** (renderer + policy + FCF margin + net debt).
+- `py_compile backend/earnings_deep_dive/pdf_renderer.py` → OK.
+- `kverify` strict → **READY** (5/5 checks: python compiles, 6 renderer tests pass, 13 policy tests pass, bundle passes).
+- Kernel spec: `.ced-agent-kernel/specs/edp010-012-source-policy-renderer.json` — persistent pytest commands.
+- No `/api/` endpoints touched. Do not commit until independent QA approves.
+
 ## 2026-06-17 — Source display policy model (EDP-010/012)
 
 **Status:** Model-level source display policy implemented and verified (t_c08616c4).

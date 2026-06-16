@@ -849,8 +849,38 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> lis
             truncated.append(Paragraph(escape(safe), _indicator_style(column, s)))
         data.append(truncated)
 
+    # ── Source display policy: collapse Source column when table_note ──
+    source_note_para = None
+    if (getattr(section.table, "source_display_policy", None) == "table_note"
+        and section.table.table_source_note):
+        # Locate Source column by normalized header label
+        src_idx = None
+        stripped_cols = [c.lower().strip() for c in section.table.columns]
+        source_labels = {"source", "情報源", "出典"}
+        for i, nc in enumerate(stripped_cols):
+            if nc in source_labels:
+                src_idx = i
+                break
+        if src_idx is not None:
+            # Rebuild header without source column
+            data[0] = [h for j, h in enumerate(data[0]) if j != src_idx]
+            # Rebuild each data row without source cell
+            new_rows = []
+            for row_data in data[1:]:
+                new_row = [v for k, v in enumerate(row_data) if k != src_idx + 1]
+                new_rows.append(new_row)
+            data = [data[0]] + new_rows
+            # Compact source note paragraph below table
+            note_text = _shorten_source(section.table.table_source_note)
+            source_note_para = Paragraph(
+                f"<b>Source:</b> {escape(note_text)}",
+                ParagraphStyle(
+                    "DeepDiveSourceNote", parent=cell_style, fontSize=6.5, leading=8
+                ),
+            )
+
     available_width = LETTER[0] - (1.35 * inch)
-    col_count = max(1, len(section.table.columns))
+    col_count = max(1, len(data[0]))
     MIN_COL = 1.00 * inch
     if col_count == 7:
         # Wider Driver column (most text-heavy) while keeping the total width below
@@ -897,7 +927,11 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> lis
     # Render extracted prose rows through markdown-aware formatter so raw
     # headings (e.g. ###) and list markers don't leak into the final PDF.
     prose_rows = [_paragraph_md(t[:300], cell_style, font_name=fonts.regular) for t in explanation_rows]
-    return [table] + prose_rows
+    result = [table] + prose_rows
+    if source_note_para:
+        result.append(Spacer(1, 2))
+        result.append(source_note_para)
+    return result
 
 
 # ── PyMuPDF Page Number Stamping ───────────────────────────────────────
