@@ -258,3 +258,63 @@ class TestEdp006EpsRevenueNumericConsistency:
         passed, issues = validate_deep_dive(md_path)
         numeric_issues = [i for i in issues if "numeric" in i.lower() or "EDP-006" in i]
         assert len(numeric_issues) == 0, f"Got false positive: {numeric_issues}"
+
+    def test_segment_revenue_not_flagged_as_edp006(self, tmp_path):
+        """Segment revenue amounts (e.g. Data Center $75B in the ② numbered item)
+        should NOT trigger EDP-006 false positive against the table's total revenue.
+
+        Regression test for: EPS & Revenue ② contains "Data Center revenue of $75
+        billion" alongside total "revenue of $81.61 billion". The $75B is a valid
+        segment figure, not a total revenue contradiction. Generic: no ticker/company
+        values in the filter logic.
+        """
+        extra = """
+## EPS & Revenue
+
+| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |
+|--------|----------|--------|-------------|------------|--------|
+| EPS | $1.77 | $1.87 | +$0.10 (5.6%) | +214.5% | Consensus estimate; actual from Company filing |
+| Revenue | — | $81.61B | — | +85.2% | Company quarterly filing |
+
+① EPS **BEAT** the consensus estimate of $1.77 by +$0.10 (a 5.6% surprise), driven by explosive data center demand and operating leverage.
+
+② Revenue consensus estimate was not disclosed in the available data; actual revenue of $81.61 billion surged +85.2% year-over-year, reflecting record Data Center revenue of $75 billion (+92% YoY) and a $13.5 billion sequential jump, as noted on the earnings call.
+
+③ Key positives: EPS and revenue both set quarterly records, with Data Center computing revenue up 77% YoY.
+
+> One-line summary: NVIDIA delivered a flawless hypergrowth quarter with record revenue and an EPS beat.
+"""
+        md_path = _make_deep_dive(tmp_path, extra_content=extra)
+        passed, issues = validate_deep_dive(md_path)
+        numeric_issues = [i for i in issues if "numeric" in i.lower() or "EDP-006" in i]
+        assert len(numeric_issues) == 0, (
+            f"Segment revenue ($75B Data Center) should NOT trigger EDP-006: "
+            f"got {numeric_issues}"
+        )
+
+    def test_real_revenue_mismatch_still_flagged_with_segment_data(self, tmp_path):
+        """True revenue contradictions should still be flagged even when
+        segment revenue data is present. Ensures the segment-revenue skip
+        does NOT silence legitimate EDP-006 detections."""
+        extra = """
+## EPS & Revenue
+
+| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |
+|--------|----------|--------|-------------|------------|--------|
+| EPS | $1.77 | $1.87 | +$0.10 (5.6%) | +214.5% | Consensus estimate; actual from Company filing |
+| Revenue | — | $81.61B | — | +85.2% | Company quarterly filing |
+
+① EPS **BEAT** the consensus estimate of $1.77 by +$0.10.
+
+② Revenue consensus estimate was not disclosed; actual revenue of $90.0 billion surged, reflecting record Data Center revenue of $75 billion and strong demand.
+
+> One-line summary: Revenue beat expectations.
+"""
+        md_path = _make_deep_dive(tmp_path, extra_content=extra)
+        passed, issues = validate_deep_dive(md_path)
+        numeric_issues = [i for i in issues if "numeric" in i.lower() or "EDP-006" in i]
+        # $90B is a real mismatch vs table $81.61B — should still be flagged
+        assert len(numeric_issues) >= 1, (
+            f"True revenue mismatch ($90B vs $81.61B) SHOULD trigger EDP-006 even "
+            f"with segment revenue present: got {numeric_issues}"
+        )

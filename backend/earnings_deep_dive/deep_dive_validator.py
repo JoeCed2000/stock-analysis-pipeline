@@ -562,8 +562,10 @@ def _parse_table_values(body: str) -> dict[str, tuple[float | None, str]]:
 def _prose_dollar_amounts(body: str) -> list[dict]:
     """Extract dollar amounts from prose text in a section body.
 
-    Returns list of dicts: {value, raw, context, metric_type_hint}
+    Returns list of dicts: {value, raw, context, metric_type_hint, is_segment_revenue}
     where metric_type_hint is 'eps', 'revenue', or None.
+    is_segment_revenue is True for segment/division/geography breakdown amounts
+    that should NOT be compared against the consolidated table revenue.
     """
     amounts: list[dict] = []
     for line in body.split("\n"):
@@ -625,11 +627,45 @@ def _prose_dollar_amounts(body: str) -> list[dict]:
                 elif "revenue" in context or "sales" in context or "top line" in context:
                     metric_hint = "revenue"
 
+            # ── Segment revenue detection ──────────────────────────────────
+            # Generic filter: detect when a revenue dollar amount is a
+            # segment/division/geography breakdown (e.g. "Data Center revenue
+            # of $75B") rather than a consolidated total revenue statement.
+            # Uses a wider pre-text window (60 chars) to find the pattern:
+            #   [SegmentName] revenue of $X
+            # where the word(s) before "Revenue" are NOT generic total-revenue
+            # descriptors. Generic: no ticker/company/value-specific logic.
+            #
+            # Total-revenue descriptors that should NOT be classified as
+            # segment-level (the word(s) before "Revenue" in a "X Revenue of $"
+            # construction):
+            _SEGMENT_GENERIC_DESCRIPTORS = frozenset({
+                "Total", "Actual", "Reported", "Consolidated", "Quarterly",
+                "Overall", "Record", "Adjusted", "The", "Its", "Company",
+                "Combined", "Annual", "Projected", "Estimated",
+                "Preliminary", "LTM", "TTM", "Full", "Half",
+            })
+            pre_text_wide = stripped[
+                max(0, pos + m.start() - 60):pos + m.start()
+            ]
+            segment_match = re.search(
+                # One or two capitalized words before "Revenue of "
+                # (no $ at end — the $ is the FIRST character of the
+                # dollar amount match, which is NOT in the pre-text)
+                r"\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)\s+[Rr]evenue\s+of\s+",
+                pre_text_wide,
+            )
+            is_segment_revenue = bool(
+                segment_match
+                and segment_match.group(1) not in _SEGMENT_GENERIC_DESCRIPTORS
+            )
+
             amounts.append({
                 "value": value,
                 "raw": raw,
                 "context": context,
                 "metric_type_hint": metric_hint,
+                "is_segment_revenue": is_segment_revenue,
             })
             pos += m.end()
 
@@ -681,6 +717,14 @@ def _check_single_eps_revenue_section(body: str) -> List[str]:
     for pa in prose_amounts:
         hint = pa["metric_type_hint"]
         prose_val = pa["value"]
+
+        # ── Skip segment-level revenue amounts ──────────────────────────
+        # Segment revenue breakdowns (e.g. "Data Center revenue of $75B")
+        # should NOT be compared against the consolidated table's total
+        # revenue. They are valid segment figures that naturally differ
+        # from total revenue. Generic: no ticker/company/value logic.
+        if hint == "revenue" and pa.get("is_segment_revenue", False):
+            continue
 
         if hint == "eps":
             table_eps, raw_cell = table_values.get("eps", (None, ""))

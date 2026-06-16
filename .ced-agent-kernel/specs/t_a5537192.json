@@ -1,0 +1,38 @@
+{
+  "claim": "Code change artifacts exist and requested deterministic verification evidence is present.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: deep_dive_validator.py",
+      "path": "backend/earnings_deep_dive/deep_dive_validator.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: spec_v27_numeric_consistency.py",
+      "path": "tests/spec_v27_numeric_consistency.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: verify_t_a5537192.py",
+      "path": "ops/kernel_checks/verify_t_a5537192.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: t_a5537192.json",
+      "path": ".ced-agent-kernel/specs/t_a5537192.json"
+    },
+    {
+      "kind": "python_compile",
+      "name": "python compiles: deep_dive_validator.py",
+      "path": "backend/earnings_deep_dive/deep_dive_validator.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "test command succeeds",
+      "command": "python3 ops/kernel_checks/verify_t_a5537192.py",
+      "stdout_pattern": "ALL CHECKS PASSED",
+      "timeout": "120"
+    }
+  ]
+}
