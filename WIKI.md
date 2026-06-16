@@ -1,5 +1,50 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-17 — Capital Efficiency prompt condensed to Key Takeaways (t_a5c407c3)
+
+**Status:** Kernel READY (6/6). 66 focused tests, 568 V2.x bundle tests, 0 regressions.
+
+**Change:** Condensed the Capital Efficiency (EN + JP) LLM section prompt from "Metric-by-metric explanation" (paragraph format with ①ROE, ②ROTCE/ROTE/ROA, ③ROIC) to "Key Takeaways only (max 5 bullets, one line each)" — matching the conciseness pattern already applied to Operating Metrics.
+
+Before: `🧠 Metric-by-metric explanation\n① ROE: why high/low and whether buybacks distort it.\n② ROTCE / ROTE and ROA: core efficiency and asset productivity.\n③ ROIC: the most important capital-return read-through versus cost of capital.\nFor Nami-san: state whether capital efficiency is excellent, normal, or weak.\n...`
+
+After: `• ROE level and what drives it — operating strength or buybacks/leverage.\n• ROTCE/ROTE and ROA: asset productivity and efficiency context.\n• ROIC vs cost of capital — whether growth creates shareholder value.\n• Net Cash/Net Debt position and balance sheet strength.\n• Core message: returns driven by operating profit versus financial engineering.`
+
+Also updated SECTION_QUESTIONS (EN + JP) to request concise, focused analysis.
+
+**Files changed:**
+- `backend/earnings_deep_dive/prompts.py` — EN_SECTION_FORMATS["Capital Efficiency"], SECTION_FORMATS["Capital Efficiency"], SECTION_QUESTIONS["Capital Efficiency"]
+- `.ced-agent-kernel/specs/t_a5c407c3-capital-efficiency-key-takeaways.json` — kernel spec
+
+**Kernel proof:** `kverify .ced-agent-kernel/specs/t_a5c407c3-capital-efficiency-key-takeaways.json --base-dir .` → **READY** (6/6 checks).
+
+**Verification:** 568/568 V2.x tests passed (0 regressions). 66 focused Capital Efficiency tests passed.
+
+## 2026-06-17 — Source display policy: EPS & Revenue, Forward P/E, Segments (t_527c4b2e)
+
+**Status:** Kernel READY (7/7). 26 policy tests (was 13, +13 new), 8 renderer tests, 658 full bundle, 0 regressions.
+
+**Change:** Extended `_apply_source_display_policy()` allow-list from 3 sections (`Operating Metrics`, `Cash Flow`, `Capital Efficiency`) to 6 — added `EPS & Revenue`, `Forward P/E`, `Segments`. These tables now collapse the per-row Source column into a single `Source:` note below the table when all source cells are identical. Mixed-source tables automatically stay at per-row display.
+
+**Policy self-protection:** Collapse only happens when all source cells in the table are identical and none are "calculated" or "unavailable". Mix of sources → stays at per-row display (no data loss).
+
+**Tests added:**
+- `test_homogeneous_eps_revenue_collapses` — EPS & Revenue with identical source → table_note
+- `test_mixed_eps_revenue_source_keeps_row` — EPS & Revenue with mixed sources → row
+- `test_homogeneous_forward_pe_collapses` — Forward P/E with identical source → table_note
+- `test_homogeneous_segments_collapses` — Segments with identical source → table_note
+- `test_mixed_segments_source_keeps_row` — Segments with mixed sources → row
+
+**Files changed:**
+- `backend/earnings_deep_dive/mapper.py` — extended `_ALLOW_LIST` in `_apply_source_display_policy()` (line 1218)
+- `tests/spec_v27_source_display_policy.py` — updated `test_non_allowlisted_section_keeps_row` (Highlights), added 5 new tests
+- `.ced-agent-kernel/specs/t_527c4b2e-extend-source-policy-allow-list.json` — kernel spec
+- `ops/kernel_checks/verify_t_527c4b2e.py` — kernel verifier (7 checks)
+
+**Kernel proof:** `kverify .ced-agent-kernel/specs/t_527c4b2e-extend-source-policy-allow-list.json --base-dir .` → **READY** (7/7 checks).
+
+**Verification:** 658/658 tests passed (0 regressions). 26 policy tests, 8 renderer tests.
+
 ## 2026-06-17 — NVDA FY2027 Q1 earnings date (2026-05-20) added to PDF title (t_c1756db4)
 
 **Status:** Kernel READY (5/5). 4 focused tests, 548 V2.x bundle tests, 0 regressions.

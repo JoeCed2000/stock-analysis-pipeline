@@ -1,0 +1,38 @@
+{
+  "claim": "Capital Efficiency prompt concision: EN and JP section formats changed from 'Metric-by-metric explanation' to 'Key Takeaways only (max 5 bullets)'. SECTION_QUESTIONS also tightened to request concise analysis. 568/568 V2.x tests pass, 0 regressions. py_compile OK.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "python_compile",
+      "name": "prompts.py compiles",
+      "path": "backend/earnings_deep_dive/prompts.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "EN section format has Key Takeaways",
+      "command": "bash -c 'grep -q \"Key Takeaways only (max 5 bullets, one line each)\" /home/ced/codex-projects/stock-analysis-pipeline/backend/earnings_deep_dive/prompts.py'"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "JP section format has Key Takeaways",
+      "command": "bash -c 'grep -q \"重要ポイントのみ（最大5箇条、各行1文）\" /home/ced/codex-projects/stock-analysis-pipeline/backend/earnings_deep_dive/prompts.py'"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "SECTION_QUESTIONS updated",
+      "command": "bash -c 'grep -q \"operating strength or financial engineering\" /home/ced/codex-projects/stock-analysis-pipeline/backend/earnings_deep_dive/prompts.py'"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "Focused tests pass",
+      "command": "bash -c 'cd /home/ced/codex-projects/stock-analysis-pipeline && python3 -m pytest tests/spec_v27_metrics_ledger.py tests/spec_v27_sections_consistency.py tests/test_earnings_pdf_template.py -q'",
+      "expected_stdout": "66 passed"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "Full bundle passes",
+      "command": "bash -c 'cd /home/ced/codex-projects/stock-analysis-pipeline && python3 -m pytest tests/spec_v27_*.py tests/test_validator.py -q'",
+      "expected_stdout": "passed"
+    }
+  ]
+}

@@ -142,11 +142,11 @@ SECTION_QUESTIONS: Dict[str, Dict[str, str]] = {
     },
     "Capital Efficiency": {
         "en": (
-            "How were ROE, ROTCE (ROTE), ROA, and ROIC? Provide a table with values and sources. "
-            "Explain whether efficiency is driven by business-model strength or financial engineering. "
-            "Compare to sector and historical norms."
+            "How were ROE, ROTCE (ROTE), ROA, and ROIC? Provide a concise table with values and sources. "
+            "State whether efficiency is driven by operating strength or financial engineering. "
+            "Brief sector context if meaningful."
         ),
-        "jp": "ROE / ROTCE（ROTE）/ ROA / ROICなどはどうでしたか？ビジネスモデルの強さと財務エンジニアリングを区別し、セクター比較も含めてください。",
+        "jp": "ROE / ROTCE（ROTE）/ ROA / ROICなどはどうでしたか？簡潔に、事業力によるリターンか財務エンジニアリングかを区別してまとめてください。",
     },
     "Segments": {
         "en": (
@@ -277,14 +277,14 @@ Required analysis format — Key Takeaways形式のみ（最大5点、各1行）
 | ROIC | ... | ... | ... | ... |
 | Net Cash / (Net Debt) | ... | ... | ... | ... |
 
-Required analysis format:
-🧾 補足データ（計算ベース）: list net income, assets, equity, invested capital if available.
-🧠 指標ごとの解説
-① ROE: why high/low and whether buybacks distort it.
-② ROTCE / ROTE and ROA: core efficiency and asset productivity.
-③ ROIC: the most important capital-return read-through versus cost of capital.
-🎯 総合評価（Namiさん向け）: state whether capital efficiency is excellent, normal, or weak.
-⚠️ 注意点（かなり重要）: distinguish financial engineering from business-model strength.""",
+Required analysis format — 重要ポイントのみ（最大5箇条、各行1文）:
+• ROEの水準と変動要因 — 事業力か、自社株買い・レバレッジか。
+• ROTCE/ROTEとROA: 資産生産性と効率性の評価。
+• ROICと資本コスト — 成長が価値を生んでいるか。
+• 純現金/純負債ポジションとバランスシートの健全性。
+• コアメッセージ: リターンが財務エンジニアリングではなく事業力に基づくか。
+
+表が詳細を提供します — 複数段落の分析、競合コンテキストエッセイ、リスク/注意セクションは不要。各箇条は1文のみ。合計: 最大〜120語。""",
     "Segments": """Required tables:
 {table_header}
 |---|---|---|---|---|---|
@@ -500,14 +500,14 @@ Caution for Nami-san: Mention one-off working-capital or future investment risks
 | ROIC | ... | ... | ... | ... |
 | Net Cash / (Net Debt) | ... | ... | ... | ... |
 
-Required analysis format:
-Supporting calculation data: list net income, assets, equity, invested capital if available.
-🧠 Metric-by-metric explanation
-① ROE: why high/low and whether buybacks distort it.
-② ROTCE / ROTE and ROA: core efficiency and asset productivity.
-③ ROIC: the most important capital-return read-through versus cost of capital.
-For Nami-san: state whether capital efficiency is excellent, normal, or weak.
-Caution: distinguish financial engineering from business-model strength.
+Required analysis format — Key Takeaways only (max 5 bullets, one line each):
+• ROE level and what drives it — operating strength or buybacks/leverage.
+• ROTCE/ROTE and ROA: asset productivity and efficiency context.
+• ROIC vs cost of capital — whether growth creates shareholder value.
+• Net Cash/Net Debt position and balance sheet strength.
+• Core message: returns driven by operating profit versus financial engineering.
+
+The table carries the detail — no multi-paragraph analysis, no competitive context essay, no risk/caution section. Each bullet is ONE sentence only. Total: max ~120 words.
 > One-line summary: [your one-line summary here]""",
     "Segments": """Required tables:
 {table_header}
