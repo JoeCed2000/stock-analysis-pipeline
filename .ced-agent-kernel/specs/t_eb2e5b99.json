@@ -1,0 +1,22 @@
+{
+  "claim": "Code change artifacts exist and requested deterministic verification evidence is present.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: deep_dive_validator.py",
+      "path": "backend/earnings_deep_dive/deep_dive_validator.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: spec_v27_concision.py",
+      "path": "tests/spec_v27_concision.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "test command succeeds",
+      "command": "python3 /home/ced/codex-projects/stock-analysis-pipeline/ops/kernel_checks/verify_t_eb2e5b99.py",
+      "stdout_pattern": "VERIFY_T_EB2E5B99_READY"
+    }
+  ]
+}
