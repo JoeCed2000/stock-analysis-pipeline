@@ -1,5 +1,24 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-17 — Generic EPS Revenue canonicalization (t_a31c470f)
+
+**Status:** kverify READY (5/5). 645 V2.x bundle tests passed (21 concision, 186 validator bundle). 0 regressions. NVDA dossier passes with 0 issues.
+
+**Root cause:** The EPS & Revenue section contained extra bullet commentary with segment revenue figures (e.g. "$60 billion Data Center revenue") after the canonical table and numbered items. EDP-006 correctly flagged the dollar figure conflict ($60B vs table $81.61B) and EDP-007 flagged the extra paragraphs. Fix: strip non-canonical markup (bullets, bold labels) before validation, keeping table, numbered items, one-line summary, and regular prose.
+
+**Changes:**
+- `backend/earnings_deep_dive/deep_dive_validator.py` — added `_normalize_eps_revenue()` pre-validation pass: strips bullet items (`-`, `*`, `•`, `●`) and bold section labels (`**label**`) from EPS & Revenue sections while preserving canonical content (table, numbered items ①/②, blockquote, prose paragraphs). Also exempts numbered circle items from paragraph counting in `_count_prose_words` and `_count_paragraphs`.
+- `tests/spec_v27_concision.py` — added `TestEpsRevenueNormalization` with 5 regression tests: extra segment-revenue bullets pass, already-canonical passes, EDP-006 no false conflict after normalization, prose paragraphs still fire EDP-007, bold labels stripped.
+- `.ced-agent-kernel/specs/t_a31c470f.json` — persistent kernel spec.
+- `ops/kernel_checks/verify_t_a31c470f.py` — persistent verifier script (5 checks).
+
+**Verification:**
+- `pytest tests/spec_v27_concision.py -q` → **21 passed** (was 16, +5 new tests).
+- `pytest tests/spec_v27_concision.py tests/spec_v27_numeric_consistency.py tests/test_validator.py tests/spec_v27_forbidden_headings.py tests/spec_v27_missing_data_leaks.py tests/spec_v27_verdict_valuation_dq_segments.py tests/spec_v27_period_consistency.py tests/spec_v27_metrics_ledger.py tests/spec_v27_source_registry.py -q` → **186 passed** (0 regressions).
+- Full V2.x bundle: **645 passed** (0 regressions).
+- NVDA dossier validation: passed with 0 issues (was blocked by EDP-006/EDP-007).
+- `kverify --strict` → **READY** (5/5 checks: files exist, compiles, proof script runs, focused + bundle tests pass).
+
 ## 2026-06-17 — Generic EDP concision normalization (t_eb2e5b99)
 
 **Status:** kverify READY (3/3). 640 tests passed (16 concision + 33 validator + bundle). 0 regressions.
