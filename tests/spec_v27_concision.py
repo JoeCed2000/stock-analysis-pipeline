@@ -614,3 +614,154 @@ Research and development spending increased 15% year over year as the company co
         # No table in highlights — normalization's section-stripping should not apply.
         # This isn't duplicate prose after a table; the bullet-list format is fine.
         assert len(edp008_issues) == 0, f"No-table Highlights should not trigger EDP-008: {edp008_issues}"
+
+
+# ── EPS & Revenue canonical normalization (EDP-006, EDP-007) ────────────────
+
+class TestEpsRevenueNormalization:
+    """Regression: EPS & Revenue section with extra bullet/prose commentary
+    must be canonicalized before validation to prevent EDP-006 false conflicts
+    (segment revenue dollar figures ≠ table values) and EDP-007 false positives
+    (extra narrative paragraphs exceeding word/paragraph limits).
+
+    Kept: table, numbered items (numbered circle 1/2 or numbered-list patterns), one-line summary (>)
+    Stripped: bullet items, prose paragraphs, bold labels
+    """
+
+    def test_extra_segment_revenue_bullets_passes(self, tmp_path):
+        """EPS & Revenue with extra bullet commentary (segment revenue figures)
+        passes after normalization strips the bullets. Prose paragraphs kept
+        but non-existent here (only numbered items remain)."""
+        extra = """\
+## EPS & Revenue
+
+| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |
+|--------|----------|--------|-------------|------------|--------|
+| EPS | $1.77 | $1.87 | +$0.10 (5.5%) | +214.47% | Company actuals |
+| Revenue | — | $81.61B | — | +85.23% | Company filing |
+
+① EPS of $1.87 beat the consensus estimate of $1.77 by 5.5%, a clean surprise, while skyrocketing 214.47% year-over-year.
+
+② Revenue reached $81.61 billion, rising 85.23% from the year-ago quarter; the consensus revenue estimate was not disclosed.
+
+● Data center computing revenue of $60 billion (+77% YoY) underscores Blackwell-driven hyperscale demand.
+● Sequential revenue jumped 20%, the largest quarterly dollar increase ever.
+● Management highlighted AI cloud revenue more than tripling year-over-year.
+
+> One-line summary: NVIDIA delivered a high-quality beat with EPS of $1.87 and revenue of $81.61B.
+"""
+        md_path = _make_deep_dive(tmp_path, extra_content=extra)
+        passed, issues = validate_deep_dive(md_path)
+        concision_issues = [i for i in issues if "concision" in i.lower() or "EDP-006" in i or "EDP-007" in i]
+        assert len(concision_issues) == 0, (
+            f"Extra bullet commentary after normalization should not trigger EDP-006/007: "
+            f"{concision_issues}"
+        )
+
+    def test_already_canonical_eps_passes(self, tmp_path):
+        """An EPS & Revenue section with only table + numbered items + summary
+        passes (no change needed by normalization)."""
+        extra = """\
+## EPS & Revenue
+
+| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |
+|--------|----------|--------|-------------|------------|--------|
+| EPS | $1.77 | $1.87 | +$0.10 (5.5%) | +214.47% | Company actuals |
+| Revenue | — | $81.61B | — | +85.23% | Company filing |
+
+① EPS of $1.87 beat the consensus estimate of $1.77 by 5.5%.
+
+② Revenue reached $81.61 billion, rising 85.23% year-over-year.
+
+> One-line summary: Strong beat on both top and bottom lines.
+"""
+        md_path = _make_deep_dive(tmp_path, extra_content=extra)
+        passed, issues = validate_deep_dive(md_path)
+        concision_issues = [i for i in issues if "concision" in i.lower() or "EDP-006" in i or "EDP-007" in i]
+        assert len(concision_issues) == 0, (
+            f"Already-canonical EPS section should pass: {concision_issues}"
+        )
+
+    def test_numeric_consistency_no_false_conflict_after_normalization(self, tmp_path):
+        """EDP-006 numeric consistency check should not fire on segment revenue
+        dollar figures after normalization removes them."""
+        extra = """\
+## EPS & Revenue
+
+| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |
+|--------|----------|--------|-------------|------------|--------|
+| EPS | $1.77 | $1.87 | +$0.10 (5.5%) | +214.47% | Company actuals |
+| Revenue | — | $81.61B | — | +85.23% | Company filing |
+
+① EPS of $1.87 beat the consensus estimate of $1.77 by 5.5%.
+
+② Revenue reached $81.61 billion, rising 85.23% year-over-year.
+
+● Data center computing revenue of $60 billion (+77% YoY) and networking revenue of $15 billion underscore Blackwell-driven demand.
+
+> One-line summary: NVIDIA delivered a high-quality beat.
+"""
+        md_path = _make_deep_dive(tmp_path, extra_content=extra)
+        passed, issues = validate_deep_dive(md_path)
+        numeric_issues = [i for i in issues if "EDP-006" in i]
+        assert len(numeric_issues) == 0, (
+            f"Segment revenue figures should be normalized away before EDP-006 check: "
+            f"{numeric_issues}"
+        )
+
+    def test_prose_paragraphs_still_fire_edp007(self, tmp_path):
+        """Prose paragraphs after numbered EPS items are KEPT (not stripped)
+        and still subject to EDP-007 concision check."""
+        extra = """\
+## EPS & Revenue
+
+| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |
+|--------|----------|--------|-------------|------------|--------|
+| EPS | $1.77 | $1.87 | +$0.10 (5.5%) | +214.47% | Company actuals |
+| Revenue | — | $81.61B | — | +85.23% | Company filing |
+
+① EPS of $1.87 beat consensus by 5.5%.
+
+② Revenue reached $81.61 billion, rising 85.23% year-over-year.
+
+The company's revenue growth was driven by several key factors. First, the Data Center segment continued its strong momentum. Second, the Gaming segment showed signs of recovery. Third, the Automotive segment grew steadily as more manufacturers adopted the platform.
+
+In terms of profitability, the company reported gross margins of 65%, up 200 basis points year over year.
+
+> One-line summary: Strong beat across all segments.
+"""
+        md_path = _make_deep_dive(tmp_path, extra_content=extra)
+        passed, issues = validate_deep_dive(md_path)
+        edp007_issues = [i for i in issues if "EDP-007" in i]
+        assert len(edp007_issues) >= 1, (
+            f"Prose paragraphs are kept and should still trigger EDP-007: "
+            f"{edp007_issues}"
+        )
+
+    def test_bold_labels_stripped(self, tmp_path):
+        """Bold section labels (**Growth Drivers**, etc.) within EPS Revenue
+        section are stripped."""
+        extra = """\
+## EPS & Revenue
+
+| Metric | Estimate | Actual | vs Estimate | YoY Change | Source |
+|--------|----------|--------|-------------|------------|--------|
+| EPS | $1.77 | $1.87 | +$0.10 (5.5%) | +214.47% | Company actuals |
+| Revenue | — | $81.61B | — | +85.23% | Company filing |
+
+① EPS of $1.87 beat consensus by 5.5%.
+
+② Revenue reached $81.61 billion, rising 85.23% year-over-year.
+
+**Growth Drivers**
+- Data center revenue surged 77% YoY to $60 billion.
+- Enterprise adoption of AI workloads expanding rapidly.
+
+> One-line summary: Growth driven by data center and enterprise AI.
+"""
+        md_path = _make_deep_dive(tmp_path, extra_content=extra)
+        passed, issues = validate_deep_dive(md_path)
+        edp007_issues = [i for i in issues if "EDP-007" in i]
+        assert len(edp007_issues) == 0, (
+            f"Bold labels + bullet items should be stripped: {edp007_issues}"
+        )

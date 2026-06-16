@@ -222,6 +222,102 @@ def _normalize_for_concision(content: str) -> str:
     return content
 
 
+def _normalize_eps_revenue(content: str) -> str:
+    """Pre-validation normalization for EPS & Revenue section.
+
+    Strips extra bullet/prose markup (segment-level bullet items, bold section
+    labels) from ALL EPS & Revenue sections while preserving the canonical
+    content structure:
+    - The section heading
+    - The EPS/Revenue table rows
+    - Numbered items (numbered circles (1) and (2), or numbered-list patterns)
+    - Regular prose paragraphs (still subject to concision/numeric checks)
+    - Optional one-line summary blockquote (> ...)
+    - Empty lines for spacing
+
+    Stripped content types (non-canonical LLM-generated extras):
+    - Bullet items (`- `, `* `, `• `, `● `) — segment revenue figures that
+      create false EDP-006 conflicts with the consolidated table
+    - Bold section labels (`**label**`) — decorative sub-headings within the
+      section that add no structure
+
+    Generic by design: no ticker names, company names, or specific values.
+    """
+    # Find ALL EPS & Revenue sections (there may be multiple in test fixtures)
+    section_pattern = re.compile(r"^## ", re.MULTILINE)
+    sections = list(section_pattern.finditer(content))
+
+    # Process sections in reverse to preserve offsets during replacement
+    eps_revenue_ranges: List[Tuple[int, int]] = []
+
+    for i, match in enumerate(sections):
+        start = match.start()
+        heading_end = content.index("\n", start) if "\n" in content[start:] else len(content)
+        heading = content[start:heading_end].strip()
+        # Match any heading containing both EPS and Revenue
+        if "EPS" in heading and "Revenue" in heading:
+            ep_end = sections[i + 1].start() if i + 1 < len(sections) else len(content)
+            eps_revenue_ranges.append((start, ep_end))
+
+    if not eps_revenue_ranges:
+        return content  # No EPS & Revenue section — nothing to normalize
+
+    # Process ranges in REVERSE so earlier indices aren't invalidated
+    for eps_start, eps_end in reversed(eps_revenue_ranges):
+        section_body = content[eps_start:eps_end]
+
+        # Process each line: keep canonical lines, strip extra markup
+        cleaned_lines: List[str] = []
+        for line in section_body.split("\n"):
+            stripped = line.strip()
+
+            # Keep section heading
+            if stripped.startswith("## "):
+                cleaned_lines.append(line)
+                continue
+
+            # Keep table rows (markdown pipe syntax)
+            if stripped.startswith("|"):
+                cleaned_lines.append(line)
+                continue
+
+            # Keep numbered circle items and decimal-numbered items
+            if re.match(r'^[①②③]\s', stripped) or re.match(r'^\d+\.\s', stripped):
+                cleaned_lines.append(line)
+                continue
+
+            # Keep blockquotes (one-line summary marker)
+            if stripped.startswith(">"):
+                cleaned_lines.append(line)
+                continue
+
+            # Keep empty lines for spacing
+            if not stripped:
+                cleaned_lines.append(line)
+                continue
+
+            # Strip bullet items (both ASCII and Unicode)
+            if (stripped.startswith("- ") or stripped.startswith("* ")
+                    or stripped.startswith("•") or stripped.startswith("●")):
+                continue
+
+            # Strip bold labels (**label**) that are pure section labels
+            if stripped.startswith("**") and stripped.endswith("**"):
+                continue
+
+            # All remaining lines (regular prose paragraphs) are KEPT
+            # They are still subject to concision (EDP-007) and numeric
+            # consistency (EDP-006) checks
+            cleaned_lines.append(line)
+
+        cleaned_body = "\n".join(cleaned_lines)
+
+        # Rebuild content: replace the section body with the canonical version
+        content = content[:eps_start] + cleaned_body + content[eps_end:]
+
+    return content
+
+
 # ── Concision thresholds (EDP-007, EDP-008, EDP-009) ────────────────────────────
 # EPS & Revenue: compact table + short bullets, no long prose blocks.
 EPS_REVENUE_MAX_WORDS = 120
@@ -298,16 +394,17 @@ def _check_concision(content: str) -> List[str]:
 
 
 def _count_prose_words(lines: List[str]) -> int:
-    """Count words in prose text (excluding tables, quotes, bullets, headings)."""
+    """Count words in prose text (excluding tables, quotes, bullets, headings, numbered items)."""
     prose_parts: List[str] = []
     for line in lines:
         stripped = line.strip()
         if not stripped:
             continue
-        # Skip tables, quotes, bullet lists, headings, bold section labels
+        # Skip tables, quotes, bullet lists, headings, bold section labels, numbered items
         if (stripped.startswith("|") or stripped.startswith(">")
                 or stripped.startswith("- ") or stripped.startswith("* ")
-                or stripped.startswith("##") or stripped.startswith("**")):
+                or stripped.startswith("##") or stripped.startswith("**")
+                or re.match(r"^[①②③]\s", stripped) or re.match(r"^\d+\.\s", stripped)):
             continue
         prose_parts.append(stripped)
 
@@ -323,10 +420,11 @@ def _count_paragraphs(lines: List[str]) -> int:
         if not stripped:
             in_paragraph = False
             continue
-        # Only count prose paragraphs (not tables, quotes, bullets, headings)
+        # Only count prose paragraphs (not tables, quotes, bullets, headings, numbered items)
         if (stripped.startswith("|") or stripped.startswith(">")
                 or stripped.startswith("- ") or stripped.startswith("* ")
-                or stripped.startswith("##")):
+                or stripped.startswith("##")
+                or re.match(r"^[①②③]\s", stripped) or re.match(r"^\d+\.\s", stripped)):
             in_paragraph = False
             continue
         if not in_paragraph:
@@ -1083,6 +1181,13 @@ def validate_deep_dive(md_path: str) -> Tuple[bool, List[str]]:
     # after the canonical table. This runs before any validation checks so all
     # downstream checks see normalized content.
     content = _normalize_for_concision(content)
+
+    # ── 0.4b. EPS & Revenue canonicalization (EDP-006, EDP-007) ──
+    # Strips extra bullet/prose commentary (segment revenue figures, verbose
+    # analysis) from the EPS & Revenue section, keeping only the canonical
+    # table, numbered items, and optional one-line summary. This prevents
+    # EDP-006 false conflicts and EDP-007 false positives from extra prose.
+    content = _normalize_eps_revenue(content)
 
     # ── 0.5. Check for forbidden background/Quality headings (EDP-004, EDP-011) ──
     issues.extend(_check_forbidden_headings(content))
