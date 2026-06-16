@@ -1,5 +1,23 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-16 — NVDA transcript URL fiscal-period fallback fixed
+
+**Status:** backend restarted, fresh NVDA PDF regenerated, focused tests passed, Kernel proof persisted.
+
+**Root cause:** The NVDA transcript URL identified the real earnings period as `q1-2027`, but the scraped transcript source did not always expose a separate `quarter` field. `_resolve_deep_dive_quarter()` therefore fell through to filing/yfinance calendar fallbacks (`2026Q1`), which rendered as `FY2026 Q4` in the current PDF even though the transcript source was Q1 FY2027.
+
+**Fix:** Added `_quarter_from_transcript_url()` in `backend/pipeline.py` so known transcript URL patterns like `/q1-2027/` resolve to `FY2027 Q1` before SEC/yfinance fallbacks. Added regression coverage for the real NVDA URL case in `tests/test_deep_dive_quarter_resolution.py`.
+
+**Feedback closeout:** Updated `analyses/feedback_NVDA/index.json` for `2026-06-11_061719` with a user-facing Taken into account note, and cleaned the adjacent `2026-06-11_061802` note to remove internal processing wording. Verified all three `2026-06-11_061719` attachments return HTTP 200.
+
+**Verification:**
+- Red test before fix: `test_stockanalysis_url_quarter_beats_filing_fallback` failed with `2026Q1 != FY2027 Q1`.
+- Focused after fix: `pytest tests/test_deep_dive_quarter_resolution.py tests/test_client_pdf_revision.py` → **33 passed**.
+- Wider relevant suite: `pytest tests/test_deep_dive_quarter_resolution.py tests/test_client_pdf_revision.py tests/test_pipeline_transcript_url.py tests/test_earnings_pdf_template.py tests/test_earnings_pdf_renderer.py` → **65 passed**.
+- Backend health after restart: `/api/health` → `status: ok`, commit `130b6c0` runtime before this commit.
+- Fresh NVDA PDF regenerated in `analyses/2026-06-16_171549_NVDA_NVIDIA_Corp`: 19 pages, validation passed, `FY2027 Q1` present, `FY2026 Q4` absent, endpoint `/api/report/NVDA/pdf?lang=en&audience_mode=nami_personal` → HTTP 200 `application/pdf` (331,191 bytes).
+- Kernel proof: `.ced-agent-kernel/specs/nvda_transcript_url_quarter.json` + `ops/kernel_checks/verify_nvda_transcript_url_quarter.py`.
+
 ## 2026-06-17 — Segment revenue filter: ignore breakdown amounts in EDP-006 (t_a5537192)
 
 **Status:** kverify READY (6/6). 648 V2.x bundle tests (9 numeric, +2 new), 0 regressions. NVDA dossier now passes validation.

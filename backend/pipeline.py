@@ -273,6 +273,26 @@ def _latest_filing_period(ticker: str) -> Optional[str]:
     return None
 
 
+def _quarter_from_transcript_url(url: str | None) -> str | None:
+    """Extract a fiscal quarter label from known transcript URL patterns.
+
+    StockAnalysis transcript URLs encode fiscal labels as e.g. `/q1-2027/`.
+    When the scraper omits a separate `quarter` field, this URL is still more
+    specific than SEC/yfinance calendar fallbacks such as `2026Q1`.
+    """
+    if not url:
+        return None
+    match = re.search(r"(?i)(?:^|[-_/])q([1-4])[-_](20\d{2})(?:[-_/]|$)", str(url))
+    if not match:
+        return None
+    quarter = int(match.group(1))
+    year = int(match.group(2))
+    label = f"FY{year} Q{quarter}"
+    if _is_forward_quarter(label):
+        return None
+    return label
+
+
 def _resolve_deep_dive_quarter(
     *,
     ticker: str,
@@ -294,6 +314,12 @@ def _resolve_deep_dive_quarter(
     if transcript_quarter and transcript_quarter.lower() != "latest quarter":
         if not _is_forward_quarter(transcript_quarter):
             return transcript_quarter
+
+    transcript_url_quarter = _quarter_from_transcript_url(
+        transcript_source.get("url") or transcript_source.get("transcript_url")
+    )
+    if transcript_url_quarter:
+        return transcript_url_quarter
 
     filing_period = _latest_filing_period(ticker)
     if filing_period:

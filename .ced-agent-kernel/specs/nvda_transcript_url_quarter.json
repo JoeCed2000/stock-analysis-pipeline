@@ -1,0 +1,43 @@
+{
+  "claim": "NVDA transcript URL fiscal quarter resolution and feedback closeout are verified.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: backend/pipeline.py",
+      "path": "backend/pipeline.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: tests/test_deep_dive_quarter_resolution.py",
+      "path": "tests/test_deep_dive_quarter_resolution.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "feedback store exists: feedback_NVDA/index.json",
+      "path": "analyses/feedback_NVDA/index.json"
+    },
+    {
+      "kind": "path_exists",
+      "name": "proof script exists",
+      "path": "ops/kernel_checks/verify_nvda_transcript_url_quarter.py"
+    },
+    {
+      "kind": "python_compile",
+      "name": "python compiles: backend/pipeline.py",
+      "path": "backend/pipeline.py"
+    },
+    {
+      "kind": "python_compile",
+      "name": "python compiles: proof script",
+      "path": "ops/kernel_checks/verify_nvda_transcript_url_quarter.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "deterministic NVDA transcript URL quarter proof succeeds",
+      "command": "python3 ops/kernel_checks/verify_nvda_transcript_url_quarter.py",
+      "stdout_pattern": "NVDA_TRANSCRIPT_URL_QUARTER_READY",
+      "timeout": "300"
+    }
+  ]
+}

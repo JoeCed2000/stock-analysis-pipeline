@@ -47,6 +47,21 @@ class TestResolveDeepDiveQuarter:
         )
         assert resolved == "FY2027 Q1"
 
+    def test_stockanalysis_url_quarter_beats_filing_fallback(self, monkeypatch):
+        """Real NVDA feedback case: source URL says q1-2027 but the scraped
+        source may not expose a separate quarter field. Do not fall back to
+        SEC/yfinance calendar labels such as 2026Q1/FY2026 Q4.
+        """
+        monkeypatch.setattr(pl, "_latest_filing_period", lambda ticker: "2026Q1")
+        resolved = pl._resolve_deep_dive_quarter(
+            ticker="NVDA",
+            transcript_source={
+                "url": "https://stockanalysis.com/stocks/nvda/transcripts/568907-q1-2027/",
+            },
+            yf_data={"quarter": "2026Q1", "financials": {}},
+        )
+        assert resolved == "FY2027 Q1"
+
 
 class TestPeriodFromFiling:
     def test_10q_returns_honest_calendar_tag(self):
