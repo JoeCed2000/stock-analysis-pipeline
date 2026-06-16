@@ -2,8 +2,8 @@
 
 Date: 2026-06-16
 Project: Stock Analysis Pipeline
-Task: t_c6ffc957
-Status: architecture spec only — no implementation performed
+Task: t_c6ffc957; repair task: t_e7846d85
+Status: architecture spec only — Claude CHANGES_REQUIRED corrections integrated; no implementation performed
 Owner lane: architect-spec
 
 ## 1. Executive decision
@@ -28,7 +28,8 @@ This produces the user-facing improvement requested by EDP-010/012 without weake
 - Define acceptance criteria and false-positive risks.
 - Define migration, validation, and rollback plan.
 - Preserve current source/claim auditability.
-- Include Claude critique placeholder for follow-up review.
+- Integrate Claude critique corrections from task `t_e7846d85`.
+- Persist a separate Claude critique summary artifact.
 
 ### Out of scope for this card
 
@@ -87,8 +88,9 @@ Current exact symbols/lines observed:
   - `_source_descriptor(...)`: richer source metadata helper exists but is currently unused.
   - `_enrich_codex_table(...)`, `_number_highlights_rows(...)`, `_sanitize_table(...)`: preserve `RenderedTable` through downstream transformations.
 - `backend/earnings_deep_dive/pdf_renderer.py`
-  - `_section_table_flowables(...)`: builds the visible PDF table, detects columns containing `source`, shortens source labels, and sets column widths based on column count.
-  - Current renderer has no table-level source-note path inside `_section_table_flowables(...)`.
+  - `_table(section, styles, fonts)`: builds the visible PDF table, detects columns containing `source`, shortens source labels, and sets column widths based on column count.
+  - Current renderer has no table-level source-note path inside `_table(...)`.
+  - Claude correction: do not reference `_section_table_flowables(...)`; it is not present in the active renderer.
 
 ## 4. Problem statement
 
@@ -183,6 +185,8 @@ class RenderedTable(BaseModel):
     table_source_note: str | None = None
 ```
 
+Claude correction: these fields define display intent only. They must not mutate `rows`, `cells`, or source values. The renderer may hide a visible Source column only at render time when `source_display_policy == "table_note"`; structured row data must remain intact for audits and future validators.
+
 Policy semantics:
 
 - `row`: keep visible Source column.
@@ -212,9 +216,11 @@ A table may render a table-level source note only when all conditions are true:
 1. The table has a visible `Source` column.
 2. Every data row has a non-empty, non-placeholder source value.
 3. After normalization, all source values are identical.
-4. No row has `grounding == "calculated"` unless every row is calculated from the same formula family.
-5. No row contains a missing-data source label such as `Not disclosed`, `Unavailable from reviewed sources`, `開示なし`, or `計算不可`.
+4. No row is calculated unless every row is calculated from the same formula family. Phase 1 must detect calculated rows from conservative source-cell labels such as `Calculated`, `Calculated (FCF ÷ Revenue)`, `計算値`, and `計算値（FCF ÷ 売上高）`, because current `RenderedTableRow.grounding` is optional and is not reliably populated through mapper transformations.
+5. No row contains a missing-data source label such as `Not disclosed`, `Unavailable from reviewed sources`, `開示なし`, `計算不可`, `Not available`, or dash-only placeholders.
 6. The section is in the allow-list for this policy: `Operating Metrics`, `Cash Flow`, `Capital Efficiency`.
+7. The source column is located by normalized header label, not by a hardcoded last-column index.
+8. The policy helper has run after deterministic enrichment, row numbering, and table sanitization, so it evaluates final display cells.
 
 ### 6.2 Keep row-level source rules
 
@@ -231,13 +237,13 @@ Keep the visible Source column when any condition is true:
 
 #### Operating Metrics — EDP-010
 
-Likely default: table-level source note when all rows come from the same company/SEC/yfinance source.
+Conservative default: table-level source note only when all expected Operating Metrics rows are present and all source cells are present, non-placeholder, and identical after conservative normalization.
 
 Reason:
-Most profitability rows (`Revenue`, `Gross Profit`, `Gross Margin`, `OpEx`, `Operating Income`, `Operating Margin`, `Net Income`) are built from the same financial metric source family in `_rows_for_section(...)`.
+Most profitability rows (`Revenue`, `Gross Profit`, `Gross Margin`, `OpEx`, `Operating Income`, `Operating Margin`, `Net Income`) are built from the same financial metric source family in `_rows_for_section(...)`, but the PDF must not collapse a partial or mixed table just because the visible subset happens to share one source.
 
 Exception:
-If future rows mix transcript/commentary, consensus, or calculated values, keep row-level source.
+If rows are missing, if source cells are unavailable/placeholders, or if future rows mix transcript/commentary, consensus, or calculated values, keep row-level source.
 
 #### Cash Flow — EDP-012
 
@@ -274,10 +280,12 @@ Implementation outline:
 
 1. Add `source_display_policy` and `table_source_note` to `RenderedTable`.
 2. Add mapper helper, proposed name: `_apply_source_display_policy(section_key: str, table: RenderedTable) -> RenderedTable`.
-3. Helper determines the source column index, normalizes labels, and sets policy to `table_note` only for homogeneous allow-listed tables.
-4. Ensure `_enrich_codex_table(...)`, `_number_highlights_rows(...)`, and `_sanitize_table(...)` preserve new table metadata.
-5. Update `_section_table_flowables(...)` to hide the visible Source column when `table.source_display_policy == "table_note"`, then append a small note paragraph below the table.
-6. Keep prompt `TABLE_REQUIREMENTS` unchanged in Phase 1.
+3. Preserve existing deterministic transformations first: `_enrich_codex_table(...)`, `_number_highlights_rows(...)`, then `_sanitize_table(...)`.
+4. Add mapper helper, proposed name: `_apply_source_display_policy(section_key: str, table: RenderedTable) -> RenderedTable`, and call it only after enrichment, row numbering, and sanitize have produced final display cells.
+5. Helper locates the source column by normalized header label, normalizes labels, detects calculated/unavailable labels conservatively, and sets policy to `table_note` only for homogeneous allow-listed tables. It must not mutate row labels or cell values.
+6. Ensure all table-copying helpers preserve `source_display_policy` and `table_source_note`.
+7. Update `_table(section, styles, fonts)` to hide the visible Source column when `section.table.source_display_policy == "table_note"`, then append a small note paragraph below the table.
+8. Keep prompt `TABLE_REQUIREMENTS` unchanged in Phase 1.
 
 ### Phase 2 — Optional prompt/schema cleanup after validation
 
@@ -304,11 +312,12 @@ Functional acceptance:
 - Mixed `Company / Yahoo / Calculated / Unavailable` source labels never collapse into a single source note.
 - JP and EN source labels both work.
 - Source legend / claim-source appendix remains unchanged.
+- Source-column collapse is presentation-only: structured `RenderedTable.rows[*].cells` and row-level source values remain available after rendering.
 - No `/api/` endpoint behavior changes.
 
 Audit acceptance:
 
-- Structured `RenderedTableRow` provenance remains available after rendering policy is applied.
+- Structured table row provenance remains available after rendering policy is applied; renderer-level column hiding must not delete model data.
 - `claim_sources` and `source_registry` remain unchanged.
 - The PDF visibly preserves provenance either as a row-level source or as a table-level note.
 - The generated PDF must not contain a table with neither row-level source nor table-level source note when source data exists.
@@ -323,6 +332,8 @@ Audit acceptance:
 | Renderer-only string parsing hides a column incorrectly | PDF loses visible evidence | Prefer explicit `RenderedTable` metadata; tests must inspect generated PDF text |
 | LLM markdown table has hallucinated source cells | Table note could amplify hallucination | Only apply policy to mapper-built structured tables or sections with trusted rows; keep row policy for uncertain extraction |
 | Helper drops metadata during table transformations | Policy silently disappears or applies inconsistently | Add tests around `_enrich_codex_table`, `_number_highlights_rows`, `_sanitize_table` preservation |
+| Policy relies on unpopulated `grounding` | Calculated rows may be misclassified as direct-provider rows | Phase 1 uses source-cell calculated labels; structured grounding can become a later enhancement |
+| Hardcoded Source column index | Future prompt/table changes may hide the wrong column | Locate source column by normalized header label and test non-last-column fixtures |
 
 ## 10. Validation command plan for future implementation
 
@@ -335,6 +346,10 @@ Focused unit tests to add:
   - missing/unavailable source does not collapse.
   - JP source labels do not false-collapse unless exact normalized labels match.
   - table transformations preserve `source_display_policy` and `table_source_note`.
+  - source column detection works when `Source` is not the final column.
+  - source-display policy does not mutate row labels or cell values.
+  - calculated labels block collapse even when `RenderedTableRow.grounding` is not populated.
+  - Operating Metrics collapses only when the expected row set is complete and source-identical.
 
 Renderer/PDF validation:
 
@@ -355,6 +370,7 @@ Expected assertions for extracted PDF text:
 
 - Homogeneous fixture: `Source:` note exists once below the table; repeated source cell text does not appear once per row.
 - Mixed fixture: `Source` column remains visible; `Calculated (FCF ÷ Revenue)` remains tied to FCF Margin row.
+- Auditability fixture: model-level row cells still contain source values after renderer-level collapse; only the PDF display hides the repeated column.
 
 Bundle regression recommendation:
 
@@ -412,33 +428,27 @@ Suggested risk:
 
 Medium. The code change is not large, but provenance semantics are client-facing and must be verified in both model and final PDF text.
 
-## 13. Claude critique placeholder
+## 13. Claude critique integration
 
-Status: PENDING EXTERNAL CRITIQUE.
+Status: CHANGES_REQUIRED from Claude critique; corrections integrated by task `t_e7846d85`.
 
-To be filled by a future read-only reviewer after sending this artifact plus the exact affected code snippets to Claude/Anthropic CLI or another approved reviewer.
+Critique artifact: `docs/feedback-audits/edp010_012_source_policy_claude_review_2026-06-16.md`.
 
-Critique prompt skeleton:
+Substance approved:
 
-```text
-Review docs/feedback-audits/edp010_012_source_policy_architecture_2026-06-16.md.
-Focus only on the proposed EDP-010/012 source-display architecture.
-Return:
-1. APPROVE / REQUEST_CHANGES / BLOCK
-2. Any provenance/auditability risk missed by the spec
-3. Any lower-risk implementation sequence
-4. Any tests missing from the validation plan
-Do not propose removing source provenance entirely.
-```
+- Option D remains the recommended target.
+- Prompt-level source removal remains out of Phase 1.
+- Mixed direct/calculated rows must keep visible row-level provenance.
 
-Placeholder fields:
+Corrections integrated into this spec:
 
-- Reviewer:
-- Date:
-- Verdict:
-- Blocking findings:
-- Non-blocking improvements:
-- Spec update applied:
+- Renderer target is `_table(section, styles, fonts)`, not `_section_table_flowables(...)`.
+- Phase 1 calculated-row detection cannot depend on `RenderedTableRow.grounding` being populated; use conservative source-cell labels first.
+- Apply policy after enrichment, row numbering/highlight numbering, and sanitization.
+- Locate Source column by normalized header label, not hardcoded index.
+- Source-display policy must never mutate rows/cells.
+- Operating Metrics collapse only when expected rows are complete and source-identical.
+- Add auditability regression coverage proving model-level source data survives renderer collapse.
 
 ## 14. Final recommendation
 

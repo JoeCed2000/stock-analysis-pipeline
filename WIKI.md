@@ -1,5 +1,19 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-16 — EDP-010/012 source display spec repaired after Claude review
+
+**Status:** Spec-only repair completed (t_e7846d85).
+
+**Change:**
+- Updated `docs/feedback-audits/edp010_012_source_policy_architecture_2026-06-16.md` to integrate Claude `CHANGES_REQUIRED` corrections while keeping Option D as the recommended architecture.
+- Added `docs/feedback-audits/edp010_012_source_policy_claude_review_2026-06-16.md` summarizing the external critique and every correction applied.
+- Key corrections: renderer symbol is `_table(section, styles, fonts)`; policy runs after enrichment/row numbering/sanitization; no hardcoded Source column index; policy must not mutate row/cells; Operating Metrics collapse requires complete source-identical rows; auditability regression proof required.
+
+**Verification:**
+- `python3 ops/kernel_checks/verify_t_e7846d85.py` → `VERIFY_T_E7846D85_READY`.
+- `kverify .ced-agent-kernel/specs/edp010-012-claude-repair.json --base-dir /home/ced/codex-projects/stock-analysis-pipeline` → **READY** (4/4 checks).
+- No `/api/`, backend implementation, frontend, or PDF generation changes.
+
 ## 2026-06-17 — Net Debt presence validator (EDP-014)
 
 **Status:** Implemented and verified (t_3528c806).

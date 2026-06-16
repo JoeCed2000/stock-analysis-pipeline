@@ -1,0 +1,33 @@
+{
+  "claim": "EDP-010/012 architecture spec integrates Claude CHANGES_REQUIRED corrections and persists a separate critique artifact.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "corrected architecture spec exists",
+      "path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/feedback-audits/edp010_012_source_policy_architecture_2026-06-16.md"
+    },
+    {
+      "kind": "path_exists",
+      "name": "Claude critique artifact exists",
+      "path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/feedback-audits/edp010_012_source_policy_claude_review_2026-06-16.md"
+    },
+    {
+      "kind": "path_exists",
+      "name": "persistent verifier exists",
+      "path": "/home/ced/codex-projects/stock-analysis-pipeline/ops/kernel_checks/verify_t_e7846d85.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "project WIKI exists",
+      "path": "/home/ced/codex-projects/stock-analysis-pipeline/WIKI.md"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "documentation correction verifier succeeds",
+      "command": "python3 ops/kernel_checks/verify_t_e7846d85.py",
+      "stdout_pattern": "VERIFY_T_E7846D85_READY",
+      "timeout": "30"
+    }
+  ]
+}
