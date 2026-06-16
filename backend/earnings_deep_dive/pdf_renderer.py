@@ -867,11 +867,16 @@ def _table(section, styles: dict[str, ParagraphStyle], fonts: PdfFontSet) -> lis
             # Rebuild each data row without source cell
             new_rows = []
             for row_data in data[1:]:
-                new_row = [v for k, v in enumerate(row_data) if k != src_idx + 1]
+                new_row = [v for k, v in enumerate(row_data) if k != src_idx]
                 new_rows.append(new_row)
             data = [data[0]] + new_rows
             # Compact source note paragraph below table
-            note_text = _shorten_source(section.table.table_source_note)
+            # Normalize note text: strip leading "Source:" if already present
+            note_raw = section.table.table_source_note
+            NOTE_PREFIX = "source:"
+            if note_raw.lower().strip().startswith(NOTE_PREFIX):
+                note_raw = note_raw.strip()[len(NOTE_PREFIX):].lstrip(":")
+            note_text = _shorten_source(note_raw.strip())
             source_note_para = Paragraph(
                 f"<b>Source:</b> {escape(note_text)}",
                 ParagraphStyle(

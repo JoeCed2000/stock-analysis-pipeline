@@ -1,5 +1,5 @@
 {
-  "claim": "EDP-010/012 source display renderer: updated _table() in pdf_renderer.py to hide visible Source column when source_display_policy is table_note, locate Source column by normalized header label (EN+JP), rebuild rendered data without that column, recalculate column widths, and append a compact 'Source:' note paragraph below the table. 6 focused renderer tests pass. No mapper/model/api changes.",
+  "claim": "EDP-010/012 source display renderer repair: fixed src_idx off-by-one that left per-row source cells visible in table_note tables (k != src_idx+1 → k != src_idx). Fixed table_source_note label duplication that produced 'Source: Source:' when note value already starts with 'Source:'. 8 focused renderer tests pass (2 new regression guards). No mapper/model/api changes.",
   "workflow": "code_change_verified",
   "checks": [
     {
@@ -14,9 +14,9 @@
     },
     {
       "kind": "command_succeeds",
-      "name": "focused renderer tests pass (6 tests)",
+      "name": "focused renderer tests pass (8 tests)",
       "command": "/home/ced/codex-projects/stock-analysis-pipeline/backend/.venv/bin/python -m pytest tests/spec_v27_source_display_renderer.py -q",
-      "stdout_pattern": "6 passed",
+      "stdout_pattern": "8 passed",
       "timeout": "60"
     },
     {
@@ -28,10 +28,17 @@
     },
     {
       "kind": "command_succeeds",
-      "name": "bundle regression (19 focused tests, all pass)",
+      "name": "bundle regression (all pass)",
       "command": "/home/ced/codex-projects/stock-analysis-pipeline/backend/.venv/bin/python -m pytest tests/spec_v27_source_display_renderer.py tests/spec_v27_source_display_policy.py tests/spec_v27_fcf_margin_presence.py tests/spec_v27_net_debt_presence.py -q",
       "stdout_pattern": "passed",
       "timeout": "120"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "recette verification: no per-row source cells, no duplicate Source label",
+      "command": "/home/ced/codex-projects/stock-analysis-pipeline/backend/.venv/bin/python -c \"import sys; sys.path.insert(0, '/home/ced/codex-projects/stock-analysis-pipeline'); from backend.earnings_deep_dive.report_model import RenderedSection, RenderedTable, RenderedTableRow; from backend.earnings_deep_dive.pdf_renderer import _table, _styles, resolve_pdf_fonts; fonts = resolve_pdf_fonts('en'); styles = _styles(fonts); s = RenderedSection(key='test', title='test', question='?', summary_label='test', summary='test', table=RenderedTable(columns=['Metric','Current','Prior','YoY','Source'], rows=[RenderedTableRow(label='ROE', cells=['15%','12%','+3pp','SEC Filing'])], source_display_policy='table_note', table_source_note='Source: SEC Filings')); r = _table(s, styles, fonts); t = r[0]; row_text = '|'.join(str(c).lower() for c in t._cellvalues[1]); assert 'sec filing' not in row_text, 'ROW FAIL'; assert '10-q/k' not in row_text, 'SHORTEN FAIL'; note = [i for i in r if hasattr(i,'text') and 'Source:' in str(i.text)]; nt = str(note[-1].text); assert 'Source: Source:' not in nt, 'DUP FAIL'; assert nt.count('Source:') == 1, 'COUNT FAIL'; assert 'SEC Filings' in nt, 'BODY FAIL'; print('RECETTE PASS')\"",
+      "stdout_pattern": "RECETTE PASS",
+      "timeout": "60"
     }
   ]
 }
