@@ -1,0 +1,35 @@
+{
+  "claim": "EDP-001/EDP-003 tight-repair: tightened EDP-003 allow-list (year-1 TTM + prior quarter + forward-looking limited to next FY), restored EDP-001 detection power (20/31 audit cases fire with canon FY2026 Q2), 3 real-report regression tests pass without FPs, focused 35 + bundle 213 pass.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "changed file: deep_dive_validator.py",
+      "path": "backend/earnings_deep_dive/deep_dive_validator.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "changed file: spec_v27_fiscal_period_consistency.py",
+      "path": "tests/spec_v27_fiscal_period_consistency.py"
+    },
+    {
+      "kind": "python_compile",
+      "name": "python compiles: deep_dive_validator.py",
+      "path": "backend/earnings_deep_dive/deep_dive_validator.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "focused tests pass (35 tests, including EDP-001 detection)",
+      "command": "/home/ced/codex-projects/stock-analysis-pipeline/backend/.venv/bin/python -m pytest tests/spec_v27_fiscal_period_consistency.py -q",
+      "stdout_pattern": "35 passed",
+      "timeout": "60"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "bundle regression (213 tests, no regressions)",
+      "command": "/home/ced/codex-projects/stock-analysis-pipeline/backend/.venv/bin/python -m pytest tests/spec_v27_fiscal_period_consistency.py tests/spec_v27_fcf_margin_presence.py tests/spec_v27_concision.py tests/spec_v27_forbidden_headings.py tests/spec_v27_numeric_consistency.py tests/test_validator.py tests/spec_v27_verdict_valuation_dq_segments.py tests/spec_v27_period_consistency.py tests/spec_v27_metrics_ledger.py tests/spec_v27_source_registry.py tests/spec_v27_missing_data_leaks.py -q",
+      "stdout_pattern": "213 passed",
+      "timeout": "120"
+    }
+  ]
+}

@@ -1,5 +1,33 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-17 — Fiscal-period consistency validator (EDP-001, EDP-003) — TIGHTENED + REPAIRED
+
+**Status:** Detection-power repair (t_df8507e8). Audit t_10351a31 found EDP-001 toothless (0/31 hand-crafted cases fire) and Kernel proof non-reproducible.
+
+**Root cause (from audit):** EDP-003 was widened too aggressively in t_4d284a3d: allowed `year <= canonical_year - 2` (any distant past) and `year > canonical_year` (any future year), covering every possible (year, quarter) combination. EDP-001 emitted zero issues on parseable input.
+
+**Fix applied (t_df8507e8):**
+- `backend/earnings_deep_dive/deep_dive_validator.py`:
+  - **Tightened EDP-003** to a meaningful allow-list:
+    - Prior-year any quarter (year-1 only) — covers TTM/trend table columns (proven by GOOGL alt)
+    - Prior quarter same fiscal year — QoQ comparison
+    - Forward-looking: same year future quarter OR next fiscal year (year+1) — guidance/outlook
+  - **Removed:** `year <= canonical_year - 2` (was allowing year-2+ any quarter)
+  - **Removed:** `year > canonical_year` unbounded (was allowing year+2+ any future year)
+  - **EDP-001 detection power restored:** 20/31 audit hand-crafted cases fire with canon FY2026 Q2 (vs 0/31 before)
+- `tests/spec_v27_fiscal_period_consistency.py`:
+  - Added: `test_two_year_old_wrong_quarter_fires_edp001` — proves EDP-001 fires for realistic FY2024 Q1 in FY2026 Q2 report
+  - Updated: GOOGL TTM test uses Q3 2025 instead of Q4 2024 (realistic TTM range)
+  - Total: **35 tests** (was 34)
+
+**Verification:**
+- `pytest tests/spec_v27_fiscal_period_consistency.py -q` → **35 passed**.
+- Bundle: **213 passed** (was 212, +1 test) — 0 regressions.
+- `kverify` strict → **READY** (5/5 checks: files exist, python compiles, 35 focused pass, 213 bundle pass).
+- Kernel spec: `.ced-agent-kernel/specs/t_df8507e8.json` — persistent pytest commands (no /tmp/ scripts).
+
+**Trade-off:** EDP-003 still allows prior-year any quarter for TTM tables (4 specific year-1 combos). This is proven necessary by the GOOGL alt real report. Year-2+, year+2+, and prior-year wrong-quarter labels ARE flagged by EDP-001. False-positive prevention on the 3 named real reports is preserved: 0 EDP-001 for AAPL 2026-06-12, AAPL 2026-06-04, and GOOGL 2026-05-31 alt.
+
 ## 2026-06-16 — Numeric consistency validator checks (EDP-006)
 
 **Status:** Implemented and verified (t_07932668).

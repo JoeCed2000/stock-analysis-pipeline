@@ -593,6 +593,189 @@ def _check_fcf_margin_presence(content: str) -> List[str]:
     return issues
 
 
+# ── Fiscal-period consistency (EDP-001, EDP-003) ──────────────────────────
+
+# Regex to match fiscal-period labels: FY2026 Q1, FY 2026 Q1, 2026Q1, Q1 2026
+# Also matches bare four-digit-year patterns that look like fiscal years.
+_FISCAL_PERIOD_RE = re.compile(
+    r"(?i)"
+    r"(?:FY\s*)?(\d{4})\s*Q([1-4])(?!\d)"   # FY2026 Q1, 2026 Q1
+    r"|"
+    r"Q([1-4])(?!\d)\s*(\d{4})"             # Q1 2026
+    r"|"
+    r"(\d{4})Q([1-4])(?!\d)"                # 2026Q1
+)
+
+# Plain calendar year references that should NOT be treated as fiscal labels.
+# E.g. "Q1 2025" in a calendar-year context is fine.
+_CALENDAR_SEPARATOR_RE = re.compile(r"\d{4}-\d{2}")
+
+
+def _try_parse_quarter(label: str) -> tuple[int | None, int | None]:
+    """Parse a fiscal period label string into (year, quarter).
+
+    Handles the same formats as the mapper's _parse_fiscal_quarter:
+      - FY2026 Q1, Q1 2026, 2026Q1, Q4 2025
+    Returns (None, None) for unparseable labels.
+    """
+    text = (label or "").strip()
+    patterns = (
+        r"(?i)^\s*(?:FY\s*)?(\d{4})\s*Q([1-4])\s*$",
+        r"(?i)^\s*Q([1-4])\s*(\d{4})\s*$",
+        r"(?i)^\s*(\d{4})Q([1-4])\s*$",
+    )
+    for pattern in patterns:
+        match = re.match(pattern, text)
+        if not match:
+            continue
+        a, b = match.groups()
+        if pattern.startswith("(?i)^\\s*Q"):
+            return int(b), int(a)
+        return int(a), int(b)
+    return None, None
+
+
+def _extract_period_labels(content: str) -> list[dict]:
+    """Extract all fiscal-period labels from markdown content.
+
+    Returns a list of dicts: {matched_text, year, quarter, position}
+    including the position for deduplication.
+    """
+    labels: list[dict] = []
+    seen_positions: set[int] = set()
+
+    for match in _FISCAL_PERIOD_RE.finditer(content):
+        pos = match.start()
+        if pos in seen_positions:
+            continue
+        seen_positions.add(pos)
+
+        text = match.group(0).strip()
+        year = None
+        q = None
+
+        # Determine which capture group matched
+        # Groups 1-2: FY2026 Q1 or 2026 Q1
+        if match.group(1) and match.group(2):
+            year = int(match.group(1))
+            q = int(match.group(2))
+        # Groups 3-4: Q1 2026
+        elif match.group(3) and match.group(4):
+            q = int(match.group(3))
+            year = int(match.group(4))
+        # Groups 5-6: 2026Q1
+        elif match.group(5) and match.group(6):
+            year = int(match.group(5))
+            q = int(match.group(6))
+
+        if year is not None and q is not None:
+            labels.append({
+                "text": text,
+                "year": year,
+                "quarter": q,
+                "position": pos,
+            })
+
+    return labels
+
+
+def _get_heading_line_ranges(content: str) -> list[tuple[int, int]]:
+    """Return (start_pos, end_pos) ranges for all markdown heading lines.
+
+    Used to exclude section-header period labels from canonical frequency
+    calculation (headers often contain historical context like 'Q4 2025 Recap').
+    """
+    return [(m.start(), m.end()) for m in re.finditer(r'^#{1,6}\s+.*$', content, re.MULTILINE)]
+
+
+def _check_fiscal_period_consistency(content: str) -> list[str]:
+    """Check for contradictory fiscal-period labels (EDP-001, EDP-003).
+
+    Scans the markdown content for fiscal-period labels (FY2026 Q1, Q1 2026,
+    2026Q1, etc.), determines the canonical period from the most frequently
+    referenced label, and flags labels that contradict the canonical period.
+
+    EDP-001: Flags mismatched current-quarter fiscal labels.
+    EDP-003: Allows prior-year labels (same quarter, previous year) and
+             forward-looking/guidance labels (future periods).
+
+    Returns a list of issue strings. Returns empty list when the content
+    has fewer than 2 distinct period labels (insufficient data to determine
+    canonical period), when no canonical period can be determined, or when
+    all labels are consistent.
+    """
+    issues: list[str] = []
+
+    labels = _extract_period_labels(content)
+    if len(labels) < 2:
+        return issues  # Not enough labels to detect contradictions
+
+    # Build heading line ranges — labels on heading lines are excluded from
+    # canonical determination to avoid false positives from historical context
+    # in section headers (e.g. '## Q4 2025 Recap')
+    heading_ranges = _get_heading_line_ranges(content)
+
+    def _in_heading(pos: int) -> bool:
+        return any(start <= pos <= end for start, end in heading_ranges)
+
+    # Group by (year, quarter), counting body labels separately from heading labels
+    period_counts: dict[tuple[int, int], int] = {}
+    for lbl in labels:
+        key = (lbl["year"], lbl["quarter"])
+        if _in_heading(lbl["position"]):
+            continue  # Skip heading labels for canonical frequency
+        period_counts[key] = period_counts.get(key, 0) + 1
+
+    if not period_counts:
+        return issues
+
+    # Deterministic canonical: highest frequency wins; ties broken by most
+    # recent (year desc, quarter desc) so identical content always produces
+    # the same canonical regardless of label insertion order.
+    def _canonical_sort_key(k: tuple[int, int]) -> tuple:
+        return (period_counts[k], k[0], k[1])
+
+    canonical_key = max(period_counts, key=_canonical_sort_key)
+    canonical_year, canonical_q = canonical_key
+
+    # Build set of checked label text (avoid duplicate issues for same period)
+    flagged_periods: set[tuple[int, int]] = set()
+
+    for lbl in labels:
+        key = (lbl["year"], lbl["quarter"])
+        if key == canonical_key:
+            continue  # Matches canonical — allowed
+        if key in flagged_periods:
+            continue  # Already flagged this period
+
+        # ── EDP-003: Allow prior-year periods (TTM/trend tables, any quarter) ──
+        # Real-report TTM columns legitimately reference multiple quarters
+        # of the prior fiscal year (proven by GOOGL 2026-05-31 alt).
+        # Also covers exact prior-year same quarter (YoY comparison).
+        if lbl["year"] == canonical_year - 1:
+            continue
+
+        # ── EDP-003: Allow prior quarter of same fiscal year ──
+        if lbl["year"] == canonical_year and lbl["quarter"] < canonical_q:
+            continue
+
+        # ── EDP-003: Allow forward-looking / guidance (same year future quarter
+        #              or next fiscal year) ──
+        if (lbl["year"] == canonical_year and lbl["quarter"] > canonical_q) or \
+           lbl["year"] == canonical_year + 1:
+            continue
+
+        # ── EDP-001: Flag contradictory current-quarter or past-period labels ──
+        flagged_periods.add(key)
+        issues.append(
+            f"Fiscal period consistency (EDP-001): Report references "
+            f"FY{lbl['year']} Q{lbl['quarter']} but canonical period is "
+            f"FY{canonical_year} Q{canonical_q}"
+        )
+
+    return issues
+
+
 def _heading_matches_section(heading: str, emoji_key: str, canonical_name: str, keywords: List[str]) -> bool:
     """Return True if a markdown heading satisfies a required section.
 
@@ -792,7 +975,10 @@ def validate_deep_dive(md_path: str) -> Tuple[bool, List[str]]:
     # ── 5.5. Check FCF Margin presence in Cash Flow (EDP-013) ──
     issues.extend(_check_fcf_margin_presence(content))
 
-    # ── 6. Check minimum content size ──
+    # ── 6. Check fiscal-period consistency (EDP-001, EDP-003) ──
+    issues.extend(_check_fiscal_period_consistency(content))
+
+    # ── 7. Check minimum content size ──
     words = len(content.split())
     if words < 800:
         issues.append(f"Content too short: {words} words (need ≥800)")
