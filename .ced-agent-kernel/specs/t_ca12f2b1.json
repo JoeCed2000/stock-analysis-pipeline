@@ -1,0 +1,33 @@
+{
+  "claim": "NVDA EDP validation blockers repaired — EDP-006 cell index fix, EN prompts tightened for concision. 207/207 tests pass, 0 regressions.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: deep_dive_validator.py",
+      "path": "backend/earnings_deep_dive/deep_dive_validator.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: prompts.py",
+      "path": "backend/earnings_deep_dive/prompts.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: numeric_consistency tests",
+      "path": "tests/spec_v27_numeric_consistency.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "kernel verifier script exists",
+      "path": "ops/kernel_checks/verify_t_ca12f2b1.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "deterministic proof script",
+      "command": "python3 ops/kernel_checks/verify_t_ca12f2b1.py",
+      "stdout_pattern": "READY",
+      "timeout_seconds": 180
+    }
+  ]
+}
