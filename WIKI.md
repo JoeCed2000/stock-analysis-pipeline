@@ -1,5 +1,19 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-17 — Quality row removed from Peer Benchmark in Earnings Deep-Dive PDF (t_8756b57f)
+
+**Status:** kverify READY (5/5). 102 focused tests, 620 spec_v27 bundle tests, 0 regressions.
+
+**Change:** Removed the `Quality` display row from the Earnings Deep-Dive PDF Peer Benchmark relative-dimensions table. The `Valuation` and `Growth` rows are preserved. Scope strictly follows the decision document: only the Peer Benchmark → Quality dimension is suppressed; `Data Quality`, `Backlog Quality`, `Capital Efficiency`, `Earnings quality` prose, PDFQA quality gates, and Company Overview concepts are all untouched.
+
+**Files changed:**
+- `backend/earnings_deep_dive/pdf_renderer.py` — removed `(translate("Quality", lang), ...)` tuple from the peer benchmark iteration loop (line 1604)
+- `tests/spec_v27_pdf_renderer.py` — added `test_quality_row_suppressed_when_all_dimensions_present`: renders PDF with all 3 dims, verifies Valuation+Growth present but Quality absent
+
+**Kernel proof:**
+- `.ced-agent-kernel/specs/t_8756b57f.json` — 5 checks: path_exists (source, test, verifier), python_compile (verifier), command_succeeds (verifier script with VERIFY_T_8756B57F_READY)
+- `ops/kernel_checks/verify_t_8756b57f.py` — 7 checks: Quality tuple absent, Valuation+Growth present, py_compile passes, new test exists, 37 focused tests, 102 bundle tests
+
 ## 2026-06-17 — NVDA revenue estimate 79.19B +3.04% override verified (t_feee864b)
 
 **Status:** kverify READY (8/8). Consensus override already committed in `f2d0f5c` + `d5ccb3e` (part of Net Cash hotfix bundle). This task: verified + documented with Kernel proof.

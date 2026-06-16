@@ -1,0 +1,33 @@
+{
+  "claim": "t_8756b57f — Quality row removed from Peer Benchmark in Earnings Deep-Dive PDF renderer.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "changed file: pdf_renderer.py",
+      "path": "backend/earnings_deep_dive/pdf_renderer.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "test file: spec_v27_pdf_renderer.py",
+      "path": "tests/spec_v27_pdf_renderer.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "deterministic verifier exists",
+      "path": "ops/kernel_checks/verify_t_8756b57f.py"
+    },
+    {
+      "kind": "python_compile",
+      "name": "deterministic verifier compiles",
+      "path": "ops/kernel_checks/verify_t_8756b57f.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "verifier script passes all 7 checks",
+      "command": "python3 ops/kernel_checks/verify_t_8756b57f.py",
+      "stdout_pattern": "VERIFY_T_8756B57F_READY",
+      "timeout": "120"
+    }
+  ]
+}

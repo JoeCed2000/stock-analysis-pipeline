@@ -343,6 +343,30 @@ class TestRenderPeerBenchmark:
         result = render_peer_benchmark(report, styles, fonts)
         assert len(result) > 0
 
+    def test_quality_row_suppressed_when_all_dimensions_present(self, tmp_path, styles, fonts):
+        """Quality dimension row must NOT appear in rendered PDF when all 3 peer dims are set."""
+        pb = PeerBenchmarkSection(
+            peer_group="Mag 7",
+            peer_tickers=["AAPL", "MSFT"],
+            relative_valuation_label="Below Average",
+            relative_valuation_detail="P/E 25.2 vs group median 32.1",
+            relative_growth_label="Above Average",
+            relative_growth_detail="Rev growth 18% vs group median 8%",
+            relative_quality_label="Above Average",
+            relative_quality_detail="ROIC 28% vs group median 15%",
+            benchmark_summary="Growth and quality premium.",
+        )
+        report = _minimal_report()
+        report.peer_benchmark = pb
+        pdf_path = tmp_path / "v27_no_quality.pdf"
+        render_earnings_deep_dive_pdf(report, pdf_path)
+        import fitz
+        doc = fitz.open(str(pdf_path))
+        text = "\n".join(page.get_text() for page in doc)
+        assert "Valuation" in text, "Valuation row must still appear"
+        assert "Growth" in text, "Growth row must still appear"
+        assert "Quality" not in text, "Quality row must be suppressed in earnings scope"
+
     def test_partial_peers_renders_gracefully(self, styles, fonts):
         pb = PeerBenchmarkSection(
             relative_valuation_label="Above Average",

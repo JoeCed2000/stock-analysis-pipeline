@@ -1601,7 +1601,6 @@ def render_peer_benchmark(
     for dim_label, rel_label, rel_detail in [
         (translate("Valuation", lang), pb.relative_valuation_label, pb.relative_valuation_detail),
         (translate("Growth", lang), pb.relative_growth_label, pb.relative_growth_detail),
-        (translate("Quality", lang), pb.relative_quality_label, pb.relative_quality_detail),
     ]:
         if rel_label is None:
             continue
