@@ -1,5 +1,30 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-17 — Segment revenue filter: ignore breakdown amounts in EDP-006 (t_a5537192)
+
+**Status:** kverify READY (6/6). 648 V2.x bundle tests (9 numeric, +2 new), 0 regressions. NVDA dossier now passes validation.
+
+**Root cause:** The ② Revenue numbered item contained both total revenue ($81.61B) AND segment-level Data Center revenue ($75B) in the same prose. `_prose_dollar_amounts()` extracted both as revenue-typed amounts. EDP-006 compared the $75B segment figure against the consolidated table's $81.61B, producing a false positive.
+
+**Fix:** Added generic segment-revenue detection in `_prose_dollar_amounts()`:
+- Uses a wider pre-text window (60 chars) to detect `[SegmentName] revenue of $` patterns
+- A set of generic total-revenue descriptors (Total, Actual, Reported, Consolidated, Record, etc.) distinguishes total from segment revenue
+- If the word(s) before "Revenue of" are NOT in the generic set → flagged as `is_segment_revenue=True`
+- `_check_single_eps_revenue_section()` skips segment revenue amounts for EDP-006
+- Generic: no ticker/company/value-specific logic
+
+**Changes:**
+- `backend/earnings_deep_dive/deep_dive_validator.py` — (1) added segment revenue detection in `_prose_dollar_amounts()` with `is_segment_revenue` flag, (2) skip segment revenue in `_check_single_eps_revenue_section()`.
+- `tests/spec_v27_numeric_consistency.py` — added `test_segment_revenue_not_flagged_as_edp006` (NVDA-style ② with $75B Data Center passes) + `test_real_revenue_mismatch_still_flagged_with_segment_data` (true $90B mismatch still flagged even with segment data present).
+- `.ced-agent-kernel/specs/t_a5537192.json` — persistent kernel spec.
+- `ops/kernel_checks/verify_t_a5537192.py` — persistent verifier script (5 checks: compile, focused tests, bundle, NVDA dossier, full V2.x).
+
+**Verification:**
+- `pytest tests/spec_v27_numeric_consistency.py -q` → **9 passed** (was 7, +2 new tests).
+- `pytest` V2.x bundle → **648 passed** (0 regressions).
+- NVDA dossier validation: **passed** (0 EDP-006 issues, was blocked before fix).
+- `kverify --strict` → **READY** (6/6 checks: files exist, compile, proof script, full bundle).
+
 ## 2026-06-17 — EPS Revenue numbered-item limit: strip ③+ extra commentary (t_b959dc6f)
 
 **Status:** kverify READY (3/3). 22 concision tests (1 new), 188 bundle tests, 0 regressions.
