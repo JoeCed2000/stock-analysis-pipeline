@@ -1,0 +1,28 @@
+{
+  "claim": "t_e4cbec09 Quality section scope decision is documented and evidence-backed.",
+  "workflow": "kanban_task_done",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "decision document exists",
+      "path": "docs/feedback-audits/quality-section-scope.md"
+    },
+    {
+      "kind": "path_exists",
+      "name": "deterministic verifier exists",
+      "path": "ops/kernel_checks/verify_t_e4cbec09.py"
+    },
+    {
+      "kind": "python_compile",
+      "name": "deterministic verifier compiles",
+      "path": "ops/kernel_checks/verify_t_e4cbec09.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "quality scope decision proof succeeds",
+      "command": "python3 ops/kernel_checks/verify_t_e4cbec09.py",
+      "stdout_pattern": "VERIFY_T_E4CBEC09_READY",
+      "timeout": "120"
+    }
+  ]
+}
