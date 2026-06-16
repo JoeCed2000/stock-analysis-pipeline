@@ -1,0 +1,18 @@
+{
+  "claim": "Code change artifacts exist and requested deterministic verification evidence is present.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: edp010_012_source_policy_architecture_2026-06-16.md",
+      "path": "/home/ced/codex-projects/stock-analysis-pipeline/docs/feedback-audits/edp010_012_source_policy_architecture_2026-06-16.md"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "test command succeeds",
+      "command": "python3 ops/kernel_checks/verify_t_c6ffc957.py",
+      "stdout_pattern": "VERIFY_T_C6FFC957_READY",
+      "timeout": "30"
+    }
+  ]
+}
