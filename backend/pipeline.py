@@ -1399,6 +1399,7 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
         source_form=seg_data.get("source_form") if seg_data else "yfinance",
         sector=(yf_data.get("sector") if isinstance(yf_data, dict) else None),
         industry=(yf_data.get("industry") if isinstance(yf_data, dict) else None),
+        earnings_release_date=override_pick("earnings_release_date"),
     )
 
 
