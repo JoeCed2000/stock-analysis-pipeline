@@ -1,0 +1,51 @@
+{
+  "claim": "Code change artifacts exist and requested deterministic verification evidence is present.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: deep_dive_validator.py",
+      "path": "backend/earnings_deep_dive/deep_dive_validator.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: spec_v27_fcf_margin_presence.py",
+      "path": "tests/spec_v27_fcf_margin_presence.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: WIKI.md",
+      "path": "WIKI.md"
+    },
+    {
+      "kind": "python_compile",
+      "name": "python compiles: deep_dive_validator.py",
+      "path": "backend/earnings_deep_dive/deep_dive_validator.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "FCF Margin focused tests pass",
+      "command": "/home/ced/codex-projects/stock-analysis-pipeline/.venv/bin/python3 -m pytest tests/spec_v27_fcf_margin_presence.py -q",
+      "stdout_pattern": "6 passed",
+      "timeout": "60"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "spec_v27_*.py regression-free",
+      "command": "bash -lc 'cd /home/ced/codex-projects/stock-analysis-pipeline && source .venv/bin/activate && python3 -m pytest tests/spec_v27_*.py -q'",
+      "stdout_pattern": "passed",
+      "timeout": "120"
+    },
+    {
+      "kind": "path_exists",
+      "name": "verification log exists",
+      "path": "/tmp/spec_v27_fcf_margin_kernel_proof.log"
+    },
+    {
+      "kind": "file_contains",
+      "name": "verification log proves success",
+      "path": "/tmp/spec_v27_fcf_margin_kernel_proof.log",
+      "pattern": "6 passed"
+    }
+  ]
+}

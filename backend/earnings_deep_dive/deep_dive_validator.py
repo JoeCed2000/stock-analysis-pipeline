@@ -523,6 +523,76 @@ FORBIDDEN_QUALITY_PATTERNS = [
 ]
 
 
+# ── FCF Margin presence check (EDP-013) ──────────────────────────────────────
+
+
+def _check_fcf_margin_presence(content: str) -> List[str]:
+    """Check that FCF Margin is present in Cash Flow section when both FCF and Revenue are available.
+
+    EDP-013: Include FCF Margin when free cash flow and revenue are both available.
+    Formula: FCF Margin = Free Cash Flow / Revenue × 100%.
+
+    The check operates on the rendered Cash Flow section table: if the table contains
+    rows for both Free Cash Flow (or FCF) and Revenue, but no row for FCF Margin,
+    an EDP-013 issue is emitted.
+
+    Returns a list of issue strings.
+    """
+    issues: List[str] = []
+
+    # Find the Cash Flow section
+    section_blocks = SECTION_HEADING.split(content)
+    cash_flow_body: str | None = None
+
+    for i in range(1, len(section_blocks), 2):
+        heading = section_blocks[i].strip() if i < len(section_blocks) else ""
+        body_idx = i + 1
+        body = section_blocks[body_idx] if body_idx < len(section_blocks) else ""
+
+        if "Cash Flow" in heading or "Cash Flows" in heading:
+            cash_flow_body = body
+            break
+
+    if cash_flow_body is None:
+        return issues  # No Cash Flow section found — nothing to check
+
+    # Parse table rows in the Cash Flow section body
+    has_fcf = False
+    has_revenue = False
+    has_fcf_margin = False
+
+    for line in cash_flow_body.split("\n"):
+        stripped = line.strip()
+        if not stripped.startswith("|") or stripped.startswith("|-"):
+            continue
+        cells = [c.strip() for c in stripped.split("|")]
+        # Remove leading empty cell from the opening |
+        if cells and not cells[0]:
+            cells = cells[1:]
+        if len(cells) < 2:
+            continue
+        metric_name = cells[0].strip().lower()
+
+        if "fcf margin" in metric_name:
+            has_fcf_margin = True
+        elif "free cash flow" in metric_name:
+            has_fcf = True
+        elif metric_name == "fcf":
+            has_fcf = True
+        elif metric_name == "revenue":
+            has_revenue = True
+
+    # Only flag if both FCF and Revenue are present but FCF Margin is absent
+    if has_fcf and has_revenue and not has_fcf_margin:
+        issues.append(
+            "FCF Margin presence (EDP-013): Cash Flow section has Free Cash Flow "
+            "and Revenue but no FCF Margin row. Include FCF Margin = FCF / Revenue × 100% "
+            "when both inputs are available."
+        )
+
+    return issues
+
+
 def _heading_matches_section(heading: str, emoji_key: str, canonical_name: str, keywords: List[str]) -> bool:
     """Return True if a markdown heading satisfies a required section.
 
@@ -718,6 +788,9 @@ def validate_deep_dive(md_path: str) -> Tuple[bool, List[str]]:
 
     # ── 5. Check numeric consistency in EPS & Revenue (EDP-006) ──
     issues.extend(_check_numeric_consistency(content))
+
+    # ── 5.5. Check FCF Margin presence in Cash Flow (EDP-013) ──
+    issues.extend(_check_fcf_margin_presence(content))
 
     # ── 6. Check minimum content size ──
     words = len(content.split())

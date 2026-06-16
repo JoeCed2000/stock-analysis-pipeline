@@ -1,0 +1,22 @@
+{
+  "claim": "Code change artifacts exist and requested deterministic verification evidence is present.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: deep_dive_validator.py",
+      "path": "backend/earnings_deep_dive/deep_dive_validator.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: spec_v27_fcf_margin_presence.py",
+      "path": "tests/spec_v27_fcf_margin_presence.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "test command succeeds",
+      "command": "bash /tmp/verify_edp013.sh",
+      "stdout_pattern": "178 passed"
+    }
+  ]
+}

@@ -37,6 +37,24 @@
 - `py_compile backend/earnings_deep_dive/deep_dive_validator.py` → OK.
 - `kverify` strict → **READY** (5/5 checks passed).
 
+## 2026-06-16 — FCF Margin presence validator check (EDP-013)
+
+**Status:** Implemented and verified (t_e4190715).
+
+**Change:**
+- `backend/earnings_deep_dive/deep_dive_validator.py`:
+  - Added `_check_fcf_margin_presence(content)` — deterministic Cash Flow table scanner that flags when FCF and Revenue rows exist but FCF Margin row is absent.
+  - Detects "Free Cash Flow" or "FCF" as FCF indicator, "Revenue" as revenue indicator, and "FCF Margin" as margin indicator.
+  - Only emits EDP-013 issue when BOTH FCF and Revenue are present AND FCF Margin is absent; no false positives when either input is missing.
+  - Wired into `validate_deep_dive()` as step 5.5 (runs after numeric consistency, before content size).
+- `tests/spec_v27_fcf_margin_presence.py` — 6 tests covering: FCF Margin present passes, missing FCF Margin flagged, no issue when FCF absent, no issue when Revenue absent, FCF Margin in prose only still flagged, valid section with no Revenue passes.
+
+**Verification:**
+- `PYTHONPATH=. backend/.venv/bin/python -m pytest tests/spec_v27_fcf_margin_presence.py -q` → **6 passed**.
+- `PYTHONPATH=. backend/.venv/bin/python -m pytest tests/spec_v27_fcf_margin_presence.py tests/spec_v27_concision.py tests/spec_v27_forbidden_headings.py tests/spec_v27_numeric_consistency.py tests/spec_v27_missing_data_leaks.py tests/test_validator.py tests/spec_v27_verdict_valuation_dq_segments.py tests/spec_v27_period_consistency.py tests/spec_v27_metrics_ledger.py tests/spec_v27_source_registry.py -q` → **178 passed** (0 regressions).
+- `py_compile backend/earnings_deep_dive/deep_dive_validator.py` → OK.
+- `kverify` strict → **READY** (3/3 checks: files exist, tests pass).
+
 ## 2026-06-16 — Concision validator checks (EDP-007, EDP-008, EDP-009)
 
 **Status:** Implemented and verified (t_87366c59).
