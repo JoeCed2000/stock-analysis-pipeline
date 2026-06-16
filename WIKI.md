@@ -1,5 +1,24 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-17 — NVDA FY2027 Q1 earnings date (2026-05-20) added to PDF title (t_c1756db4)
+
+**Status:** Kernel READY (5/5). 4 focused tests, 548 V2.x bundle tests, 0 regressions.
+
+**Change:** Added `earnings_release_date` data source and wired it through the pipeline so the PDF title renders the earnings date: "FY2027 Q1 Earnings Summary (2026-05-20)".
+
+**Data flow:**
+1. `backend/config/consensus_overrides.json` — added `"earnings_release_date": "2026-05-20"` for NVDA FY2027 Q1
+2. `backend/pipeline.py` — `_deep_dive_metrics()` now passes `earnings_release_date=override_pick("earnings_release_date")` to `FinancialMetrics`
+3. `backend/earnings_deep_dive/mapper.py` — `_build_report_period_context()` reads it via `_metric_text()` (already existed)
+4. `backend/earnings_deep_dive/pdf_renderer.py` — `render_earnings_deep_dive_pdf()` appends date suffix to period heading (already existed at line 2069-2075)
+
+**Files changed:**
+- `backend/config/consensus_overrides.json` — added `earnings_release_date`
+- `backend/pipeline.py` — wired `earnings_release_date` into `FinancialMetrics`
+- `tests/spec_nvda_title_earnings_date.py` — 4 new tests (override data, period context flow, PDF rendering with/without date)
+
+**Verification:** `python3 -m pytest tests/spec_nvda_title_earnings_date.py -q` → 4 passed. Full bundle: `548 passed`.
+
 ## 2026-06-17 — Quality row removed from Peer Benchmark in Earnings Deep-Dive PDF (t_8756b57f)
 
 **Status:** kverify READY (5/5). 102 focused tests, 620 spec_v27 bundle tests, 0 regressions.
