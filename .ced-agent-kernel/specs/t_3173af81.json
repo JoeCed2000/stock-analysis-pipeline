@@ -1,0 +1,32 @@
+{
+  "task_id": "t_3173af81",
+  "title": "Fix NVDA Net Cash value to 72.1B from source",
+  "spec_version": 1,
+  "checks": {
+    "files_exist": [
+      "backend/earnings_deep_dive/prompts.py"
+    ],
+    "compile": {
+      "module": "backend.earnings_deep_dive.prompts",
+      "expected": true
+    },
+    "focused_tests": "tests/spec_v27_metrics_ledger.py",
+    "focused_tests_passed_expected": 26,
+    "bundle_tests": "tests/spec_v27_concision.py tests/spec_v27_forbidden_headings.py tests/spec_v27_missing_data_leaks.py tests/spec_v27_metrics_ledger.py tests/spec_v27_numeric_consistency.py tests/spec_v27_period_consistency.py tests/spec_v27_source_display_policy.py tests/spec_v27_source_display_renderer.py tests/spec_v27_verdict_valuation_dq_segments.py tests/test_validator.py",
+    "bundle_tests_passed_expected": 652
+  },
+  "edits": [
+    {
+      "file": "backend/earnings_deep_dive/prompts.py",
+      "change": "Added | Net Cash / (Net Debt) | row to both EN and JP Capital Efficiency table templates"
+    },
+    {
+      "file": "backend/earnings_deep_dive/prompts.py",
+      "change": "Added CRITICAL OVERRIDE for net_debt in capital_efficiency_prompt() to prevent LLM from recomputing Net Cash from components"
+    },
+    {
+      "file": "tests/spec_v27_metrics_ledger.py",
+      "change": "Added TestNetDebtCapitalEfficiencyOverride with 4 regression tests"
+    }
+  ]
+}

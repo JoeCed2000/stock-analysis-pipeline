@@ -275,6 +275,7 @@ Required analysis format — Key Takeaways形式のみ（最大5点、各1行）
 | ROTCE / ROTE | ... | ... | ... | ... |
 | ROA | ... | ... | ... | ... |
 | ROIC | ... | ... | ... | ... |
+| Net Cash / (Net Debt) | ... | ... | ... | ... |
 
 Required analysis format:
 🧾 補足データ（計算ベース）: list net income, assets, equity, invested capital if available.
@@ -497,6 +498,7 @@ Caution for Nami-san: Mention one-off working-capital or future investment risks
 | ROTCE / ROTE | ... | ... | ... | ... |
 | ROA | ... | ... | ... | ... |
 | ROIC | ... | ... | ... | ... |
+| Net Cash / (Net Debt) | ... | ... | ... | ... |
 
 Required analysis format:
 Supporting calculation data: list net income, assets, equity, invested capital if available.
@@ -1185,6 +1187,19 @@ def capital_efficiency_prompt(language: str, ticker: str, company: str, quarter:
         except (TypeError, ValueError): pass
     if net_income is not None:
         try: extra += f"\n⚠️  Net Income = ${float(net_income)/1e9:.2f}B. Reference in capital efficiency analysis."
+        except (TypeError, ValueError): pass
+    # 🔴 CRITICAL OVERRIDE: net_debt is the authoritative net cash/debt position.
+    # The consensus_overrides provide the exact filing-derived value. Do NOT recompute
+    # Net Cash from individual cash/marketable_securities/total_debt components —
+    # yfinance may have incomplete marketable securities and wrong total_debt.
+    net_debt = metrics.get("net_debt")
+    if net_debt is not None:
+        try:
+            abs_val = abs(float(net_debt)) / 1e9
+            if float(net_debt) < 0:
+                extra += f"\n\n🔴 CRITICAL OVERRIDE: Net Cash / (Net Debt) = ${abs_val:.1f}B (net cash position, from net_debt={float(net_debt)/1e9:.2f}B). USE THIS EXACT VALUE in the Net Cash / (Net Debt) row. Do NOT recalculate from cash_and_equivalents or total_debt components — the net_debt metric IS the authoritative filing-derived net position."
+            else:
+                extra += f"\n\n🔴 CRITICAL OVERRIDE: Net Cash / (Net Debt) = -${abs_val:.1f}B (net debt position, from net_debt={float(net_debt)/1e9:.2f}B). USE THIS EXACT VALUE in the Net Cash / (Net Debt) row. Do NOT recalculate from cash_and_equivalents or total_debt components."
         except (TypeError, ValueError): pass
     base = _base_prompt(
         section="Capital Efficiency",

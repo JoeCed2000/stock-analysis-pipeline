@@ -387,3 +387,47 @@ class TestRule27MetricsLedgerGate:
             metrics_ledger=None,
         )
         assert not any("metrics_ledger" in e.check for e in result.errors)
+
+
+class TestNetDebtCapitalEfficiencyOverride:
+    """Regression: Net Cash / (Net Debt) must use net_debt directly."""
+
+    def test_net_debt_override_in_prompt(self):
+        from backend.earnings_deep_dive.prompts import capital_efficiency_prompt
+        metrics = {
+            "roe": 80.0, "roa": 30.0, "roic": 45.0, "rotce": 60.0,
+            "net_income": 20_000_000_000,
+            "net_debt": -72_102_000_000,
+        }
+        prompt = capital_efficiency_prompt(
+            language="en", ticker="NVDA", company="NVIDIA Corp",
+            quarter="FY2027 Q1", metrics=metrics,
+            transcript_excerpt="No transcript available.",
+        )
+        assert "CRITICAL OVERRIDE: Net Cash / (Net Debt)" in prompt
+        assert "72.1B" in prompt
+        assert "Do NOT recalculate from" in prompt
+
+    def test_net_cash_row_in_en_template(self):
+        from backend.earnings_deep_dive.prompts import EN_SECTION_FORMATS
+        assert "| Net Cash / (Net Debt) |" in EN_SECTION_FORMATS["Capital Efficiency"]
+
+    def test_net_cash_row_in_jp_template(self):
+        from backend.earnings_deep_dive.prompts import SECTION_FORMATS
+        assert "| Net Cash / (Net Debt) |" in SECTION_FORMATS["Capital Efficiency"]
+
+    def test_net_debt_override_positive(self):
+        """Positive net_debt (net debt position) renders correctly."""
+        from backend.earnings_deep_dive.prompts import capital_efficiency_prompt
+        metrics = {
+            "roe": 10.0, "roa": 5.0, "roic": 8.0, "rotce": 12.0,
+            "net_income": 5_000_000_000,
+            "net_debt": 15_000_000_000,
+        }
+        prompt = capital_efficiency_prompt(
+            language="en", ticker="TEST", company="Test Corp",
+            quarter="FY2027 Q1", metrics=metrics,
+            transcript_excerpt="No transcript available.",
+        )
+        assert "CRITICAL OVERRIDE: Net Cash / (Net Debt)" in prompt
+        assert "net debt position" in prompt.lower()
