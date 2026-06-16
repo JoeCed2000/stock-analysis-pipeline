@@ -122,7 +122,7 @@ FY_REFERENCE_RE = re.compile(
 # ── Score / recommendation extraction patterns ────────────────────────────
 
 SCORE_RE = re.compile(r'[Ss]core\s*:\s*(\d+)\s*/\s*10')
-RECOMMENDATION_RE = re.compile(r'\b(BUY|HOLD|SELL)\b', re.IGNORECASE)
+RECOMMENDATION_RE = re.compile(r'\b(BUY|HOLD|SELL)\b')  # case-sensitive — lowercase "hold"/"sell" are common English verbs/nouns, not recommendations
 
 
 @dataclass

@@ -1,0 +1,28 @@
+{
+  "claim": "verdict_multiple_recommendations false positive fixed — RECOMMENDATION_RE made case-sensitive so lowercase 'hold'/'sell' in prose ('margins hold firm', 'sell-side') no longer triggers multiple_recommendations. 1 file changed (regex in pre_render_validator.py), 1 regression test added, 20 verdict tests pass, 600 V2.x bundle tests pass.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: pre_render_validator.py",
+      "path": "backend/earnings_deep_dive/pre_render_validator.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: verdict tests",
+      "path": "tests/spec_v27_verdict_valuation_dq_segments.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "kernel verifier script exists",
+      "path": "ops/kernel_checks/verify_t_012292bc.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "deterministic proof script",
+      "command": "python3 ops/kernel_checks/verify_t_012292bc.py",
+      "stdout_pattern": "READY",
+      "timeout_seconds": 300
+    }
+  ]
+}

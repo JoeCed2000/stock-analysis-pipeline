@@ -82,7 +82,7 @@ class TestQuarterPresence:
             ticker="TEST",
             quarter="2026Q1",
             metrics=_metrics(),
-            section_analysis={"Verdict": "Score: 8/10 — Strong buy."},
+            section_analysis={"Verdict": "Score: 8/10 — Strong BUY."},
         )
         assert result.passed
         assert not _has_warning(result.warnings, "quarter_missing")
@@ -143,7 +143,7 @@ class TestForbiddenMarkers:
             quarter="2026Q1",
             metrics=_metrics(),
             section_analysis={
-                "Verdict": "Score: 8/10 — Strong buy.",
+                "Verdict": "Score: 8/10 — Strong BUY.",
                 "EPS & Revenue": "Revenue was $82.9B, EPS was $1.50.",
             },
         )
@@ -416,7 +416,7 @@ class TestEdgeCases:
                 eps_actual=1.50,
             ),
             section_analysis={
-                "Verdict": "Score: 8/10 — Strong execution, buy recommendation.",
+                "Verdict": "Score: 8/10 — Strong execution. BUY.",
                 "EPS & Revenue": "Revenue reached $82.9B, EPS was $1.50.",
             },
         )

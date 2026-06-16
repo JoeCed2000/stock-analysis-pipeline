@@ -86,6 +86,16 @@ class TestVerdict:
         result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
         assert not any(e.check.startswith("verdict_") for e in result.errors)
 
+    def test_verdict_prose_hold_verb_not_false_positive(self):
+        """Regression: 'margins hold firm', 'sell-side', 'sell-off' must not trigger multiple_recommendations."""
+        sections = {"Verdict": "Recommendation: BUY. Revenue grew 85% while margins hold firm at 75%. Sell-side estimates are positive."}
+        result = validate_pre_render("NVDA", "FY2026 Q1", None, sections)
+        # Should not fire multiple_recommendations — lowercase "hold" and "sell" in prose, not recommendations
+        multiple_errs = _errors_for(result, "verdict_multiple_recommendations")
+        assert len(multiple_errs) == 0, f"False positive: {multiple_errs}"
+        missing_errs = _errors_for(result, "verdict_missing_recommendation")
+        assert len(missing_errs) == 0  # BUY is uppercase → correctly detected
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # RULE 22 — §19 Valuation sanity
