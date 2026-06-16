@@ -1,5 +1,28 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-17 — NVDA Net Cash value fixed to 72.1B (t_3173af81)
+
+**Status:** kverify READY (5/5). 652 V2.x bundle tests (4 new), 0 regressions.
+
+**Root cause:** The LLM computed `Net Cash = Cash & Marketable Securities − Total Debt` using yfinance's raw debt components (~$12.4B) instead of the authoritative filing-derived total debt ($8.47B), producing **$68.2B** instead of the correct **$72.1B**. The consensus override `net_debt: -72102000000` (72.1B net cash) existed in the data but the Capital Efficiency prompt had no explicit CRITICAL OVERRIDE for `net_debt`, so the LLM recalculated from raw components.
+
+**Fix:**
+- Added `| Net Cash / (Net Debt) |` row to both EN and JP Capital Efficiency table templates — gives the LLM an explicit target row
+- Added CRITICAL OVERRIDE for `net_debt` in `capital_efficiency_prompt()`: tells the LLM to USE the `net_debt` value directly and NOT recalculate from `cash_and_equivalents` / `total_debt` components
+- Handles both negative (net cash: display as $X.B) and positive (net debt: display as -$X.B) positions
+
+**Changes:**
+- `backend/earnings_deep_dive/prompts.py` — template + prompt override
+- `tests/spec_v27_metrics_ledger.py` — `TestNetDebtCapitalEfficiencyOverride` with 4 regression tests (prompt override, EN template row, JP template row, positive net_debt)
+- `.ced-agent-kernel/specs/t_3173af81.json` — persistent kernel spec
+- `ops/kernel_checks/verify_t_3173af81.py` — persistent verifier (5 checks: files exist, compile, focused tests, bundle tests)
+
+**Verification:**
+- `python3 -m pytest tests/spec_v27_metrics_ledger.py -q` → **26 passed** (was 22, +4 new tests).
+- `python3 -m pytest tests/spec_v27_*.py tests/test_validator.py -q` → **652 passed** (was 648, 0 regressions).
+- Prompt generation test: `capital_efficiency_prompt()` with NVDA net_debt=-72.1B → `"CRITICAL OVERRIDE: Net Cash / (Net Debt) = $72.1B"` present ✅.
+- `kverify` strict → **READY** (5/5 checks: files exist, compile, focused tests pass, bundle tests pass).
+
 ## 2026-06-16 — GOOG annotated PDF manual review completed
 
 **Status:** Fusion Council consensus was `MANUAL_REVIEW_REQUIRED`; manual review completed without creating Kanban tasks.
