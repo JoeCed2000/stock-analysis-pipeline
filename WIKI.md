@@ -1,5 +1,27 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-17 — Net Debt presence validator (EDP-014)
+
+**Status:** Implemented and verified (t_3528c806).
+
+**Change:**
+- `backend/earnings_deep_dive/deep_dive_validator.py`:
+  - Added `_check_net_debt_presence(content)` — deterministic Capital Efficiency table scanner that flags when Cash/Cash Equivalents/Marketable Securities and Total Debt rows are present but no Net Debt or Net Cash row exists.
+  - Detects "cash and cash equivalents", "cash equivalents", "cash", "marketable securities", "short term investments" as cash indicators.
+  - Detects "total debt", "long term debt", "short term debt", "current debt" as debt indicators.
+  - Only emits EDP-014 issue when BOTH cash-type AND debt-type rows are present AND no net debt/cash row is present; no false positives when either input is missing.
+  - Restricted to Capital Efficiency table rows only — no broad prose scanning to avoid false positives on commentary.
+  - Wired into `validate_deep_dive()` as step 5.75 (runs after FCF Margin presence check, before fiscal-period consistency).
+- `tests/spec_v27_net_debt_presence.py` — 7 tests covering: Net Debt row present passes, Net Cash row present passes, missing Net Debt/Cash flagged, no issue when cash absent, no issue when debt absent, no issue when no Capital Efficiency section, Marketable Securities variant flagged.
+
+**Verification:**
+- `PYTHONPATH=. backend/.venv/bin/python -m pytest tests/spec_v27_net_debt_presence.py -q` → **7 passed**.
+- `PYTHONPATH=. backend/.venv/bin/python -m pytest tests/spec_v27_net_debt_presence.py tests/spec_v27_fcf_margin_presence.py tests/spec_v27_concision.py tests/spec_v27_forbidden_headings.py tests/spec_v27_numeric_consistency.py tests/spec_v27_missing_data_leaks.py tests/test_validator.py tests/spec_v27_verdict_valuation_dq_segments.py tests/spec_v27_period_consistency.py tests/spec_v27_metrics_ledger.py tests/spec_v27_source_registry.py -q` → **185 passed** (0 regressions).
+- `py_compile backend/earnings_deep_dive/deep_dive_validator.py` → OK.
+- `kverify` strict → **READY** (5/5 checks: files exist, python compiles, 7 focused pass, 185 bundle pass).
+- Kernel spec: `.ced-agent-kernel/specs/edp014-net-debt.json` — persistent pytest commands (no /tmp/ scripts).
+- No `/api/` endpoints touched. Do not commit until independent QA approves.
+
 ## 2026-06-17 — Fiscal-period consistency validator (EDP-001, EDP-003) — TIGHTENED + REPAIRED
 
 **Status:** Detection-power repair (t_df8507e8). Audit t_10351a31 found EDP-001 toothless (0/31 hand-crafted cases fire) and Kernel proof non-reproducible.

@@ -1,0 +1,35 @@
+{
+  "claim": "EDP-014 net-debt presence validation: added _check_net_debt_presence() in deep_dive_validator.py scanning Capital Efficiency table for Cash/Cash Equivalents/Marketable Securities + Total Debt rows requiring Net Debt or Net Cash row. Wired into validate_deep_dive() after FCF margin check. 7 focused + bundle 185 pass, 0 regressions.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "changed file: deep_dive_validator.py",
+      "path": "backend/earnings_deep_dive/deep_dive_validator.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "changed file: spec_v27_net_debt_presence.py",
+      "path": "tests/spec_v27_net_debt_presence.py"
+    },
+    {
+      "kind": "python_compile",
+      "name": "python compiles: deep_dive_validator.py",
+      "path": "backend/earnings_deep_dive/deep_dive_validator.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "focused tests pass (7 tests, EDP-014 detection)",
+      "command": "/home/ced/codex-projects/stock-analysis-pipeline/backend/.venv/bin/python -m pytest tests/spec_v27_net_debt_presence.py -q",
+      "stdout_pattern": "7 passed",
+      "timeout": "60"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "bundle regression (185 tests, no regressions)",
+      "command": "/home/ced/codex-projects/stock-analysis-pipeline/backend/.venv/bin/python -m pytest tests/spec_v27_net_debt_presence.py tests/spec_v27_fcf_margin_presence.py tests/spec_v27_concision.py tests/spec_v27_forbidden_headings.py tests/spec_v27_numeric_consistency.py tests/test_validator.py tests/spec_v27_verdict_valuation_dq_segments.py tests/spec_v27_period_consistency.py tests/spec_v27_metrics_ledger.py tests/spec_v27_source_registry.py tests/spec_v27_missing_data_leaks.py -q",
+      "stdout_pattern": "185 passed",
+      "timeout": "120"
+    }
+  ]
+}

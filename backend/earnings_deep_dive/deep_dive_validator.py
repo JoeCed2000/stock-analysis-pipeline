@@ -593,6 +593,90 @@ def _check_fcf_margin_presence(content: str) -> List[str]:
     return issues
 
 
+# ── Net Debt / Net Cash presence check (EDP-014) ─────────────────────────────
+
+
+def _check_net_debt_presence(content: str) -> List[str]:
+    """Check that Net Debt or Net Cash row is present in Capital Efficiency section.
+
+    EDP-014: If Cash/Cash Equivalents/Marketable Securities and Total Debt rows
+    are both present in the Capital Efficiency table, require a Net Debt or
+    Net Cash row.
+
+    The check restricts to Capital Efficiency table rows only — it does not
+    scan prose text to avoid false positives on commentary mentioning cash/debt.
+
+    Returns a list of issue strings.
+    """
+    issues: List[str] = []
+
+    # Find the Capital Efficiency section
+    section_blocks = SECTION_HEADING.split(content)
+    cap_eff_body: str | None = None
+
+    for i in range(1, len(section_blocks), 2):
+        heading = section_blocks[i].strip() if i < len(section_blocks) else ""
+        body_idx = i + 1
+        body = section_blocks[body_idx] if body_idx < len(section_blocks) else ""
+
+        if "Capital Efficiency" in heading:
+            cap_eff_body = body
+            break
+
+    if cap_eff_body is None:
+        return issues  # No Capital Efficiency section — nothing to check
+
+    # Parse table rows in the Capital Efficiency section body
+    has_cash = False
+    has_marketable_securities = False
+    has_total_debt = False
+    has_net_debt_or_cash = False
+
+    for line in cap_eff_body.split("\n"):
+        stripped = line.strip()
+        if not stripped.startswith("|") or stripped.startswith("|-"):
+            continue
+        cells = [c.strip() for c in stripped.split("|")]
+        # Remove leading empty cell from the opening |
+        if cells and not cells[0]:
+            cells = cells[1:]
+        if len(cells) < 2:
+            continue
+        metric_name = cells[0].strip().lower()
+
+        # Detect cash-like rows
+        if "cash and cash equivalents" in metric_name:
+            has_cash = True
+        elif "marketable securities" in metric_name:
+            has_marketable_securities = True
+        elif "cash equivalents" in metric_name:
+            has_cash = True
+        elif metric_name in ("cash", "total cash", "cash & cash equivalents"):
+            has_cash = True
+        elif "short term investments" in metric_name or "short-term investments" in metric_name:
+            has_marketable_securities = True
+
+        # Detect total debt rows (but not net debt/cash)
+        if "net debt" in metric_name or "net cash" in metric_name:
+            has_net_debt_or_cash = True
+        elif "total debt" in metric_name:
+            has_total_debt = True
+        elif metric_name in ("long term debt", "long-term debt", "current debt", "short term debt", "short-term debt", "total debt & leases"):
+            has_total_debt = True
+
+    # Only flag if both cash-type and debt-type rows exist but no net debt/cash row
+    has_cash_input = has_cash or has_marketable_securities
+    if has_cash_input and has_total_debt and not has_net_debt_or_cash:
+        issues.append(
+            "Net Debt presence (EDP-014): Capital Efficiency section has "
+            "Cash/Cash Equivalents/Marketable Securities and Total Debt rows "
+            "but no Net Debt or Net Cash row. Include net position = "
+            "cash + marketable securities - total debt when both inputs are available."
+        )
+
+    return issues
+
+
 # ── Fiscal-period consistency (EDP-001, EDP-003) ──────────────────────────
 
 # Regex to match fiscal-period labels: FY2026 Q1, FY 2026 Q1, 2026Q1, Q1 2026
@@ -974,6 +1058,9 @@ def validate_deep_dive(md_path: str) -> Tuple[bool, List[str]]:
 
     # ── 5.5. Check FCF Margin presence in Cash Flow (EDP-013) ──
     issues.extend(_check_fcf_margin_presence(content))
+
+    # ── 5.75. Check Net Debt / Net Cash presence in Capital Efficiency (EDP-014) ──
+    issues.extend(_check_net_debt_presence(content))
 
     # ── 6. Check fiscal-period consistency (EDP-001, EDP-003) ──
     issues.extend(_check_fiscal_period_consistency(content))
