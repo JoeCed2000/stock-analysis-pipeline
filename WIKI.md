@@ -6,7 +6,7 @@
 
 **Changes:**
 - `backend/earnings_deep_dive/pdf_renderer.py`:
-  - Fixed `_table` source cell collapse: `k != src_idx` instead of `k != src_idx + 1`. The `+1` was an off-by-one error — `row.cells` has `len(columns)-1` items (column[0]=label), so the source cell in row_data is at `src_idx`, not `src_idx+1`. This left per-row "SEC 10-Q/K" values visible in Capital Efficiency table.
+  - Fixed `_table` source cell collapse: `k != src_idx` instead of `k != src_idx + 1`. The `+1` was an off-by-one error — `_table` builds `row_data = [row.label, *row.cells]`, so rendered row positions align with `section.table.columns`; the source cell is at `src_idx`, not `src_idx+1`. This left per-row "SEC 10-Q/K" values visible in Capital Efficiency table.
   - Fixed `table_source_note` label duplication: strips leading "Source:" prefix from note text when already present, preventing "Source: Source: SEC Filings" in the rendered note.
 - `tests/spec_v27_source_display_renderer.py` — added 2 new regression tests (8 total):
   - `test_table_note_removes_row_source_cells` — verifies no per-row source cell data with table_note, plus Cash Flow row policy regression.
