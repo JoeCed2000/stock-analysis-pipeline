@@ -18,6 +18,25 @@
 - `py_compile backend/earnings_deep_dive/deep_dive_validator.py` → OK.
 - `kverify` strict → **READY** (5/5 checks passed).
 
+## 2026-06-16 — Concision validator checks (EDP-007, EDP-008, EDP-009)
+
+**Status:** Implemented and verified (t_87366c59).
+
+**Change:**
+- `backend/earnings_deep_dive/deep_dive_validator.py`:
+  - Added `_check_concision(content)` — deterministic section concision scanner that flags overly verbose EPS & Revenue, Highlights/Lowlights, and Operating Metrics sections.
+  - Added `EPS_REVENUE_MAX_WORDS` (120), `EPS_REVENUE_MAX_PARAGRAPHS` (1) for EDP-007: flags long prose blocks after EPS & Revenue table.
+  - Added `HIGHLIGHTS_MAX_BULLETS_PER_POINT` (5) for EDP-008: flags excessive bullets per highlight point and blocks prose paragraphs.
+  - Added `OPERATING_METRICS_MAX_WORDS` (120), `OPERATING_METRICS_MAX_PARAGRAPHS` (1) for EDP-009: flags explanatory essays after Operating Metrics table.
+  - Wired into `validate_deep_dive()` as step 4.5 (runs after table checks, before min content size).
+- `tests/spec_v27_concision.py` — 9 tests covering EDP-007 detection (long prose, multi-paragraph), EDP-008 detection (prose paragraphs, excessive bullets), EDP-009 detection (long prose), and negative cases (compact sections pass cleanly).
+
+**Verification:**
+- `pytest tests/spec_v27_concision.py -q` → **9 passed**.
+- `pytest tests/spec_v27_concision.py tests/spec_v27_forbidden_headings.py tests/spec_v27_missing_data_leaks.py tests/test_validator.py tests/spec_v27_verdict_valuation_dq_segments.py tests/spec_v27_period_consistency.py tests/spec_v27_metrics_ledger.py tests/spec_v27_source_registry.py -q` → **166 passed** (0 regressions).
+- `py_compile backend/earnings_deep_dive/deep_dive_validator.py` → OK.
+- `kverify` strict → **READY** (3/3 checks passed).
+
 ## 2026-06-15 — Feedback UI lifecycle labels (Card 2)
 
 **Status:** Implemented and browser-verified (t_8bc43bb3).

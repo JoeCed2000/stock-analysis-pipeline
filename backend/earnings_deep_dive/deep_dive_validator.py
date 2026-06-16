@@ -144,6 +144,163 @@ FORBIDDEN_BACKGROUND_HEADINGS: List[str] = [
     "Competitive Landscape",
 ]
 
+# ── Concision thresholds (EDP-007, EDP-008, EDP-009) ────────────────────────────
+# EPS & Revenue: compact table + short bullets, no long prose blocks.
+EPS_REVENUE_MAX_WORDS = 120
+EPS_REVENUE_MAX_PARAGRAPHS = 1
+
+# Highlights/Lowlights: short headings + limited bullets, no paragraphs.
+HIGHLIGHTS_MAX_BULLETS_PER_POINT = 5
+
+# Operating Metrics: concise takeaways after table, not explanatory essays.
+OPERATING_METRICS_MAX_WORDS = 120
+OPERATING_METRICS_MAX_PARAGRAPHS = 1
+
+
+def _check_concision(content: str) -> List[str]:
+    """Check markdown content for concision violations (EDP-007, EDP-008, EDP-009).
+
+    Returns a list of issue strings for each concision violation found.
+    """
+    issues: List[str] = []
+
+    # Split content by section headings (same pattern as validate_deep_dive)
+    section_blocks = SECTION_HEADING.split(content)[1:]  # Skip preamble
+
+    for i in range(0, len(section_blocks), 2):
+        heading = section_blocks[i].strip() if i < len(section_blocks) else ""
+        body = section_blocks[i + 1] if i + 1 < len(section_blocks) else ""
+
+        # ── EDP-007: EPS & Revenue concision ──
+        if "EPS & Revenue" in heading or ("EPS" in heading and "Revenue" in heading):
+            lines = body.split("\n")
+            prose_words = _count_prose_words(lines)
+            para_count = _count_paragraphs(lines)
+
+            if prose_words > EPS_REVENUE_MAX_WORDS:
+                issues.append(
+                    f"Concision (EDP-007): EPS & Revenue section has {prose_words} "
+                    f"words of prose (max {EPS_REVENUE_MAX_WORDS})"
+                )
+            elif para_count > EPS_REVENUE_MAX_PARAGRAPHS:
+                issues.append(
+                    f"Concision (EDP-007): EPS & Revenue section has {para_count} "
+                    f"paragraph blocks (max {EPS_REVENUE_MAX_PARAGRAPHS})"
+                )
+
+        # ── EDP-008: Highlights & Lowlights concision ──
+        if "Highlights" in heading and "Lowlights" in heading:
+            lines = body.split("\n")
+            _check_highlights_concision(lines, issues)
+
+        # ── EDP-009: Operating Metrics concision ──
+        if "Operating Metrics" in heading:
+            lines = body.split("\n")
+            prose_words = _count_prose_words(lines)
+            para_count = _count_paragraphs(lines)
+
+            if prose_words > OPERATING_METRICS_MAX_WORDS:
+                issues.append(
+                    f"Concision (EDP-009): Operating Metrics section has {prose_words} "
+                    f"words of prose (max {OPERATING_METRICS_MAX_WORDS})"
+                )
+            elif para_count > OPERATING_METRICS_MAX_PARAGRAPHS:
+                issues.append(
+                    f"Concision (EDP-009): Operating Metrics section has {para_count} "
+                    f"paragraph blocks (max {OPERATING_METRICS_MAX_PARAGRAPHS})"
+                )
+
+    return issues
+
+
+def _count_prose_words(lines: List[str]) -> int:
+    """Count words in prose text (excluding tables, quotes, bullets, headings)."""
+    prose_parts: List[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # Skip tables, quotes, bullet lists, headings, bold section labels
+        if (stripped.startswith("|") or stripped.startswith(">")
+                or stripped.startswith("- ") or stripped.startswith("* ")
+                or stripped.startswith("##") or stripped.startswith("**")):
+            continue
+        prose_parts.append(stripped)
+
+    return len(" ".join(prose_parts).split())
+
+
+def _count_paragraphs(lines: List[str]) -> int:
+    """Count prose paragraph blocks (prose text separated by blank lines)."""
+    count = 0
+    in_paragraph = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            in_paragraph = False
+            continue
+        # Only count prose paragraphs (not tables, quotes, bullets, headings)
+        if (stripped.startswith("|") or stripped.startswith(">")
+                or stripped.startswith("- ") or stripped.startswith("* ")
+                or stripped.startswith("##")):
+            in_paragraph = False
+            continue
+        if not in_paragraph:
+            count += 1
+            in_paragraph = True
+    return count
+
+
+def _check_highlights_concision(lines: List[str], issues: List[str]) -> None:
+    """Check Highlights & Lowlights section for concision violations (EDP-008).
+
+    Appends issues directly to the passed-in issues list.
+    """
+    bullet_count = 0
+    has_prose_paragraph = False
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            # End of current bullet block — check if we exceeded threshold
+            if bullet_count > HIGHLIGHTS_MAX_BULLETS_PER_POINT:
+                issues.append(
+                    f"Concision (EDP-008): Highlights section has a point with "
+                    f"{bullet_count} bullets (max {HIGHLIGHTS_MAX_BULLETS_PER_POINT})"
+                )
+            bullet_count = 0
+            continue
+
+        if stripped.startswith("- ") or stripped.startswith("* "):
+            bullet_count += 1
+        elif stripped.startswith("**") or stripped.startswith(">"):
+            # Bold heading or quote ends the bullet block
+            if bullet_count > HIGHLIGHTS_MAX_BULLETS_PER_POINT:
+                issues.append(
+                    f"Concision (EDP-008): Highlights section has a point with "
+                    f"{bullet_count} bullets (max {HIGHLIGHTS_MAX_BULLETS_PER_POINT})"
+                )
+            bullet_count = 0
+        elif stripped.startswith("##"):
+            bullet_count = 0
+        elif not stripped.startswith("|"):
+            # Prose text that isn't a bullet, table, heading, or quote
+            has_prose_paragraph = True
+
+    # Check trailing bullet block
+    if bullet_count > HIGHLIGHTS_MAX_BULLETS_PER_POINT:
+        issues.append(
+            f"Concision (EDP-008): Highlights section has a point with "
+            f"{bullet_count} bullets (max {HIGHLIGHTS_MAX_BULLETS_PER_POINT})"
+        )
+
+    if has_prose_paragraph:
+        issues.append(
+            "Concision (EDP-008): Highlights section contains prose paragraphs "
+            "(use short headings + bullets only)"
+        )
+
+
 # ── Forbidden generic Quality subheadings (EDP-011) ────────────────────────────
 # When an LLM generates a standalone "Quality" heading/section that is boilerplate,
 # it should be flagged. Excluded: canonical required sections (e.g. "Backlog Quality")
@@ -342,6 +499,9 @@ def validate_deep_dive(md_path: str) -> Tuple[bool, List[str]]:
             if table_section in heading:
                 if not TABLE_PATTERN.search(body):
                     issues.append(f"Missing table in section: {heading}")
+
+    # ── 4.5. Check section concision (EDP-007, EDP-008, EDP-009) ──
+    issues.extend(_check_concision(content))
 
     # ── 5. Check minimum content size ──
     words = len(content.split())
