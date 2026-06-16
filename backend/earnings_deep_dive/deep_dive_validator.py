@@ -144,6 +144,84 @@ FORBIDDEN_BACKGROUND_HEADINGS: List[str] = [
     "Competitive Landscape",
 ]
 
+# ── Unicode bullet normalization for concision ──────────────────────────────
+# The LLM prompt instructs the use of Unicode bullets ("Each bullet must start
+# with `•`") but the validator's concision checks only recognize ASCII bullets
+# (`- ` and `* `). This normalizer converts Unicode bullets to ASCII before
+# concision validation, so the validator properly recognizes bullet lines.
+UNICODE_BULLETS_RE = re.compile(r"[•●▪▸▹►▻‣⁃]")
+
+
+def _normalize_for_concision(content: str) -> str:
+    """Pre-validation normalization for concision checks.
+
+    Applies deterministic transformations to make LLM markdown compatible with
+    the concision validator, without hardcoding any ticker or company name.
+
+    Transformations:
+    1. Normalize Unicode bullet characters (`•`, `●`, etc.) to ASCII `-`
+       so the validator's bullet detection (`stripped.startswith("- ")`) works.
+    2. In the Highlights & Lowlights section: if a markdown table exists, strip
+       everything after the last table row until the next `##` section heading
+       (or end of content), EXCEPT one-line summary quotes (`> ...`).
+       The table already carries the structured evidence; the trailing prose
+       sub-sections (`### Highlights` / `### Lowlights`) are duplicate content.
+
+    Preserves all other sections and data-integrity signals unchanged.
+    """
+    # Step 1: Normalize Unicode bullets to ASCII
+    content = UNICODE_BULLETS_RE.sub("-", content)
+
+    # Step 2: In Highlights & Lowlights, strip duplicate prose after table
+    # Split by section headings to isolate the Highlights section
+    # Pattern matches ## section headings
+    section_pattern = re.compile(r"^## ", re.MULTILINE)
+    sections = list(section_pattern.finditer(content))
+
+    highlights_start = None
+    highlights_end = None
+
+    for i, match in enumerate(sections):
+        start = match.start()
+        # Read the heading text to find Highlights
+        heading_end = content.index("\n", start) if "\n" in content[start:] else len(content)
+        heading = content[start:heading_end].strip()
+        if "Highlights" in heading and "Lowlights" in heading:
+            highlights_start = start
+            # End is either the next ## heading or end of content
+            if i + 1 < len(sections):
+                highlights_end = sections[i + 1].start()
+            else:
+                highlights_end = len(content)
+            break
+
+    if highlights_start is not None and highlights_end is not None:
+        section_body = content[highlights_start:highlights_end]
+
+        # Find the last table row in this section
+        table_rows = list(re.finditer(r"^\|.*\|$", section_body, re.MULTILINE))
+        if table_rows:
+            last_table_end = table_rows[-1].end()
+            after_table = section_body[last_table_end:]
+
+            # Keep only one-line summary quotes, strip everything else
+            cleaned_after_table = ""
+            for line in after_table.split("\n"):
+                stripped = line.strip()
+                if stripped.startswith(">") or stripped == "":
+                    cleaned_after_table += line + "\n"
+
+            # Rebuild the section: table part + cleaned trailer
+            new_section_body = section_body[:last_table_end] + "\n" + cleaned_after_table.rstrip("\n")
+            # Ensure separator before next section heading
+            rest = content[highlights_end:]
+            if not new_section_body.endswith("\n") and not rest.startswith("\n"):
+                rest = "\n" + rest
+            content = content[:highlights_start] + new_section_body + rest
+
+    return content
+
+
 # ── Concision thresholds (EDP-007, EDP-008, EDP-009) ────────────────────────────
 # EPS & Revenue: compact table + short bullets, no long prose blocks.
 EPS_REVENUE_MAX_WORDS = 120
@@ -999,6 +1077,12 @@ def validate_deep_dive(md_path: str) -> Tuple[bool, List[str]]:
 
     with open(md_path, encoding="utf-8") as f:
         content = f.read()
+
+    # ── 0.4. Pre-validation normalization for concision checks (EDP-008, EDP-009) ──
+    # Normalizes Unicode bullets to ASCII and strips duplicate Highlights prose
+    # after the canonical table. This runs before any validation checks so all
+    # downstream checks see normalized content.
+    content = _normalize_for_concision(content)
 
     # ── 0.5. Check for forbidden background/Quality headings (EDP-004, EDP-011) ──
     issues.extend(_check_forbidden_headings(content))

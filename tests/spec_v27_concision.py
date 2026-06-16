@@ -279,3 +279,338 @@ Some content here.
         concision_issues = [i for i in issues if "concision" in i.lower() or "EDP-" in i]
         # Should only have concision issues if thresholds are genuinely exceeded
         assert isinstance(concision_issues, list)
+
+
+# ── Unicode bullet normalization (EDP-008, EDP-009, generic) ───────────────
+
+class TestUnicodeBulletNormalization:
+    """Regression: Unicode bullet characters from LLM output must be normalized
+    before concision checks. The prompt instructs the LLM to use `•` bullets
+    but the validator only recognized ASCII `-` and `*`."""
+
+    def test_unicode_bullet_operating_metrics_not_flagged(self, tmp_path):
+        """Operating Metrics Key Takeaways with `•` bullets pass concision after normalization."""
+        extra = """
+## Highlights & Lowlights
+
+| Type | Point | Severity |
+|------|-------|----------|
+| Highlight | Revenue growth | High |
+
+> One-line summary: Strong quarter.
+
+## Operating Metrics
+
+| Metric | Actual |
+|--------|--------|
+| Gross Margin | 65% |
+| Operating Margin | 45% |
+
+Key Takeaways:
+• Gross margin of 65% reflects strong pricing power and favorable mix.
+• Operating leverage improved as revenue grew faster than expenses.
+• Operating margin of 45% is comparable to leading software peers.
+• Net income aligns with operating income trends.
+• Revenue growth and margin expansion together indicate high quality.
+
+> One-line summary: Strong profitability across the board.
+"""
+        md_path = _make_deep_dive(tmp_path, extra_content=extra)
+        passed, issues = validate_deep_dive(md_path)
+        edp009_issues = [i for i in issues if "EDP-009" in i]
+        edp008_issues = [i for i in issues if "EDP-008" in i]
+        assert len(edp009_issues) == 0, f"EDP-009 should not fire for Unicode bullet takeaways: {edp009_issues}"
+        assert len(edp008_issues) == 0, f"EDP-008 should not fire for Highlights with table + one-liner: {edp008_issues}"
+
+    def test_unicode_bullet_highlights_subsection_stripped(self, tmp_path):
+        """Highlights & Lowlights with `•` bullets in ### sub-sections passes
+        after the normalization strips the duplicate sub-sections."""
+        content = """# Earnings Call Deep-Dive
+
+## EPS & Revenue
+
+| Metric | Value |
+|--------|-------|
+| EPS | 1.23 |
+
+> One-line summary: OK.
+
+## Highlights & Lowlights
+
+| Type | Number | Point | Severity |
+|------|--------|-------|----------|
+| 🌟 Highlight | ① | Record revenue | High |
+| ⚠️ Lowlight | ① | Consumer softness | Medium |
+
+### Highlights
+1. Record revenue and growth
+   • Revenue $81.61B, +85.2% YoY.
+   • EPS $1.87 beat consensus.
+
+### Lowlights
+1. Consumer demand decline
+   • Consumer demand fell due to higher prices.
+
+> One-line summary: Strong revenue growth with consumer headwinds.
+
+## Operating Metrics
+
+| Metric | Value |
+|--------|-------|
+| Gross Margin | 65% |
+
+> One-line summary: OK.
+
+## Cash Flow
+
+| Metric | Value |
+|--------|-------|
+| FCF | $2.5B |
+
+> One-line summary: OK.
+
+## Capital Efficiency
+
+| Metric | Value |
+|--------|-------|
+| ROIC | 25% |
+
+> One-line summary: OK.
+
+## Segments
+
+| Segment | Revenue |
+|---------|---------|
+| Data Center | $7.0B |
+
+> One-line summary: OK.
+
+## Forward P/E
+
+| Metric | Value |
+|--------|-------|
+| Fwd P/E | 35x |
+
+> One-line summary: OK.
+
+## Backlog Quality
+
+| Metric | Value |
+|--------|-------|
+| Backlog | $5.0B |
+
+> One-line summary: OK.
+
+## Guidance
+
+| Metric | Guidance |
+|--------|----------|
+| Revenue | $11.0B |
+
+> One-line summary: OK.
+
+## Verdict
+
+> One-line summary: BUY.
+"""
+        md_path = tmp_path / "earnings_deep_dive.md"
+        md_path.write_text(content.strip() + "\n", encoding="utf-8")
+        passed, issues = validate_deep_dive(str(md_path))
+        edp008_issues = [i for i in issues if "EDP-008" in i]
+        assert len(edp008_issues) == 0, f"EDP-008 should not fire after sub-section stripping: {edp008_issues}"
+
+    def test_unicode_bullet_highlights_no_table_not_affected(self, tmp_path):
+        """Highlights & Lowlights WITHOUT a table keeps its content unchanged
+        by the table-stripping normalization. The `•` → `-` normalization helps
+        `•` bullet lists pass concision, which is correct behavior — the bullets
+        are the intended format per the prompt."""
+        content = """# Earnings Call Deep-Dive
+
+## EPS & Revenue
+
+| Metric | Value |
+|--------|-------|
+| EPS | 1.23 |
+
+> One-line summary: OK.
+
+## Highlights & Lowlights
+
+**Data Center strength was remarkable this quarter**
+• Data Center revenue surged 40% YoY to $7.0B, driven by enterprise AI adoption.
+• Management highlighted strong demand from large and small businesses.
+
+> One-line summary: Strong Data Center growth.
+
+## Operating Metrics
+
+| Metric | Value |
+|--------|-------|
+| Gross Margin | 65% |
+
+> One-line summary: OK.
+
+## Cash Flow
+
+| Metric | Value |
+|--------|-------|
+| FCF | $2.5B |
+
+> One-line summary: OK.
+
+## Capital Efficiency
+
+| Metric | Value |
+|--------|-------|
+| ROIC | 25% |
+
+> One-line summary: OK.
+
+## Segments
+
+| Segment | Revenue |
+|---------|---------|
+| Data Center | $7.0B |
+
+> One-line summary: OK.
+
+## Forward P/E
+
+| Metric | Value |
+|--------|-------|
+| Fwd P/E | 35x |
+
+> One-line summary: OK.
+
+## Backlog Quality
+
+| Metric | Value |
+|--------|-------|
+| Backlog | $5.0B |
+
+> One-line summary: OK.
+
+## Guidance
+
+| Metric | Guidance |
+|--------|----------|
+| Revenue | $11.0B |
+
+> One-line summary: OK.
+
+## Verdict
+
+> One-line summary: BUY.
+"""
+        md_path = tmp_path / "earnings_deep_dive.md"
+        md_path.write_text(content.strip() + "\n", encoding="utf-8")
+        passed, issues = validate_deep_dive(str(md_path))
+        edp008_issues = [i for i in issues if "EDP-008" in i]
+        # The • bullet lines are legitimately valid after normalization → no EDP-008 flags.
+        # True prose paragraphs (multi-sentence blocks) would still be flagged.
+        assert len(edp008_issues) == 0, f"No-table Highlights with • bullets should pass: {edp008_issues}"
+
+    def test_filled_circle_bullet_normalized(self, tmp_path):
+        """Filled circle `●` (U+25CF) is also used by LLMs and must be normalized."""
+        extra = """
+## Highlights & Lowlights
+
+| Type | Point | Severity |
+|------|-------|----------|
+| Highlight | Strong demand | High |
+
+> One-line summary: Good quarter.
+
+## Operating Metrics
+
+| Metric | Actual |
+|--------|--------|
+| Gross Margin | 65% |
+
+Key Takeaways:
+● Gross margin of 65% reflects strong pricing power.
+● Operating leverage improved significantly.
+
+> One-line summary: Strong margins.
+"""
+        md_path = _make_deep_dive(tmp_path, extra_content=extra)
+        passed, issues = validate_deep_dive(md_path)
+        edp009_issues = [i for i in issues if "EDP-009" in i]
+        assert len(edp009_issues) == 0, f"EDP-009 should not fire for filled circle bullets: {edp009_issues}"
+
+    def test_ascii_bullets_still_work(self, tmp_path):
+        """Existing ASCII `-` bullets continue to work correctly after normalization."""
+        extra = """
+## Highlights & Lowlights
+
+| Type | Point | Severity |
+|------|-------|----------|
+| Highlight | Strong growth | High |
+
+> One-line summary: Good.
+
+## Operating Metrics
+
+| Metric | Actual |
+|--------|--------|
+| Gross Margin | 65% |
+
+Key Takeaways:
+- Gross margin of 65% reflects strong pricing power.
+- Operating leverage improved significantly.
+
+> One-line summary: Strong margins.
+"""
+        md_path = _make_deep_dive(tmp_path, extra_content=extra)
+        passed, issues = validate_deep_dive(md_path)
+        edp009_issues = [i for i in issues if "EDP-009" in i]
+        edp008_issues = [i for i in issues if "EDP-008" in i]
+        assert len(edp009_issues) == 0, f"EDP-009 should not fire for ASCII bullets: {edp009_issues}"
+        assert len(edp008_issues) == 0, f"EDP-008 should not fire for Highlights with table: {edp008_issues}"
+
+    def test_long_prose_operating_metrics_still_flagged(self, tmp_path):
+        """Genuinely long prose in Operating Metrics is STILL flagged after normalization."""
+        extra = """
+## Highlights & Lowlights
+
+| Type | Point | Severity |
+|------|-------|----------|
+| Highlight | Growth | High |
+
+> One-line summary: Good.
+
+## Operating Metrics
+
+| Metric | Actual |
+|--------|--------|
+| Gross Margin | 65% |
+| Operating Margin | 45% |
+
+The company's gross margin expanded by 200 basis points year over year, reflecting favorable product mix and cost efficiencies. Operating margin grew even faster at 300 basis points, as the company benefited from operating leverage on higher revenue. The margin expansion was driven primarily by the Data Center segment, which carries higher margins than the overall company average. Management expects continued margin improvement as revenue scales and the mix shifts toward higher-margin software and services revenue.
+
+Research and development spending increased 15% year over year as the company continues to invest in next-generation products and AI capabilities. Sales and marketing expenses grew at a slower pace of 8%, indicating operating leverage in the go-to-market organization.
+
+> One-line summary: Strong margin expansion.
+"""
+        md_path = _make_deep_dive(tmp_path, extra_content=extra)
+        passed, issues = validate_deep_dive(md_path)
+        edp009_issues = [i for i in issues if "EDP-009" in i]
+        assert len(edp009_issues) >= 1, "Genuinely long prose in Operating Metrics should still be flagged"
+
+    def test_normalize_only_highlights_with_table(self, tmp_path):
+        """Highlights section WITHOUT table keeps its prose sub-sections unchanged."""
+        extra = """
+## Highlights & Lowlights
+
+**Data Center strength**
+- Revenue up 40% YoY
+- Enterprise adoption growing
+
+> One-line summary: Data Center remains strong.
+"""
+        md_path = _make_deep_dive(tmp_path, extra_content=extra)
+        passed, issues = validate_deep_dive(md_path)
+        edp008_issues = [i for i in issues if "EDP-008" in i]
+        # No table in highlights — normalization's section-stripping should not apply.
+        # This isn't duplicate prose after a table; the bullet-list format is fine.
+        assert len(edp008_issues) == 0, f"No-table Highlights should not trigger EDP-008: {edp008_issues}"
