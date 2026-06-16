@@ -96,6 +96,9 @@ class ClaimSource(BaseModel):
     confidence: str | None = None    # "high" / "medium" / "low" — qualitative confidence
 
 
+SourceDisplayPolicy = Literal["row", "table_note", "none"]
+
+
 class RenderedTableRow(BaseModel):
     label: str
     cells: list[str]
@@ -108,6 +111,12 @@ class RenderedTableRow(BaseModel):
 class RenderedTable(BaseModel):
     columns: list[str]
     rows: list[RenderedTableRow] = Field(default_factory=list)
+    # Source display policy — controls how the renderer shows source info.
+    # "row": keep visible Source column (default).
+    # "table_note": hide visible Source column, render table-level note below.
+    # "none": no source note needed.
+    source_display_policy: SourceDisplayPolicy = "row"
+    table_source_note: str | None = None
 
 
 class RenderedSection(BaseModel):

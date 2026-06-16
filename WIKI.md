@@ -1,5 +1,28 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-17 — Source display policy model (EDP-010/012)
+
+**Status:** Model-level source display policy implemented and verified (t_c08616c4).
+
+**Change:**
+- `backend/earnings_deep_dive/report_model.py`:
+  - Added `SourceDisplayPolicy = Literal["row", "table_note", "none"]` type.
+  - Added `source_display_policy` and `table_source_note` fields to `RenderedTable`.
+- `backend/earnings_deep_dive/mapper.py`:
+  - Added `_apply_source_display_policy(section_key, table)` — computes display policy for allow-listed sections (Operating Metrics, Cash Flow, Capital Efficiency). Locates Source column by normalized header label, normalizes labels, detects calculated/unavailable labels, and sets policy to `table_note` only for homogeneous allow-listed tables with no issues.
+  - Added `_normalize_source_label()` and `_restore_source_display()` helpers.
+  - Fixed `_enrich_codex_table`, `_number_highlights_rows`, `_sanitize_table` to preserve `source_display_policy` and `table_source_note` through copies.
+  - Wired into `build_earnings_deep_dive_report()` after all table transformations.
+- `tests/spec_v27_source_display_policy.py` — 13 tests.
+- Data files: `.ced-agent-kernel/specs/edp010-012-source-policy-model.json`.
+
+**Constraints met:** No mutation of rows/cells; calculated detection uses conservative source-cell labels; policy applied after enrichment/numbering/sanitize; Source column located by normalized header label, not hardcoded index; JP/EN labels supported; no `/api/` or pdf_renderer changes.
+
+**Verification:**
+- `pytest tests/spec_v27_source_display_policy.py -q` → **13 passed**.
+- Bundle: **26 passed** (plus spec_v27_fcf_margin_presence and spec_v27_net_debt_presence).
+- No `/api/` endpoints touched. Do not commit until independent QA approves.
+
 ## 2026-06-16 — EDP-010/012 source display spec repaired after Claude review
 
 **Status:** Spec-only repair completed (t_e7846d85).

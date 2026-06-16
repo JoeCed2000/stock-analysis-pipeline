@@ -1,0 +1,30 @@
+{
+  "claim": "EDP-010/012 source display policy model: added source_display_policy and table_source_note to RenderedTable in report_model.py; added _apply_source_display_policy() to mapper.py with source-label normalisation, calculated/unavailable detection, table-level collapse for homogeneous allow-listed tables; fixed _enrich_codex_table, _number_highlights_rows, _sanitize_table to preserve metadata; wired into build_earnings_deep_dive_report. 13 focused tests pass.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "python_compile",
+      "name": "python compiles: report_model.py",
+      "path": "backend/earnings_deep_dive/report_model.py"
+    },
+    {
+      "kind": "python_compile",
+      "name": "python compiles: mapper.py",
+      "path": "backend/earnings_deep_dive/mapper.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "focused source display tests pass (13 tests)",
+      "command": "/home/ced/codex-projects/stock-analysis-pipeline/backend/.venv/bin/python -m pytest tests/spec_v27_source_display_policy.py -q",
+      "stdout_pattern": "13 passed",
+      "timeout": "60"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "bundle regression (26 tests, including FCF margin and net debt)",
+      "command": "/home/ced/codex-projects/stock-analysis-pipeline/backend/.venv/bin/python -m pytest tests/spec_v27_source_display_policy.py tests/spec_v27_fcf_margin_presence.py tests/spec_v27_net_debt_presence.py -q",
+      "stdout_pattern": "passed",
+      "timeout": "60"
+    }
+  ]
+}

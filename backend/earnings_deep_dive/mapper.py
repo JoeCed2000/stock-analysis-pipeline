@@ -1075,7 +1075,12 @@ def _enrich_codex_table(
 
         enriched_rows.append(RenderedTableRow(label=llm_row.label, cells=merged_cells))
 
-    return RenderedTable(columns=list(codex_table.columns), rows=enriched_rows)
+    return RenderedTable(
+        columns=list(codex_table.columns),
+        rows=enriched_rows,
+        source_display_policy=codex_table.source_display_policy,
+        table_source_note=codex_table.table_source_note,
+    )
 
 
 def _number_highlights_rows(table: RenderedTable) -> RenderedTable:
@@ -1112,7 +1117,12 @@ def _number_highlights_rows(table: RenderedTable) -> RenderedTable:
                 cells[cell_idx] = str(counter)
         numbered_rows.append(RenderedTableRow(label=row.label, cells=cells))
         counter += 1
-    return RenderedTable(columns=list(table.columns), rows=numbered_rows)
+    return RenderedTable(
+        columns=list(table.columns),
+        rows=numbered_rows,
+        source_display_policy=table.source_display_policy,
+        table_source_note=table.table_source_note,
+    )
 
 
 def _sanitize_table(table: RenderedTable) -> RenderedTable:
@@ -1182,7 +1192,158 @@ def _sanitize_table(table: RenderedTable) -> RenderedTable:
         new_cells = [_sanitize_cell(cell) for cell in row.cells]
         clean_label = _GARBAGE_RE.sub('—', row.label)
         sanitized_rows.append(RenderedTableRow(label=clean_label, cells=new_cells))
-    return RenderedTable(columns=list(table.columns), rows=sanitized_rows)
+    return RenderedTable(
+        columns=list(table.columns),
+        rows=sanitized_rows,
+        source_display_policy=table.source_display_policy,
+        table_source_note=table.table_source_note,
+    )
+
+
+def _apply_source_display_policy(
+    section_key: str,
+    table: RenderedTable,
+) -> RenderedTable:
+    """Set source_display_policy and table_source_note on a RenderedTable.
+
+    Locates the Source column by normalized header label, normalizes source
+    cell values, detects calculated and unavailable labels conservatively,
+    and sets ``table_note`` only for homogeneous allow-listed tables.
+
+    The policy metadata drives PDF renderer behavior but must NOT mutate
+    rows, cells, or source values.
+
+    Allow-listed sections: Operating Metrics, Cash Flow, Capital Efficiency.
+    """
+    _ALLOW_LIST = {"Operating Metrics", "Cash Flow", "Capital Efficiency"}
+
+    if section_key not in _ALLOW_LIST:
+        return table
+
+    # Step 1: Locate Source column by normalized header label
+    source_col_idx: int | None = None
+    for i, col in enumerate(table.columns):
+        col_lower = col.strip().lower()
+        if col_lower in ("source", "sources", "情報源", "出典"):
+            source_col_idx = i
+            break
+    if source_col_idx is None:
+        return table
+
+    # Step 2: Extract source cells, detect issues
+    _CALCULATED_LABELS_RAW = {
+        "calculated", "calculated (fcf ÷ revenue)",
+        "計算値", "計算値（fcf ÷ 売上高）",
+    }
+    _UNAVAILABLE_LABELS_RAW = {
+        "not disclosed", "unavailable from reviewed sources",
+        "not applicable", "not calculable",
+        "開示なし", "該当なし", "計算不可",
+        "—", "–", "-",
+        "n/a", "na",
+        "データ未取得",
+    }
+    _PLACEHOLDER_CELL = {"—", "", "n/a", "?", "na"}
+
+    source_values: set[str] = set()
+    has_calculated = False
+    has_unavailable = False
+    row_count = 0
+
+    for row in table.rows:
+        cell_idx = source_col_idx - 1  # _extract_markdown_table offset: label = col[0], cells = cols[1:]
+        if cell_idx < 0:
+            # Source is the label itself — not expected for this policy
+            continue
+        if cell_idx >= len(row.cells):
+            continue
+
+        src_val = row.cells[cell_idx].strip()
+        row_count += 1
+
+        # Skip truly empty cells (will go to _sanitize_table later)
+        if not src_val or src_val in _PLACEHOLDER_CELL:
+            has_unavailable = True
+            continue
+
+        src_lower = src_val.lower()
+
+        # Check for calculated labels
+        if src_lower in _CALCULATED_LABELS_RAW:
+            has_calculated = True
+            # Normalize all calculated labels to a single canonical form
+            source_values.add("calculated")
+            continue
+
+        # Check for unavailable labels
+        if src_lower in _UNAVAILABLE_LABELS_RAW:
+            has_unavailable = True
+            continue
+
+        # Normalize for comparison: strip common prefixes
+        normalized = _normalize_source_label(src_lower)
+        source_values.add(normalized)
+
+    # Step 3: Decide policy
+    if row_count == 0:
+        return table
+
+    has_identical = len(source_values) == 1
+    has_no_issues = not has_calculated and not has_unavailable
+    # Operating Metrics: also require that all cells are present (row_count >= 6 typical)
+    if section_key == "Operating Metrics":
+        if row_count < 6:
+            return table
+
+    if has_identical and has_no_issues:
+        # Collapse to table note
+        canonical = next(iter(source_values))
+        # Restore display form for the note
+        display_note = _restore_source_display(canonical)
+        table.source_display_policy = "table_note"
+        table.table_source_note = f"Source: {display_note}"
+    else:
+        table.source_display_policy = "row"
+        table.table_source_note = None
+
+    return table
+
+
+def _normalize_source_label(label: str) -> str:
+    """Normalize a source label for comparison.
+
+    Strips parenthetical qualifiers, leading text, and whitespace so
+    that semantically identical source labels compare as equal.
+    """
+    s = label.strip().lower()
+    # Strip common prefixes: "sec filing (10-q/10-k) via edgar" -> "edgar"
+    # but we want to be more conservative — just normalize the core label
+    if "via edgar" in s:
+        return "sec/edgar"
+    if "yfinance" in s or "yahoo" in s:
+        return "yfinance"
+    if "company" in s or "sec" in s or "edgar" in s or "開示" in s:
+        return "company/sec"
+    if "consensus" in s or "investing.com" in s:
+        return "consensus"
+    if "finnhub" in s:
+        return "finnhub"
+    if "transcript" in s:
+        return "transcript"
+    return s
+
+
+def _restore_source_display(normalized: str) -> str:
+    """Map a normalized source label back to a human-readable display form."""
+    MAP = {
+        "sec/edgar": "SEC Filings (10-Q/10-K) via EDGAR",
+        "yfinance": "yfinance (Yahoo Finance)",
+        "company/sec": "Company Filings",
+        "consensus": "Analyst Consensus",
+        "finnhub": "Finnhub",
+        "transcript": "Earnings Transcript",
+    }
+    return MAP.get(normalized, normalized.title())
 
 
 def _to_pct_num(value: Any) -> float:
@@ -2765,6 +2926,8 @@ def build_earnings_deep_dive_report(
                     pe_note = f"[Validated: forward P/E = {pe_val}]"
                     if analysis_items:
                         analysis_items[-1] = analysis_items[-1] + "\n\n" + pe_note
+        # Apply source display policy after all table transformations complete
+        table = _apply_source_display_policy(section.key, table)
         sections.append(
             RenderedSection(
                 key=section.key,
