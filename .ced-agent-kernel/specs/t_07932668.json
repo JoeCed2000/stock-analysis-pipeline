@@ -1,0 +1,28 @@
+{
+  "claim": "Code change artifacts exist and requested deterministic verification evidence is present.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: deep_dive_validator.py",
+      "path": "backend/earnings_deep_dive/deep_dive_validator.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "changed file exists: spec_v27_numeric_consistency.py",
+      "path": "tests/spec_v27_numeric_consistency.py"
+    },
+    {
+      "kind": "python_compile",
+      "name": "python compiles: deep_dive_validator.py",
+      "path": "backend/earnings_deep_dive/deep_dive_validator.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "test command succeeds",
+      "command": "/tmp/verify-edp006.sh",
+      "stdout_pattern": "Verdict: GO",
+      "timeout": "120"
+    }
+  ]
+}

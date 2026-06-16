@@ -156,6 +156,12 @@ HIGHLIGHTS_MAX_BULLETS_PER_POINT = 5
 OPERATING_METRICS_MAX_WORDS = 120
 OPERATING_METRICS_MAX_PARAGRAPHS = 1
 
+# ── Numeric consistency tolerance (EDP-006) ────────────────────────────────────
+# EPS tolerance in dollars (standard rounding tolerance for earnings data).
+EPS_TOLERANCE = 0.03
+# Revenue tolerance as a ratio of the table value (0.5%).
+REVENUE_TOLERANCE_RATIO = 0.005
+
 
 def _check_concision(content: str) -> List[str]:
     """Check markdown content for concision violations (EDP-007, EDP-008, EDP-009).
@@ -301,7 +307,214 @@ def _check_highlights_concision(lines: List[str], issues: List[str]) -> None:
         )
 
 
-# ── Forbidden generic Quality subheadings (EDP-011) ────────────────────────────
+# ── Numeric consistency helpers (EDP-006) ─────────────────────────────────────
+
+
+def _parse_dollar_amount(text: str) -> tuple[float | None, str | None]:
+    """Parse a dollar amount from a text fragment.
+
+    Returns (value_in_dollars, raw_match) or (None, None) if no amount found.
+    Handles $X.XX, $X.XXB, $X.XXM, and text suffixes (billion, million).
+    """
+    # Pattern: $X.XX optionally followed by B/M/billion/million
+    m = re.search(
+        r"\$(\d+(?:\.\d+)?)\s*(B|Billion|billion|M|Million|million)?",
+        text,
+    )
+    if not m:
+        # Also try "X.XX billion" without $ prefix
+        m = re.search(
+            r"(\d+(?:\.\d+)?)\s*(billion|million)\s",
+            text,
+        )
+    if not m:
+        return None, None
+
+    assert m is not None  # Guard: we returned early if None
+    raw = m.group(0)
+    value = float(m.group(1))
+    suffix = m.group(2) if m.lastindex >= 2 else None
+    if suffix:
+        suffix_lower = suffix.lower()
+        if suffix_lower in ("b", "billion"):
+            value *= 1_000_000_000
+        elif suffix_lower in ("m", "million"):
+            value *= 1_000_000
+    return value, raw
+
+
+def _parse_table_values(body: str) -> dict[str, tuple[float | None, str]]:
+    """Parse EPS and Revenue actual values from a markdown table.
+
+    Returns dict mapping metric name (uppercase) to (value_in_dollars, raw_cell).
+    Only EPS and Revenue are extracted.
+    """
+    values: dict[str, tuple[float | None, str]] = {}
+    for line in body.split("\n"):
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        cells = [c.strip() for c in stripped.split("|")]
+        # Remove leading empty cell from the opening |
+        if cells and not cells[0]:
+            cells = cells[1:]
+        if len(cells) < 2:
+            continue
+        metric_name = cells[0].strip().lower()
+        if metric_name not in ("eps", "revenue"):
+            continue
+        actual_cell = cells[1] if len(cells) > 1 else ""
+        value, _ = _parse_dollar_amount(actual_cell)
+        values[metric_name] = (value, actual_cell)
+    return values
+
+
+def _prose_dollar_amounts(body: str) -> list[dict]:
+    """Extract dollar amounts from prose text in a section body.
+
+    Returns list of dicts: {value, raw, context, metric_type_hint}
+    where metric_type_hint is 'eps', 'revenue', or None.
+    """
+    amounts: list[dict] = []
+    for line in body.split("\n"):
+        stripped = line.strip()
+        # Skip tables, headings, bold labels
+        if (stripped.startswith("|") or stripped.startswith("##")
+                or stripped.startswith("**") or stripped.startswith("#")):
+            continue
+        # Skip empty lines
+        if not stripped:
+            continue
+
+        # Find all dollar amounts on this line
+        pos = 0
+        while pos < len(stripped):
+            m = re.search(
+                r"\$(\d+(?:\.\d+)?)\s*(B|Billion|billion|M|Million|million)?",
+                stripped[pos:],
+            )
+            if not m:
+                break
+
+            assert m is not None  # Guard: we broke early if None
+            raw = m.group(0)
+            value = float(m.group(1))
+            suffix = m.group(2) if m.lastindex >= 2 else None
+            if suffix:
+                suffix_lower = suffix.lower()
+                if suffix_lower in ("b", "billion"):
+                    value *= 1_000_000_000
+                elif suffix_lower in ("m", "million"):
+                    value *= 1_000_000
+
+            # Determine context (character window around match)
+            # Use a tight window for metric classification to avoid
+            # picking up keywords from other dollar amounts on the same line
+            start_idx = max(0, pos + m.start() - 20)
+            end_idx = min(len(stripped), pos + m.end() + 10)
+            context = stripped[start_idx:end_idx].lower()
+
+            # Classify metric type from context (tight classification window)
+            metric_hint: str | None = None
+
+            # Check if this dollar amount is a comparison reference (e.g., "above the $1.15 consensus")
+            # If the text before the dollar amount contains "above the", "below the", "beat the",
+            # or "surpassed the", it's a reference, not a stated actual.
+            pre_text = stripped[max(0, pos + m.start() - 25):pos + m.start()].lower()
+            is_comparison_reference = any(
+                phrase in pre_text
+                for phrase in ("above the", "below the", "beat the", "surpassed the")
+            )
+
+            # Skip small dollar amounts preceded by "by" — these are deltas, not values
+            is_delta = "by " in pre_text
+
+            if not is_comparison_reference and not is_delta:
+                if "eps" in context or "per share" in context:
+                    metric_hint = "eps"
+                elif "revenue" in context or "sales" in context or "top line" in context:
+                    metric_hint = "revenue"
+
+            amounts.append({
+                "value": value,
+                "raw": raw,
+                "context": context,
+                "metric_type_hint": metric_hint,
+            })
+            pos += m.end()
+
+    return amounts
+
+
+def _check_numeric_consistency(content: str) -> List[str]:
+    """Check EPS & Revenue section for numeric consistency (EDP-006).
+
+    Parses ALL EPS & Revenue tables to extract canonical EPS and Revenue values,
+    then cross-checks them against dollar amounts appearing in the section prose.
+    Flags contradictions where prose states a value that differs from the table
+    beyond documented tolerance.
+
+    Returns a list of issue strings.
+    """
+    issues: List[str] = []
+
+    # Find ALL EPS & Revenue sections
+    section_blocks = SECTION_HEADING.split(content)
+
+    for i in range(1, len(section_blocks), 2):
+        heading = section_blocks[i].strip() if i < len(section_blocks) else ""
+        body_idx = i + 1
+        body = section_blocks[body_idx] if body_idx < len(section_blocks) else ""
+
+        if not ("EPS" in heading and "Revenue" in heading):
+            continue
+
+        issues.extend(_check_single_eps_revenue_section(body))
+
+    return issues
+
+
+def _check_single_eps_revenue_section(body: str) -> List[str]:
+    """Check numeric consistency within a single EPS & Revenue section body."""
+    issues: List[str] = []
+
+    # Parse table values
+    table_values = _parse_table_values(body)
+
+    # Extract prose dollar amounts
+    prose_amounts = _prose_dollar_amounts(body)
+
+    if not prose_amounts:
+        return issues  # No prose amounts to cross-check
+
+    # Cross-check each prose amount against table values
+    for pa in prose_amounts:
+        hint = pa["metric_type_hint"]
+        prose_val = pa["value"]
+
+        if hint == "eps":
+            table_eps, raw_cell = table_values.get("eps", (None, ""))
+            if table_eps is not None:
+                diff = abs(prose_val - table_eps)
+                if diff > EPS_TOLERANCE:
+                    issues.append(
+                        f"Numeric consistency (EDP-006): EPS value in prose "
+                        f"(${prose_val:.2f}) differs from table value "
+                        f"({raw_cell}) by ${diff:.2f} (tolerance: ${EPS_TOLERANCE:.2f})"
+                    )
+        elif hint == "revenue":
+            table_rev, raw_cell = table_values.get("revenue", (None, ""))
+            if table_rev is not None:
+                diff = abs(prose_val - table_rev)
+                tolerance = max(table_rev * REVENUE_TOLERANCE_RATIO, 5_000_000)
+                if diff > tolerance:
+                    issues.append(
+                        f"Numeric consistency (EDP-006): Revenue value in prose "
+                        f"(${prose_val:,.0f}) differs from table value "
+                        f"({raw_cell}) by ${diff:,.0f} (tolerance: ${tolerance:,.0f})"
+                    )
+
+    return issues
 # When an LLM generates a standalone "Quality" heading/section that is boilerplate,
 # it should be flagged. Excluded: canonical required sections (e.g. "Backlog Quality")
 # and headings that contain ticker-specific earnings language (e.g. "Earnings Quality").
@@ -503,7 +716,10 @@ def validate_deep_dive(md_path: str) -> Tuple[bool, List[str]]:
     # ── 4.5. Check section concision (EDP-007, EDP-008, EDP-009) ──
     issues.extend(_check_concision(content))
 
-    # ── 5. Check minimum content size ──
+    # ── 5. Check numeric consistency in EPS & Revenue (EDP-006) ──
+    issues.extend(_check_numeric_consistency(content))
+
+    # ── 6. Check minimum content size ──
     words = len(content.split())
     if words < 800:
         issues.append(f"Content too short: {words} words (need ≥800)")

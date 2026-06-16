@@ -1,5 +1,24 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-16 — Numeric consistency validator checks (EDP-006)
+
+**Status:** Implemented and verified (t_07932668).
+
+**Change:**
+- `backend/earnings_deep_dive/deep_dive_validator.py`:
+  - Added `_check_numeric_consistency(content)` — deterministic EPS & Revenue numeric cross-check that parses tables for canonical EPS/Revenue values and compares against prose dollar amounts in the same section.
+  - Added helper constants `EPS_TOLERANCE` (0.03) and `REVENUE_TOLERANCE_RATIO` (0.5%) for documented tolerance.
+  - Added `_parse_table_values()`, `_prose_dollar_amounts()`, `_check_single_eps_revenue_section()` — pure functions for table parsing, prose dollar extraction with context-aware metric classification, and per-section checking.
+  - Context classifier blocks comparison references ("above the $X", "below the $X") and deltas ("by $X") to avoid false positives on estimates and change amounts.
+  - Wired into `validate_deep_dive()` as step 5 (runs after concision checks, before content size).
+- `tests/spec_v27_numeric_consistency.py` — 6 tests covering EPS mismatch detection, Revenue mismatch detection, consistent value pass, compact matching pass, no-false-positive when values absent, and no-false-positive on ambiguous numbers.
+
+**Verification:**
+- `pytest tests/spec_v27_numeric_consistency.py -q` → **6 passed**.
+- `pytest tests/spec_v27_numeric_consistency.py tests/spec_v27_concision.py tests/spec_v27_forbidden_headings.py tests/spec_v27_missing_data_leaks.py tests/test_validator.py tests/spec_v27_verdict_valuation_dq_segments.py tests/spec_v27_period_consistency.py tests/spec_v27_metrics_ledger.py tests/spec_v27_source_registry.py -q` → **172 passed** (0 regressions).
+- `py_compile backend/earnings_deep_dive/deep_dive_validator.py` → OK.
+- `kverify` strict → **READY** (4/4 checks: files exist, py_compile, 172 tests pass).
+
 ## 2026-06-15 — Forbidden-heading validator checks (EDP-004, EDP-011)
 
 **Status:** Implemented and verified (t_d282872c).
