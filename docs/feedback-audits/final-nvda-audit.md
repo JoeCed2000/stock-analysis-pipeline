@@ -37,6 +37,42 @@ re-dispatched this audit. This re-audit regenerates against the current backend
 | 12 | SYMBOL_PLAN | DEGRADED — Serena not available; previous trace report (t_5e2d0e9a) provides route map (API → sources_collector → _deep_dive_metrics → consensus_overrides → eps_revenue_prompt → LLM) |
 | 13 | Kernel/kverify | Not required (read-only audit; no mutations performed) |
 
+**Re-audit verification (run 2240, 2026-06-17 08:14 UTC):** No state change since §1 was captured at 08:12 UTC. See §1.1 for evidence.
+
+## 1.1. Re-dispatch verification (2026-06-17 08:14 UTC → run 2240)
+
+`sa-nvda-repair-autopilot` re-dispatched this audit citing
+"AUTO-RETRY: patch task completed; rerunning final NVDA PDF audit."
+The referenced patch is `t_0ad38717` (commits to `4197429`,
+"reorder CRITICAL OVERRIDE before DATA CONTRACT in eps_revenue_prompt").
+
+**State diff vs §1 evidence (current vs re-audit run 2240):**
+
+| Signal | Run 2239 (08:12 audit) | Run 2240 (08:14 re-audit) | Delta |
+|---|---|---|---|
+| `git rev-parse HEAD` | 775c42b | 775c42b | none |
+| `git log 775c42b..HEAD` | n/a | empty (0 new commits) | none |
+| Backend commit (per `/api/health`) | 775c42b | 775c42b | none |
+| Backend process | 56671 (Jun 16 18:06) | 56671 (unchanged) | none |
+| `analyses/nvda_audit_v2_jp/07_final_report/earnings_deep_dive.md` mtime | 2026-06-17 08:05:32 | 2026-06-17 08:05:32 (unchanged) | none |
+| `analyses/nvda_audit_v2_jp/.../deep_dive_validation.json` | 3 issues (EDP-007/009/006) | 3 issues (EDP-007/009/006) | none |
+| `analyses/nvda_audit_v3_*` directories | none | none | none |
+| Working-tree uncommitted (t_527c4b2e allow-list) | mapper.py + test | mapper.py + test (unchanged) | none |
+| t_1bff1c77 concision in JP markdown | ①②③ (3 items) at lines 23/25/27 | ①②③ (3 items) at lines 23/25/27 | none |
+| JP Capital Efficiency 0.8% bug | present in table rows | present in table rows | none |
+
+**Conclusion of re-audit verification:** No new code, no new
+artifacts, no state change since the §1–§10 audit was persisted at
+08:12 UTC. The auto-retry is a no-op. The previous audit's
+EN-approved / JP-blocked split verdict is the current state of the
+world. The follow-up P0/P1 items in §7 are still open and blocking
+JP client delivery.
+
+**Decision:** This re-audit confirms the prior verdict. No new
+artifacts are regenerated (would take ~15 min and produce identical
+output, since the backend, prompt, and consensus overrides are
+unchanged). The §8 composite verdict (REQUEST_CHANGES) is reaffirmed.
+
 ## 3. Findings — per parent fix
 
 ### t_3173af81 — Net Cash $72.1B (CRITICAL OVERRIDE on net_debt)
