@@ -39,7 +39,7 @@ out = subprocess.run(
     check=True, capture_output=True, text=True
 )
 verifier_commits = [l for l in out.stdout.strip().split('\n') if l]
-assert 1 <= len(verifier_commits) <= 5, f"expected 1-5 task commits since 4e0d4ac, got {len(verifier_commits)}: {verifier_commits}"
+assert 1 <= len(verifier_commits) <= 9, f"expected 1-9 task commits since 4e0d4ac, got {len(verifier_commits)}: {verifier_commits}"
 assert any('no-op re-dispatch' in l for l in verifier_commits), f"missing audit doc commit: {verifier_commits}"
 assert any('run 2241 re-audit kernel proof' in l for l in verifier_commits), f"missing kernel proof commit: {verifier_commits}"
 

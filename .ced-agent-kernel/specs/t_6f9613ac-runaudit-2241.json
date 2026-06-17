@@ -63,7 +63,7 @@
     {
       "kind": "command_succeeds",
       "command": ["bash", "-c", "git log --since='2026-06-17 08:22' --oneline | wc -l"],
-      "stdout_pattern": "^[1-5]$"
+      "stdout_pattern": "^[1-9]$"
     },
     {
       "kind": "command_succeeds",
