@@ -1,5 +1,22 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-17 — Source label dynamic period repair (t_54e5bf38)
+
+**Status:** implementation verified locally; Kernel proof added in this task.
+
+**Root cause:** `_restore_source_display("sec-filing")` restored every normalized SEC/earnings-release comparison key as the static label `SEC 10-Q (Q1 FY2027)`. That preserved EN/JP collapse parity but made non-Q1 reports display the wrong period and could falsely describe earnings-release provenance as SEC 10-Q.
+
+**Change:** `backend/earnings_deep_dive/mapper.py` now passes raw source labels into `_restore_source_display()`, derives pure 10-Q table-note periods from source labels such as `FY2026 Q4`, and uses the neutral note `Company filings / earnings release metrics` when 10-Q and earnings-release labels collapse together.
+
+**Files changed:**
+- `backend/earnings_deep_dive/mapper.py` — dynamic period extraction and neutral mixed-provenance display.
+- `tests/spec_v27_source_display_policy.py` — focused regression for non-Q1 SEC 10-Q period derivation and mixed 10-Q/earnings-release display.
+- `.ced-agent-kernel/specs/source-label-dynamic-period.json` and `ops/kernel_checks/verify_source_label_dynamic_period.py` — persistent Kernel proof.
+
+**Verification:** RED observed for the two focused source-label tests against the previous static `SEC 10-Q (Q1 FY2027)` behavior. GREEN: `tests/spec_v27_source_display_policy.py` → 22 passed; persistent verifier prints `VERIFY_SOURCE_LABEL_DYNAMIC_PERIOD_READY`; `/api/health` is part of the Kernel proof.
+
+**Kernel proof:** `kverify .ced-agent-kernel/specs/source-label-dynamic-period.json --base-dir .` → READY.
+
 ## 2026-06-17 — Segments canonical table rounding (t_3eb11127)
 
 **Status:** implementation verified locally; Kernel proof added in this task.

@@ -1,0 +1,57 @@
+{
+  "claim": "t_54e5bf38 removes the hardcoded Q1 FY2027 sec-filing display label, derives SEC 10-Q periods from source labels when available, and neutralizes mixed 10-Q / earnings-release provenance without breaking source-label collapse parity.",
+  "workflow": "kanban_task_done",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "mapper exists",
+      "path": "backend/earnings_deep_dive/mapper.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "focused source display regression exists",
+      "path": "tests/spec_v27_source_display_policy.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "persistent verifier exists",
+      "path": "ops/kernel_checks/verify_source_label_dynamic_period.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "WIKI evidence exists",
+      "path": "WIKI.md"
+    },
+    {
+      "kind": "python_compile",
+      "name": "mapper compiles",
+      "path": "backend/earnings_deep_dive/mapper.py"
+    },
+    {
+      "kind": "python_compile",
+      "name": "persistent verifier compiles",
+      "path": "ops/kernel_checks/verify_source_label_dynamic_period.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "focused source-label policy regression",
+      "command": "backend/.venv/bin/python -m pytest tests/spec_v27_source_display_policy.py -q",
+      "stdout_pattern": "22 passed",
+      "timeout_seconds": 120
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "deterministic source-label dynamic-period proof",
+      "command": "backend/.venv/bin/python ops/kernel_checks/verify_source_label_dynamic_period.py",
+      "stdout_pattern": "VERIFY_SOURCE_LABEL_DYNAMIC_PERIOD_READY",
+      "timeout_seconds": 60
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "backend health checkpoint",
+      "command": "curl -sS --max-time 5 http://127.0.0.1:8780/api/health",
+      "stdout_pattern": "\"status\":\"ok\"",
+      "timeout_seconds": 10
+    }
+  ]
+}

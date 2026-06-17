@@ -1313,6 +1313,7 @@ def _apply_source_display_policy(
     _PLACEHOLDER_CELL = {"—", "", "n/a", "?", "na"}
 
     source_values: set[str] = set()
+    source_raw_values: list[str] = []
     has_calculated = False
     has_unavailable = False
     row_count = 0
@@ -1350,6 +1351,7 @@ def _apply_source_display_policy(
         # Normalize for comparison: strip common prefixes
         normalized = _normalize_source_label(src_lower)
         source_values.add(normalized)
+        source_raw_values.append(src_val)
 
     # Step 3: Decide policy
     if row_count == 0:
@@ -1366,7 +1368,7 @@ def _apply_source_display_policy(
         # Collapse to table note
         canonical = next(iter(source_values))
         # Restore display form for the note
-        display_note = _restore_source_display(canonical)
+        display_note = _restore_source_display(canonical, source_raw_values)
         table.source_display_policy = "table_note"
         table.table_source_note = f"Source: {display_note}"
     else:
@@ -1417,8 +1419,43 @@ def _normalize_source_label(label: str) -> str:
     return s
 
 
-def _restore_source_display(normalized: str) -> str:
+def _format_filing_period(label: str) -> str | None:
+    """Extract a client-facing fiscal period from source text when present."""
+    patterns = (
+        r"\b(Q[1-4])\s+(FY\d{4})\b",
+        r"\b(FY\d{4})\s+(Q[1-4])\b",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, label, flags=re.IGNORECASE)
+        if not match:
+            continue
+        first, second = match.group(1).upper(), match.group(2).upper()
+        if first.startswith("Q"):
+            return f"{first} {second}"
+        return f"{second} {first}"
+    return None
+
+
+def _restore_source_display(
+    normalized: str,
+    raw_labels: list[str] | None = None,
+) -> str:
     """Map a normalized source label back to a human-readable display form."""
+    labels = raw_labels or []
+    if normalized == "sec-filing":
+        has_10q = any("10-q" in label.lower() for label in labels)
+        has_release = any("earnings release" in label.lower() for label in labels)
+        if has_10q and has_release:
+            return "Company filings / earnings release metrics"
+        if has_release:
+            return "Earnings release metrics"
+        if has_10q:
+            period = next(
+                (period for label in labels if (period := _format_filing_period(label))),
+                None,
+            )
+            return f"SEC 10-Q ({period})" if period else "SEC 10-Q"
+        return "Company filing metrics"
     MAP = {
         "sec/edgar": "SEC Filings (10-Q/10-K) via EDGAR",
         "yfinance": "Yahoo Finance metrics",
@@ -1426,7 +1463,6 @@ def _restore_source_display(normalized: str) -> str:
         "consensus": "Analyst Consensus",
         "finnhub": "Finnhub",
         "transcript": "Earnings Transcript",
-        "sec-filing": "SEC 10-Q (Q1 FY2027)",
     }
     return MAP.get(normalized, normalized.title())
 

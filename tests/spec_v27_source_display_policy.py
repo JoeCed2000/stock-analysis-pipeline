@@ -321,7 +321,7 @@ class TestSourceDisplayPolicy:
     # ── JP↔EN source label parity tests (t_88943265) ────────────────
 
     def test_jp_en_cashflow_10q_earnings_release_collapse(self):
-        """EN "10-Q" and JP "earnings release" normalize to same key → collapse."""
+        """10-Q + earnings release share a comparison key without false SEC-only display."""
         table = _table(
             columns=["Metric", "Current", "Prior", "YoY", "Source"],
             rows=[
@@ -339,7 +339,23 @@ class TestSourceDisplayPolicy:
             f"got {result.source_display_policy}"
         )
         assert result.table_source_note is not None
-        assert "SEC 10-Q" in result.table_source_note
+        assert result.table_source_note == "Source: Company filings / earnings release metrics"
+
+    def test_sec_10q_table_note_derives_non_q1_period_from_source_label(self):
+        """Pure SEC 10-Q notes derive the period instead of hardcoding Q1 FY2027."""
+        src = "ACME FY2026 Q4 10-Q (supplied metrics)"
+        table = _table(
+            columns=["Metric", "Current", "Prior", "YoY", "Source"],
+            rows=[
+                ("Operating Cash Flow", "$2.5B", "$2.3B", "+8.7%", src),
+                ("CapEx", "($0.5B)", "($0.4B)", "-25%", src),
+                ("Free Cash Flow", "$2.0B", "$1.9B", "+5.3%", src),
+            ],
+        )
+        result = _apply_source_display_policy("Cash Flow", table)
+        assert result.source_display_policy == "table_note"
+        assert result.table_source_note == "Source: SEC 10-Q (Q4 FY2026)"
+        assert "Q1 FY2027" not in result.table_source_note
 
     def test_jp_en_guidance_yahoo_analyst_consensus_collapse(self):
         """Guidance EN "Yahoo Finance" and JP "Analyst consensus: Metrics" share display."""
