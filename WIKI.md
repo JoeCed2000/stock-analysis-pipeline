@@ -2,7 +2,7 @@
 
 ## 2026-06-17 — NVDA EPS/Revenue CRITICAL OVERRIDE reordered before DATA CONTRACT (t_0ad38717)
 
-**Status:** Pending kverify. 3 regression tests + 640 bundle tests passed, 0 regressions.
+**Status:** Kernel READY (8/8). 3 regression + 547 bundle tests, 0 regressions.
 
 **Change:** In `eps_revenue_prompt()`, the CRITICAL OVERRIDE with EPS 1.77 / Revenue 79.19B / Investing.com was appended AFTER `_base_prompt`'s DATA CONTRACT (`base + extra`). Reordered to `extra + base` — the CRITICAL OVERRIDE now comes FIRST so the LLM reads explicit override values before conservative "If a metric is missing → write —" rules.
 
@@ -18,7 +18,7 @@
 - `pytest tests/ spec_v27_* spec_nvda_* test_validator test_deep_dive_quarter test_client_pdf_revision test_earnings_pdf_template test_pipeline_transcript_url -q` → **640 passed** (0 regressions)
 - NVDA prompt now: CRITICAL OVERRIDE at char 4, DATA CONTRACT at char 1187 — override BEFORE contract ✅
 
-**Kernel proof:** `.ced-agent-kernel/specs/t_0ad38717.json` — pending.
+**Kernel proof:** `python3 ops/kernel_checks/verify_t_0ad38717.py` → **VERIFY_T_0AD38717_READY** (8/8 checks).
 **Preserved behavior:** Title date (t_c1756db4) and Net Cash (t_3173af81) untouched — prompts.py change only affects EPS & Revenue section ordering.
 
 ## 2026-06-17 — EPS & Revenue wording condensed to Key Takeaways — SA-FB-06 (t_1bff1c77)
