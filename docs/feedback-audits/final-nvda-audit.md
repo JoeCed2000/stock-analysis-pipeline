@@ -73,6 +73,53 @@ artifacts are regenerated (would take ~15 min and produce identical
 output, since the backend, prompt, and consensus overrides are
 unchanged). The §8 composite verdict (REQUEST_CHANGES) is reaffirmed.
 
+## 1.2. Re-dispatch verification (2026-06-17 08:25 UTC → run 2241)
+
+`sa-nvda-repair-autopilot` re-dispatched this audit a SECOND time at
+08:25 UTC, again citing
+"AUTO-RETRY: patch task completed; rerunning final NVDA PDF audit."
+The trigger is the same as run 2240 (the autopilot fires whenever
+ANY patch task lands, not specifically one that fixes the JP blockers).
+
+**State diff vs §1.1 evidence (run 2240 → run 2241):**
+
+| Signal | Run 2240 (08:14) | Run 2241 (08:25+) | Delta |
+|---|---|---|---|
+| `git rev-parse HEAD` | 4e0d4ac (run-2240 kernel proof) | 4e0d4ac | none |
+| `git log 4e0d4ac..HEAD` | n/a | empty (0 new commits) | none |
+| `git log --since="2026-06-17 08:22"` | n/a | only 4e0d4ac (the kernel proof itself) | none |
+| Backend commit (per `/api/health`) | 4e0d4ac | 4e0d4ac | none |
+| Backend process | 56671 (Jun 16 18:06) | 56671 (unchanged) | none |
+| `analyses/nvda_audit_v3_*` directories | none | none | none |
+| JP validator issues | 3 (EDP-007/009/006) | 3 (EDP-007/009/006) | none |
+| JP markdown ①②③ | 3 items at lines 23/25/27 | 3 items at lines 23/25/27 | none |
+| JP Capital Efficiency 0.8% | present (line 169/172) | present (line 169/172) | none |
+| t_527c4b2e uncommitted | mapper.py + test | mapper.py + test | none |
+| Working tree (other dirs) | kernel specs/audit docs | kernel specs/audit docs | none |
+
+**Conclusion of run 2241 verification:** No new code, no new
+artifacts, no state change since §1.1 was captured at 08:14 UTC.
+The autopilot re-fired a third time on the same stale trigger. The
+audit's EN-approved / JP-blocked split verdict remains the current
+state of the world. The follow-up P0/P1 items in §7 are still open.
+
+**Decision:** This re-audit (run 2241) confirms runs 2239 and 2240.
+No new artifacts are regenerated — would take ~15 min and produce
+identical output since the backend, prompt, consensus overrides, and
+prompt reordering (commit 4197429) are unchanged from run 2239. The
+§8 composite verdict (REQUEST_CHANGES) is reaffirmed for the third
+consecutive run.
+
+**Recommendation to orchestrator:** The
+`sa-nvda-repair-autopilot` auto-retry trigger is firing on
+"any patch task completed" rather than "JP-specific blocker fixed".
+This produces a re-dispatch storm. A correct trigger would be either:
+(a) a child task that explicitly closes the JP blockers, or (b) a
+human-driven unblock with a summary of the JP fixes. Three
+consecutive re-audits (runs 2239/2240/2241) have all returned the
+same split verdict with zero state change — this is wasted
+compute.
+
 ## 3. Findings — per parent fix
 
 ### t_3173af81 — Net Cash $72.1B (CRITICAL OVERRIDE on net_debt)
