@@ -1,5 +1,20 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-17 — Operating Metrics canonical table rounding (t_c02f3308)
+
+**Status:** implementation verified locally; Kernel proof added in this task.
+
+**Change:** `backend/earnings_deep_dive/mapper.py` now derives Operating Metrics table Gross Profit from `revenue_actual`/`revenue_quarterly × gross_margin` when those canonical metrics exist, and derives OpEx from canonical Gross Profit minus `operating_income`. This prevents EN/JP language paths or stale metric fields from producing different table values before `pdf_renderer.py` renders the table.
+
+**Files changed:**
+- `backend/earnings_deep_dive/mapper.py` — added `_canonical_gross_profit()` / `_canonical_opex()` and wired `_rows_for_section("Operating Metrics")` to use them.
+- `tests/spec_v27_pdf_renderer.py` — added EN/JP regression proving stale `gross_profit` / `opex` fields are ignored when canonical derivation inputs exist.
+- `.ced-agent-kernel/specs/t_c02f3308-operating-metrics-rounding.json` and `ops/kernel_checks/verify_t_c02f3308.py` — persistent Kernel proof.
+
+**Verification:** `pytest tests/spec_v27_pdf_renderer.py::test_operating_metrics_derives_gross_profit_and_opex_from_canonical_metrics tests/spec_v27_source_display_policy.py -q` → 22 passed. `curl /api/health` returned OK on backend commit `1fde0d4`. Full `tests/spec_v27_pdf_renderer.py` currently also contains sibling Segments work from `t_3eb11127`, which was running concurrently and is outside this card.
+
+**Kernel proof:** `kverify .ced-agent-kernel/specs/t_c02f3308-operating-metrics-rounding.json --base-dir .` → READY.
+
 ## 2026-06-17 — NVDA EPS/Revenue CRITICAL OVERRIDE reordered before DATA CONTRACT (t_0ad38717)
 
 **Status:** Kernel READY (8/8). 3 regression + 547 bundle tests, 0 regressions.

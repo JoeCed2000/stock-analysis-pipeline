@@ -207,6 +207,46 @@ def _money(value: Any) -> str:
     return f"{sign}${amount:,.0f}"
 
 
+def _first_metric_value(metrics: FinancialMetrics, *keys: str) -> Any:
+    for key in keys:
+        value = getattr(metrics, key, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _margin_ratio(value: Any) -> float | None:
+    if not _has(value):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number / 100.0 if abs(number) > 1 else number
+
+
+def _canonical_gross_profit(metrics: FinancialMetrics) -> Any:
+    revenue = _first_metric_value(metrics, "revenue_actual", "revenue_quarterly")
+    margin = _margin_ratio(getattr(metrics, "gross_margin", None))
+    if _has(revenue) and margin is not None:
+        try:
+            return float(revenue) * margin
+        except (TypeError, ValueError):
+            pass
+    return getattr(metrics, "gross_profit", None)
+
+
+def _canonical_opex(metrics: FinancialMetrics) -> Any:
+    gross_profit = _canonical_gross_profit(metrics)
+    operating_income = getattr(metrics, "operating_income", None)
+    if gross_profit is not None and operating_income is not None and operating_income != "":
+        try:
+            return float(gross_profit) - float(operating_income)
+        except (TypeError, ValueError):
+            pass
+    return getattr(metrics, "opex", None)
+
+
 def _eps(value: Any) -> str:
     if not _has(value):
         return MISSING
@@ -621,14 +661,16 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
             # Backward-compatible layout used by legacy tests/templates.
             base_idx = 0
 
+        gross_profit = _canonical_gross_profit(metrics)
+        opex = _canonical_opex(metrics)
         rows.extend(
             [
                 (
                     row_labels[base_idx + 0],
-                    _money(metrics.gross_profit),
+                    _money(gross_profit),
                     _money(getattr(metrics, "gross_profit_prior_year", None)),
                     _yoy_pct(getattr(metrics, "gross_profit_yoy", None)),
-                    metrics.gross_profit,
+                    gross_profit,
                 ),
                 (
                     row_labels[base_idx + 1],
@@ -639,10 +681,10 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 ),
                 (
                     row_labels[base_idx + 2],
-                    _money(metrics.opex),
+                    _money(opex),
                     _money(getattr(metrics, "opex_prior_year", None)),
                     _yoy_pct(getattr(metrics, "opex_yoy", None)),
-                    metrics.opex,
+                    opex,
                 ),
                 (
                     row_labels[base_idx + 3],

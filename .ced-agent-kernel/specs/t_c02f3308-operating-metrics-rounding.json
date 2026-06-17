@@ -1,0 +1,52 @@
+{
+  "claim": "t_c02f3308 Operating Metrics table rows derive Gross Profit from revenue_actual × gross_margin and OpEx from derived Gross Profit − operating_income, producing identical EN/JP canonical values before PDF rendering.",
+  "workflow": "kanban_task_done",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "mapper exists",
+      "path": "backend/earnings_deep_dive/mapper.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "focused regression exists",
+      "path": "tests/spec_v27_pdf_renderer.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "persistent verifier exists",
+      "path": "ops/kernel_checks/verify_t_c02f3308.py"
+    },
+    {
+      "kind": "python_compile",
+      "name": "mapper compiles",
+      "path": "backend/earnings_deep_dive/mapper.py"
+    },
+    {
+      "kind": "python_compile",
+      "name": "persistent verifier compiles",
+      "path": "ops/kernel_checks/verify_t_c02f3308.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "focused Operating Metrics regression",
+      "command": "python3 -m pytest tests/spec_v27_pdf_renderer.py::test_operating_metrics_derives_gross_profit_and_opex_from_canonical_metrics -q",
+      "stdout_pattern": "1 passed",
+      "timeout_seconds": 120
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "deterministic Operating Metrics proof",
+      "command": "python3 ops/kernel_checks/verify_t_c02f3308.py",
+      "stdout_pattern": "VERIFY_T_C02F3308_READY",
+      "timeout_seconds": 60
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "backend health checkpoint",
+      "command": "curl -sS --max-time 5 http://127.0.0.1:8780/api/health",
+      "stdout_pattern": "\"status\":\"ok\"",
+      "timeout_seconds": 10
+    }
+  ]
+}

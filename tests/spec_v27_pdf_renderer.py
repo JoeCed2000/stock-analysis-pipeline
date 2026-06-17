@@ -27,6 +27,7 @@ from backend.earnings_deep_dive.report_model import (
     DataQualitySection,
     SourceRef,
 )
+from backend.earnings_deep_dive.mapper import build_earnings_deep_dive_report
 from backend.earnings_deep_dive.pdf_renderer import (
     render_earnings_deep_dive_pdf,
     render_executive_snapshot,
@@ -38,6 +39,7 @@ from backend.earnings_deep_dive.pdf_renderer import (
     resolve_pdf_fonts,
     _styles,
 )
+from backend.earnings_deep_dive.schemas import FinancialMetrics as MapperFinancialMetrics
 
 
 # ── Helper: minimal report fixture ──────────────────────────────────────────
@@ -66,6 +68,43 @@ def _minimal_report(**overrides) -> EarningsDeepDiveReport:
             ),
         ],
     )
+
+
+def _operating_metric_rows(language: str):
+    metrics = MapperFinancialMetrics(
+        revenue_actual=81_610_000_000,
+        revenue_yoy=0.78,
+        gross_margin=0.7493,
+        gross_profit=10_000_000_000,
+        opex=2_000_000_000,
+        operating_income=53_540_000_000,
+        operating_margin=0.656,
+        net_income=18_000_000_000,
+    )
+    report = build_earnings_deep_dive_report(
+        ticker="NVDA",
+        company="NVIDIA Corporation",
+        quarter="FY2027 Q1",
+        language=language,
+        metrics=metrics,
+    )
+    section = next(item for item in report.sections if item.key == "Operating Metrics")
+    return section.table.rows
+
+
+def test_operating_metrics_derives_gross_profit_and_opex_from_canonical_metrics():
+    en_rows = _operating_metric_rows("en")
+    jp_rows = _operating_metric_rows("jp")
+
+    assert en_rows[1].label == "Gross profit"
+    assert jp_rows[1].label == "粗利益"
+    assert en_rows[1].cells[0] == "$61.2B"
+    assert jp_rows[1].cells[0] == en_rows[1].cells[0]
+
+    assert en_rows[3].label == "OpEx"
+    assert jp_rows[3].label == "営業費用"
+    assert en_rows[3].cells[0] == "$7.6B"
+    assert jp_rows[3].cells[0] == en_rows[3].cells[0]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
