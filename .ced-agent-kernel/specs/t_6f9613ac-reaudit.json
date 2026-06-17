@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "claim": "t_6f9613ac re-audit: EN approved, JP blocked. Fresh EN+JP artifacts generated, validated, and audited at analyses/nvda_audit_v2_{en,jp}/. Report persisted at docs/feedback-audits/final-nvda-audit.md.",
+  "checks": [
+    {
+      "kind": "command_succeeds",
+      "command": ["python3", "ops/kernel_checks/verify_t_6f9613ac_reaudit.py"],
+      "stdout_pattern": "T_6F9613AC_REAUDIT_VERIFIED_READY",
+      "timeout": 30
+    }
+  ]
+}
