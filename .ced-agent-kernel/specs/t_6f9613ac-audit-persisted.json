@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "claim": "Final NVDA audit findings for blocked task t_6f9613ac are persisted in repo and task result",
+  "checks": [
+    {
+      "kind": "command_succeeds",
+      "command": ["python3", "ops/kernel_checks/verify_t_6f9613ac_audit_persisted.py"],
+      "stdout_pattern": "T_6F9613AC_AUDIT_PERSISTED_READY",
+      "timeout": 30
+    }
+  ]
+}
