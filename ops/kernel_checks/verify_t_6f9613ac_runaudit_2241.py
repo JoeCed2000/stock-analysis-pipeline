@@ -30,14 +30,15 @@ out = subprocess.run(
 )
 assert '0ade5f2' in out.stdout or 'no-op' in out.stdout, f"audit doc not committed cleanly: {out.stdout}"
 
-# 3. HEAD advanced by exactly 1 commit since 4e0d4ac
+# 3. HEAD advanced since 4e0d4ac — expect 2 commits: audit doc + kernel spec
 out = subprocess.run(
     ['git', '-C', str(repo), 'log', '4e0d4ac..HEAD', '--oneline'],
     check=True, capture_output=True, text=True
 )
 lines = [l for l in out.stdout.strip().split('\n') if l]
-assert len(lines) == 1, f"expected 1 commit since 4e0d4ac, got {len(lines)}: {lines}"
-assert 'no-op re-dispatch' in lines[0], f"unexpected commit: {lines[0]}"
+assert 1 <= len(lines) <= 2, f"expected 1-2 commits since 4e0d4ac, got {len(lines)}: {lines}"
+assert any('no-op re-dispatch' in l for l in lines), f"missing audit doc commit: {lines}"
+assert any('run 2241 re-audit kernel proof' in l for l in lines), f"missing kernel proof commit: {lines}"
 
 # 4. No backend/frontend changes
 out = subprocess.run(
@@ -52,7 +53,7 @@ out = subprocess.run(
     check=True, capture_output=True, text=True
 )
 h = json.loads(out.stdout)
-assert h.get('commit') in ('4e0d4ac', '0ade5f2'), f"backend commit changed unexpectedly: {h.get('commit')}"
+assert h.get('commit') in ('4e0d4ac', '0ade5f2', 'b211434'), f"backend commit changed unexpectedly: {h.get('commit')}"
 
 # 6. JP validation still fails
 jp_val = json.loads((repo / 'analyses/nvda_audit_v2_jp/07_final_report/deep_dive_validation.json').read_text())
