@@ -1,0 +1,50 @@
+{
+    "spec_id": "t_0ad38717-eps-revenue-override-seam",
+    "title": "Reorder CRITICAL OVERRIDE before DATA CONTRACT in eps_revenue_prompt",
+    "created": "2026-06-17T10:00:00Z",
+    "claim": "backend/earnings_deep_dive/prompts.py",
+    "checks": [
+        {
+            "id": "prompts_py_compile",
+            "label": "prompts.py compiles without errors",
+            "type": "command_succeeds",
+            "command": "cd /home/ced/codex-projects/stock-analysis-pipeline && python3 -c \"import ast; ast.parse(open('backend/earnings_deep_dive/prompts.py').read())\""
+        },
+        {
+            "id": "spec_test_file_exists",
+            "label": "Regression spec file exists",
+            "type": "command_succeeds",
+            "command": "test -f /home/ced/codex-projects/stock-analysis-pipeline/tests/spec_nvda_eps_revenue_override_seam.py"
+        },
+        {
+            "id": "override_comes_first",
+            "label": "CRITICAL OVERRIDE comes before DATA CONTRACT in eps_revenue_prompt return",
+            "type": "command_succeeds",
+            "command": "cd /home/ced/codex-projects/stock-analysis-pipeline && python3 -c \"\nfrom backend.earnings_deep_dive.generator import _section_metrics\nfrom backend.earnings_deep_dive.prompts import build_prompt\nmetrics = {'eps_estimate': 1.77, 'eps_actual': 0.89, 'revenue_estimate': 79190000000, 'revenue_actual': 81600000000, 'consensus_provider': 'Investing.com (analyst consensus)', 'revenue_yoy': 0.398, 'eps_yoy': -0.395}\nsection_metrics = _section_metrics('EPS & Revenue', metrics)\nprompt = build_prompt('EPS & Revenue', 'en', 'NVDA', 'NVIDIA Corp', 'FY2027 Q1', section_metrics, 'Revenue beat expectations.')\nassert prompt.index('CRITICAL OVERRIDE') < prompt.index('DATA CONTRACT'), 'Override must come before DATA CONTRACT'\nprint('OVERRIDE_BEFORE_CONTRACT=1')\n\""
+        },
+        {
+            "id": "regression_tests_pass",
+            "label": "Focused regression tests all pass (3 tests: override present, order EN, order JP)",
+            "type": "command_succeeds",
+            "command": "cd /home/ced/codex-projects/stock-analysis-pipeline && PYTHONPATH=. backend/.venv/bin/python -m pytest tests/spec_nvda_eps_revenue_override_seam.py -q 2>&1 | tail -3"
+        },
+        {
+            "id": "prompt_tests_pass",
+            "label": "Existing prompt tests pass (no regressions)",
+            "type": "command_succeeds",
+            "command": "cd /home/ced/codex-projects/stock-analysis-pipeline && PYTHONPATH=. backend/.venv/bin/python -m pytest tests/test_earnings_deep_dive_prompts.py -q 2>&1 | tail -3"
+        },
+        {
+            "id": "spec_bundle_tests_pass",
+            "label": "Spec_v27 + nvda bundle tests pass (no regressions)",
+            "type": "command_succeeds",
+            "command": "cd /home/ced/codex-projects/stock-analysis-pipeline && PYTHONPATH=. backend/.venv/bin/python -m pytest tests/test_earnings_deep_dive_prompts.py tests/spec_v27_*.py tests/spec_nvda_*.py -q 2>&1 | tail -3"
+        },
+        {
+            "id": "wikify",
+            "label": "WIKI.md has entry for t_0ad38717",
+            "type": "command_succeeds",
+            "command": "grep -q 't_0ad38717' /home/ced/codex-projects/stock-analysis-pipeline/WIKI.md"
+        }
+    ]
+}

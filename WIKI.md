@@ -1,5 +1,55 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-17 — NVDA EPS/Revenue CRITICAL OVERRIDE reordered before DATA CONTRACT (t_0ad38717)
+
+**Status:** Pending kverify. 3 regression tests + 640 bundle tests passed, 0 regressions.
+
+**Change:** In `eps_revenue_prompt()`, the CRITICAL OVERRIDE with EPS 1.77 / Revenue 79.19B / Investing.com was appended AFTER `_base_prompt`'s DATA CONTRACT (`base + extra`). Reordered to `extra + base` — the CRITICAL OVERRIDE now comes FIRST so the LLM reads explicit override values before conservative "If a metric is missing → write —" rules.
+
+**Root cause (from trace t_5e2d0e9a):** The LLM read the DATA CONTRACT first (position 782), establishing a conservative data-discipline mindset. The CRITICAL OVERRIDE (position 1773, ~991 chars later) came as an afterthought. The LLM prioritized the earlier instruction, ignoring override values.
+
+**Files changed:**
+- `backend/earnings_deep_dive/prompts.py` — `return extra + base` instead of `return base + extra` (line 1013)
+- `tests/spec_nvda_eps_revenue_override_seam.py` — 3 new regression tests: override present, override BEFORE DATA CONTRACT (EN), override BEFORE DATA CONTRACT (JP)
+
+**Verification:**
+- `pytest tests/spec_nvda_eps_revenue_override_seam.py -v` → **3 passed** (was 1/3 RED before fix, 3/3 GREEN after)
+- `pytest tests/test_earnings_deep_dive_prompts.py tests/spec_v27_*.py tests/spec_nvda_*.py -q` → **547 passed** (0 regressions)
+- `pytest tests/ spec_v27_* spec_nvda_* test_validator test_deep_dive_quarter test_client_pdf_revision test_earnings_pdf_template test_pipeline_transcript_url -q` → **640 passed** (0 regressions)
+- NVDA prompt now: CRITICAL OVERRIDE at char 4, DATA CONTRACT at char 1187 — override BEFORE contract ✅
+
+**Kernel proof:** `.ced-agent-kernel/specs/t_0ad38717.json` — pending.
+**Preserved behavior:** Title date (t_c1756db4) and Net Cash (t_3173af81) untouched — prompts.py change only affects EPS & Revenue section ordering.
+
+## 2026-06-17 — EPS & Revenue wording condensed to Key Takeaways — SA-FB-06 (t_1bff1c77)
+
+**Status:** Kernel READY (8/8). 593 V2.x bundle + prompt + PDF tests, 0 regressions.
+
+**Change:** Condensed the EPS & Revenue (EN + JP) LLM section format from "numbered-item analysis format (①②③)" to "Key Takeaways only (max 2 bullets, one line each)". Removed the ③ positives/negatives item — detailed positives/negatives discussion is now fully delegated to Highlights & Lowlights. Also shortened SECTION_QUESTIONS (EN + JP) to request concise key-takeaways analysis.
+
+Before (EN):
+```
+① EPS beat/miss vs consensus estimate (...never invent a vendor name...), with surprise % and YoY direction. One sentence only.
+② Revenue beat/miss vs consensus estimate, with surprise % and YoY direction. One sentence only.
+③ Then 2-3 one-line bullets only: the key positives and negatives of the quarter. No ⚠️ Risk/Implications block.
+```
+
+After (EN):
+```
+• EPS beat/miss vs consensus: surprise % and YoY direction. Name consensus source EXACTLY as given — never invent a vendor name.
+• Revenue beat/miss vs consensus: surprise % and YoY direction.
+```
+Positives/negatives → Highlights & Lowlights.
+
+**Files changed:**
+- `backend/earnings_deep_dive/prompts.py` — EN_SECTION_FORMATS["EPS & Revenue"], SECTION_FORMATS["EPS & Revenue"], SECTION_QUESTIONS["EPS & Revenue"]["en"], SECTION_QUESTIONS["EPS & Revenue"]["jp"]
+- `.ced-agent-kernel/specs/t_1bff1c77-eps-revenue-concise.json` — kernel spec
+- `ops/kernel_checks/verify_t_1bff1c77.py` — persistent verifier (8 checks)
+
+**Kernel proof:** `python3 ops/kernel_checks/verify_t_1bff1c77.py` → **VERIFY_T_1BFF1C77_READY** (8/8 checks).
+
+**Verification:** 593/593 tests passed (V2.x bundle + prompt + PDF). 0 regressions.
+—
 ## 2026-06-17 — Capital Efficiency prompt condensed to Key Takeaways (t_a5c407c3)
 
 **Status:** Kernel READY (6/6). 66 focused tests, 568 V2.x bundle tests, 0 regressions.
