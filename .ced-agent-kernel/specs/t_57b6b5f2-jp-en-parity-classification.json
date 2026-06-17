@@ -1,0 +1,38 @@
+{
+  "claim": "NVDA JP EN parity gaps classified from evidence. Classification note exists with 11 required structural sections, 6 follow-up cards proposed, source artifacts (EN+JP markdown+validation JSONs) intact and not modified, no backend/frontend changes. Read-only review task; no code mutation. No invented precision: 13 spot-check values quoted verbatim from source artifacts.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "classification note exists",
+      "path": "docs/feedback-audits/jp-en-parity-classification.md"
+    },
+    {
+      "kind": "path_exists",
+      "name": "kernel verifier script exists",
+      "path": "ops/kernel_checks/verify_t_57b6b5f2.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "EN markdown artifact still exists",
+      "path": "analyses/nvda_audit_v2_en/07_final_report/earnings_deep_dive.md"
+    },
+    {
+      "kind": "path_exists",
+      "name": "JP markdown artifact still exists",
+      "path": "analyses/nvda_audit_v2_jp/07_final_report/earnings_deep_dive.md"
+    },
+    {
+      "kind": "python_compile",
+      "name": "verifier script compiles",
+      "path": "ops/kernel_checks/verify_t_57b6b5f2.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "deterministic proof script",
+      "command": "python3 ops/kernel_checks/verify_t_57b6b5f2.py",
+      "stdout_pattern": "VERIFY_T_57B6B5F2_READY",
+      "timeout_seconds": 30
+    }
+  ]
+}
