@@ -535,7 +535,23 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
         (k, v) for k, v in segments.items()
         if isinstance(v, dict) and k not in _META_KEYS
     ]
+    if not segment_entries and isinstance(segments.get("product_segments"), list):
+        for raw_segment in segments.get("product_segments") or []:
+            if not isinstance(raw_segment, dict):
+                continue
+            name = str(raw_segment.get("name") or "").strip()
+            if not name:
+                continue
+            segment = dict(raw_segment)
+            if "revenue" not in segment and "revenue_quarterly" in segment:
+                segment["revenue"] = segment.get("revenue_quarterly")
+            segment_entries.append((name, segment))
     segment_items = segment_entries[: len(labels)]
+    has_usable_segments = any(
+        isinstance(raw, dict)
+        and any(_has(raw.get(key)) for key in ("revenue", "revenue_quarterly", "revenue_q_prior_year", "yoy"))
+        for _, raw in segment_entries
+    )
     # Detect garbled XBRL names: SEC text fragments, month abbreviations
     _GARBLED_EXACT = {"Sep", "Total"}
     _GARBLED_CONTAINS = ["generally", "consistent", "reportable", "As of", "than a year", "revenue of",
@@ -556,6 +572,24 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
         # XBRL name is garbled SEC text — use the generic template label
         return fallback_label
 
+    def _total_row(label: str = "Total") -> list[str]:
+        total_yoy = getattr(metrics, "revenue_yoy", None)
+        total_prior = getattr(metrics, "revenue_quarterly_prior_year", None)
+        if total_prior is None and total_yoy:
+            try:
+                total_prior = float(total_rev) / (1.0 + float(total_yoy) / (100.0 if abs(float(total_yoy)) > 1.5 else 1.0))
+            except (TypeError, ValueError, ZeroDivisionError):
+                total_prior = None
+        return [
+            label,
+            _money(total_rev),
+            _money(total_prior),
+            _yoy_pct(total_yoy),
+            "100.0%",
+            "Total reported revenue",
+            "Calculated (sum of reported segments)",
+        ]
+
     # Compute total revenue for mix % calculation
     total_rev = segments.get("total_revenue_quarterly")
     if not _has(total_rev):
@@ -566,22 +600,7 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
             # No-NA policy: the trailing 'Total' label row is derivable from
             # known metrics — never render it as a wall of placeholders.
             if str(row_label).strip().lower() in ("total", "合計") and _has(total_rev):
-                total_yoy = getattr(metrics, "revenue_yoy", None)
-                total_prior = getattr(metrics, "revenue_quarterly_prior_year", None)
-                if total_prior is None and total_yoy:
-                    try:
-                        total_prior = float(total_rev) / (1.0 + float(total_yoy) / (100.0 if abs(float(total_yoy)) > 1.5 else 1.0))
-                    except (TypeError, ValueError, ZeroDivisionError):
-                        total_prior = None
-                rows.append([
-                    row_label,
-                    _money(total_rev),
-                    _money(total_prior),
-                    _yoy_pct(total_yoy),
-                    "100.0%",
-                    "Total reported revenue",
-                    "Calculated (sum of reported segments)",
-                ])
+                rows.append(_total_row(str(row_label)))
                 continue
             rows.append([row_label, MISSING, MISSING, MISSING, MISSING, MISSING, MISSING])
             continue
@@ -615,6 +634,8 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
             str(driver) if _has(driver) else "Segment revenue contribution",
             _source(raw),
         ])
+    if has_usable_segments and _has(total_rev) and not any(str(row[0]).strip().lower() in ("total", "合計") for row in rows):
+        rows.append(_total_row("Total"))
     return rows
 
 

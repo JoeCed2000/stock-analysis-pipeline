@@ -1,0 +1,59 @@
+{
+  "claim": "t_3eb11127 Segments metric-based rounding hardened: Segment rows are built from FinancialMetrics.segments/product_segments, JP/short templates get a canonical Total row, LLM-rounded Segments table cells cannot override deterministic Data Center YoY or Total prior-year displays, WIKI updated, tests passed, and backend health checked.",
+  "workflow": "kanban_task_done",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "mapper exists",
+      "path": "backend/earnings_deep_dive/mapper.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "focused regression exists",
+      "path": "tests/spec_v27_pdf_renderer.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "persistent verifier exists",
+      "path": "ops/kernel_checks/verify_t_3eb11127.py"
+    },
+    {
+      "kind": "python_compile",
+      "name": "mapper compiles",
+      "path": "backend/earnings_deep_dive/mapper.py"
+    },
+    {
+      "kind": "python_compile",
+      "name": "persistent verifier compiles",
+      "path": "ops/kernel_checks/verify_t_3eb11127.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "focused Segments regression",
+      "command": "python3 -m pytest tests/spec_v27_pdf_renderer.py::test_segments_rows_ignore_llm_rounded_values_for_en_jp_parity -q",
+      "stdout_pattern": "1 passed",
+      "timeout_seconds": 120
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "V2.7 renderer regression file",
+      "command": "python3 -m pytest tests/spec_v27_pdf_renderer.py -q",
+      "stdout_pattern": "39 passed",
+      "timeout_seconds": 120
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "deterministic Segments proof",
+      "command": "python3 ops/kernel_checks/verify_t_3eb11127.py",
+      "stdout_pattern": "VERIFY_T_3EB11127_READY",
+      "timeout_seconds": 120
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "backend health checkpoint",
+      "command": "curl -sS --max-time 5 http://127.0.0.1:8780/api/health",
+      "stdout_pattern": "\"status\":\"ok\"",
+      "timeout_seconds": 10
+    }
+  ]
+}

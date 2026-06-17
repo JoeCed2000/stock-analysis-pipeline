@@ -107,6 +107,61 @@ def test_operating_metrics_derives_gross_profit_and_opex_from_canonical_metrics(
     assert jp_rows[3].cells[0] == en_rows[3].cells[0]
 
 
+def _segment_rows(language: str):
+    metrics = MapperFinancialMetrics.model_validate({
+        "revenue_actual": 81_610_000_000,
+        "revenue_quarterly_prior_year": 44_050_000_000,
+        "revenue_yoy": 85.23,
+        "segments": {
+            "Data Center": {
+                "revenue": 41_100_000_000,
+                "revenue_q_prior_year": 21_361_746_361.74636,
+                "yoy": 92.4,
+                "source": "SEC XBRL",
+            },
+            "Gaming": {
+                "revenue": 3_800_000_000,
+                "revenue_q_prior_year": 2_600_000_000,
+                "yoy": 46.2,
+                "source": "SEC XBRL",
+            },
+            "total_revenue_quarterly": 81_610_000_000,
+            "source": "SEC XBRL",
+        },
+    })
+    llm_rounded_table = """
+| Segment | Revenue | Prior Year | YoY | % of Total | Driver | Source |
+|---|---|---|---|---|---|---|
+| Data Center | $41.10B | $21.41B | +92.0% | 50.4% | AI | LLM |
+| Total | $81.61B | $44.06B | +85.0% | 100.0% | Total | LLM |
+"""
+    report = build_earnings_deep_dive_report(
+        ticker="NVDA",
+        company="NVIDIA Corporation",
+        quarter="FY2027 Q1",
+        language=language,
+        metrics=metrics,
+        section_analysis={"Segments": llm_rounded_table},
+    )
+    section = next(item for item in report.sections if item.key == "Segments")
+    return {row.label: row.cells for row in section.table.rows}
+
+
+def test_segments_rows_ignore_llm_rounded_values_for_en_jp_parity():
+    en_rows = _segment_rows("en")
+    jp_rows = _segment_rows("jp")
+
+    assert en_rows["Data Center"][2] == "+92.4%"
+    assert jp_rows["Data Center"][2] == en_rows["Data Center"][2]
+    assert jp_rows["Data Center"][2] != "+92.0%"
+
+    assert "Total" in en_rows
+    assert "Total" in jp_rows
+    assert jp_rows["Total"][1] == en_rows["Total"][1]
+    assert jp_rows["Total"][1] != "$44.06B"
+
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Executive Snapshot
 # ═══════════════════════════════════════════════════════════════════════════════

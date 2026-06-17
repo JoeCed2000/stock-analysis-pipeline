@@ -1,5 +1,20 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-06-17 — Segments canonical table rounding (t_3eb11127)
+
+**Status:** implementation verified locally; Kernel proof added in this task.
+
+**Change:** `backend/earnings_deep_dive/mapper.py::_extract_segment_rows()` now treats shaped segment dicts and raw `product_segments` as deterministic metric sources, adds a canonical `Total` row when usable segment data exists but the language template lacks a total row, and keeps `pdf_renderer.py` presentation-only. EN and JP Segments tables now use the same mapper-generated Data Center YoY and Total prior-year display cells instead of LLM-rounded table cells.
+
+**Files changed:**
+- `backend/earnings_deep_dive/mapper.py` — raw `product_segments` fallback, reusable `_total_row()`, and JP/short-template Total row append.
+- `tests/spec_v27_pdf_renderer.py` — regression proving EN/JP Segments ignore LLM-rounded `+92.0%` / `$44.06B` values and use canonical mapper cells.
+- `.ced-agent-kernel/specs/t_3eb11127-segments-rounding.json` and `ops/kernel_checks/verify_t_3eb11127.py` — persistent Kernel proof.
+
+**Verification:** RED observed (`test_segments_rows_ignore_llm_rounded_values_for_en_jp_parity` failed because JP lacked a `Total` row). GREEN: `tests/spec_v27_pdf_renderer.py` → 39 passed; V2.7 bundle + data quality + deep-dive regression → 576 passed; `curl /api/health` returned OK on backend commit `1fde0d4`.
+
+**Kernel proof:** `kverify .ced-agent-kernel/specs/t_3eb11127-segments-rounding.json --base-dir .` → READY.
+
 ## 2026-06-17 — Operating Metrics canonical table rounding (t_c02f3308)
 
 **Status:** implementation verified locally; Kernel proof added in this task.
