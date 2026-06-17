@@ -80,15 +80,12 @@ TABLE_REQUIREMENTS: Dict[str, str] = {
 SECTION_QUESTIONS: Dict[str, Dict[str, str]] = {
     "EPS & Revenue": {
         "en": (
-            "Please summarize the estimated and actual figures for EPS (earnings per share) "
-            "and revenue of {company} ({ticker}) for {quarter} in a detailed table "
-            "(Estimate|Actual|vs Estimate|YoY|Source). "
-            "Include the 3-quarter EPS trend to show trajectory and velocity. "
-            "Explain beat/miss quality: was this a high-quality surprise (both top and bottom line beat) "
-            "or a mixed result? Provide variance versus estimates and year-over-year change "
-            "with specific dollar amounts and percentages."
+            "Provide EPS and Revenue of {company} ({ticker}) for {quarter} — "
+            "table with Estimate|Actual|vs Estimate|YoY|Source. "
+            "Then concise EPS and Revenue key takeaways (one line each). "
+            "Keep it brief; detailed analysis goes in Highlights/Lowlights."
         ),
-        "jp": "{company} ({ticker}) の{quarter}決算のEPS（1株当たり利益）と売上高の予想値、実績値、予想比、前年同期比をまとめて下さい。3四半期のEPSトレンドも含めてください。",
+        "jp": "{company} ({ticker}) の{quarter}決算のEPSと売上高を表形式（予想|実績|予想比|前年同期比|ソース）でまとめ、簡潔な重要ポイント（各1行）を箇条書き。詳細はハイライト/ローライトに任せる。",
     },
     "Highlights": {
         "en": (
@@ -204,11 +201,12 @@ SECTION_FORMATS: Dict[str, str] = {
 | EPS | ... | ... | ... | ... | ... |
 | Revenue | ... | ... | ... | ... | ... |
 
-Required analysis format（簡潔に — 合計120語以内、長い段落は禁止）:
-① EPS: 実績 vs コンセンサス予想（予想の出所を明記）、サプライズ%、前年同期比の方向。
-② 売上高: 実績 vs コンセンサス予想、サプライズ%、前年同期比の方向。
-③ その後、1行の箇条書き2〜3点のみ: 今四半期の主なポジティブとネガティブ。
-詳細はハイライト/ローライトのセクションに任せ、ここでは繰り返さないこと。""",
+Required analysis format — 重要ポイントのみ（最大2箇条、各行1文）:
+• EPS: 実績 vs コンセンサス予想（予想の出所を明記）、サプライズ%、前年同期比の方向。
+• 売上高: 実績 vs コンセンサス予想、サプライズ%、前年同期比の方向。
+
+ポジティブ・ネガティブの詳細はハイライト/ローライトのセクションに任せ、ここでは繰り返さないこと。
+> One-line summary: [your one-line summary here]""",
     "Highlights": """Required table:
 {table_header}
 |---|---|---|---|---|---|
@@ -411,12 +409,11 @@ EN_SECTION_FORMATS: Dict[str, str] = {
 | EPS | ... | ... | ... | ... | ... |
 | Revenue | ... | ... | ... | ... | ... |
 
-Required analysis format (CONCISE — max ~120 words total, ONE short paragraph only):
-① EPS beat/miss vs consensus estimate (name the consensus source EXACTLY as given in the consensus_provider metric — never invent a vendor name like FactSet/Refinitiv/Bloomberg), with surprise % and YoY direction. One sentence only.
-② Revenue beat/miss vs consensus estimate, with surprise % and YoY direction. One sentence only.
-③ Then 2-3 one-line bullets only: the key positives and negatives of the quarter. No ⚠️ Risk/Implications block.
+Required analysis format — Key Takeaways only (max 2 bullets, one line each):
+• EPS beat/miss vs consensus: surprise % and YoY direction. Name consensus source EXACTLY as given — never invent a vendor name.
+• Revenue beat/miss vs consensus: surprise % and YoY direction.
 
-Detailed discussion belongs in Highlights & Lowlights below — do not repeat it here.
+Detailed discussion of positives and negatives belongs in Highlights & Lowlights below — do not repeat here.
 > One-line summary: [your one-line summary here]""",
     "Highlights": """Required table:
 {table_header}
@@ -1021,7 +1018,10 @@ def eps_revenue_prompt(language: str, ticker: str, company: str, quarter: str, m
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
     )
-    return base + extra
+    # CRITICAL OVERRIDE must come FIRST, before DATA CONTRACT, so the
+    # LLM reads explicit override values BEFORE conservative data-discipline
+    # rules like "If a metric is missing → write —".
+    return extra + base
 
 
 def highlights_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
