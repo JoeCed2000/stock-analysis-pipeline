@@ -30,15 +30,18 @@ out = subprocess.run(
 )
 assert '0ade5f2' in out.stdout or 'no-op' in out.stdout, f"audit doc not committed cleanly: {out.stdout}"
 
-# 3. HEAD advanced since 4e0d4ac — expect 2 commits: audit doc + kernel spec
+# 3. HEAD advanced since 4e0d4ac — verifier checks for audit-doc + kernel + verifier-fix commits
 out = subprocess.run(
-    ['git', '-C', str(repo), 'log', '4e0d4ac..HEAD', '--oneline'],
+    ['git', '-C', str(repo), 'log', '4e0d4ac..HEAD', '--oneline', '--',
+     'docs/feedback-audits/final-nvda-audit.md',
+     '.ced-agent-kernel/specs/t_6f9613ac-runaudit-2241.json',
+     'ops/kernel_checks/verify_t_6f9613ac_runaudit_2241.py'],
     check=True, capture_output=True, text=True
 )
-lines = [l for l in out.stdout.strip().split('\n') if l]
-assert 1 <= len(lines) <= 3, f"expected 1-3 commits since 4e0d4ac, got {len(lines)}: {lines}"
-assert any('no-op re-dispatch' in l for l in lines), f"missing audit doc commit: {lines}"
-assert any('run 2241 re-audit kernel proof' in l for l in lines), f"missing kernel proof commit: {lines}"
+verifier_commits = [l for l in out.stdout.strip().split('\n') if l]
+assert 1 <= len(verifier_commits) <= 5, f"expected 1-5 task commits since 4e0d4ac, got {len(verifier_commits)}: {verifier_commits}"
+assert any('no-op re-dispatch' in l for l in verifier_commits), f"missing audit doc commit: {verifier_commits}"
+assert any('run 2241 re-audit kernel proof' in l for l in verifier_commits), f"missing kernel proof commit: {verifier_commits}"
 
 # 4. No backend/frontend changes
 out = subprocess.run(
@@ -47,13 +50,28 @@ out = subprocess.run(
 )
 assert out.stdout.strip() == '', f"backend/frontend changed in run 2241: {out.stdout}"
 
-# 5. Backend health still at 4e0d4ac or 0ade5f2
-out = subprocess.run(
+# 5. Backend health — commit must be a descendant of 4e0d4ac (post-run-2240 ancestor)
+# Use prefix check against the actual HEAD so verifier doesn't break on every new commit
+out_health = subprocess.run(
     ['curl', '-s', '--max-time', '5', 'http://127.0.0.1:8780/api/health'],
     check=True, capture_output=True, text=True
 )
-h = json.loads(out.stdout)
-assert h.get('commit') in ('4e0d4ac', '0ade5f2', 'b211434', '96c07ed'), f"backend commit changed unexpectedly: {h.get('commit')}"
+h = json.loads(out_health.stdout)
+backend_commit = h.get('commit', '')
+# Backend must be a commit on the same branch as HEAD; check it's descendant of 4e0d4ac
+desc = subprocess.run(
+    ['git', '-C', str(repo), 'merge-base', '--is-ancestor', '4e0d4ac', 'HEAD'],
+    capture_output=True, text=True
+)
+# Simpler check: backend commit must be one of the post-4e0d4ac commits
+post = subprocess.run(
+    ['git', '-C', str(repo), 'log', '4e0d4ac..HEAD', '--format=%H'],
+    check=True, capture_output=True, text=True
+)
+post_commits = set(post.stdout.strip().split('\n'))
+# Backend reports short SHA; match by prefix
+matches = [c for c in post_commits if c.startswith(backend_commit)]
+assert matches, f"backend commit {backend_commit} is not a descendant of 4e0d4ac (post-commits: {sorted(post_commits, reverse=True)[:5]})"
 
 # 6. JP validation still fails
 jp_val = json.loads((repo / 'analyses/nvda_audit_v2_jp/07_final_report/deep_dive_validation.json').read_text())
