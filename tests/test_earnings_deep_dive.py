@@ -91,6 +91,8 @@ def test_section_metrics_keeps_missing_keys_when_all_values_are_missing():
     metrics = _section_metrics("Cash Flow", {})
 
     assert metrics == {
+        "revenue_actual": "Not disclosed",
+        "revenue_quarterly": "Not disclosed",
         "free_cash_flow": "Not disclosed",
         "operating_cash_flow": "Not disclosed",
         "capex": "Not disclosed",

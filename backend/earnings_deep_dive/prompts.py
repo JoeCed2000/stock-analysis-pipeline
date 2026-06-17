@@ -232,7 +232,7 @@ Lowlights（ローライト）
 
 各箇条書きは1行。項目ごとに3〜5文の段落を書かないこと。
 """,
-    "Operating Metrics": """Required table:
+    'Operating Metrics': """Required table:
 {table_header}
 |---|---|---|---|---|
 | Revenue | ... | ... | ... | ... |
@@ -243,28 +243,27 @@ Lowlights（ローライト）
 | Operating Margin | ... | ... | ... | ... |
 | Net Income | ... | ... | ... | ... |
 
-Required analysis format — Key Takeaways only (max 5 bullets, one line each):
-• Gross margin level and what it signals vs sector norms.
-• Operating leverage: revenue growth vs expense growth.
-• Operating margin level in context (e.g. comparable to leading software peers, only if true).
-• Net income vs operating income — name the driver (e.g. unrealized investment gains) ONLY if supported by source data.
-• Core message: revenue growth AND margin direction together (growth quality).
-The table carries the detail — no multi-paragraph analysis, no INFERRED paragraphs.
-""",
-    "Cash Flow": """Required table:
-{table_header}
-|---|---|---|---|---|---|
-| Operating Cash Flow (OCF) | ... | ... | ... | ... | ... |
-| CapEx | ... | ... | ... | ... | ... |
-| Free Cash Flow (FCF) | ... | ... | ... | ... | ... |
-
-Required analysis format — Key Takeaways形式のみ（最大5点、各1行）:
+Required analysis format — 重要ポイントのみ（最大5箇条、各行1文）:
 • 粗利益率の水準とセクター水準との比較が示す意味。
 • 営業レバレッジ: 売上成長 vs 費用成長。
 • 営業利益率の水準（例: 大手ソフトウェア企業並み — 事実の場合のみ）。
 • 純利益 vs 営業利益 — 要因（例: 投資有価証券の未実現評価益）はソースで裏付けられる場合のみ明記。
 • 核心メッセージ: 売上成長とマージン改善の同時達成（成長の質）。
-表が詳細を担う — 複数段落の分析やINFERRED段落は書かないこと。
+表が詳細を担う — 追加の解説見出しや長文分析は書かないこと。
+""",
+    'Cash Flow': """Required table:
+{table_header}
+|---|---|---|---|---|---|
+| Operating Cash Flow (OCF) | ... | ... | ... | ... | ... |
+| CapEx | ... | ... | ... | ... | ... |
+| Free Cash Flow (FCF) | ... | ... | ... | ... | ... |
+| FCF Margin | ... | ... | ... | ... | Calculated: FCF ÷ Revenue |
+
+Required analysis format — 重要ポイントのみ（最大3箇条、各行1文）:
+• 営業キャッシュフロー: 金額、前年同期比、利益の現金化の質を1文で。
+• CapExと再投資: 投資強度、成長との整合性、増減方向を1文で。
+• FCFと資本配分: FCF、株主還元/債務/再投資への使途、持続性を1文で。
+表が詳細を担う — 追加の解説見出しや長文分析は書かないこと。
 """,
     "Capital Efficiency": """Required table:
 {table_header}
@@ -283,7 +282,7 @@ Required analysis format — 重要ポイントのみ（最大5箇条、各行1�
 • コアメッセージ: リターンが財務エンジニアリングではなく事業力に基づくか。
 
 表が詳細を提供します — 複数段落の分析、競合コンテキストエッセイ、リスク/注意セクションは不要。各箇条は1文のみ。合計: 最大〜120語。""",
-    "Segments": """Required tables:
+    'Segments': """Required tables:
 {table_header}
 |---|---|---|---|---|---|
 | Product / Category 1 | ... | ... | ... | ... | ... |
@@ -294,27 +293,14 @@ Required analysis format — 重要ポイントのみ（最大5箇条、各行1�
 | Region 1 | ... | ... | ... | ... | ... |
 | Region 2 | ... | ... | ... | ... | ... |
 
-Required analysis format:
-🧠 セグメント別の解説・分析（各3〜5文）
-① 主要製品/カテゴリセグメント: 収益、成長率、全体に占める割合。成長の要因 — 価格、数量、新製品？成長率をセクター平均と比較。
-② 利益エンジン/経常収益セグメント: マージン貢献と持続性。これはキャッシュカウか？経常収益の特性。
-③ 安定/弱含みのセグメント: 回復シグナル、成熟圧力、構造的衰退。3四半期の収益軌道。
-④⑤ 追加セグメントまたはトランスクリプトで強調されたテーマ。
-
-🌍 地域別の重要ポイント（各3〜5文）
-① 最強の地域: 収益と成長。地域のアウトパフォーマンス要因は？
-② 新興成長地域: 次の成長の波はどこか？初期シグナル。
-③ 成熟市場: 安定性、飽和、マクロ経済エクスポージャー。
-
-競合コンテキスト: セクター平均と比較したセグメントミックス — より多様化/集中？より高い/低い成長セグメント？
-
-🎯 全体構造（超重要）: 収益集中リスク。顧客または製品依存度の分析。
-
-🧩 Namiさん向け本質理解: 短期/中期/長期のセグメントテーゼ — どのセグメントが勝ち、どれが衰えるか。
-
-⚠️ リスク: 1〜2のセグメント固有リスク（集中、競合代替、景気循環性）。
-
-⚠️ 注意ポイント: 集中と将来のセグメント依存。""",
+Required analysis format — 重要ポイントのみ（最大5箇条、各行1文）:
+• 最大セグメント: 売上、成長率、全体ミックスを1文で。
+• 成長ドライバー: 価格、数量、新製品、顧客需要のどれが効いたか。
+• 安定/弱含みセグメント: 回復シグナルまたは構造的な弱さを1文で。
+• 地域ミックス: 最も強い地域または地域差を1文で。
+• コアメッセージ: 収益集中リスクまたは成長の持続性を1文で。
+表が詳細を担う — 追加の解説見出しや長文分析は書かないこと。
+""",
     "Forward P/E": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -345,7 +331,7 @@ Required analysis format:
 ■ ④ ただし注意点（重要）: pricing, cancellation, coverage, and burn-down risk.
 ■ ⑤ バックログの“質”を一言でいうと: one direct phrase.
 ■ Namiさん向けの本質: explain what visibility changed and list next questions.""",
-    "Guidance": """Required table:
+    'Guidance': """Required table:
 {table_header}
 |---|---|---|---|---|
 | Revenue | ... | ... | ... | ... |
@@ -354,23 +340,15 @@ Required analysis format:
 | EPS | ... | ... | ... | ... |
 | Diluted Shares | ... | ... | ... | ... |
 
-Required analysis format:
-■ 来期ガイダンス: present the table first.
-■ 一言でいうと: concise direction such as strong growth, high profitability, or cautious.
-■ 分析（かなり重要）
-① Revenue: acceleration/deceleration and demand drivers.
-② Profitability: gross margin and OpEx implications.
-③ EPS: QoQ / YoY direction.
-④ Structural signals: customer mix, long-term contracts, pricing, product cycle, or macro.
-■ 中期（来期以降）の示唆
-① Revenue direction
-② Margin direction
-③ Stabilizing or risk factors
-■ ただし注意点（かなり重要）: whether guidance is too strong, price dependent, or cyclical.
-■ Namiさん向けの本質: what the guide means and what to monitor next.
-■ 一言まとめ: [your one-line summary here]
+Required analysis format — 重要ポイントのみ（最大5箇条、各行1文）:
+• Revenue: 会社ガイダンスまたはコンセンサスの方向性、加速/減速、需要要因を1文で。
+• Gross Margin: 利益率の方向性と主な要因を1文で。
+• OpEx: 投資・費用規律・営業レバレッジへの示唆を1文で。
+• EPS / Diluted Shares: EPS方向性と株式数前提を1文で。
+• コアメッセージ: 来期見通しが強い/慎重/不確実のどれかを1文で。
+表が詳細を担う — 追加の解説見出しや長文分析は書かないこと。
 
-⚠️ 重要: 会社ガイダンス（経営陣が発表した会社の見通し）とコンセンサス/アナリスト予想（外部予測）を常に明確に区別してください。外部予想を「ガイダンス」と表記しないこと。「会社ガイダンス：…」または「経営陣のガイダンス：…」のように正確に表記すること。""",
+重要: 会社ガイダンス（経営陣が発表した会社の見通し）とコンセンサス/アナリスト予想（外部予測）を常に明確に区別してください。外部予想を「ガイダンス」と表記しないこと。「会社ガイダンス：…」または「経営陣のガイダンス：…」のように正確に表記すること。""",
     "Verdict": """Required table:
 {table_header}
 |---|---|---|---|---|
@@ -470,6 +448,7 @@ The table carries the detail — no multi-paragraph analysis, no INFERRED paragr
 | Operating Cash Flow (OCF) | ... | ... | ... | ... | ... |
 | CapEx | ... | ... | ... | ... | ... |
 | Free Cash Flow (FCF) | ... | ... | ... | ... | ... |
+| FCF Margin | ... | ... | ... | ... | Calculated: FCF ÷ Revenue |
 
 Required analysis format:
 🧠 Explanation and analysis (3-5 sentences each)
@@ -1136,6 +1115,7 @@ def cash_flow_prompt(language: str, ticker: str, company: str, quarter: str, met
     ocf = metrics.get("operating_cash_flow")
     capex = metrics.get("capex")
     fcf = metrics.get("free_cash_flow")
+    revenue = metrics.get("revenue_actual") or metrics.get("revenue_quarterly")
     extra = ""
     if ocf is not None:
         try: extra += f"\n\n🔴 CRITICAL OVERRIDE: Operating Cash Flow = ${float(ocf)/1e9:.2f}B. USE THIS EXACT VALUE in the OCF row of the table."
@@ -1146,13 +1126,40 @@ def cash_flow_prompt(language: str, ticker: str, company: str, quarter: str, met
     if fcf is not None:
         try: extra += f"\n⚠️  Free Cash Flow (FCF) = ${float(fcf)/1e9:.2f}B (= OCF - CapEx). Use in FCF row."
         except (TypeError, ValueError): pass
+    if fcf is not None and revenue is not None:
+        try:
+            fcf_margin = float(fcf) / float(revenue) * 100
+            extra += (
+                f"\n\n🔴 CRITICAL OVERRIDE: FCF Margin = {fcf_margin:.1f}% "
+                f"(Calculated: FCF ÷ Revenue = ${float(fcf)/1e9:.2f}B ÷ ${float(revenue)/1e9:.2f}B). "
+                f"MUST add a Cash Flow table row exactly named 'FCF Margin' with Actual {fcf_margin:.1f}% "
+                f"and Source 'Calculated: FCF ÷ Revenue'."
+            )
+        except (TypeError, ValueError, ZeroDivisionError):
+            pass
     if ocf is not None and capex is not None:
         try:
-            calculated_fcf = float(ocf) - float(capex)
+            calculated_fcf = float(fcf) if fcf is not None else float(ocf) + float(capex)
             if calculated_fcf >= 0: qual = "positive"
             else: qual = "negative"
             extra += f"\n⚠️  FCF is {qual} (${calculated_fcf/1e9:.2f}B). Frame cash analysis accordingly."
         except (TypeError, ValueError): pass
+    # JP-specific: include Net Cash/Net Debt callout in Cash Flow prose.
+    # EN covers Net Cash via item ④⑤ and Cash structure sections in the
+    # format prompt; JP Key Takeaways format does not include those sections,
+    # so the LLM needs an explicit override to mention the net cash position.
+    if language.lower() in {"jp", "ja"}:
+        net_debt = metrics.get("net_debt")
+        if net_debt is not None:
+            try:
+                abs_val = abs(float(net_debt)) / 1e9
+                oku_dollars = abs_val * 10  # $1B = 10億ドル in Japanese large-number units.
+                if float(net_debt) < 0:
+                    extra += f"\n\n🔴 CRITICAL OVERRIDE: Net Cash / (Net Debt) = ${abs_val:.1f}B (net cash position, from net_debt={float(net_debt)/1e9:.2f}B). MUST include this net cash figure as item ④ if numbered items are used, otherwise in one Cash Flow takeaway or the one-line summary — e.g. '純現金ポジションは{oku_dollars:.0f}億ドル（Source: supplied metrics）'. Do not add extra prose sections."
+                else:
+                    extra += f"\n\n🔴 CRITICAL OVERRIDE: Net Cash / (Net Debt) = -${abs_val:.1f}B (net debt position, from net_debt={float(net_debt)/1e9:.2f}B). MUST include this net debt figure in one Cash Flow takeaway or the one-line summary. Do not add extra prose sections."
+            except (TypeError, ValueError):
+                pass
     base = _base_prompt(
         section="Cash Flow",
         language=language,
@@ -1239,31 +1246,62 @@ def segments_prompt(language: str, ticker: str, company: str, quarter: str, metr
 
 
 def forward_pe_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:
-    # Explicitly surface pe_forward to prevent LLM hallucination.
-    # Despite being present in the Metrics line, the LLM often claims
-    # "not provided in supplied metrics" and fills the table with —.
+    # Explicitly surface valuation metrics before the generic DATA CONTRACT.
+    # JP generation failed twice when the only explicit Forward P/E override was
+    # appended after the base prompt and forced an English first sentence. Keep
+    # the factual rows up front and localize the answer-body instruction.
     pe_val = metrics.get("pe_forward")
     eps_val = metrics.get("eps_estimate")
+    revenue_yoy = metrics.get("revenue_yoy")
+    guidance = metrics.get("guidance")
     extra = ""
+
+    row_lines: list[str] = []
     if pe_val is not None:
         try:
             pe_str = f"{float(pe_val):.2f}x"
         except (TypeError, ValueError):
             pe_str = str(pe_val)
-        extra += (
-            f"\n\n🔴 CRITICAL OVERRIDE: The forward P/E ratio IS {pe_str} "
-            f"(from yfinance, key=pe_forward). This value EXISTS in the Metrics line above. "
-            f"Your FIRST sentence MUST state: \"The forward P/E is {pe_str}.\" "
-            f"Do NOT claim it is missing, not provided, not disclosed, or unavailable — "
-            f"that would be factually incorrect. "
-            f"Put {pe_str} in the Current column of the table."
+        row_lines.append(
+            f"| Forward P/E | {pe_str} | Sector / history / peers | Valuation multiple available in supplied metrics | Company metrics snapshot |"
         )
     if eps_val is not None:
         try:
-            eps_annual = float(eps_val) * 4.0
-            extra += f"\n⚠️  Forward EPS basis (annualized consensus): ${eps_annual:.2f} ({float(eps_val):.2f} × 4 quarters). Use this in the Forward EPS basis row."
+            eps_q = float(eps_val)
+            eps_annual = eps_q * 4.0
+            row_lines.append(
+                f"| Forward EPS basis | ${eps_annual:.2f} | Consensus / annualized estimate | 4 × ${eps_q:.2f} consensus EPS | Analyst consensus; ${eps_q:.2f} × 4 |"
+            )
         except (TypeError, ValueError):
             pass
+    if revenue_yoy is not None or guidance:
+        support_parts = []
+        try:
+            support_parts.append(f"revenue growth {float(revenue_yoy) * 100:+.1f}% YoY")
+        except (TypeError, ValueError):
+            pass
+        if guidance:
+            support_parts.append(str(guidance))
+        support_text = "; ".join(support_parts) if support_parts else "—"
+        row_lines.append(
+            f"| Growth support | {support_text} | Revenue / margin / guidance | Growth supports valuation assessment | Company metrics and transcript evidence |"
+        )
+
+    if row_lines:
+        extra += (
+            "\n\n🔴 FORWARD P/E OVERRIDE — use these exact rows; do not replace them with "
+            "'Unavailable from reviewed sources' because the valuation metrics are present.\n"
+            + "\n".join(row_lines)
+        )
+        if language.lower() in {"jp", "ja"}:
+            extra += (
+                "\nWrite the JP answer body in Japanese only. Keep the table row labels exactly "
+                "as Forward P/E, Forward EPS basis, and Growth support for EN/JP parity; "
+                "write the surrounding analysis, interpretation, caution, and summary in Japanese."
+            )
+        else:
+            extra += "\nWrite the EN answer body in English only."
+
     base = _base_prompt(
         section="Forward P/E",
         language=language,
@@ -1273,7 +1311,7 @@ def forward_pe_prompt(language: str, ticker: str, company: str, quarter: str, me
         metrics=metrics,
         transcript_excerpt=transcript_excerpt,
     )
-    return base + extra
+    return extra + base
 
 
 def backlog_prompt(language: str, ticker: str, company: str, quarter: str, metrics: Dict[str, Any], transcript_excerpt: str) -> str:

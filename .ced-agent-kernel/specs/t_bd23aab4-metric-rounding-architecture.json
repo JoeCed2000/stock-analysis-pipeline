@@ -1,0 +1,35 @@
+{
+  "claim": "t_bd23aab4 architecture spec completed: metric-based rounding issue documented, renderer-vs-mapper decision recorded, WIKI updated, CodeGraph evidence captured, and two atomic child tasks created for Operating Metrics and Segments.",
+  "workflow": "kanban_task_done",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "architecture document exists",
+      "path": "docs/feedback-audits/metric-renderer-rounding-architecture.md"
+    },
+    {
+      "kind": "path_exists",
+      "name": "persistent verifier exists",
+      "path": "ops/kernel_checks/verify_t_bd23aab4.py"
+    },
+    {
+      "kind": "python_compile",
+      "name": "persistent verifier compiles",
+      "path": "ops/kernel_checks/verify_t_bd23aab4.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "deterministic architecture proof",
+      "command": "python3 ops/kernel_checks/verify_t_bd23aab4.py",
+      "stdout_pattern": "VERIFY_T_BD23AAB4_READY",
+      "timeout_seconds": 30
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "backend health checkpoint",
+      "command": "curl -sS --max-time 5 http://127.0.0.1:8780/api/health",
+      "stdout_pattern": "\"status\":\"ok\"",
+      "timeout_seconds": 10
+    }
+  ]
+}

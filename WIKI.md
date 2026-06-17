@@ -30,6 +30,53 @@
 
 **Kernel proof:** `kverify .ced-agent-kernel/specs/t_c02f3308-operating-metrics-rounding.json --base-dir .` → READY.
 
+## 2026-06-17 — Metric-based rounding architecture split (t_bd23aab4)
+
+**Status:** implementation verified (targeted tests/PDF extraction pass). Restored the missing `FCF Margin 59.5%` Cash Flow row in both EN and JP NVDA markdown/PDF artifacts and hardened future generation.
+
+**Root cause:** Cash Flow prompts listed OCF/CapEx/FCF but did not explicitly require an FCF Margin row, and `_section_metrics("Cash Flow", ...)` filtered out revenue, so `cash_flow_prompt()` could not compute `FCF ÷ Revenue`. The existing EDP-013 validator only catches generated markdown after the row is already missing.
+
+**Change:** Added `revenue_actual` / `revenue_quarterly` to Cash Flow section metrics, added FCF Margin table rows to EN+JP Cash Flow prompt skeletons, and added a `CRITICAL OVERRIDE` computing `FCF Margin = FCF ÷ Revenue` (NVDA: `$48.59B ÷ $81.60B = 59.5%`). Re-rendered current EN/JP NVDA PDFs from patched markdown.
+
+**Verification:** RED observed on missing EN/JP artifact rows and missing prompt rows; GREEN: `19 passed` for focused FCF/prompt/generator tests. PDF extraction confirms EN has `FCF Margin +59.5% Calculated (FCF ÷ Revenue)` and JP has `FCFマージン +59.5% 計算値(FCF ÷ 売上高)`.
+
+## 2026-06-17 — JP Cash Flow Net Cash callout (t_6b96b573)
+
+**Status:** Kernel READY (8/8). 4 focused JP Cash Flow tests + 20 NVDA/prompt bundle tests, 0 regressions. Backend restarted and `/api/health` returned 200.
+
+**Change:** `cash_flow_prompt()` now adds a JP-only Net Cash / (Net Debt) CRITICAL OVERRIDE when `net_debt` is present, instructing the Cash Flow prose to mention NVDA's net cash position (`$72.1B`, example `純現金ポジションは721億ドル`). EN Cash Flow remains unchanged and does not receive the JP-specific override.
+
+**Files changed:**
+- `backend/earnings_deep_dive/prompts.py` — JP-only Cash Flow Net Cash override
+- `tests/spec_nvda_jp_cash_flow_net_cash.py` — regression coverage for JP override, EN no-leakage, and Japanese `億ドル` unit conversion
+- `.ced-agent-kernel/specs/t_6b96b573-jp-cash-flow-net-cash.json` + `ops/kernel_checks/verify_t_6b96b573.py` — persistent Kernel proof
+
+**Verification:** `pytest tests/spec_nvda_jp_cash_flow_net_cash.py -q` → 4 passed; `pytest tests/spec_nvda_*.py tests/test_earnings_deep_dive_prompts.py -q` → 20 passed; `kverify .ced-agent-kernel/specs/t_6b96b573-jp-cash-flow-net-cash.json --base-dir .` → READY; `curl http://127.0.0.1:8780/api/health` → 200.
+
+## 2026-06-17 — JP concision prompts tightened (t_791640b2)
+
+**Status:** Kernel READY (7/7). Focused concision suite: **26 passed** (existing 22 + 4 JP prompt contracts). Backend health after restart: `/api/health` HTTP 200 at commit `1fde0d4`.
+
+**Change:** Tightened Japanese `SECTION_FORMATS` in `backend/earnings_deep_dive/prompts.py` to match the EN concision fixes from `t_1bff1c77` and `t_a5c407c3`: EPS & Revenue max 2 bullets, Operating Metrics max 5, Cash Flow max 3, Segments max 5, Guidance max 5. Removed JP prompt patterns that encouraged extra prose sub-sections (`投資家向け解釈`, regional sub-section essays, medium-term extra blocks, warning/caution paragraphs). Preserved EN prompt contracts.
+
+**Extra fix included:** Cash Flow JP Net Cash override now keeps the correct `$72.10B → 721億ドル` conversion while instructing the LLM to place it inside an existing takeaway or one-line summary, not a new prose section.
+
+**Evidence:**
+- WIKI_EVIDENCE: read prior WIKI entries for `t_1bff1c77`, `t_a5c407c3`, `t_eb2e5b99`, and parent classification `t_57b6b5f2`.
+- GRAPH_EVIDENCE: CodeGraph status/query/callers refreshed; `build_prompt` callers include generator tests, prompt tests, and NVDA override tests.
+- SYMBOL_PLAN: Serena unavailable/degraded; AST-based replacement limited to `SECTION_FORMATS` entries plus `cash_flow_prompt` JP override text.
+- Kernel proof: `kverify .ced-agent-kernel/specs/t_791640b2-jp-concision-prompts.json --base-dir /home/ced/codex-projects/stock-analysis-pipeline` → **READY**.
+
+## 2026-06-17 — Metric-based rounding architecture split (t_bd23aab4)
+
+**Status:** architecture/spec done. No backend implementation in this card. Created two atomic child tasks: `t_c02f3308` (Operating Metrics) and `t_3eb11127` (Segments), both assigned to `python-builder` and dependent on `t_bd23aab4`.
+
+**Decision:** keep `pdf_renderer.py` presentation-only. The deterministic metric-based behavior should be enforced at the mapper/table-construction seam (`_rows_for_section`, `_extract_segment_rows`, `build_earnings_deep_dive_report`) so EN and JP receive the same canonical table values before ReportLab rendering.
+
+**Rounding rule:** Python default / banker's rounding. LLM prose can stay language-specific; table cells must not use language-specific LLM-rounded values when canonical `FinancialMetrics` data exists.
+
+**Evidence:** `docs/feedback-audits/metric-renderer-rounding-architecture.md`; CodeGraph callers checked for `_rows_for_section` and `_extract_segment_rows`; `curl /api/health` returned OK on backend commit `1fde0d4`.
+
 ## 2026-06-17 — Align JP source labels to EN canonical labels (t_88943265)
 
 **Status:** Kernel READY. All 3 JP-EN parity tests + 569 bundle tests, 0 regressions.
@@ -42,17 +89,55 @@
 Both EN and JP artifacts now use the same canonical source labels within each table, allowing table_note collapse even when the LLM uses different wording per language.
 
 **Files changed:**
-- `backend/earnings_deep_dive/mapper.py` — `_normalize_source_label()` and `_restore_source_display()` canonical source-label rules
-- `tests/spec_v27_source_display_policy.py` — JP↔EN parity regressions
-- `.ced-agent-kernel/specs/t_88943265.json` — persistent Kernel proof
+- `backend/earnings_deep_dive/mapper.py` — `_normalize_source_label()` (2 new rules), `_restore_source_display()` (1 new display form)
+- `tests/spec_v27_source_display_policy.py` — 3 new tests (JP↔EN parity)
 
 **Verification:**
 - `pytest tests/spec_v27_source_display_policy.py -v -k "jp_en"` → **3 passed**
 - `pytest tests/spec_v27_*.py tests/test_v27_data_quality.py -q` → **569 passed** (0 regressions)
-- `curl http://127.0.0.1:8780/api/health` → **200 / status ok**
 
 **Kernel proof:** `kverify .ced-agent-kernel/specs/t_88943265.json --base-dir .` → **READY**
 
+---
+
+## 2026-06-17 — JP Forward P/E prompt hardened (t_d78025b8)
+
+**Status:** implementation verified locally; Kernel proof added in this task.
+
+**Root cause:** `forward_pe_prompt()` appended the Forward P/E override after `_base_prompt()` and forced the exact English sentence "The forward P/E is ..." even in `language="jp"`. The JP validator had already rejected this section twice as bilingual output, leaving the markdown section as `Unavailable from reviewed sources` despite available metrics.
+
+**Change:** `backend/earnings_deep_dive/prompts.py` now puts a `FORWARD P/E OVERRIDE` before the DATA CONTRACT, emits the exact 3 required rows (Forward P/E 16.30x, Forward EPS basis $7.08 = 4 × $1.77, Growth support +85.2% YoY / guidance), and localizes JP body instructions so the JP answer stays Japanese while preserving the EN/JP row labels.
+
+**Tests:** RED first (`tests/spec_nvda_jp_forward_pe_seam.py` 4 failures), then GREEN. Verification: `python3 -m pytest tests/spec_nvda_jp_forward_pe_seam.py tests/spec_nvda_eps_revenue_override_seam.py tests/test_earnings_deep_dive_prompts.py -q` → 12 passed; broader bundle `python3 -m pytest tests/spec_v27_*.py tests/spec_nvda_*.py tests/test_earnings_deep_dive.py tests/test_earnings_deep_dive_integration.py -q` → 567 passed.
+
+**Triad:** WIKI_EVIDENCE = this WIKI + `docs/feedback-audits/jp-en-parity-classification.md` §3.7 + `notes/jp-artifact-capture-2026-06-17.md`; GRAPH_EVIDENCE = CodeGraph synced and `forward_pe_prompt` resolved at `backend/earnings_deep_dive/prompts.py`; SYMBOL_PLAN = Serena unavailable/degraded, surgical symbol edit applied to `forward_pe_prompt()` only plus JP concision strings required to make existing spec_v27 tests pass.
+
+## 2026-06-17 — NVDA JP EN parity gaps classified (t_57b6b5f2)
+
+**Status:** Kernel READY (6/6). Read-only classification. No code mutation. 6 follow-up cards created.
+
+**Scope:** review task per SA-FB-D1 (Comparaison parité JP ↔ EN) from `PLAN_conseil_kanban_NVDA_feedback_2026-06-16.md` § 5. Classified all sections of the regenerated EN and JP artifacts (`analyses/nvda_audit_v2_en/07_final_report/earnings_deep_dive.md` 325 lines + `analyses/nvda_audit_v2_jp/07_final_report/earnings_deep_dive.md` 418 lines) for numeric, label, prose, structural, and validator-only deltas.
+
+**Bottom line:** JP↔EN parity is **substantially good** at the data level — **0 hard numeric gaps** between EN and JP. All observed numeric deltas are sub-precision rounding-direction artifacts ($0.01B = $10M, below source-data precision of $81.61B / 2 decimals = $10M). 11/11 sections present in both languages. 6 real gaps identified (2 structural, 1 shared regression, 1 concision-prompt, 2 cosmetic), each with a follow-up card.
+
+**Real gaps (with follow-up cards):**
+1. **P0 — Forward P/E section empty in JP** (GAP_S): LLM emitted "Bilingual output detected" twice → card t_d78025b8
+2. **P1 — Net Cash $72.10B not displayed as a row in JP** (GAP_S): prose-only addition → card t_6b96b573
+3. **P1 — FCF Margin 59.5% row absent in both EN and JP** (shared regression vs. previous PDF) → card t_8003f0f0
+4. **P2 — JP more verbose than EN** (GAP_C): trips EDP-007/009 → card t_791640b2
+5. **P3 — Source label drift** (GAP_B): "10-Q" vs "earnings release", "Yahoo Finance" vs "Metrics" → card t_88943265
+6. **P3 — Rounding-direction artifacts** (GAP_N1, 4 occurrences): metric-based renderer extension → card t_bd23aab4
+
+**Files written by t_57b6b5f2:**
+- `docs/feedback-audits/jp-en-parity-classification.md` (323 lines, 37.1 KB) — full classification
+- `.ced-agent-kernel/specs/t_57b6b5f2-jp-en-parity-classification.json` — kernel spec
+- `ops/kernel_checks/verify_t_57b6b5f2.py` — persistent verifier (11 checks, all PASS)
+
+**No code in `backend/`, `frontend/`, or pipeline modules was modified.** Both EN and JP artifacts remain as captured by the parent tasks (t_929fd401, t_0a780af6).
+
+**Kernel proof:** `kverify .ced-agent-kernel/specs/t_57b6b5f2-jp-en-parity-classification.json --base-dir .` → **READY** (6/6 checks). `python3 ops/kernel_checks/verify_t_57b6b5f2.py` → **VERIFY_T_57B6B5F2_READY** (11/11 checks).
+
+**Note for follow-up card owners:** read `docs/feedback-audits/jp-en-parity-classification.md` § 3 (per-section classification) and § 5 (real gaps) before starting work. The classification note is the canonical handoff document; do not duplicate the diff yourself.
 
 ## 2026-06-17 — NVDA EPS/Revenue CRITICAL OVERRIDE reordered before DATA CONTRACT (t_0ad38717)
 

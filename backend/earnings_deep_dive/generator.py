@@ -134,6 +134,8 @@ SECTION_METRIC_KEYS = {
         "segments",
     },
     "Cash Flow": {
+        "revenue_actual",
+        "revenue_quarterly",
         "free_cash_flow",
         "operating_cash_flow",
         "capex",
