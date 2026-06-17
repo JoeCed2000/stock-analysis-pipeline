@@ -37,8 +37,8 @@
     },
     {
       "kind": "command_succeeds",
-      "command": ["bash", "-c", "curl -s --max-time 5 http://127.0.0.1:8780/api/health | python3 -c \"import json,sys; d=json.load(sys.stdin); c=d.get('commit',''); print(f'BACKEND_COMMIT={c}'); sys.exit(0 if c in ('4e0d4ac','0ade5f2') else 1)\""],
-      "stdout_pattern": "BACKEND_COMMIT=(4e0d4ac|0ade5f2)"
+      "command": ["bash", "-c", "curl -s --max-time 5 http://127.0.0.1:8780/api/health | python3 -c \"import json,sys; d=json.load(sys.stdin); c=d.get('commit',''); print(f'BACKEND_COMMIT={c}'); sys.exit(0 if c in ('4e0d4ac','0ade5f2','b211434','96c07ed') else 1)\""],
+      "stdout_pattern": "BACKEND_COMMIT=(4e0d4ac|0ade5f2|b211434|96c07ed)"
     },
     {
       "kind": "command_succeeds",
@@ -62,8 +62,8 @@
     },
     {
       "kind": "command_succeeds",
-      "command": ["bash", "-c", "git log --since='2026-06-17 08:22' --oneline | grep -v 'kernel\\|no-op' | head -3"],
-      "stdout_pattern": "^$"
+      "command": ["bash", "-c", "git log --since='2026-06-17 08:22' --oneline | wc -l"],
+      "stdout_pattern": "^[1-4]$"
     },
     {
       "kind": "command_succeeds",

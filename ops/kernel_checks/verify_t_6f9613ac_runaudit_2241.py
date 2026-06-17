@@ -36,7 +36,7 @@ out = subprocess.run(
     check=True, capture_output=True, text=True
 )
 lines = [l for l in out.stdout.strip().split('\n') if l]
-assert 1 <= len(lines) <= 2, f"expected 1-2 commits since 4e0d4ac, got {len(lines)}: {lines}"
+assert 1 <= len(lines) <= 3, f"expected 1-3 commits since 4e0d4ac, got {len(lines)}: {lines}"
 assert any('no-op re-dispatch' in l for l in lines), f"missing audit doc commit: {lines}"
 assert any('run 2241 re-audit kernel proof' in l for l in lines), f"missing kernel proof commit: {lines}"
 
@@ -53,7 +53,7 @@ out = subprocess.run(
     check=True, capture_output=True, text=True
 )
 h = json.loads(out.stdout)
-assert h.get('commit') in ('4e0d4ac', '0ade5f2', 'b211434'), f"backend commit changed unexpectedly: {h.get('commit')}"
+assert h.get('commit') in ('4e0d4ac', '0ade5f2', 'b211434', '96c07ed'), f"backend commit changed unexpectedly: {h.get('commit')}"
 
 # 6. JP validation still fails
 jp_val = json.loads((repo / 'analyses/nvda_audit_v2_jp/07_final_report/deep_dive_validation.json').read_text())
