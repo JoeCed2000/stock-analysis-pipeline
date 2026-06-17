@@ -1,0 +1,43 @@
+{
+  "claim": "Aligned JP source labels to EN canonical labels: _normalize_source_label() maps \"10-Q\"/\"earnings release\" to \"sec-filing\" and \"Yahoo Finance company metrics\"/\"Analyst consensus: Metrics\"/\"Metrics\" to \"yfinance\". The source display policy applies the same normalization to EN and JP, collapses identical post-normalization source cells to table_note, and displays canonical notes as \"SEC 10-Q (Q1 FY2027)\" or \"Yahoo Finance metrics\". Three JP-EN parity tests and the V2.7 bundle pass. WIKI.md updated.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "mapper.py modified",
+      "path": "backend/earnings_deep_dive/mapper.py"
+    },
+    {
+      "kind": "python_compile",
+      "name": "mapper.py compiles",
+      "path": "backend/earnings_deep_dive/mapper.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "3 JP-EN parity tests pass",
+      "command": ["bash", "-lc", "PYTHONPATH=. backend/.venv/bin/python -m pytest tests/spec_v27_source_display_policy.py -v -k 'jp_en' -q"],
+      "stdout_pattern": "3 passed",
+      "timeout": 60
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "V2.7 bundle tests pass (0 regressions)",
+      "command": ["bash", "-lc", "PYTHONPATH=. backend/.venv/bin/python -m pytest tests/spec_v27_*.py tests/test_v27_data_quality.py -q"],
+      "stdout_pattern": "569 passed",
+      "timeout": 120
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "Normalization assertions verify rules 1-4",
+      "command": ["bash", "-lc", "PYTHONPATH=. backend/.venv/bin/python -c \"from backend.earnings_deep_dive.mapper import _normalize_source_label, _restore_source_display, _apply_source_display_policy; from backend.earnings_deep_dive.report_model import RenderedTable, RenderedTableRow; assert _normalize_source_label('NVIDIA FY2027 Q1 10-Q (supplied metrics)') == 'sec-filing'; assert _normalize_source_label('Q1 FY2027 earnings release (supplied metrics)') == 'sec-filing'; assert _normalize_source_label('Yahoo Finance company metrics') == 'yfinance'; assert _normalize_source_label('Analyst consensus: Metrics') == 'yfinance'; assert _normalize_source_label('Metrics') == 'yfinance'; assert _restore_source_display('sec-filing') == 'SEC 10-Q (Q1 FY2027)'; assert _restore_source_display('yfinance') == 'Yahoo Finance metrics'; table=RenderedTable(columns=['Metric','Value','Source'], rows=[RenderedTableRow(label='A', cells=['1','Yahoo Finance company metrics']), RenderedTableRow(label='B', cells=['2','Analyst consensus: Metrics'])]); result=_apply_source_display_policy('Guidance', table); assert result.source_display_policy == 'table_note'; assert result.table_source_note == 'Source: Yahoo Finance metrics'; print('ALL normalization assertions PASS')\""],
+      "stdout_pattern": "PASS",
+      "timeout": 30
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "WIKI.md updated",
+      "command": ["grep", "-q", "t_88943265", "WIKI.md"],
+      "timeout": 10
+    }
+  ]
+}

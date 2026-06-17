@@ -103,14 +103,14 @@ class TestSourceDisplayPolicy:
         )
 
     def test_non_allowlisted_section_keeps_row(self):
-        """EPS & Revenue (not allow-listed) keeps row-level source."""
+        """Highlights (not allow-listed) keeps row-level source."""
         table = _table(
-            columns=["Metric", "Actual", "Estimate", "Source"],
+            columns=["Type", "Point", "Source"],
             rows=[
-                ("EPS", "$1.23", "$1.15", "Yahoo Finance (consensus)"),
+                ("Positive", "Revenue exceeded expectations", "SEC Filing (10-Q/10-K) via EDGAR"),
             ],
         )
-        result = _apply_source_display_policy("EPS & Revenue", table)
+        result = _apply_source_display_policy("Highlights", table)
         assert result.source_display_policy == "row", (
             f"Expected row for non-allowlisted section, got {result.source_display_policy}"
         )
@@ -229,6 +229,149 @@ class TestSourceDisplayPolicy:
         result = _apply_source_display_policy("Capital Efficiency", table)
         assert result.source_display_policy == "row", (
             f"Expected row (missing source), got {result.source_display_policy}"
+        )
+
+    # ── New allow-listed section tests ───────────────────────────────
+
+    def test_homogeneous_eps_revenue_collapses(self):
+        """EPS & Revenue with identical source should collapse to table_note."""
+        src = "Yahoo Finance (consensus)"
+        table = _table(
+            columns=["Metric", "Estimate", "Actual", "vs Estimate", "YoY Change", "Source"],
+            rows=[
+                ("EPS", "$1.77", "$1.87", "+5.65%", "+12.0%", src),
+                ("Revenue", "$79.19B", "$81.61B", "+3.04%", "+15.0%", src),
+            ],
+        )
+        result = _apply_source_display_policy("EPS & Revenue", table)
+        assert result.source_display_policy == "table_note", (
+            f"Expected table_note for homogeneous EPS & Revenue, "
+            f"got {result.source_display_policy}"
+        )
+        assert result.table_source_note is not None
+        assert result.table_source_note == "Source: Yahoo Finance metrics"
+
+    def test_mixed_eps_revenue_source_keeps_row(self):
+        """EPS & Revenue with mixed source labels keeps row-level."""
+        table = _table(
+            columns=["Metric", "Estimate", "Actual", "Source"],
+            rows=[
+                ("EPS", "$1.77", "$1.87", "Yahoo Finance (consensus)"),
+                ("Revenue", "$79.19B", "$81.61B", "SEC Filing (10-Q/10-K) via EDGAR"),
+            ],
+        )
+        result = _apply_source_display_policy("EPS & Revenue", table)
+        assert result.source_display_policy == "row", (
+            f"Expected row for mixed-source EPS & Revenue, "
+            f"got {result.source_display_policy}"
+        )
+
+    def test_homogeneous_forward_pe_collapses(self):
+        """Forward P/E with identical source should collapse to table_note."""
+        src = "Yahoo Finance (consensus)"
+        table = _table(
+            columns=["Metric", "Value", "Reference", "Interpretation", "Source"],
+            rows=[
+                ("Forward P/E", "18.5x", "EPS $5.00", "Moderate", src),
+                ("Forward EPS basis", "$5.00", "FY+1 consensus", "N/A", src),
+            ],
+        )
+        result = _apply_source_display_policy("Forward P/E", table)
+        assert result.source_display_policy == "table_note", (
+            f"Expected table_note for homogeneous Forward P/E, "
+            f"got {result.source_display_policy}"
+        )
+        assert result.table_source_note is not None
+        assert result.table_source_note == "Source: Yahoo Finance metrics"
+
+    def test_homogeneous_segments_collapses(self):
+        """Segments with identical source should collapse to table_note."""
+        src = "SEC Filing (10-Q/10-K) via EDGAR"
+        table = _table(
+            columns=["Segment", "Revenue", "Prior Year", "YoY", "% of Total", "Driver", "Source"],
+            rows=[
+                ("Data Center", "$35.0B", "$30.0B", "+16.7%", "60%", "AI demand", src),
+                ("Gaming", "$10.0B", "$9.0B", "+11.1%", "17%", "Seasonal", src),
+                ("Total", "$58.5B", "$52.0B", "+12.5%", "100%", "", src),
+            ],
+        )
+        result = _apply_source_display_policy("Segments", table)
+        assert result.source_display_policy == "table_note", (
+            f"Expected table_note for homogeneous Segments, "
+            f"got {result.source_display_policy}"
+        )
+        assert result.table_source_note is not None
+        assert "SEC" in result.table_source_note
+
+    def test_mixed_segments_source_keeps_row(self):
+        """Segments with mixed sources keeps row-level."""
+        table = _table(
+            columns=["Segment", "Revenue", "Prior Year", "YoY", "% of Total", "Driver", "Source"],
+            rows=[
+                ("Data Center", "$35.0B", "$30.0B", "+16.7%", "60%", "AI demand", "SEC Filing (10-Q/10-K) via EDGAR"),
+                ("Gaming", "$10.0B", "$9.0B", "+11.1%", "17%", "Seasonal", "yfinance (Yahoo Finance)"),
+            ],
+        )
+        result = _apply_source_display_policy("Segments", table)
+        assert result.source_display_policy == "row", (
+            f"Expected row for mixed-source Segments, "
+            f"got {result.source_display_policy}"
+        )
+
+    # ── JP↔EN source label parity tests (t_88943265) ────────────────
+
+    def test_jp_en_cashflow_10q_earnings_release_collapse(self):
+        """EN "10-Q" and JP "earnings release" normalize to same key → collapse."""
+        table = _table(
+            columns=["Metric", "Current", "Prior", "YoY", "Source"],
+            rows=[
+                ("Operating Cash Flow", "$2.5B", "$2.3B", "+8.7%",
+                 "NVIDIA FY2027 Q1 10-Q (supplied metrics)"),
+                ("CapEx", "($0.5B)", "($0.4B)", "-25%",
+                 "Q1 FY2027 earnings release (supplied metrics)"),
+                ("Free Cash Flow", "$2.0B", "$1.9B", "+5.3%",
+                 "NVIDIA FY2027 Q1 10-Q (supplied metrics)"),
+            ],
+        )
+        result = _apply_source_display_policy("Cash Flow", table)
+        assert result.source_display_policy == "table_note", (
+            f"Expected table_note (both normalize to 'sec-filing'), "
+            f"got {result.source_display_policy}"
+        )
+        assert result.table_source_note is not None
+        assert "SEC 10-Q" in result.table_source_note
+
+    def test_jp_en_guidance_yahoo_analyst_consensus_collapse(self):
+        """Guidance EN "Yahoo Finance" and JP "Analyst consensus: Metrics" share display."""
+        table = _table(
+            columns=["Metric", "Value", "Ref", "Source"],
+            rows=[
+                ("Revenue Guidance", "$85B", "QoQ +7%",
+                 "Yahoo Finance company metrics snapshot"),
+                ("EPS Guidance", "$1.90", "YoY +7%",
+                 "Analyst consensus: Metrics"),
+            ],
+        )
+        result = _apply_source_display_policy("Guidance", table)
+        assert result.source_display_policy == "table_note", (
+            f"Expected table_note (both normalize to 'yfinance'), "
+            f"got {result.source_display_policy}"
+        )
+        assert result.table_source_note == "Source: Yahoo Finance metrics"
+
+    def test_jp_en_bare_metrics_normalizes_to_yfinance(self):
+        """Bare "Metrics" source cell normalizes to same key as Yahoo Finance."""
+        table = _table(
+            columns=["Metric", "Value", "Source"],
+            rows=[
+                ("Revenue", "$81.6B", "Yahoo Finance company metrics"),
+                ("EPS", "$1.87", "Metrics"),
+            ],
+        )
+        result = _apply_source_display_policy("EPS & Revenue", table)
+        assert result.source_display_policy == "table_note", (
+            f"Expected table_note (bare 'Metrics' normalizes to yfinance), "
+            f"got {result.source_display_policy}"
         )
 
 

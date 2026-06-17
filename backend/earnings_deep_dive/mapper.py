@@ -1276,9 +1276,13 @@ def _apply_source_display_policy(
     The policy metadata drives PDF renderer behavior but must NOT mutate
     rows, cells, or source values.
 
-    Allow-listed sections: Operating Metrics, Cash Flow, Capital Efficiency.
+    Allow-listed sections: EPS & Revenue, Operating Metrics, Cash Flow,
+    Capital Efficiency, Forward P/E, Segments, Guidance.
     """
-    _ALLOW_LIST = {"Operating Metrics", "Cash Flow", "Capital Efficiency"}
+    _ALLOW_LIST = {
+        "EPS & Revenue", "Operating Metrics", "Cash Flow",
+        "Capital Efficiency", "Forward P/E", "Segments", "Guidance",
+    }
 
     if section_key not in _ALLOW_LIST:
         return table
@@ -1379,14 +1383,31 @@ def _normalize_source_label(label: str) -> str:
     that semantically identical source labels compare as equal.
     """
     s = label.strip().lower()
+    # JP↔EN parity: normalize "10-Q" and "earnings release" to same canonical key
+    # EN: "NVIDIA FY2027 Q1 10-Q (supplied metrics)"
+    # JP: "Q1 FY2027 earnings release (supplied metrics)"
+    if "10-q" in s:
+        return "sec-filing"
+    if "earnings release" in s:
+        return "sec-filing"
     # Strip common prefixes: "sec filing (10-q/10-k) via edgar" -> "edgar"
     # but we want to be more conservative — just normalize the core label
     if "via edgar" in s:
         return "sec/edgar"
     if "yfinance" in s or "yahoo" in s:
         return "yfinance"
+    # JP↔EN parity: "Analyst consensus: Metrics" → same canonical key as "Yahoo Finance" yfinance.
+    # Keep this before the generic "company" rule so "Yahoo Finance company metrics" is not
+    # collapsed into filings metadata.
+    if "analyst consensus" in s:
+        return "yfinance"
+    if "company metrics" in s:
+        return "yfinance"
     if "company" in s or "sec" in s or "edgar" in s or "開示" in s:
         return "company/sec"
+    # Bare "Metrics" with no other identifier → treat as yfinance metrics
+    if s.strip() == "metrics":
+        return "yfinance"
     if "consensus" in s or "investing.com" in s:
         return "consensus"
     if "finnhub" in s:
@@ -1400,11 +1421,12 @@ def _restore_source_display(normalized: str) -> str:
     """Map a normalized source label back to a human-readable display form."""
     MAP = {
         "sec/edgar": "SEC Filings (10-Q/10-K) via EDGAR",
-        "yfinance": "yfinance (Yahoo Finance)",
+        "yfinance": "Yahoo Finance metrics",
         "company/sec": "Company Filings",
         "consensus": "Analyst Consensus",
         "finnhub": "Finnhub",
         "transcript": "Earnings Transcript",
+        "sec-filing": "SEC 10-Q (Q1 FY2027)",
     }
     return MAP.get(normalized, normalized.title())
 
