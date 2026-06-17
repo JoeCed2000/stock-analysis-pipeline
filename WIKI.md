@@ -30,6 +30,30 @@
 
 **Kernel proof:** `kverify .ced-agent-kernel/specs/t_c02f3308-operating-metrics-rounding.json --base-dir .` → READY.
 
+## 2026-06-17 — Align JP source labels to EN canonical labels (t_88943265)
+
+**Status:** Kernel READY. All 3 JP-EN parity tests + 569 bundle tests, 0 regressions.
+
+**Change:** Added normalization rules in `_normalize_source_label()` and `_restore_source_display()` so that EN and JP source labels for the same fact produce identical canonical keys:
+
+1. "10-Q" / "earnings release" → `"sec-filing"` → displayed as `"SEC 10-Q (Q1 FY2027)"`
+2. "Yahoo Finance company metrics" / "Analyst consensus: Metrics" / "Metrics" → `"yfinance"` → displayed as `"Yahoo Finance metrics"`
+
+Both EN and JP artifacts now use the same canonical source labels within each table, allowing table_note collapse even when the LLM uses different wording per language.
+
+**Files changed:**
+- `backend/earnings_deep_dive/mapper.py` — `_normalize_source_label()` and `_restore_source_display()` canonical source-label rules
+- `tests/spec_v27_source_display_policy.py` — JP↔EN parity regressions
+- `.ced-agent-kernel/specs/t_88943265.json` — persistent Kernel proof
+
+**Verification:**
+- `pytest tests/spec_v27_source_display_policy.py -v -k "jp_en"` → **3 passed**
+- `pytest tests/spec_v27_*.py tests/test_v27_data_quality.py -q` → **569 passed** (0 regressions)
+- `curl http://127.0.0.1:8780/api/health` → **200 / status ok**
+
+**Kernel proof:** `kverify .ced-agent-kernel/specs/t_88943265.json --base-dir .` → **READY**
+
+
 ## 2026-06-17 — NVDA EPS/Revenue CRITICAL OVERRIDE reordered before DATA CONTRACT (t_0ad38717)
 
 **Status:** Kernel READY (8/8). 3 regression + 547 bundle tests, 0 regressions.
