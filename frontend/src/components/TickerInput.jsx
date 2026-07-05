@@ -97,12 +97,14 @@ export default function TickerInput({ onAnalyze, loading, t }) {
   return (
     <div style={{ marginBottom: 24 }}>
       <form onSubmit={handleSubmit}>
-        {/* Input area */}
-        <div style={{
-          background: '#1a1d27', border: '1px solid #30363d',
-          borderRadius: 8, padding: 12,
-          transition: 'border-color 0.2s',
-        }}>
+        {/* Input area — command bar */}
+        <div className="cmdbar" style={{ padding: '16px 18px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <span aria-hidden="true" style={{
+              fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 700,
+              color: 'var(--accent)', lineHeight: '30px', userSelect: 'none',
+              textShadow: '0 0 12px rgba(52, 211, 153, 0.5)',
+            }}>❯</span>
           <textarea
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -110,20 +112,21 @@ export default function TickerInput({ onAnalyze, loading, t }) {
             rows={2}
             disabled={loading}
             style={{
-              width: '100%', padding: '8px 0', fontSize: 15,
+              width: '100%', padding: '4px 0', fontSize: 16,
               background: 'transparent', border: 'none',
-              color: '#e1e4e8', resize: 'none', outline: 'none',
-              fontFamily: 'monospace', marginBottom: items.length > 0 ? 10 : 0,
+              color: '#e7edf6', resize: 'none', outline: 'none',
+              marginBottom: items.length > 0 ? 10 : 0,
             }}
           />
+          </div>
 
           {/* Parsed tags */}
           {items.length > 0 && (
             <div style={{
-              display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
-              borderTop: '1px solid #21262d', paddingTop: 10,
+              display: 'flex', flexWrap: 'wrap', gap: 7, alignItems: 'center',
+              borderTop: '1px solid var(--line)', paddingTop: 12,
             }}>
-              <span style={{ fontSize: 11, color: '#57606a', marginRight: 2 }}>
+              <span className="mono" style={{ fontSize: 11, color: 'var(--faint)', marginRight: 2, letterSpacing: '0.06em' }}>
                 {parsing ? '…' : `${items.length} ticker${items.length !== 1 ? 's' : ''}`}
               </span>
 
@@ -133,31 +136,32 @@ export default function TickerInput({ onAnalyze, loading, t }) {
                 return (
                   <span
                     key={it.value}
+                    className={`ticker-tag${isSelected ? ' selected' : ''}`}
                     onClick={() => !loading && !isInvalid && toggle(it.normalized)}
                     title={it.error || it.value}
                     style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                      padding: '3px 8px', borderRadius: 4, fontSize: 12,
-                      fontWeight: 600,
-                      background: isInvalid ? '#3a1f24' : isSelected ? '#1a3528' : '#21262d',
+                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                      padding: '4px 10px', borderRadius: 8, fontSize: 12,
+                      fontWeight: 600, letterSpacing: '0.03em',
+                      background: isInvalid ? 'rgba(218, 54, 51, 0.12)' : isSelected ? 'rgba(52, 211, 153, 0.13)' : 'rgba(125, 155, 195, 0.08)',
                       border: `1px solid ${
-                        isInvalid ? '#da3633' : isSelected ? '#238636' : '#30363d'
+                        isInvalid ? 'rgba(248, 81, 73, 0.5)' : isSelected ? 'rgba(52, 211, 153, 0.5)' : 'var(--line)'
                       }`,
-                      color: '#e1e4e8',
+                      color: isSelected ? '#c8f5e3' : 'var(--ink)',
                       cursor: loading || isInvalid ? 'default' : 'pointer',
-                      opacity: isInvalid ? 0.55 : !isSelected ? 0.7 : 1,
+                      opacity: isInvalid ? 0.55 : !isSelected ? 0.65 : 1,
                       transition: 'all 0.15s ease',
-                      animation: 'tagIn 0.2s ease',
+                      animation: 'tagIn 0.25s ease',
                     }}
                   >
                     <span style={{
-                      fontSize: 10, color: isSelected ? '#238636' : '#484f58',
+                      fontSize: 10, color: isSelected ? 'var(--accent)' : 'var(--faint)',
                       transition: 'color 0.15s',
                     }}>
                       {isInvalid ? '✕' : isSelected ? '✓' : '○'}
                     </span>
                     <span>{it.normalized}</span>
-                    <span style={{ fontSize: 9, opacity: 0.4 }}>{it.type}</span>
+                    <span style={{ fontSize: 9, opacity: 0.45 }}>{it.type}</span>
                   </span>
                 );
               })}
@@ -166,17 +170,17 @@ export default function TickerInput({ onAnalyze, loading, t }) {
                 <span style={{ display: 'flex', gap: 4, marginLeft: 6 }}>
                   <button type="button" onClick={selectAll} disabled={loading}
                     style={{
-                      fontSize: 10, padding: '2px 6px', background: 'transparent',
-                      border: '1px solid #30363d', borderRadius: 3, color: '#8b949e',
-                      cursor: 'pointer',
+                      fontSize: 10, padding: '3px 9px', background: 'transparent',
+                      border: '1px solid var(--line)', borderRadius: 999, color: 'var(--muted)',
+                      cursor: 'pointer', fontFamily: 'var(--font-body)',
                     }}>
                     All
                   </button>
                   <button type="button" onClick={deselect} disabled={loading}
                     style={{
-                      fontSize: 10, padding: '2px 6px', background: 'transparent',
-                      border: '1px solid #30363d', borderRadius: 3, color: '#8b949e',
-                      cursor: 'pointer',
+                      fontSize: 10, padding: '3px 9px', background: 'transparent',
+                      border: '1px solid var(--line)', borderRadius: 999, color: 'var(--muted)',
+                      cursor: 'pointer', fontFamily: 'var(--font-body)',
                     }}>
                     None
                   </button>
@@ -187,7 +191,7 @@ export default function TickerInput({ onAnalyze, loading, t }) {
           {parseError && (
             <div style={{
               marginTop: 8, fontSize: 12, color: '#f0b72f',
-              borderTop: items.length > 0 ? '1px solid #21262d' : 'none',
+              borderTop: items.length > 0 ? '1px solid var(--line)' : 'none',
               paddingTop: items.length > 0 ? 8 : 0,
             }}>
               ⚠️ {parseError}
@@ -199,20 +203,9 @@ export default function TickerInput({ onAnalyze, loading, t }) {
         {items.length > 0 && selected.size > 0 && (
           <button
             type="submit"
+            className="btn-primary"
             disabled={loading}
-            style={{
-              marginTop: 10, width: '100%', padding: '10px 0',
-              fontSize: 15, fontWeight: 600,
-              background: loading ? '#30363d' : '#238636',
-              color: '#fff', border: 'none', borderRadius: 6,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              transition: 'background 0.2s, transform 0.1s',
-              transform: loading ? 'none' : undefined,
-            }}
-            onMouseEnter={e => { if (!loading) e.target.style.background = '#2ea043'; }}
-            onMouseLeave={e => { if (!loading) e.target.style.background = '#238636'; }}
-            onMouseDown={e => { if (!loading) e.target.style.transform = 'scale(0.98)'; }}
-            onMouseUp={e => { if (!loading) e.target.style.transform = 'scale(1)'; }}
+            style={{ marginTop: 12, width: '100%', padding: '13px 0', fontSize: 15 }}
           >
             {loading ? t('analyzing') : `🔍 ${t('analyze')} ${selected.size} ticker${selected.size > 1 ? 's' : ''}`}
           </button>
@@ -221,10 +214,10 @@ export default function TickerInput({ onAnalyze, loading, t }) {
         {/* Hint when no tickers typed yet */}
         {value.trim() && items.length === 0 && !parsing && (
           <div style={{
-            marginTop: 10, fontSize: 12, color: '#8b949e',
+            marginTop: 10, fontSize: 12, color: 'var(--muted)',
             textAlign: 'center', padding: '8px 0',
           }}>
-            Type a ticker like <span style={{ color: '#58a6ff', fontWeight: 600 }}>NVDA</span> or an ISIN like <span style={{ color: '#58a6ff', fontWeight: 600 }}>US0378331005</span>
+            Type a ticker like <span className="mono" style={{ color: 'var(--cyan)', fontWeight: 600 }}>NVDA</span> or an ISIN like <span className="mono" style={{ color: 'var(--cyan)', fontWeight: 600 }}>US0378331005</span>
           </div>
         )}
       </form>

@@ -13,9 +13,81 @@ import { getExportBridgeData } from '../export/exportDataBridge.js';
 
 export { canDownloadDossier } from './AnalysisUtils.js';
 
+function useCountUp(target, duration = 900) {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      setVal(target);
+      return undefined;
+    }
+    let raf;
+    const t0 = performance.now();
+    const tick = (now) => {
+      const p = Math.min((now - t0) / duration, 1);
+      setVal(Math.round(target * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return val;
+}
+
+function ScoreRing({ total, color }) {
+  const displayed = useCountUp(total);
+  const R = 34;
+  const C = 2 * Math.PI * R;
+  const pct = Math.max(0, Math.min(1, scorePercent(total) / 100));
+  return (
+    <div style={{ position: 'relative', width: 92, height: 92, margin: '0 auto' }}>
+      <svg width="92" height="92" viewBox="0 0 92 92" style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx="46" cy="46" r={R} fill="none" stroke="rgba(125,155,195,0.14)" strokeWidth="6" />
+        <circle
+          cx="46" cy="46" r={R} fill="none"
+          stroke={color} strokeWidth="6" strokeLinecap="round"
+          strokeDasharray={C}
+          strokeDashoffset={C * (1 - pct)}
+          style={{
+            '--ring-c': C,
+            animation: 'ringDraw 1.1s cubic-bezier(0.3, 0.7, 0.3, 1) both',
+            filter: `drop-shadow(0 0 6px ${color}66)`,
+          }}
+        />
+      </svg>
+      <div style={{
+        position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
+      }}>
+        <span className="mono" style={{ fontSize: 24, fontWeight: 700, color, lineHeight: 1, textShadow: `0 0 18px ${color}55` }}>
+          {displayed}
+        </span>
+        <span className="mono" style={{ fontSize: 9, color: 'var(--faint)', marginTop: 2 }}>/40</span>
+      </div>
+    </div>
+  );
+}
+
 export default function AnalysisCard({ result, onViewReport, t, lang }) {
   const { ticker, company_name, decision, scoring, conviction,
           price_native, currency, price_eur, market_cap, sector, retrieved_at } = result || {};
+
+  const cardRef = useRef(null);
+
+  const handleTilt = (e) => {
+    const el = cardRef.current;
+    if (!el || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const r = el.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - 0.5;
+    const py = (e.clientY - r.top) / r.height - 0.5;
+    el.style.transform = `perspective(1100px) rotateX(${(-py * 3.2).toFixed(2)}deg) rotateY(${(px * 4.2).toFixed(2)}deg) translateY(-3px)`;
+    el.style.setProperty('--mx', `${((e.clientX - r.left) / r.width) * 100}%`);
+    el.style.setProperty('--my', `${((e.clientY - r.top) / r.height) * 100}%`);
+  };
+
+  const resetTilt = () => {
+    const el = cardRef.current;
+    if (el) el.style.transform = '';
+  };
 
   if (!result) return null;
 
@@ -99,15 +171,22 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
   };
 
   return (
-    <div style={cardStyle}
-      onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.5)'}
-      onMouseLeave={e => e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.3)'}>
+    <div ref={cardRef} className="card-holo" style={cardStyle}
+      onMouseMove={handleTilt}
+      onMouseLeave={resetTilt}>
+
+      {/* ── DECISION HAIRLINE ── */}
+      <div aria-hidden="true" style={{
+        height: 2,
+        background: `linear-gradient(90deg, transparent, ${color}, transparent)`,
+        boxShadow: `0 0 14px ${color}88`,
+      }} />
 
       {/* ── HEADER ── */}
       <div style={headerStyle}>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#e1e4e8', letterSpacing: 0.5 }}>{ticker}</div>
-          <div style={{ fontSize: 9, color: '#8b949e', marginTop: 1 }}>{company_name}</div>
+          <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)', letterSpacing: '0.06em' }}>{ticker}</div>
+          <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 2 }}>{company_name}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <ExportMenu getSnapshotData={getSnapshotData} t={t} lang={lang} disabled={!result?.ticker} />
@@ -117,31 +196,30 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
               {quarters.map(q => <option key={q} value={q}>{q}</option>)}
             </select>
           )}
-          <div style={{ padding: '3px 8px', borderRadius: 5, fontSize: 10, fontWeight: 800, background: color, color: '#fff', letterSpacing: 0.5 }}>
+          <div style={{
+            padding: '3px 10px', borderRadius: 999, fontSize: 10, fontWeight: 800,
+            background: `${color}22`, color, border: `1px solid ${color}77`,
+            letterSpacing: '0.08em', boxShadow: `0 0 14px ${color}33`,
+          }}>
             {t(decision) || decision}
           </div>
         </div>
       </div>
 
       {/* ── SCORE ── */}
-      <div style={{ padding: '10px 14px 8px', textAlign: 'center' }}>
-        <div style={{ fontSize: 24, fontWeight: 800, color: scoreBarColor(total), lineHeight: 1 }}>
-          {total}<span style={{ fontSize: 12, fontWeight: 400, color: '#8b949e' }}>/40</span>
-        </div>
-        <div style={{ fontSize: 8, color: '#484f58', marginTop: 2, textTransform: 'uppercase', letterSpacing: 1 }}>Composite Score</div>
+      <div style={{ padding: '12px 14px 10px', textAlign: 'center' }}>
+        <ScoreRing total={total} color={scoreBarColor(total)} />
+        <div style={{ fontSize: 8, color: 'var(--faint)', marginTop: 6, textTransform: 'uppercase', letterSpacing: '0.18em' }}>Composite Score</div>
         {result.data_quality && (
           <div style={dataQualityStyle(result.data_quality)}>
             {result.data_quality === 'complete' ? '🟢 ' : result.data_quality === 'partial' ? '🟡 ' : '🔴 '}
             {t(result.data_quality) || result.data_quality}
           </div>
         )}
-        <div style={{ marginTop: 6, background: '#161b22', borderRadius: 3, height: 4, overflow: 'hidden' }}>
-          <div style={{ width: `${scorePercent(total)}%`, height: '100%', background: scoreBarColor(total), borderRadius: 3, transition: 'width 0.6s ease' }} />
-        </div>
       </div>
 
       {/* ── KEY METRICS ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0, borderTop: '1px solid #21262d', borderBottom: '1px solid #21262d' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0, borderTop: '1px solid rgba(125,155,195,0.12)', borderBottom: '1px solid rgba(125,155,195,0.12)' }}>
         <MetricBox label="Price" value={price_native ? `${price_native.toFixed(0)} ${currency}` : '—'} />
         <MetricBox label="Mkt Cap" value={market_cap ? `${(market_cap / 1e12).toFixed(1)}T` : '—'} border />
         <MetricBox label="Sector" value={sector || '—'} />
@@ -149,7 +227,7 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
       </div>
 
       {/* ── CACHE ── */}
-      <div style={{ padding: '4px 14px', borderBottom: '1px solid #21262d', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ padding: '4px 14px', borderBottom: '1px solid rgba(125,155,195,0.12)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <CacheIndicator ticker={ticker} />
         <a
           href={getCompanyOverviewDownloadUrl(ticker)}
@@ -157,12 +235,12 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
           rel="noreferrer"
           style={{
             fontSize: 11,
-            color: '#58a6ff',
-            background: '#21262d',
+            color: 'var(--cyan)',
+            background: 'rgba(125,155,195,0.12)',
             padding: '4px 10px',
             borderRadius: 6,
             textDecoration: 'none',
-            border: '1px solid #30363d',
+            border: '1px solid rgba(125,155,195,0.22)',
             fontWeight: 600,
             whiteSpace: 'nowrap',
           }}
@@ -172,18 +250,18 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
       </div>
 
       {/* ── VALUATION ── */}
-      <div data-export-group="valuation" style={{ padding: '0 14px 4px', borderBottom: '1px solid #21262d' }}>
+      <div data-export-group="valuation" style={{ padding: '0 14px 4px', borderBottom: '1px solid rgba(125,155,195,0.12)' }}>
         <ValuationGroup ticker={ticker} result={result} />
       </div>
 
       {/* ── PEER BENCHMARK ── */}
-      <div style={{ padding: '0 14px 4px', borderBottom: '1px solid #21262d' }}>
+      <div style={{ padding: '0 14px 4px', borderBottom: '1px solid rgba(125,155,195,0.12)' }}>
         <PeerBenchmarkGroup ticker={ticker} result={result} t={t} />
       </div>
 
       {/* ── AI INSIGHT ── */}
       {insight && (
-        <div style={{ padding: '6px 14px', fontSize: 10, color: '#8b949e', background: '#161b22', borderBottom: '1px solid #21262d', fontStyle: 'italic' }}>
+        <div style={{ padding: '6px 14px', fontSize: 10, color: 'var(--muted)', background: 'rgba(125,155,195,0.06)', borderBottom: '1px solid rgba(125,155,195,0.12)', fontStyle: 'italic' }}>
           {insight}
         </div>
       )}
@@ -198,17 +276,17 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
         {dossierStatus?.verified ? (
           <button onClick={() => onViewReport(result, selectedQuarter)}
             style={actionBtnStyle}
-            onMouseEnter={e => e.target.style.background = '#30363d'}
-            onMouseLeave={e => e.target.style.background = '#21262d'}>
+            onMouseEnter={e => e.target.style.background = 'rgba(125,155,195,0.22)'}
+            onMouseLeave={e => e.target.style.background = 'rgba(125,155,195,0.12)'}>
             📄 {t('viewFullReport')}</button>
         ) : (
           <div style={actionPlaceholderStyle}>
             📄 {lang === 'jp' ? '生成中...' : 'Building PDF...'}</div>
         )}
         <button onClick={() => setShowChart(s => !s)}
-          style={{ width: 32, padding: '5px 0', fontSize: 12, background: showChart ? '#1f6feb' : '#21262d',
-            border: `1px solid ${showChart ? '#388bfd' : '#30363d'}`, borderRadius: 5,
-            color: showChart ? '#fff' : '#8b949e', cursor: 'pointer', transition: 'background 0.15s',
+          style={{ width: 32, padding: '5px 0', fontSize: 12, background: showChart ? '#1f6feb' : 'rgba(125,155,195,0.12)',
+            border: `1px solid ${showChart ? '#388bfd' : 'rgba(125,155,195,0.22)'}`, borderRadius: 5,
+            color: showChart ? '#fff' : 'var(--muted)', cursor: 'pointer', transition: 'background 0.15s',
             display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           title={lang === 'jp' ? '指標履歴チャート' : 'Metrics history chart'}>📊</button>
         {downloadReady ? (
@@ -243,7 +321,7 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
 
       {/* ── METRICS HISTORY CHART ── */}
       {showChart && (
-        <div style={{ padding: '4px 14px 10px', borderTop: '1px solid #21262d' }}>
+        <div style={{ padding: '4px 14px 10px', borderTop: '1px solid rgba(125,155,195,0.12)' }}>
           <MetricsHistoryChart ticker={ticker} height={220} />
         </div>
       )}
@@ -262,18 +340,18 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
 
 function MetricBox({ label, value, border }) {
   return (
-    <div style={{ textAlign: 'center', padding: '5px 4px', borderLeft: border ? '1px solid #21262d' : 'none', borderRight: border ? '1px solid #21262d' : 'none' }}>
-      <div style={{ fontSize: 8, color: '#484f58', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 1 }}>{label}</div>
-      <div style={{ fontSize: 11, fontWeight: 600, color: '#e1e4e8' }}>{value}</div>
+    <div style={{ textAlign: 'center', padding: '5px 4px', borderLeft: border ? '1px solid rgba(125,155,195,0.12)' : 'none', borderRight: border ? '1px solid rgba(125,155,195,0.12)' : 'none' }}>
+      <div style={{ fontSize: 8, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 2 }}>{label}</div>
+      <div className="mono" style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink)' }}>{value}</div>
     </div>
   );
 }
 
-const cardStyle = { background: '#0d1117', border: '1px solid #21262d', borderRadius: 10, padding: 0, width: '100%', boxShadow: '0 1px 3px rgba(0,0,0,0.3)', transition: 'box-shadow 0.2s, transform 0.15s', overflow: 'hidden' };
-const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px 8px', borderBottom: '1px solid #21262d' };
-const quarterSelectStyle = { background: '#161b22', border: '1px solid #30363d', borderRadius: 4, color: '#58a6ff', fontSize: 9, fontWeight: 500, padding: '2px 4px', cursor: 'pointer', outline: 'none', maxWidth: 68 };
-const actionBtnStyle = { flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500, background: '#21262d', border: '1px solid #30363d', borderRadius: 5, color: '#58a6ff', cursor: 'pointer', transition: 'background 0.15s' };
-const actionPlaceholderStyle = { flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500, background: '#161b22', border: '1px solid #30363d', borderRadius: 5, color: '#8b949e', textAlign: 'center' };
+const cardStyle = { padding: 0, width: '100%' };
+const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px 8px', borderBottom: '1px solid rgba(125,155,195,0.12)' };
+const quarterSelectStyle = { background: 'rgba(125,155,195,0.06)', border: '1px solid rgba(125,155,195,0.22)', borderRadius: 4, color: 'var(--cyan)', fontSize: 9, fontWeight: 500, padding: '2px 4px', cursor: 'pointer', outline: 'none', maxWidth: 68 };
+const actionBtnStyle = { flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500, background: 'rgba(125,155,195,0.12)', border: '1px solid rgba(125,155,195,0.22)', borderRadius: 5, color: 'var(--cyan)', cursor: 'pointer', transition: 'background 0.15s' };
+const actionPlaceholderStyle = { flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500, background: 'rgba(125,155,195,0.06)', border: '1px solid rgba(125,155,195,0.22)', borderRadius: 5, color: 'var(--muted)', textAlign: 'center' };
 const errorPlaceholderStyle = { flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500, background: '#3d1f1f', border: '1px solid #6b3030', borderRadius: 5, color: '#f85149', textAlign: 'center' };
 const retryBtnStyle = { flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500, background: '#3d1f1f', border: '1px solid #f85149', borderRadius: 5, color: '#f85149', cursor: 'pointer', transition: 'background 0.15s' };
 const downloadBtnStyle = { flex: 1, padding: '5px 0', fontSize: 10, fontWeight: 500, borderRadius: 5, color: '#fff', cursor: 'pointer', textDecoration: 'none', textAlign: 'center', transition: 'background 0.15s, border 0.15s', fontFamily: 'inherit' };

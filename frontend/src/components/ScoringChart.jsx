@@ -20,9 +20,9 @@ const DESCRIPTIONS = {
 
 function barColor(score, max) {
   const pct = score / max;
-  if (pct >= 0.8) return '#238636';
+  if (pct >= 0.8) return '#34d399';
   if (pct >= 0.5) return '#d29922';
-  return '#da3633';
+  return '#f85149';
 }
 
 export default function ScoringChart({ scoring, height = 120 }) {
@@ -35,27 +35,30 @@ export default function ScoringChart({ scoring, height = 120 }) {
   const chartW = CRITERIA.length * (barW + gap);
   const labelH = 28;
   const chartH = height;
+  const topPad = 12;   // room for the value label above a full-height bar
+  const sidePad = 10;  // room for the first/last category labels
 
   return (
     <div style={{ position: 'relative' }}>
       {/* Title */}
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#8b949e', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
         Scoring Breakdown
       </div>
 
       <svg
-        viewBox={`0 0 ${chartW} ${chartH + labelH}`}
+        viewBox={`0 0 ${chartW + sidePad * 2} ${chartH + labelH + topPad}`}
         preserveAspectRatio="xMidYMid meet"
         width="100%"
         style={{ display: 'block' }}
       >
+        <g transform={`translate(${sidePad}, ${topPad})`}>
         {/* Grid lines: percentage-based (25%, 50%, 75%) */}
         {[0.25, 0.5, 0.75].map(pct => (
           <line
             key={pct}
             x1={0} y1={chartH - pct * chartH}
             x2={chartW} y2={chartH - pct * chartH}
-            stroke="#21262d" strokeWidth={0.5}
+            stroke="rgba(125,155,195,0.12)" strokeWidth={0.5}
           />
         ))}
         {/* Bars */}
@@ -71,8 +74,13 @@ export default function ScoringChart({ scoring, height = 120 }) {
               {/* Bar */}
               <rect
                 x={x} y={y} width={barW} height={barH}
-                fill={color} rx={3}
-                style={{ transition: 'height 0.4s ease' }}
+                fill={color} fillOpacity={0.9} rx={3}
+                style={{
+                  transition: 'height 0.4s ease',
+                  filter: `drop-shadow(0 0 5px ${color}55)`,
+                  animation: `barGrow 0.7s cubic-bezier(0.3, 0.7, 0.3, 1) ${i * 0.07}s both`,
+                  transformOrigin: `${x + barW / 2 + sidePad}px ${chartH + topPad}px`,
+                }}
                 onMouseEnter={(e) => {
                   const rect = e.target.getBoundingClientRect();
                   setTooltip({
@@ -81,30 +89,31 @@ export default function ScoringChart({ scoring, height = 120 }) {
                     x: rect.left + rect.width / 2,
                     y: rect.top,
                   });
-                  e.target.style.filter = 'brightness(1.3)';
+                  e.target.style.filter = `brightness(1.3) drop-shadow(0 0 8px ${color}88)`;
                 }}
                 onMouseLeave={(e) => {
                   setTooltip(null);
-                  e.target.style.filter = '';
+                  e.target.style.filter = `drop-shadow(0 0 5px ${color}55)`;
                 }}
               />
               {/* Score on top of bar */}
               <text
                 x={x + barW / 2} y={y - 4}
-                textAnchor="middle" fill="#e1e4e8" fontSize={8} fontWeight={600}
+                textAnchor="middle" fill="var(--ink)" fontSize={8} fontWeight={600}
               >
                 {val}
               </text>
               {/* Label below */}
               <text
                 x={x + barW / 2} y={chartH + 14}
-                textAnchor="middle" fill="#8b949e" fontSize={7}
+                textAnchor="middle" fill="var(--muted)" fontSize={7}
               >
                 {c.label}
               </text>
             </g>
           );
         })}
+        </g>
       </svg>
 
       {/* Tooltip */}
@@ -114,15 +123,15 @@ export default function ScoringChart({ scoring, height = 120 }) {
           left: tooltip.x,
           top: tooltip.y - 48,
           transform: 'translate(-50%, -100%)',
-          background: '#161b22', border: '1px solid #30363d',
+          background: 'rgba(11,18,33,0.92)', border: '1px solid rgba(125,155,195,0.3)',
           borderRadius: 6, padding: '6px 10px',
-          fontSize: 11, color: '#e1e4e8',
+          fontSize: 11, color: 'var(--ink)',
           whiteSpace: 'nowrap', zIndex: 1000,
           pointerEvents: 'none',
           boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
         }}>
           <div style={{ fontWeight: 700, marginBottom: 2 }}>{tooltip.label} — {tooltip.val}/{tooltip.max}</div>
-          <div style={{ color: '#8b949e', fontSize: 10 }}>{tooltip.desc}</div>
+          <div style={{ color: 'var(--muted)', fontSize: 10 }}>{tooltip.desc}</div>
         </div>
       )}
     </div>

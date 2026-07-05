@@ -1,8 +1,7 @@
 export default function SkeletonCard() {
   return (
-    <div style={{
-      background: '#0d1117', border: '1px solid #21262d',
-      borderRadius: 10, padding: 0, overflow: 'hidden',
+    <div className="glass" style={{
+      borderRadius: 18, padding: 0, overflow: 'hidden',
     }}>
       <style>{`
         @keyframes shimmer {
@@ -38,7 +37,7 @@ export default function SkeletonCard() {
       {/* Metrics skeleton */}
       <div style={{
         display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
-        borderTop: '1px solid #21262d', borderBottom: '1px solid #21262d',
+        borderTop: '1px solid rgba(125,155,195,0.12)', borderBottom: '1px solid rgba(125,155,195,0.12)',
         padding: '5px 4px',
       }}>
         {[0, 1, 2].map(i => (
@@ -66,12 +65,12 @@ export default function SkeletonCard() {
             <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
               <div style={{
                 width: '100%', height: `${h}%`,
-                background: 'linear-gradient(90deg, #161b22 0%, #21262d 50%, #161b22 100%)',
+                background: 'linear-gradient(90deg, rgba(125,155,195,0.06) 0%, rgba(125,155,195,0.12) 50%, rgba(125,155,195,0.06) 100%)',
                 backgroundSize: '800px 100%',
                 animation: 'shimmer 1.5s ease-in-out infinite',
                 borderRadius: 3,
               }} />
-              <div style={{ width: '100%', height: 7, background: '#161b22', borderRadius: 2 }} />
+              <div style={{ width: '100%', height: 7, background: 'rgba(125,155,195,0.06)', borderRadius: 2 }} />
             </div>
           ))}
         </div>
@@ -97,7 +96,7 @@ function ShimmerBlock({ w, h, radius = 3 }) {
       width: w,
       height: h,
       borderRadius: radius,
-      background: 'linear-gradient(90deg, #161b22 0%, #21262d 50%, #161b22 100%)',
+      background: 'linear-gradient(90deg, rgba(125,155,195,0.06) 0%, rgba(125,155,195,0.12) 50%, rgba(125,155,195,0.06) 100%)',
       backgroundSize: '800px 100%',
       animation: 'shimmer 1.5s ease-in-out infinite',
     }} />

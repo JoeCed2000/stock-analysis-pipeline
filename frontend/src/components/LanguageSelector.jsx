@@ -14,7 +14,7 @@ export default function LanguageSelector({ lang, onLanguageChange }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 6,
-      fontSize: 13, color: '#8b949e',
+      fontSize: 13, color: 'var(--muted)',
     }}>
       <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {translations[lang]?.language || 'Language'}
@@ -23,10 +23,10 @@ export default function LanguageSelector({ lang, onLanguageChange }) {
         value={lang}
         onChange={(e) => onLanguageChange(e.target.value)}
         style={{
-          background: '#1a1d27',
-          border: '1px solid #30363d',
+          background: 'rgba(13,21,38,0.7)',
+          border: '1px solid rgba(125,155,195,0.22)',
           borderRadius: 4,
-          color: '#e1e4e8',
+          color: 'var(--ink)',
           padding: '4px 8px',
           fontSize: 13,
           cursor: 'pointer',

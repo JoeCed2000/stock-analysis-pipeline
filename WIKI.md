@@ -1,5 +1,20 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-07-05 — Immersive frontend redesign (aurora WebGL + glass UI)
+
+**Status:** implemented, tested (12/12 frontend source tests), built, and live in production (backend serves `frontend/dist`; `https://sa.cedlabusa.net` verified with a headless browser — zero JS errors, aurora rendering).
+
+**Change:** full visual redesign of the client frontend, zero logic changes. Design system tokens live in `frontend/index.html` (`--bg0 #05080f`, `--accent #34d399`, `--cyan #3fc6f0`, glass surfaces, Bricolage Grotesque display / Inter body / JetBrains Mono data via Google Fonts). New `AuroraBackground.jsx` renders a full-viewport WebGL fbm nebula (mouse parallax, tab-visibility pause, `prefers-reduced-motion` still frame, hides itself on any GL failure so the CSS gradient fallback shows). Hero has a gradient-sheen title (leading emoji split out of `background-clip: text` — an emoji inside the clip renders as a solid block), staggered `.reveal` entrance, glass chips/tabs. `TickerInput` is a glowing command bar; `AnalysisCard` is a holographic glass card with 3D tilt, cursor spotlight, decision-colored hairline, animated SVG score ring with count-up; `ScoringChart` bars grow in with glow and got `topPad`/`sidePad` so the `10` value label and `Financial` axis label are no longer clipped (pre-existing defect); `SmartLoader`/`SkeletonCard`/`AboutSection`/`LanguageSelector` aligned to tokens; new favicon.
+
+**Files changed:** `frontend/index.html`, `frontend/src/App.jsx`, `frontend/src/components/AuroraBackground.jsx` (new), `TickerInput.jsx`, `AnalysisCard.jsx`, `ScoringChart.jsx`, `SmartLoader.jsx`, `SkeletonCard.jsx`, `AboutSection.jsx`, `LanguageSelector.jsx`, `frontend/public/favicon.svg`.
+
+**Pitfalls recorded:**
+- A fixed-position canvas inside the `.app` stacking context must be `z-index: -1`, not `0`, or it paints above static content.
+- Never call `WEBGL_lose_context.loseContext()` in a React effect cleanup: StrictMode remounts reuse the same canvas and `getContext()` returns the same, now-dead context (this produced `COMPILE_STATUS false` with a `null` info log).
+- A broken WebGL canvas can composite as opaque white — always hide the canvas on failure.
+
+**Verification:** 12/12 `*.test.cjs`/`*.spec.cjs` pass; `npm run build` clean; local dev + card-harness screenshots reviewed; production screenshot + console clean.
+
 ## 2026-06-17 — Source label dynamic period repair (t_54e5bf38)
 
 **Status:** implementation verified locally; Kernel proof added in this task.

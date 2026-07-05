@@ -13,6 +13,7 @@ import NotFound from './components/NotFound.jsx';
 import { analyzeTickersAsync, getJobStatus, getDossierStatus, countDossierSections, testSeekingAlphaAccess } from './api.js';
 import translations from './i18n.js';
 import SearchMonitor from './components/SearchMonitor.jsx';
+import AuroraBackground from './components/AuroraBackground.jsx';
 // BUILD: v3 — explicit loading state machine, no fake timer progress
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -154,7 +155,7 @@ export default function App() {
       } else if (checkRes.status === 202) {
         // Generation in progress — poll until ready
         const toast = document.createElement('div');
-        toast.style.cssText = 'position:fixed;top:20px;right:20px;background:#161b22;border:1px solid #30363d;color:#c9d1d9;padding:12px 18px;border-radius:8px;z-index:9999;font-size:13px';
+        toast.style.cssText = 'position:fixed;top:20px;right:20px;background:rgba(11,18,33,0.9);backdrop-filter:blur(12px);border:1px solid rgba(125,155,195,0.3);color:#e7edf6;padding:12px 18px;border-radius:12px;z-index:9999;font-size:13px;box-shadow:0 12px 40px rgba(2,6,14,0.6)';
         toast.textContent = `📊 Generating deep-dive for ${result.ticker}...`;
         document.body.appendChild(toast);
         
@@ -189,7 +190,7 @@ export default function App() {
       } else {
         // Unexpected status — show error
         const toast = document.createElement('div');
-        toast.style.cssText = 'position:fixed;top:20px;right:20px;background:#161b22;border:1px solid #30363d;color:#c9d1d9;padding:12px 18px;border-radius:8px;z-index:9999;font-size:13px';
+        toast.style.cssText = 'position:fixed;top:20px;right:20px;background:rgba(11,18,33,0.9);backdrop-filter:blur(12px);border:1px solid rgba(125,155,195,0.3);color:#e7edf6;padding:12px 18px;border-radius:12px;z-index:9999;font-size:13px;box-shadow:0 12px 40px rgba(2,6,14,0.6)';
         toast.textContent = `⚠️ Report not available for ${result.ticker} (${checkRes.status})`;
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 5000);
@@ -197,7 +198,7 @@ export default function App() {
     } catch (e) {
       // Network error — show error toast
       const toast = document.createElement('div');
-      toast.style.cssText = 'position:fixed;top:20px;right:20px;background:#161b22;border:1px solid #30363d;color:#c9d1d9;padding:12px 18px;border-radius:8px;z-index:9999;font-size:13px';
+      toast.style.cssText = 'position:fixed;top:20px;right:20px;background:rgba(11,18,33,0.9);backdrop-filter:blur(12px);border:1px solid rgba(125,155,195,0.3);color:#e7edf6;padding:12px 18px;border-radius:12px;z-index:9999;font-size:13px;box-shadow:0 12px 40px rgba(2,6,14,0.6)';
       toast.textContent = `⚠️ Cannot reach report for ${result.ticker}`;
       document.body.appendChild(toast);
       setTimeout(() => toast.remove(), 5000);
@@ -397,7 +398,8 @@ export default function App() {
 
 
   return (
-    <div className="app" style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
+    <div className="app" style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px', position: 'relative', zIndex: 1 }}>
+      <AuroraBackground />
       {show404 ? (
         <NotFound t={t} onBack={() => { window.location.hash = ''; }} />
       ) : showAdmin ? (
@@ -406,39 +408,29 @@ export default function App() {
         <FeedbackPage lang={lang} onClose={() => { window.location.hash = ''; }} />
       ) : (
       <>{/* Header — centered */}
-      <div style={{ marginBottom: 24, textAlign: 'center' }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ marginBottom: 28, textAlign: 'center' }}>
+        <div className="reveal" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 26, gap: 8, flexWrap: 'wrap', '--d': '0.05s' }}>
           <button
+            className="chip"
             onClick={() => { window.location.hash = '#feedback'; }}
             style={{
-              padding: '8px 14px',
-              fontSize: 13,
+              padding: '8px 16px',
+              fontSize: 12.5,
               fontWeight: 600,
-              background: '#21262d',
-              color: '#c9d1d9',
-              border: '1px solid #30363d',
-              borderRadius: 6,
+              color: '#c9d5e4',
               cursor: 'pointer',
             }}
           >
             💬 Feedback
           </button>
           <span
+            className="chip"
             title={saAccess.error || ''}
             style={{
               fontSize: 12,
-              padding: '5px 10px',
-              borderRadius: 999,
-              border: '1px solid #30363d',
-              background: saAccess.loading
-                ? '#21262d'
-                : saAccess.configured === true
-                  ? '#23863620'
-                  : saAccess.configured === false
-                    ? '#da363320'
-                    : '#d2992220',
+              padding: '6px 12px',
               color: saAccess.loading
-                ? '#8b949e'
+                ? '#8fa1b8'
                 : saAccess.configured === true
                   ? '#3fb950'
                   : saAccess.configured === false
@@ -457,53 +449,55 @@ export default function App() {
                     : 'SA: unknown'}
           </span>
           <LanguageSelector lang={lang} onLanguageChange={handleLanguageChange} />
-          <span style={{ marginLeft: 8, fontSize: 11, color: '#8b949e' }}>
+          <span className="chip" style={{ padding: '6px 12px', fontSize: 11, color: '#8fa1b8' }}>
             📋 Client
           </span>
         </div>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#e1e4e8', marginBottom: 4 }}>
-          {t('siteTitle')}
+
+        <div className="reveal" style={{ marginBottom: 14, '--d': '0.15s' }}>
+          <span className="hero-eyebrow">AI Equity Research</span>
+        </div>
+        <h1 className="hero-title reveal" style={{ marginBottom: 12, '--d': '0.25s' }}>
+          {(() => {
+            // Emoji cannot sit inside background-clip:text (it becomes a solid
+            // gradient block), so split a leading emoji out of the gradient span.
+            const raw = t('siteTitle');
+            const m = raw.match(/^(\p{Extended_Pictographic}️?)\s*(.*)$/u);
+            const emoji = m ? m[1] : null;
+            const text = m ? m[2] : raw;
+            return (
+              <>
+                {emoji && <span className="hero-emoji" aria-hidden="true">{emoji}</span>}
+                <span className="grad">{text}</span>
+              </>
+            );
+          })()}
         </h1>
-        <p style={{ fontSize: 13, color: '#8b949e' }}>
+        <p className="hero-sub reveal" style={{ '--d': '0.4s' }}>
           {t('siteSubtitle')}
         </p>
 
         {!loading && (
-        <div style={{ marginTop: 16 }}>
+        <div className="reveal" style={{ marginTop: 18, '--d': '0.5s' }}>
           <AboutSection t={t} />
         </div>
         )}
 
         {/* Mode tabs — centered, hidden during analysis */}
         {!loading && (
-        <div style={{
-          display: 'flex', justifyContent: 'center', marginTop: 16,
+        <div className="reveal" style={{
+          display: 'flex', justifyContent: 'center', marginTop: 18, '--d': '0.55s',
         }}>
-          <div className="mode-tabs" style={{
-            display: 'flex', gap: 2, background: '#1a1d27',
-            border: '1px solid #30363d', borderRadius: 6, padding: 3,
-          }}>
+          <div className="mode-tabs">
             <button
+              className={`mode-tab${mode === 'single' ? ' active' : ''}`}
               onClick={() => { setMode('single'); setResults([]); setError(null); }}
-              style={{
-                padding: '8px 20px', fontSize: 14, fontWeight: 500,
-                background: mode === 'single' ? '#238636' : 'transparent',
-                color: mode === 'single' ? '#fff' : '#8b949e',
-                border: 'none', borderRadius: 4, cursor: 'pointer',
-                transition: 'all 0.15s',
-              }}
             >
               {t('quickAnalysis')}
             </button>
             <button
+              className={`mode-tab${mode === 'batch' ? ' active' : ''}`}
               onClick={() => { setMode('batch'); setResults([]); setError(null); }}
-              style={{
-                padding: '8px 20px', fontSize: 14, fontWeight: 500,
-                background: mode === 'batch' ? '#238636' : 'transparent',
-                color: mode === 'batch' ? '#fff' : '#8b949e',
-                border: 'none', borderRadius: 4, cursor: 'pointer',
-                transition: 'all 0.15s',
-              }}
             >
               {t('batchAnalysis')}
             </button>
@@ -514,12 +508,16 @@ export default function App() {
 
       {/* Single mode */}
       {mode === 'single' && (
-        <TickerInput onAnalyze={handleAnalyze} loading={loading} t={t} />
+        <div className="reveal" style={{ '--d': '0.65s' }}>
+          <TickerInput onAnalyze={handleAnalyze} loading={loading} t={t} />
+        </div>
       )}
 
       {/* Batch mode */}
       {mode === 'batch' && (
-        <BatchAnalysis onResultsReady={(results) => setResults(results)} t={t} />
+        <div className="reveal" style={{ '--d': '0.65s' }}>
+          <BatchAnalysis onResultsReady={(results) => setResults(results)} t={t} />
+        </div>
       )}
 
       {/* Smart loading */}
@@ -547,9 +545,11 @@ export default function App() {
 
       {error && (
         <div style={{
-          background: '#da363320', border: '1px solid #da3633',
-          borderRadius: 6, padding: '12px 16px', marginTop: 16,
+          background: 'rgba(218, 54, 51, 0.12)', border: '1px solid rgba(248, 81, 73, 0.45)',
+          backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+          borderRadius: 12, padding: '12px 16px', marginTop: 16,
           color: '#f85149', fontSize: 13, textAlign: 'center',
+          boxShadow: '0 0 24px rgba(248, 81, 73, 0.08)',
         }}>
           {error}
         </div>
@@ -566,39 +566,34 @@ export default function App() {
         <div className="results-grid" style={{
           display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 400px))', gap: 20,
           marginTop: 16, justifyContent: 'center',
-          animation: 'fadeInUp 0.4s ease',
         }}>
-          {results.map(r => (
-            <AnalysisCard
-              key={r.ticker}
-              result={r}
-              onViewReport={handleViewReport}
-              t={t}
-              lang={lang}
-            />
+          {results.map((r, i) => (
+            <div key={r.ticker} style={{ animation: `fadeInUp 0.6s cubic-bezier(0.2, 0.7, 0.3, 1) ${i * 0.12}s both` }}>
+              <AnalysisCard
+                result={r}
+                onViewReport={handleViewReport}
+                t={t}
+                lang={lang}
+              />
+            </div>
           ))}
         </div>
       )}
 
       <style>{`
-        @keyframes fadeInUp {
-          0%   { opacity: 0; transform: translateY(12px); }
-          100% { opacity: 1; transform: translateY(0); }
-        }
-
         /* ── Responsive ── */
         @media (max-width: 768px) {
           .app { padding: 12px 8px !important; }
-          .app h1 { font-size: 18px !important; }
-          .app .mode-tabs { flex-wrap: wrap; gap: 1px; }
-          .app .mode-tabs button { padding: 6px 12px !important; font-size: 12px !important; }
+          .app .hero-title { font-size: 30px !important; }
+          .app .mode-tabs { flex-wrap: wrap; }
+          .app .mode-tabs button { padding: 7px 14px !important; font-size: 12px !important; }
           .results-grid { grid-template-columns: 1fr !important; }
         }
 
         @media (max-width: 480px) {
           .app { padding: 8px 4px !important; }
-          .app h1 { font-size: 16px !important; }
-          .app p { font-size: 11px !important; }
+          .app .hero-title { font-size: 26px !important; }
+          .app .hero-sub { font-size: 12px !important; }
         }
       `}</style>
       </>)}

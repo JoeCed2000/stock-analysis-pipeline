@@ -82,21 +82,22 @@ export default function SmartLoader({
   const activeAct = currentActs[0] || '';
 
   return (
-    <div style={{
-      background: '#0d1117', border: '1px solid #21262d',
-      borderRadius: 12, padding: '40px 28px', marginTop: 20,
+    <div className="glass" style={{
+      borderRadius: 18, padding: '40px 28px', marginTop: 20,
       maxWidth: 560, margin: '20px auto 0',
+      boxShadow: '0 14px 40px rgba(2,6,14,0.5)',
+      animation: 'fadeInUp 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) both',
     }}>
       {/* ── Ticker / Company Name ── */}
       <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 13, color: '#8b949e', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+        <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
           {ticker ? (t?.('currentTicker') || 'Current ticker') : (t?.('loading') || 'Loading')}
         </div>
         {ticker && (
-          <div style={{ fontSize: 26, fontWeight: 700, color: '#e1e4e8' }}>
-            <span style={{ color: '#58a6ff' }}>{ticker}</span>
+          <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>
+            <span style={{ color: 'var(--cyan)' }}>{ticker}</span>
             {companyName && (
-              <span style={{ fontSize: 16, fontWeight: 400, color: '#8b949e', marginLeft: 10 }}>
+              <span style={{ fontSize: 16, fontWeight: 400, color: 'var(--muted)', marginLeft: 10 }}>
                 — {companyName}
               </span>
             )}
@@ -106,11 +107,11 @@ export default function SmartLoader({
 
       {/* ── Phase indicator ── */}
       <div style={{
-        fontSize: 15, color: '#e1e4e8', fontWeight: 600,
+        fontSize: 15, color: 'var(--ink)', fontWeight: 600,
         marginBottom: 20,
       }}>
         {t?.('stepLabel', { step: step + 1, total: STEP_KEYS.length }) || `Step ${step + 1} of ${STEP_KEYS.length}`}
-        <span style={{ fontSize: 13, color: '#8b949e', fontWeight: 400, marginLeft: 10 }}>
+        <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 400, marginLeft: 10 }}>
           — {phaseLabel}
         </span>
       </div>
@@ -119,18 +120,18 @@ export default function SmartLoader({
       <div style={{ marginBottom: 20 }}>
         <div style={{
           display: 'flex', justifyContent: 'space-between',
-          fontSize: 12, color: '#8b949e', marginBottom: 6,
+          fontSize: 12, color: 'var(--muted)', marginBottom: 6,
         }}>
           <span>{current} / {total} {t?.('tickersProcessed') || 'tickers processed'}</span>
           <span>{pct}%</span>
         </div>
         <div style={{
-          background: '#161b22', borderRadius: 6, height: 8,
+          background: 'rgba(125,155,195,0.06)', borderRadius: 6, height: 8,
           overflow: 'hidden',
         }}>
           <div style={{
             width: `${pct}%`, height: '100%',
-            background: 'linear-gradient(90deg, #1f6feb, #58a6ff)',
+            background: 'linear-gradient(90deg, #10b981, var(--cyan))',
             borderRadius: 6,
             transition: 'width 0.5s ease',
           }} />
@@ -149,14 +150,14 @@ export default function SmartLoader({
             <div key={i} style={{
               display: 'flex', alignItems: 'center', gap: 6,
               fontSize: 11,
-              color: isCurrent ? '#e1e4e8' : isDone ? '#8b949e' : '#6e7681',
+              color: isCurrent ? 'var(--ink)' : isDone ? 'var(--muted)' : 'var(--faint)',
               fontWeight: isCurrent ? 600 : 400,
               transition: 'color 0.3s',
               flex: 1, justifyContent: 'center',
             }}>
               <span style={{
                 display: 'inline-block', width: 14, height: 14, borderRadius: '50%',
-                background: isCurrent ? '#58a6ff' : isDone ? '#1f6feb' : '#30363d',
+                background: isCurrent ? 'var(--cyan)' : isDone ? '#10b981' : 'rgba(125,155,195,0.22)',
                 transition: 'background 0.3s',
                 flexShrink: 0,
               }} />
@@ -171,11 +172,11 @@ export default function SmartLoader({
 
       {/* ── Activity log ── */}
       <div style={{
-        background: '#161b22', borderRadius: 8,
-        border: '1px solid #21262d',
+        background: 'rgba(125,155,195,0.06)', borderRadius: 8,
+        border: '1px solid rgba(125,155,195,0.12)',
         padding: '14px 16px', marginBottom: 16,
       }}>
-        <div style={{ fontSize: 11, color: '#484f58', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+        <div style={{ fontSize: 11, color: 'var(--faint)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
           {t?.('activityLog') || 'Activity log'}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -186,12 +187,12 @@ export default function SmartLoader({
               <div key={`${key}-${isDone ? 'done' : 'active'}`} style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 fontSize: 12,
-                color: isActive ? '#e1e4e8' : isDone ? '#8b949e' : '#484f58',
+                color: isActive ? 'var(--ink)' : isDone ? 'var(--muted)' : 'var(--faint)',
                 fontWeight: isActive ? 500 : 400,
               }}>
                 <span style={{
                   fontSize: 12, width: 16, textAlign: 'center', flexShrink: 0,
-                  color: isActive ? '#58a6ff' : isDone ? '#58a6ff' : '#30363d',
+                  color: isActive ? 'var(--cyan)' : isDone ? 'var(--cyan)' : 'rgba(125,155,195,0.22)',
                 }}>
                   {isDone ? '●' : isActive ? '●' : '·'}
                 </span>
@@ -205,11 +206,11 @@ export default function SmartLoader({
       {/* ── Pulse / still-alive indicator ── */}
       <div style={{
         display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8,
-        color: '#484f58', fontSize: 11, marginBottom: 8,
+        color: 'var(--faint)', fontSize: 11, marginBottom: 8,
       }}>
         <span style={{
           display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
-          background: '#58a6ff',
+          background: 'var(--cyan)',
           animation: 'pulse-dot 1.2s ease-in-out infinite',
         }} />
         <span>{t?.('sourcesIncluded') || 'Sources and calculations will be included in the final report'}</span>

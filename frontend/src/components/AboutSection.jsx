@@ -3,12 +3,12 @@ import { useState } from 'react';
 const SECTION_STYLE = {
   base: {
     marginBottom: 16, padding: 14, borderRadius: 6,
-    background: '#161b22', border: '1px solid #30363d',
-    fontSize: 13, color: '#8b949e', lineHeight: 1.65,
+    background: 'rgba(125,155,195,0.06)', border: '1px solid rgba(125,155,195,0.22)',
+    fontSize: 13, color: 'var(--muted)', lineHeight: 1.65,
   },
-  title: { fontSize: 13, fontWeight: 600, color: '#e1e4e8', marginBottom: 8 },
-  label: { color: '#58a6ff', fontWeight: 500 },
-  muted: { color: '#8b949e' },
+  title: { fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 8 },
+  label: { color: 'var(--cyan)', fontWeight: 500 },
+  muted: { color: 'var(--muted)' },
 };
 
 export default function AboutSection({ t }) {
@@ -19,7 +19,7 @@ export default function AboutSection({ t }) {
       <button
         onClick={() => setOpen(true)}
         style={{
-          background: 'none', border: 'none', color: '#58a6ff',
+          background: 'none', border: 'none', color: 'var(--cyan)',
           fontSize: 12, cursor: 'pointer', padding: 0, marginBottom: 12,
         }}
       >
@@ -39,7 +39,7 @@ export default function AboutSection({ t }) {
         <span style={SECTION_STYLE.title}>{t('aboutMainTitle')}</span>
         <button
           onClick={() => setOpen(false)}
-          style={{ background: 'none', border: 'none', color: '#8b949e', fontSize: 16, cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}
+          style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 16, cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}
         >
           ✕
         </button>
@@ -93,7 +93,7 @@ export default function AboutSection({ t }) {
         </tbody>
       </table>
 
-      <div style={{ marginTop: 10, fontSize: 11, color: '#484f58', borderTop: '1px solid #30363d', paddingTop: 8 }}>
+      <div style={{ marginTop: 10, fontSize: 11, color: 'var(--faint)', borderTop: '1px solid rgba(125,155,195,0.22)', paddingTop: 8 }}>
         {t('aboutDisclaimer')}
       </div>
     </div>
