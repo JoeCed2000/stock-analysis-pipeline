@@ -304,6 +304,7 @@ class TestCompanyOverviewDownload:
         assert "inline" in content_disposition
         assert "AAPL_company_overview_investor_profile_2026-05-28.pdf" in content_disposition
         assert resp.content.startswith(b"%PDF-current")
+        assert resp.headers["cache-control"] == "no-store"
 
     def test_download_legacy_only_does_not_serve_thin_client_pdf(self, client):
         legacy_pdf = self.sources_dir / "company_profile_AAPL.pdf"

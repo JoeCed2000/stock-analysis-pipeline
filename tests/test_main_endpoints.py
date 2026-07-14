@@ -69,6 +69,79 @@ def test_require_auth_rejects_forged_allowed_origin_without_api_key(monkeypatch)
     assert exc.value.status_code == 403
 
 
+def test_require_auth_rejects_loopback_without_api_key(monkeypatch):
+    """Loopback (127.0.0.1) must NOT bypass auth — production tunnel terminates to localhost."""
+    monkeypatch.setattr(main, "_API_KEY", "secret-test-key")
+    request = SimpleNamespace(
+        client=SimpleNamespace(host="127.0.0.1"),
+        headers={},
+        query_params={},
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(main._require_auth(cast(Request, request)))
+
+    assert exc.value.status_code == 403
+
+
+def test_require_auth_rejects_testclient_without_api_key(monkeypatch):
+    """FastAPI TestClient synthetic host 'testclient' must NOT bypass auth."""
+    monkeypatch.setattr(main, "_API_KEY", "secret-test-key")
+    request = SimpleNamespace(
+        client=SimpleNamespace(host="testclient"),
+        headers={},
+        query_params={},
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(main._require_auth(cast(Request, request)))
+
+    assert exc.value.status_code == 403
+
+
+def test_require_auth_rejects_loopback_with_wrong_key(monkeypatch):
+    """Wrong key from loopback must return 403."""
+    monkeypatch.setattr(main, "_API_KEY", "secret-test-key")
+    request = SimpleNamespace(
+        client=SimpleNamespace(host="::1"),
+        headers={"X-API-Key": "wrong-key"},
+        query_params={},
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(main._require_auth(cast(Request, request)))
+
+    assert exc.value.status_code == 403
+
+
+def test_require_auth_accepts_loopback_with_correct_key(monkeypatch):
+    """Correct X-API-Key succeeds even from loopback — no bypass needed."""
+    monkeypatch.setattr(main, "_API_KEY", "secret-test-key")
+    request = SimpleNamespace(
+        client=SimpleNamespace(host="127.0.0.1"),
+        headers={"X-API-Key": "secret-test-key"},
+        query_params={},
+    )
+
+    # Should not raise
+    asyncio.run(main._require_auth(cast(Request, request)))
+
+
+def test_require_auth_rejects_loopback_when_api_key_not_configured(monkeypatch):
+    """Without CED_CONTROL_KEY configured, even loopback gets 403."""
+    monkeypatch.setattr(main, "_API_KEY", "")
+    request = SimpleNamespace(
+        client=SimpleNamespace(host="127.0.0.1"),
+        headers={"X-API-Key": "anything"},
+        query_params={},
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(main._require_auth(cast(Request, request)))
+
+    assert exc.value.status_code == 403
+
+
 def test_cache_overview_flush_route_requires_auth_dependency():
     route = cast(Any, next(
         route

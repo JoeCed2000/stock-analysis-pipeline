@@ -230,14 +230,11 @@ _API_KEY = os.getenv("CED_CONTROL_KEY", "")
 async def _require_auth(request: Request):
     """FastAPI dependency: require CED_CONTROL_KEY for protected endpoints.
 
-    Local loopback requests and in-process FastAPI TestClient bypass auth so
-    local tooling/tests keep working. Remote browser headers (Origin/Referer)
-    are never trusted for auth because they are client-controlled/spoofable.
+    No loopback, host, Origin, or Referer bypass is permitted. In production,
+    Cloudflare Tunnel terminates to localhost so the source IP is always
+    loopback — a bypass on that would make every protected route public.
     Accepts X-API-Key header (primary) or api_key query param (fallback for downloads).
     """
-    host = request.client.host if request.client else ""
-    if host in ("127.0.0.1", "::1", "localhost", "testclient"):
-        return
     if not _API_KEY:
         raise HTTPException(status_code=403, detail="API key not configured (set CED_CONTROL_KEY)")
     provided = request.headers.get("X-API-Key", "") or request.query_params.get("api_key", "")
@@ -2667,14 +2664,9 @@ async def submit_feedback(
     return JSONResponse(response_data)
 
 
-@app.get("/api/feedback")
+@app.get("/api/feedback", dependencies=[Depends(_require_auth)])
 async def list_all_feedback():
-    """List feedback entries for the user-facing feedback page.
-
-    Public by design so the production static UI can show submission status
-    without embedding an admin API key. The privileged admin view remains on
-    `/api/admin/feedback` and stays protected by `_require_auth`.
-    """
+    """List feedback entries for authenticated review tooling."""
     from backend.feedback_store import list_all_feedback as list_all_fb
     entries = list_all_fb()
     return JSONResponse({
@@ -2699,13 +2691,9 @@ async def admin_list_feedback():
     return JSONResponse(get_all_admin_feedback())
 
 
-@app.get("/api/feedback-file/{bucket}/{filename:path}")
+@app.get("/api/feedback-file/{bucket}/{filename:path}", dependencies=[Depends(_require_auth)])
 async def download_feedback_file(bucket: str, filename: str):
-    """Serve a feedback attachment from the canonical feedback bucket store.
-
-    Public read endpoint by design so user-facing feedback links can open directly
-    in a new browser tab without exposing API keys in the URL.
-    """
+    """Serve an authenticated feedback attachment from the canonical store."""
     from backend.feedback_store import get_feedback_file_path
 
     try:
@@ -2801,6 +2789,7 @@ async def download_company_overview(ticker: str, format: str = "auto"):
                     media_type=media_type,
                     filename=file_path.name,
                     content_disposition_type=disposition,
+                    headers={"Cache-Control": "no-store"},
                 )
 
     if selected_format == "pdf" and rejected_pdfs:

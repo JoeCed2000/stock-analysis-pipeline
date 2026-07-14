@@ -140,15 +140,13 @@ class TestFeedbackEndpoint:
         assert "General feedback visible to user" in texts
         assert "Ticker feedback visible to user" in texts
 
-    def test_feedback_user_page_list_is_public_for_remote_browser(self, client, remote_client):
-        self._submit(client, text="General feedback visible on production page")
+    def test_feedback_history_is_private_for_remote_browser(self, client, remote_client):
+        self._submit(client, text="Private production feedback")
 
         resp = remote_client.get("/api/feedback")
 
-        assert resp.status_code == 200
-        payload = resp.json()
-        assert payload["total"] == 1
-        assert payload["entries"][0]["text"] == "General feedback visible on production page"
+        assert resp.status_code == 403
+        assert resp.json()["detail"] == "Invalid API key"
 
     def test_feedback_user_page_submit_is_public_for_remote_browser(self, remote_client):
         resp = remote_client.post("/api/feedback", data={"text": "Remote browser can submit feedback"})
@@ -221,6 +219,21 @@ class TestFeedbackEndpoint:
         assert resp.status_code == 200
         assert resp.content == b"fake png"
         assert resp.headers["x-content-type-options"] == "nosniff"
+
+    def test_feedback_file_is_private_for_remote_browser(self, client, remote_client):
+        self._submit(
+            client,
+            ticker="AAPL",
+            text="Private attachment",
+            files={"files": ("proof.png", b"fake png", "image/png")},
+        )
+        entries = json.loads((self.feedback_root / "feedback_AAPL" / "index.json").read_text())
+        file_name = entries[0]["files"][0]
+
+        resp = remote_client.get(f"/api/feedback-file/AAPL/{file_name}")
+
+        assert resp.status_code == 403
+        assert resp.json()["detail"] == "Invalid API key"
 
     def test_feedback_upload_rejects_active_content_extensions(self, client):
         resp = self._submit(
