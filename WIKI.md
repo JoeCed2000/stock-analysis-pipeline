@@ -1,5 +1,20 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-07-15 — Artifact access contract enforced (t_750fe7b2)
+
+**Status:** implementation verified locally; Kernel proof READY.
+
+**Change:** `backend/main.py` now enforces the approved public/private artifact boundary from `docs/security/public-artifact-access-contract.md`. Private/raw artifact routes (`/api/analyze/{ticker}/download`, `/api/sources/{ticker}`, `/api/traceability/{ticker}`) require `_require_auth` even from loopback/spoofed browser headers. Public curated routes remain usable without a frontend master key; dossier status is sanitized to avoid filesystem disclosure, and public dossier ZIP generation skips hidden files, symlinks, raw JSON/CSV/Markdown, and non-transcript secret-like text.
+
+**Batch contract:** `/api/batch/analyze` returns a signed HMAC capability to unauthenticated browsers, while internal batch storage uses a separate random internal ID. `/api/batch/{job_id}/status` and `/download` accept only a valid, unexpired, purpose-bound capability or a master-key operator override.
+
+**Files changed:**
+- `backend/main.py` — route protections, public status sanitization, dossier ZIP hardening, signed batch capability helpers.
+- `tests/test_artifact_access_security.py` — RED/GREEN contract tests for public curated routes, private routes, and batch capability security.
+- `.ced-agent-kernel/specs/t_750fe7b2_artifact_access.json` and `ops/kernel_checks/verify_t_750fe7b2_artifact_access.py` — persistent Kernel proof.
+
+**Verification:** RED observed first (`11 failed, 4 passed` on the new security test module against the previous implementation). GREEN: `tests/test_artifact_access_security.py` → 15 passed; expected bundle `tests/test_artifact_access_security.py tests/test_main_endpoints.py` → 37 passed; compatibility bundle with public client + batch tests → 66 passed. Kernel: `kverify .ced-agent-kernel/specs/t_750fe7b2_artifact_access.json --base-dir .` → READY.
+
 ## 2026-07-05 — Immersive frontend redesign (aurora WebGL + glass UI)
 
 **Status:** implemented, tested (12/12 frontend source tests), built, and live in production (backend serves `frontend/dist`; `https://sa.cedlabusa.net` verified with a headless browser — zero JS errors, aurora rendering).

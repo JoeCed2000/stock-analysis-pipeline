@@ -1,0 +1,28 @@
+{
+  "claim": "Artifact access contract for public curated, private/raw, and batch-capability endpoints is implemented and verified.",
+  "workflow": "code_change_verified",
+  "checks": [
+    {
+      "kind": "path_exists",
+      "name": "backend implementation exists",
+      "path": "backend/main.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "security contract tests exist",
+      "path": "tests/test_artifact_access_security.py"
+    },
+    {
+      "kind": "path_exists",
+      "name": "persistent verifier exists",
+      "path": "ops/kernel_checks/verify_t_750fe7b2_artifact_access.py"
+    },
+    {
+      "kind": "command_succeeds",
+      "name": "artifact access verifier succeeds",
+      "command": "backend/.venv/bin/python ops/kernel_checks/verify_t_750fe7b2_artifact_access.py",
+      "stdout_pattern": "VERIFY_T_750FE7B2_ARTIFACT_ACCESS_READY",
+      "timeout": 300
+    }
+  ]
+}

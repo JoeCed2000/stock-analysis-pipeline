@@ -26,6 +26,8 @@ for _k in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"):
 
 import uuid
 import logging
+import base64
+import hmac
 from pathlib import Path
 from typing import Any, List
 
@@ -35,6 +37,7 @@ import sys
 import zipfile
 import re
 import hashlib
+import secrets
 import mimetypes
 import time
 from datetime import datetime, timezone
@@ -265,6 +268,130 @@ logger.info("Canonical analyses dir: %s", ANALYSES_DIR)
 _batch_jobs: dict = {}
 BATCH_DIR = Path(__file__).parent.parent / "batches"
 BATCH_DIR.mkdir(exist_ok=True)
+_BATCH_CAPABILITY_PURPOSE = "batch-status-download"
+
+
+def _is_production_runtime() -> bool:
+    return os.getenv("ENVIRONMENT", "").lower() in {"prod", "production"} or bool(os.getenv("RENDER"))
+
+
+def _batch_capability_secret() -> bytes | None:
+    secret = os.getenv("BATCH_CAPABILITY_SECRET", "").strip()
+    if secret:
+        return secret.encode("utf-8")
+    if _is_production_runtime():
+        logger.error("BATCH_CAPABILITY_SECRET is required for batch capabilities in production")
+        return None
+    # Local/test fallback only. Production remains fail-closed above; this keeps
+    # existing local developer and unit-test workflows working without embedding
+    # the master CED_CONTROL_KEY in browser-visible batch URLs.
+    return b"dev-only-batch-capability-secret-change-in-production"
+
+
+def _urlsafe_b64encode(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _urlsafe_b64decode(value: str) -> bytes:
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode((value + padding).encode("ascii"))
+
+
+def _batch_capability_ttl_seconds() -> int:
+    try:
+        ttl = int(os.getenv("BATCH_CAPABILITY_TTL_SECONDS", "86400"))
+    except ValueError:
+        ttl = 86400
+    return max(60, min(ttl, 7 * 24 * 60 * 60))
+
+
+def _sign_batch_capability(
+    internal_job_id: str,
+    *,
+    issued_at: int | None = None,
+    ttl_seconds: int | None = None,
+    purpose: str = _BATCH_CAPABILITY_PURPOSE,
+) -> str:
+    secret = _batch_capability_secret()
+    if secret is None:
+        raise RuntimeError("Batch capability signing secret is not configured")
+    iat = int(time.time()) if issued_at is None else int(issued_at)
+    ttl = _batch_capability_ttl_seconds() if ttl_seconds is None else int(ttl_seconds)
+    payload = {
+        "v": 1,
+        "p": purpose,
+        "j": internal_job_id,
+        "iat": iat,
+        "exp": iat + ttl,
+    }
+    payload_bytes = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    payload_b64 = _urlsafe_b64encode(payload_bytes)
+    signature = hmac.new(secret, payload_b64.encode("ascii"), hashlib.sha256).digest()
+    return f"{payload_b64}.{_urlsafe_b64encode(signature)}"
+
+
+def _verify_batch_capability(
+    capability: str,
+    *,
+    purpose: str = _BATCH_CAPABILITY_PURPOSE,
+) -> str | None:
+    secret = _batch_capability_secret()
+    if secret is None:
+        return None
+    try:
+        payload_b64, signature_b64 = capability.split(".", 1)
+        expected = hmac.new(secret, payload_b64.encode("ascii"), hashlib.sha256).digest()
+        provided = _urlsafe_b64decode(signature_b64)
+        if not hmac.compare_digest(provided, expected):
+            return None
+        payload = json.loads(_urlsafe_b64decode(payload_b64).decode("utf-8"))
+    except Exception:
+        return None
+    if payload.get("v") != 1 or payload.get("p") != purpose:
+        return None
+    if int(payload.get("exp", 0)) < int(time.time()):
+        return None
+    internal_job_id = payload.get("j")
+    if not isinstance(internal_job_id, str) or not internal_job_id:
+        return None
+    return internal_job_id
+
+
+def _master_key_authorizes_request(request: Request) -> bool:
+    if not _API_KEY:
+        return False
+    provided = request.headers.get("X-API-Key", "") or request.query_params.get("api_key", "")
+    return hmac.compare_digest(provided, _API_KEY)
+
+
+def _batch_internal_id_from_request(external_job_id: str, request: Request) -> str:
+    internal_job_id = _verify_batch_capability(external_job_id)
+    if internal_job_id:
+        return internal_job_id
+    if _master_key_authorizes_request(request):
+        return external_job_id
+    raise HTTPException(status_code=404, detail="Job not found")
+
+
+def _sanitize_public_dossier_status(status: dict) -> dict:
+    """Remove filesystem/internal fields from public dossier status responses."""
+    public = dict(status)
+    base_dir = Path(public.pop("directory", "") or "")
+    for key in ("validation_path", "validator_path", "report_path", "pdf_path", "analysis_dir"):
+        public.pop(key, None)
+    files = []
+    for value in public.get("files") or []:
+        name = Path(str(value)).name
+        if name:
+            files.append(name)
+    public["files"] = files
+    if base_dir:
+        issues = []
+        for issue in public.get("verification_issues") or []:
+            text = str(issue).replace(str(base_dir), "<analysis>")
+            issues.append(text)
+        public["verification_issues"] = issues
+    return public
 
 def _save_batch_job(job: dict):
     """Persist batch job to disk for Render restart resilience."""
@@ -604,11 +731,13 @@ class SeekingAlphaProbeRequest(BaseModel):
 
 
 @app.post("/api/batch/analyze")
-async def batch_analyze(request: BatchAnalyzeRequest):
+async def batch_analyze(request: BatchAnalyzeRequest, fastapi_request: Request):
     """Submit tickers for batch analysis. Returns job_id for polling."""
-    job_id = hashlib.sha256(
-        f"{request.tickers}:{time.time()}".encode()
-    ).hexdigest()[:16]
+    job_id = secrets.token_urlsafe(18)
+    try:
+        capability = _sign_batch_capability(job_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Batch capability signing unavailable") from exc
 
     _batch_jobs[job_id] = {
         "job_id": job_id,
@@ -629,21 +758,22 @@ async def batch_analyze(request: BatchAnalyzeRequest):
     logger.info(f"Batch job {job_id}: {request.tickers} — {len(request.tickers)} tickers queued")
 
     return JSONResponse({
-        "job_id": job_id,
+        "job_id": job_id if _master_key_authorizes_request(fastapi_request) else capability,
         "tickers": request.tickers,
         "status": "pending",
     })
 
 
 @app.get("/api/batch/{job_id}/status")
-async def batch_status(job_id: str):
+async def batch_status(job_id: str, request: Request):
     """Get batch job status. Triggers processing if pending."""
-    job = _batch_jobs.get(job_id)
+    internal_job_id = _batch_internal_id_from_request(job_id, request)
+    job = _batch_jobs.get(internal_job_id)
     if not job:
-        job = _load_batch_job(job_id)  # Survives Render restart
+        job = _load_batch_job(internal_job_id)  # Survives Render restart
         if job:
-            _batch_jobs[job_id] = job
-            logger.info(f"Batch job {job_id} restored from disk")
+            _batch_jobs[internal_job_id] = job
+            logger.info(f"Batch job {internal_job_id} restored from disk")
         else:
             raise HTTPException(status_code=404, detail="Job not found")
 
@@ -695,13 +825,14 @@ async def batch_status(job_id: str):
 
 
 @app.get("/api/batch/{job_id}/download")
-async def batch_download(job_id: str):
+async def batch_download(job_id: str, request: Request):
     """Download all analysis documents as a ZIP file."""
-    job = _batch_jobs.get(job_id)
+    internal_job_id = _batch_internal_id_from_request(job_id, request)
+    job = _batch_jobs.get(internal_job_id)
     if not job:
-        job = _load_batch_job(job_id)
+        job = _load_batch_job(internal_job_id)
         if job:
-            _batch_jobs[job_id] = job
+            _batch_jobs[internal_job_id] = job
         else:
             raise HTTPException(status_code=404, detail="Job not found")
     if job["status"] not in ("completed", "partial"):
@@ -732,11 +863,15 @@ async def batch_download(job_id: str):
     return StreamingResponse(
         buf,
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename=analysis_{job_id}.zip"},
+        headers={
+            "Content-Disposition": f"attachment; filename=analysis_{internal_job_id}.zip",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
+        },
     )
 
 
-@app.get("/api/analyze/{ticker}/download")
+@app.get("/api/analyze/{ticker}/download", dependencies=[Depends(_require_auth)])
 async def ticker_download(ticker: str):
     """Download all documents for a single ticker as a ZIP file."""
     ticker = ticker.strip().upper()
@@ -1126,7 +1261,7 @@ async def dossier_status(ticker: str):
     Returns {ready: bool, files: [...], stage: str}."""
     from backend.async_dossier import get_dossier_status
     status = get_dossier_status(ticker)
-    return JSONResponse(status)
+    return JSONResponse(_sanitize_public_dossier_status(status))
 
 
 @app.get("/api/dossier/{ticker}/download")
@@ -1249,13 +1384,28 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str | None = 
     source_dir = Path(status_dir) if status_dir else matches[0]
     if not source_dir.exists():
         source_dir = matches[0]
+    try:
+        analyses_root = ANALYSES_DIR.resolve()
+        source_root = source_dir.resolve()
+        source_root.relative_to(analyses_root)
+    except (OSError, ValueError):
+        logger.warning("[%s] Dossier download refused — source escapes analyses root", ticker)
+        raise HTTPException(status_code=404, detail=f"No verified dossier ready for {ticker}")
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         included_dirs = set()
         for fpath in sorted(source_dir.rglob("*")):
             if not fpath.is_file():
                 continue
+            if fpath.is_symlink():
+                continue
             rel_parts = fpath.relative_to(source_dir).parts
+            if any(part.startswith(".") for part in rel_parts):
+                continue
+            try:
+                fpath.resolve().relative_to(source_root)
+            except (OSError, ValueError):
+                continue
             if rel_parts and rel_parts[0] in ("en", "jp") and rel_parts[0] != dossier_language:
                 continue
             # Only PDF + XLSX + README.txt + transcript verbatim .txt in the deliverable ZIP.
@@ -1310,7 +1460,10 @@ async def dossier_download(ticker: str, lang: str = "en", quarter: str | None = 
     return StreamingResponse(
         buf,
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename={ticker}_dossier{lang_suffix}.zip"},
+        headers={
+            "Content-Disposition": f"attachment; filename={ticker}_dossier{lang_suffix}.zip",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
@@ -1528,6 +1681,7 @@ async def analyze_async(request: TickerRequest, lang: str = "en", force_refresh:
                 language=lang,
                 force_refresh=force_refresh,
                 progress_callback=_progress,
+                background_deep_dive=not do_deep_dive,
             )
             results_list = []
             for ticker, result in batch["results"].items():
@@ -2262,7 +2416,7 @@ async def get_report(ticker: str):
     return FileResponse(report_path, media_type="text/markdown")
 
 
-@app.get("/api/sources/{ticker}")
+@app.get("/api/sources/{ticker}", dependencies=[Depends(_require_auth)])
 async def get_sources(ticker: str):
     """Retrieve the sources manifest for a ticker."""
     ticker = ticker.strip().upper()
@@ -2277,7 +2431,7 @@ async def get_sources(ticker: str):
     return FileResponse(manifest_path, media_type="application/json")
 
 
-@app.get("/api/traceability/{ticker}")
+@app.get("/api/traceability/{ticker}", dependencies=[Depends(_require_auth)])
 async def get_traceability(ticker: str):
     """Retrieve the claim traceability matrix for a ticker."""
     ticker = ticker.strip().upper()
