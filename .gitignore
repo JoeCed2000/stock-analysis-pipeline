@@ -66,3 +66,6 @@ docs/ai-engineering-standards-kit-v2/
 .codegraph/
 batches/
 chat.db*
+
+# Test-run artifacts (polluted gbrain sync — see gbrain-search-pollution-fix)
+tests/tmp/
