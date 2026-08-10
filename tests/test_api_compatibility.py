@@ -23,8 +23,12 @@ def test_ticker_request_rejects_missing_tickers():
         TickerRequest.model_validate({})
 
 
-def test_testclient_bypasses_auth_when_api_key_is_configured(monkeypatch, tmp_path):
-    """FastAPI TestClient uses synthetic host 'testclient', not localhost."""
+def test_testclient_without_api_key_is_rejected_when_api_key_is_configured(monkeypatch, tmp_path):
+    """Protected endpoints fail closed: no X-API-Key header means 403, regardless of host.
+
+    FastAPI TestClient uses synthetic host 'testclient', not localhost, but _require_auth
+    intentionally performs no host/loopback/Origin bypass — every caller must present the key.
+    """
     monkeypatch.setattr(main, "_API_KEY", "test-key")
     analyses_dir = tmp_path / "analyses"
     analyses_dir.mkdir()
@@ -32,8 +36,8 @@ def test_testclient_bypasses_auth_when_api_key_is_configured(monkeypatch, tmp_pa
 
     response = TestClient(main.app).get("/api/analyses")
 
-    assert response.status_code == 200
-    assert response.json() == {"analyses": []}
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Invalid API key"}
 
 
 def test_page_loads_do_not_rate_limit_ticker_parser(monkeypatch):

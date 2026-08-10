@@ -1,5 +1,21 @@
 # Stock Analysis Pipeline — WIKI
 
+## 2026-07-15 — Weekly SA security re-audit (t_677a97e5)
+
+**Status:** current code verified; final production/Kernel closeout still PARTIAL.
+
+**Classification:** the original weekly workstreams were real findings, not blanket reasons to privatize the product. The loopback/testclient auth bypass and anonymous feedback reads were **confirmed and fixed** by `c10d148`. Four frontend advisories (2 high, 1 moderate, 1 low) were **confirmed and fixed** by `d580c17`; a fresh audit now reports 0 vulnerabilities and the Vite build succeeds. Anonymous raw archive/sources/traceability access and externally usable batch IDs were **confirmed and fixed** by `6602bc2`. Curated report/PDF/company-overview/dossier access is **intentional public behavior**, defined by `docs/security/public-artifact-access-contract.md`, not a leak.
+
+**Adversarial proof:** a fresh HEAD instance on `127.0.0.1:8782` returned 403 for every private route without a key, with a wrong key, and with forged `Host`, `Origin`, and `Referer` headers (individually and combined). The same instance returned 200 anonymously for the NVDA report, PDF, company overview, dossier status, and dossier ZIP. `tests/test_security_regression.py` adds 29 focused fail-closed cases; the existing artifact/auth/batch bundle remains 66/66 green.
+
+**Operational caveat:** the long-lived production PID `1168` started before both security commits, so its earlier anonymous 200 responses are stale-runtime evidence. Restarting `stock-pipeline.service` requires approval; production port 8780 must be re-probed after a fresh PID before READY. The integrated browser loaded the fresh bundle with no JS exception, then its native-select interaction wedged the browser daemon, so browser E2E remains degraded rather than passed.
+
+**Test debt — CLEARED 2026-08-10:** `tests/test_api_compatibility.py` contained one historical test that explicitly expected the removed `testclient` bypass, so current (correct) 403 behaviour made it fail. The `t_323b071e` repair was written in the `t_bd8c1098` worktree but never merged back; it has now been recovered into the main tree and the assertion inverted to `403 / "Invalid API key"`. `tests/test_api_compatibility.py` is 6 passed.
+
+**Still open:** two artifacts of this workstream — `ops/kernel_checks/verify_loopback_auth_bypass_removed.py` and `.ced-agent-kernel/specs/t_56a3086a_loopback_auth.json` — remain **uncommitted**: `ced-secret-guard` blocks every read/stage of both, which indicates a live secret value (most likely the probe's real `CED_CONTROL_KEY`) is hardcoded inside. They must be scrubbed to read the key from the environment before they can enter the index. Until then the Kernel proof for `t_56a3086a` cannot be committed alongside its evidence.
+
+**Canonical evidence:** `SECURITY_AUDIT.md` contains the finding-by-finding matrix, runtime probe table, residual risks, and final READY conditions.
+
 ## 2026-07-15 — Artifact access contract enforced (t_750fe7b2)
 
 **Status:** implementation verified locally; Kernel proof READY.
