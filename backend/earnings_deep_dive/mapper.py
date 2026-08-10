@@ -146,6 +146,25 @@ def _localized_source(
     return base
 
 
+def _metrics_source(
+    metrics: FinancialMetrics,
+    *values: Any,
+    row_labels: tuple[str, ...] | None = None,
+) -> str:
+    """Label deterministic metrics with the provider actually used this run."""
+    source_form = str(
+        getattr(metrics, "financial_source_form", None)
+        or getattr(metrics, "source_form", None)
+        or ""
+    ).strip().lower()
+    source_type = "yfinance" if source_form == "yfinance" else "sec_edgar"
+    return _localized_source(
+        *values,
+        row_labels=row_labels,
+        source_type=source_type,
+    )
+
+
 def _source_descriptor(
     *values: Any,
     field: str | None = None,
@@ -265,6 +284,18 @@ def _pct(value: Any) -> str:
         return str(value)
     if abs(number) <= 1:
         number *= 100
+    sign = "+" if number > 0 else ""
+    return f"{sign}{number:.1f}%"
+
+
+def _return_pct(value: Any) -> str:
+    """Format ROE/ROA/ROIC ratios, whose canonical unit is a fraction."""
+    if not _has(value):
+        return MISSING
+    try:
+        number = float(value) * 100
+    except (TypeError, ValueError):
+        return str(value)
     sign = "+" if number > 0 else ""
     return f"{sign}{number:.1f}%"
 
@@ -553,7 +584,7 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
         for _, raw in segment_entries
     )
     # Detect garbled XBRL names: SEC text fragments, month abbreviations
-    _GARBLED_EXACT = {"Sep", "Total"}
+    _GARBLED_EXACT = {"Mar", "March", "Sep", "Total", "year", "the Company expects"}
     _GARBLED_CONTAINS = ["generally", "consistent", "reportable", "As of", "than a year", "revenue of",
                          "September", "months ended", "fiscal year", "ended", "filing", "period"]
     def _is_garbled(name: str) -> bool:
@@ -571,6 +602,19 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
             return str(xbrl_name) if xbrl_name else fallback_label
         # XBRL name is garbled SEC text — use the generic template label
         return fallback_label
+
+    # Never relabel parser artefacts as real products. A missing trustworthy
+    # breakdown is safer than a plausible-looking but invented segment table.
+    segment_entries = [
+        (name, raw)
+        for name, raw in segment_entries
+        if not _is_garbled(str(name))
+    ]
+    segment_items = segment_entries[: len(labels)]
+    has_usable_segments = any(
+        any(_has(raw.get(key)) for key in ("revenue", "revenue_quarterly", "revenue_q_prior_year", "yoy"))
+        for _, raw in segment_entries
+    )
 
     def _total_row(label: str = "Total") -> list[str]:
         total_yoy = getattr(metrics, "revenue_yoy", None)
@@ -594,6 +638,20 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
     total_rev = segments.get("total_revenue_quarterly")
     if not _has(total_rev):
         total_rev = getattr(metrics, "revenue_actual", None) or getattr(metrics, "revenue_quarterly", None)
+
+    if not has_usable_segments:
+        rows = [[
+            "Segment breakdown not disclosed",
+            MISSING,
+            MISSING,
+            MISSING,
+            MISSING,
+            "No reliable quarterly segment data",
+            MISSING_EN,
+        ]]
+        if _has(total_rev):
+            rows.append(_total_row("Total"))
+        return rows
 
     for index, row_label in enumerate(labels):
         if index >= len(segment_items):
@@ -632,7 +690,7 @@ def _extract_segment_rows(metrics: FinancialMetrics, labels: tuple[str, ...]) ->
             _pct(yoy),
             f"{mix_pct:.1f}%" if mix_pct is not None else MISSING,
             str(driver) if _has(driver) else "Segment revenue contribution",
-            _source(raw),
+            _metrics_source(metrics, raw, row_labels=labels),
         ])
     if has_usable_segments and _has(total_rev) and not any(str(row[0]).strip().lower() in ("total", "合計") for row in rows):
         rows.append(_total_row("Total"))
@@ -648,7 +706,11 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 _eps(metrics.eps_actual),
                 _variance(metrics.eps_actual, metrics.eps_estimate, getattr(metrics, "eps_vs_estimate", None), precision=2),
                 _yoy_pct(getattr(metrics, "eps_yoy", None)),
-                _consensus_label(metrics, metrics.eps_estimate) if _has(metrics.eps_actual) or _has(metrics.eps_estimate) else MISSING_EN,
+                (
+                    _consensus_label(metrics, metrics.eps_estimate)
+                    if _has(metrics.eps_estimate)
+                    else _metrics_source(metrics, metrics.eps_actual)
+                ),
             ],
             [
                 row_labels[1],
@@ -656,7 +718,11 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 _money(getattr(metrics, "revenue_actual", None)),
                 _variance(getattr(metrics, "revenue_actual", None), getattr(metrics, "revenue_estimate", None), precision=2),
                 _yoy_pct(getattr(metrics, "revenue_yoy", None)),
-                _consensus_label(metrics, getattr(metrics, "revenue_estimate", None)) if _has(getattr(metrics, "revenue_actual", None)) or _has(getattr(metrics, "revenue_estimate", None)) else MISSING_EN,
+                (
+                    _consensus_label(metrics, getattr(metrics, "revenue_estimate", None))
+                    if _has(getattr(metrics, "revenue_estimate", None))
+                    else _metrics_source(metrics, getattr(metrics, "revenue_actual", None))
+                ),
             ],
         ]
 
@@ -732,7 +798,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         )
 
         return [
-            [label, value, prior, yoy, _localized_source(raw, row_labels=row_labels)]
+            [label, value, prior, yoy, _metrics_source(metrics, raw, row_labels=row_labels)]
             for label, value, prior, yoy, raw in rows
         ]
 
@@ -835,7 +901,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 metrics.net_debt,
             ),
         )
-        result_rows = [[label, value, prior, yoy, _source(raw)] for label, value, prior, yoy, raw in rows]
+        result_rows = [[label, value, prior, yoy, _metrics_source(metrics, raw, row_labels=row_labels)] for label, value, prior, yoy, raw in rows]
         # Insert FCF Margin right below the Free cash flow row
         result_rows.insert(3, [
             fcf_margin_label,
@@ -850,37 +916,44 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         is_japanese = _labels_are_japanese(row_labels)
         buybacks_label = "資本配分 — 自社株買い" if is_japanese else "Capital Allocation — Buybacks"
         dividends_label = "資本配分 — 配当" if is_japanese else "Capital Allocation — Dividends"
+
+        def _ratio_change(current: Any, prior: Any) -> tuple[str, str]:
+            if not _has(current) or not _has(prior):
+                return MISSING, MISSING
+            current_num = float(current) * 100
+            prior_num = float(prior) * 100
+            delta = current_num - prior_num
+            sign = "+" if delta > 0 else ""
+            change = f"{sign}{delta:.1f} pts"
+            return change, "improvement" if current_num > prior_num else "decline" if current_num < prior_num else "flat"
+
         rows = (
             (
                 row_labels[0],
-                _pct(metrics.roe),
-                _pct(getattr(metrics, "roe_prior_year", None)),
-                _yoy_pct(getattr(metrics, "roe_yoy", None)),
-                _yoy_comment(getattr(metrics, "roe_yoy", None)),
+                _return_pct(metrics.roe),
+                _return_pct(getattr(metrics, "roe_prior_year", None)),
+                *_ratio_change(metrics.roe, getattr(metrics, "roe_prior_year", None)),
                 metrics.roe,
             ),
             (
                 row_labels[1],
-                _pct(metrics.rotce),
-                _pct(getattr(metrics, "rotce_prior_year", None)),
-                _yoy_pct(getattr(metrics, "rotce_yoy", None)),
-                _yoy_comment(getattr(metrics, "rotce_yoy", None)),
+                _return_pct(metrics.rotce),
+                _return_pct(getattr(metrics, "rotce_prior_year", None)),
+                *_ratio_change(metrics.rotce, getattr(metrics, "rotce_prior_year", None)),
                 metrics.rotce,
             ),
             (
                 row_labels[2],
-                _pct(metrics.roa),
-                _pct(getattr(metrics, "roa_prior_year", None)),
-                _yoy_pct(getattr(metrics, "roa_yoy", None)),
-                _yoy_comment(getattr(metrics, "roa_yoy", None)),
+                _return_pct(metrics.roa),
+                _return_pct(getattr(metrics, "roa_prior_year", None)),
+                *_ratio_change(metrics.roa, getattr(metrics, "roa_prior_year", None)),
                 metrics.roa,
             ),
             (
                 row_labels[3],
-                _pct(metrics.roic),
-                _pct(getattr(metrics, "roic_prior_year", None)),
-                _yoy_pct(getattr(metrics, "roic_yoy", None)),
-                _yoy_comment(getattr(metrics, "roic_yoy", None)),
+                _return_pct(metrics.roic),
+                _return_pct(getattr(metrics, "roic_prior_year", None)),
+                *_ratio_change(metrics.roic, getattr(metrics, "roic_prior_year", None)),
                 metrics.roic,
             ),
             (
@@ -907,7 +980,7 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 prior,
                 yoy,
                 comment,
-                _localized_source(raw, row_labels=row_labels),
+                _metrics_source(metrics, raw, row_labels=row_labels),
             ]
             for label, value, prior, yoy, comment, raw in rows
         ]
@@ -941,19 +1014,10 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         trailing_pe = getattr(metrics, "pe_trailing", None)
         if trailing_pe is None:
             trailing_pe = getattr(metrics, "pe_current", None)
-        # Forward EPS basis: annual EPS estimate used for the forward P/E
-        fwd_eps_basis = _money(getattr(metrics, "eps_estimate", None))
-        if not _has(metrics.eps_estimate) and _has(metrics.pe_forward) and _has(getattr(metrics, "price", None)):
-            # Derive from P/E * price if we had price — use eps_estimate * 4 instead
-            pass
-        # Try to show the annualized estimate
-        eps_annual = None
-        if _has(metrics.eps_estimate):
-            try:
-                eps_annual = float(metrics.eps_estimate) * 4.0
-            except (TypeError, ValueError):
-                pass
-        fwd_eps_display = _eps(eps_annual) if eps_annual else NOT_DISCLOSED_EN
+        # Forward EPS is an annual provider field. Never annualize a quarterly
+        # consensus estimate: that silently mixes two different periods.
+        forward_eps = getattr(metrics, "forward_eps", None)
+        fwd_eps_display = _eps(forward_eps) if _has(forward_eps) else NOT_DISCLOSED_EN
         # Build enriched context column with trailing PE + analyst consensus
         context_parts = []
         if _has(trailing_pe):
@@ -979,32 +1043,32 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
                 _multiple(metrics.pe_forward),
                 reference_col,
                 MISSING,
-                _localized_source(metrics.pe_forward, row_labels=row_labels),
+                _localized_source(metrics.pe_forward, row_labels=row_labels, source_type="yfinance"),
             ],
             [
                 row_labels[1],
                 fwd_eps_display,
-                _eps(getattr(metrics, "eps_estimate", None)),
-                _yoy_pct(getattr(metrics, "eps_yoy", None)),
-                _localized_source(metrics.eps_estimate, row_labels=row_labels),
+                NOT_DISCLOSED_EN,
+                MISSING,
+                _localized_source(forward_eps, row_labels=row_labels, source_type="yfinance"),
             ],
         ]
 
     if section_key == "Backlog":
         backlog_value = _money(metrics.backlog) if _has(metrics.backlog) else NOT_APPLICABLE_EN
-        backlog_source = _source(metrics.backlog) if _has(metrics.backlog) else SOURCE_COMPANY
+        backlog_source = _source(metrics.backlog) if _has(metrics.backlog) else MISSING_EN
         # Quantity/Quality framework — even when not disclosed, show proxies
         has_backlog = _has(metrics.backlog)
         return [
             [row_labels[0],
              backlog_value,
              "Not applicable" if not has_backlog else "—",
-             "Not disclosed (company does not report backlog); use revenue guidance + Data Center growth trajectory as demand proxy" if not has_backlog else "—",
+             "Not disclosed; use revenue guidance and disclosed demand indicators as a company-specific proxy" if not has_backlog else "—",
              backlog_source],
             [row_labels[1],
              NOT_APPLICABLE_EN if not has_backlog else NOT_DISCLOSED_EN,
              "Not applicable",
-             "Inferred from hyperscaler capex commitments and supply chain constraints" if not has_backlog else "—",
+             "No company-specific book-to-bill or demand proxy was disclosed" if not has_backlog else "—",
              backlog_source],
         ]
 
@@ -1035,12 +1099,12 @@ def _rows_for_section(section_key: str, row_labels: tuple[str, ...], metrics: Fi
         gm_guidance = _pct(gm) if _has(gm) else "Not guided"
         
         rows = [
-            ["Revenue", rev_guidance, rev_qoq or "—", "Consensus estimate", guidance_source if _has(rev_est) else SOURCE_COMPANY],
-            ["GAAP Gross Margin", gm_guidance, "—", "Current quarter actual; forward guidance not separately disclosed", guidance_source],
-            ["Non-GAAP Gross Margin", "Not disclosed", "—", "Non-GAAP margin guidance not provided in quarterly filings", SOURCE_COMPANY],
-            ["GAAP OpEx", "Not disclosed", "—", "OpEx guidance not provided in quarterly filings", SOURCE_COMPANY],
-            ["EPS (non-GAAP)", eps_guidance, "—", "Consensus estimate", guidance_source if _has(eps_est) else SOURCE_COMPANY],
-            ["Diluted Shares", "Not disclosed", "—", "Share count guidance not provided", SOURCE_COMPANY],
+            ["Revenue", rev_guidance, rev_qoq or "—", "Consensus estimate", _consensus_label(metrics, rev_est) if _has(rev_est) else MISSING_EN],
+            ["GAAP Gross Margin", gm_guidance, "—", "Current quarter actual; forward guidance not separately disclosed", _metrics_source(metrics, gm)],
+            ["Non-GAAP Gross Margin", "Not disclosed", "—", "Non-GAAP margin guidance not provided in quarterly filings", MISSING_EN],
+            ["GAAP OpEx", "Not disclosed", "—", "OpEx guidance not provided in quarterly filings", MISSING_EN],
+            ["EPS (non-GAAP)", eps_guidance, "—", "Consensus estimate", _consensus_label(metrics, eps_est) if _has(eps_est) else MISSING_EN],
+            ["Diluted Shares", "Not disclosed", "—", "Share count guidance not provided", MISSING_EN],
         ]
         if _has(guidance_text) and isinstance(guidance_text, str) and len(guidance_text) > 10:
             rows.append(["Outlook context", guidance_text[:240] + ("…" if len(guidance_text) > 240 else ""), "—", "Full outlook text", guidance_source])
@@ -1564,8 +1628,8 @@ def _verdict_rows(metrics: FinancialMetrics, row_labels: tuple[str, ...], scorin
     fcf = _money(metrics.free_cash_flow)
     ocf = _money(metrics.operating_cash_flow)
     margin = _pct(metrics.operating_margin)
-    roe = _pct(metrics.roe)
-    roic = _pct(metrics.roic)
+    roe = _return_pct(metrics.roe)
+    roic = _return_pct(metrics.roic)
     pe = _multiple(metrics.pe_forward)
     net_debt = _money(metrics.net_debt)
 
@@ -1672,14 +1736,18 @@ def _verdict_rows(metrics: FinancialMetrics, row_labels: tuple[str, ...], scorin
         score_display = f"Score: {score}/5"
 
     return [
-        [row_labels[0], eq_positive, eq_negative, eq_assessment, SOURCE_COMPANY],
-        [row_labels[1], gd_positive, gd_negative, gd_assessment, SOURCE_COMPANY],
-        [row_labels[2], val_positive, val_negative, val_assessment, SOURCE_COMPANY],
+        [row_labels[0], eq_positive, eq_negative, eq_assessment, "Model + metrics"],
+        [row_labels[1], gd_positive, gd_negative, gd_assessment, "Model + metrics"],
+        [row_labels[2], val_positive, val_negative, val_assessment, "Model + metrics"],
         [row_labels[3], score_display, "See component assessments above", f"\u2192 {verdict}", "Model + metrics"],
     ]
 
 
-def _compute_final_verdict(ticker: str, metrics: FinancialMetrics) -> str:
+def _compute_final_verdict(
+    ticker: str,
+    metrics: FinancialMetrics,
+    scoring: Optional['Scoring'] = None,
+) -> str:
     """Compute a concrete, data-driven final verdict sentence (English)."""
     revenue = _money(metrics.revenue_actual)
     revenue_yoy = _pct(metrics.revenue_yoy)
@@ -1710,7 +1778,7 @@ def _compute_final_verdict(ticker: str, metrics: FinancialMetrics) -> str:
     if ocf_num > 0 and metrics.free_cash_flow and metrics.free_cash_flow > 0: score += 1
     if pe_num is not None and pe_num < 20: score += 1
 
-    verdict = "BUY" if score >= 4 else "HOLD" if score >= 2 else "SELL"
+    verdict = scoring.decision() if scoring is not None else ("BUY" if score >= 4 else "HOLD" if score >= 2 else "SELL")
 
     parts = [f"{ticker} reported revenue of {revenue}"]
     if rev_yoy_num != 0:
@@ -1759,12 +1827,16 @@ def _compute_final_verdict(ticker: str, metrics: FinancialMetrics) -> str:
         else "none triggered by the quantitative checks (margins, valuation, growth)"
     )
 
-    scoring_note = (
-        "\n\n📝 Scoring methodology: This 0-5 score is a simplified quick check "
-        "based on 5 binary criteria (EPS beat, revenue growth, cash flow, valuation). "
-        "The full dossier includes a multi-dimensional 0-40 scoring covering financial "
-        "health, growth, valuation, management quality, competitive moat, and market sentiment."
-    )
+    if scoring is not None:
+        scoring_note = (
+            f"\n\n📝 Canonical score: {scoring.total}/40 across financial health, "
+            "growth, valuation, management quality, competitive moat, and market sentiment."
+        )
+    else:
+        scoring_note = (
+            "\n\n📝 Scoring methodology: This 0-5 score is a simplified quick check "
+            "based on 5 binary criteria (EPS beat, revenue growth, cash flow, valuation)."
+        )
 
     return (
         f"{evidence}\n\n"
@@ -1831,7 +1903,13 @@ def _compute_final_verdict_jp(ticker: str, metrics: FinancialMetrics) -> str:
     )
 
 
-def _summary(language: TemplateLanguage, ticker: str, section_key: str, metrics: FinancialMetrics) -> str:
+def _summary(
+    language: TemplateLanguage,
+    ticker: str,
+    section_key: str,
+    metrics: FinancialMetrics,
+    scoring: Optional['Scoring'] = None,
+) -> str:
     revenue = _money(metrics.revenue_actual)
     revenue_yoy = _pct(metrics.revenue_yoy)
     eps = _eps(metrics.eps_actual)
@@ -1863,7 +1941,7 @@ def _summary(language: TemplateLanguage, ticker: str, section_key: str, metrics:
         "Forward P/E": f"Forward P/E is {pe}; valuation only works if growth and margin durability support it.",
         "Backlog": "Backlog is evaluated only when economically relevant and disclosed; otherwise it is marked not applicable or not disclosed.",
         "Guidance": "Guidance matters because it resets expectations for revenue, margin, EPS, and medium-term demand.",
-        "Verdict": _compute_final_verdict(ticker, metrics),
+        "Verdict": _compute_final_verdict(ticker, metrics, scoring),
     }
     return summaries.get(section_key, f"{ticker}'s section conclusion is based on concrete reported metrics and source traceability.")
 
@@ -1975,8 +2053,8 @@ def _default_section_analysis(
     gross_margin = _pct(getattr(metrics, "gross_margin", None))
     operating_margin = _pct(getattr(metrics, "operating_margin", None))
     net_income = _money(getattr(metrics, "net_income_quarterly", None) or getattr(metrics, "net_income", None))
-    roe = _pct(getattr(metrics, "roe", None))
-    roic = _pct(getattr(metrics, "roic", None))
+    roe = _return_pct(getattr(metrics, "roe", None))
+    roic = _return_pct(getattr(metrics, "roic", None))
     pe = _multiple(getattr(metrics, "pe_forward", None))
     backlog = _money(getattr(metrics, "backlog", None))
     guidance = _metric_text(metrics, "guidance") or NOT_DISCLOSED_EN
@@ -2110,13 +2188,16 @@ def _ensure_section_commentary(
         )
         if not (has_required_structure and is_concise):
             cleaned = _concise_highlights_fallback(language, metrics)
+    elif section_key in ("Capital Efficiency", "Segments", "Guidance", "Forward P/E"):
+        # These sections are especially vulnerable to plausible-looking LLM
+        # numbers and inferred business mix. Render only the deterministic,
+        # table-backed commentary so the prose cannot contradict the figures.
+        cleaned = fallback
     elif section_key in ("EPS & Revenue", "Operating Metrics"):
-        # Concise sections (client request): keep the lead, cap runaway prose
-        # at paragraph boundaries.
-        if len(combined) <= 200:
-            cleaned.extend(fallback)
-        else:
-            cleaned = _cap_section_length(cleaned, max_chars=1600)
+        # These table-led sections have strict concision gates: one short,
+        # deterministic block keeps the figures traceable and avoids variable
+        # LLM paragraph counts or 120+ word prose.
+        cleaned = fallback
     elif len(combined) <= 200:
         cleaned.extend(fallback)
 
@@ -2212,7 +2293,7 @@ def _cash_flow_quality_note(language: TemplateLanguage, metrics: FinancialMetric
     formula = ""
     if _has(metrics.capex):
         try:
-            formula = f" — FCF = {_money(ocf)} OCF − {_money(abs(float(metrics.capex)))} CapEx"
+            formula = f" — FCF {_money(fcf)} = OCF {_money(ocf)} − CapEx {_money(abs(float(metrics.capex)))}"
         except (TypeError, ValueError):
             formula = ""
     if language == "jp":
@@ -2695,6 +2776,59 @@ def effective_section_analysis(report: Any) -> Dict[str, str]:
     return effective
 
 
+def render_report_markdown(report: Any) -> str:
+    """Serialize the normalized report model used by the PDF to Markdown.
+
+    The LLM draft is diagnostic input only. Persisting this representation
+    keeps the dossier Markdown, terminal validator, and client PDF aligned.
+    """
+    def cell(value: Any) -> str:
+        return str(value or "").replace("|", "\\|").replace("\n", "<br>").strip()
+
+    lines = ["# Earnings Call Deep-Dive", ""]
+    for section in getattr(report, "sections", []) or []:
+        heading = "Highlights & Lowlights" if section.key == "Highlights" else section.key
+        lines.extend([f"## {heading}", ""])
+        table = getattr(section, "table", None)
+        columns = list(getattr(table, "columns", None) or [])
+        rows = list(getattr(table, "rows", None) or [])
+        if columns:
+            lines.append("| " + " | ".join(cell(column) for column in columns) + " |")
+            lines.append("|" + "|".join("---" for _ in columns) + "|")
+            for row in rows:
+                values = list(getattr(row, "cells", None) or [])
+                if len(values) < len(columns):
+                    values.extend([""] * (len(columns) - len(values)))
+                lines.append("| " + " | ".join(cell(value) for value in values[:len(columns)]) + " |")
+            lines.append("")
+        paragraphs = [
+            str(paragraph).strip()
+            for paragraph in (getattr(section, "analysis", None) or [])
+            if paragraph
+        ]
+        if section.key in ("EPS & Revenue", "Operating Metrics"):
+            compact = " ".join(paragraph.replace("\n\n", " ") for paragraph in paragraphs)
+            if compact:
+                lines.extend([compact, ""])
+        else:
+            for paragraph in paragraphs:
+                lines.extend([paragraph, ""])
+        summary = getattr(section, "summary", None)
+        if summary and section.key not in ("EPS & Revenue", "Operating Metrics"):
+            lines.extend([f"> One-line summary: {str(summary).strip()}", ""])
+
+    lines.extend(["## Sources", ""])
+    sources = list(getattr(report, "sources", None) or [])
+    if sources:
+        for source in sources:
+            label = cell(getattr(source, "label", None) or "Source")
+            url = str(getattr(source, "url", None) or "").strip()
+            lines.append(f"- [{label}]({url})" if url else f"- {label}")
+    else:
+        lines.append("- No external source URL available.")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 
 def _fill_segments_total_row(text: str, metrics: FinancialMetrics) -> str:
     """Fill missing cells in a markdown segments 'Total' row from metrics.
@@ -2992,6 +3126,28 @@ def build_earnings_deep_dive_report(
             metrics,
             analysis_items,
         )
+        if section.key == "Verdict" and scoring is not None:
+            canonical_decision = scoring.decision()
+            analysis_items = [
+                f"Recommendation: {canonical_decision}.",
+                *_default_section_analysis(report_language, ticker_clean, section.key, metrics),
+            ]
+            normalized_items = []
+            for item in analysis_items:
+                normalized = re.sub(
+                    r"(?i)Recommendation\s*:\s*(?:BUY|HOLD|SELL)",
+                    f"Recommendation: {canonical_decision}",
+                    item,
+                )
+                normalized = re.sub(
+                    r"\b(?:BUY|HOLD|SELL)\b",
+                    canonical_decision,
+                    normalized,
+                )
+                normalized_items.append(normalized)
+            analysis_items = normalized_items or [f"Recommendation: {canonical_decision}."]
+            if not any(f"Recommendation: {canonical_decision}" in item for item in analysis_items):
+                analysis_items.insert(0, f"Recommendation: {canonical_decision}.")
         # ── Data annotation injection: force LLM commentary to use table values ──
         if section.key in ("EPS & Revenue", "Forward P/E") and rows:
             value_col_idx = 2 if section.key == "EPS & Revenue" else 1  # "Actual" or "Current"
@@ -3043,12 +3199,22 @@ def build_earnings_deep_dive_report(
                         if not _any_has_pe and i == _first_nonempty_idx and pe_fact not in item:
                             item = pe_fact + " " + item
                         analysis_items[i] = item
-                    # Also append the validated source note
-                    pe_note = f"[Validated: forward P/E = {pe_val}]"
-                    if analysis_items:
-                        analysis_items[-1] = analysis_items[-1] + "\n\n" + pe_note
         # Apply source display policy after all table transformations complete
         table = _apply_source_display_policy(section.key, table)
+        section_summary = _summary(report_language, ticker_clean, section.key, metrics, scoring)
+        if (
+            section.key == "Verdict"
+            and any(
+                re.search(r"\b(?:BUY|HOLD|SELL)\b", item)
+                for item in analysis_items
+            )
+        ):
+            # The LLM already supplied the single client-facing action. Keep
+            # the deterministic summary as context without adding a second,
+            # potentially conflicting recommendation label.
+            section_summary = re.sub(
+                r"\s*→\s*\*{0,2}(?:BUY|HOLD|SELL)\*{0,2}(?:[.,])?", "", section_summary,
+            )
         sections.append(
             RenderedSection(
                 key=section.key,
@@ -3057,7 +3223,7 @@ def build_earnings_deep_dive_report(
                 table=table,
                 analysis=analysis_items,
                 summary_label=runtime_summary_label,
-                summary=_summary(report_language, ticker_clean, section.key, metrics),
+                summary=section_summary,
             )
         )
 
@@ -3157,11 +3323,13 @@ def build_earnings_deep_dive_report(
         note="10-K, 10-Q, and 8-K filings — primary data source"
     ))
     finnhub_api_key = os.environ.get("FINNHUB_API_KEY", "")
-    if finnhub_api_key:
+    finnhub_retrieved_at = _metric_text(metrics, "finnhub_retrieved_at")
+    if finnhub_api_key and finnhub_retrieved_at:
         sources.append(SourceRef(
             source_id=_next_sid(), source_type="finnhub",
             label="Finnhub",
             url="https://finnhub.io",
+            retrieved_at=finnhub_retrieved_at,
             note="Real-time estimates, transcripts, and SEC filings index"
         ))
 
@@ -3436,9 +3604,11 @@ def _build_v27_models(
     # Uses trailing P/E from metrics + yfinance earningsGrowth (TTM EPS growth).
     # Previously used yfinance pegRatio (forward-looking, 5yr expected growth)
     # which was inconsistent with trailing data shown alongside.
-    peg_val = None
+    peg_val = _mf("peg_ratio")
     peg_display = None
-    if yf_info is not None and pe_ttm is not None:
+    if peg_val is None and yf_info is not None:
+        peg_val = _safe_f(yf_info.get("pegRatio"))
+    if peg_val is None and yf_info is not None and pe_ttm is not None:
         try:
             eg = yf_info.get("earningsGrowth")
             if eg is not None and float(eg) > 0:
@@ -3552,8 +3722,16 @@ def _build_data_quality(
 
     # transcript (seeking_alpha or press_release — pick latest from either)
     tr_seeking = _latest_retrieved("seeking_alpha")
+    tr_direct = _latest_retrieved("transcript")
     tr_press = _latest_retrieved("press_release")
-    tr_ts = _pick_latest(tr_seeking, tr_press)
+    tr_ts = _pick_latest(tr_seeking, tr_direct, tr_press)
+    transcript_refs = [
+        ref
+        for source_type in ("seeking_alpha", "transcript")
+        for ref in _by_type.get(source_type, [])
+    ]
+    if tr_ts is None and any(ref.url or ref.label for ref in transcript_refs):
+        tr_ts = generated_at
     if tr_ts:
         dq.transcript_freshness = tr_ts
         dq.transcript_source_label = "Earnings Call Transcript"
@@ -3620,9 +3798,10 @@ def _build_valuation_context(
 ) -> ValuationContextSection:
     """Build ValuationContextSection from yfinance info dict + FinancialMetrics.
 
-    Extracts 5 context signals (PEG, P/S, EV/EBITDA, P/FCF, FCF Yield) plus
-    a narrative valuation_support summary.  All signals are nullable — the PDF
-    renderer gracefully skips None rows.
+    Extracts PEG, P/S and EV/EBITDA context signals. P/FCF and FCF Yield are
+    included only when an explicitly canonical TTM FCF value is supplied; the
+    raw provider ``freeCashflow`` snapshot can use a different period basis
+    from the UI's statement-derived TTM value and must not be mislabeled.
     """
     vc = ValuationContextSection(
         generated_at=generated_at,
@@ -3680,15 +3859,14 @@ def _build_valuation_context(
         return "Negative FCF"
 
     # ── 1. PEG Signal ────────────────────────────────────────────────
-    # Strategy:
-    #   (1) Compute from trailing P/E + trailing earnings growth (trailing PEG)
-    #   (2) Fallback: compute from forward P/E + trailing earnings growth
-    #   (3) Last resort: compute from trailing P/E + revenue growth
-    #
-    # Previously used yfinance pegRatio (forward-looking, 5yr expected growth)
-    # which was inconsistent with trailing data shown alongside.
+    # Strategy: use the provider PEG shown in the canonical valuation/UI first.
+    # Only compute a fallback when the provider does not supply one; mixing a
+    # trailing P/E with a different growth basis creates a conflicting number.
     pe_ttm = _f("trailingPE")
     pe_fwd = _f("forwardPE")
+    provider_peg = _safe_f(getattr(metrics, "peg_ratio", None)) if metrics else None
+    if provider_peg is None:
+        provider_peg = _f("pegRatio")
 
     # Helper: safe growth fetch — returns None if truly absent (not 0.0)
     def _safe_growth(key: str) -> float | None:
@@ -3700,21 +3878,25 @@ def _build_valuation_context(
         except (TypeError, ValueError):
             return None
 
+    if provider_peg is not None:
+        vc.peg_signal = provider_peg
+        vc.peg_signal_label = _label_peg(provider_peg)
+        vc.peg_signal_detail = "Provider PEG ratio (forward growth basis)"
     # Compute from trailing P/E + trailing earnings growth (trailing PEG)
     earnings_growth = _safe_growth("earningsGrowth")
-    if earnings_growth is not None and earnings_growth > 0 and pe_ttm is not None:
+    if provider_peg is None and earnings_growth is not None and earnings_growth > 0 and pe_ttm is not None:
         peg = pe_ttm / (earnings_growth * 100)
         vc.peg_signal = peg
         vc.peg_signal_label = _label_peg(peg)
         vc.peg_signal_detail = f"P/E {pe_ttm:.1f}x / EPS growth {earnings_growth*100:.0f}%"
     # Fallback: compute from forward P/E + earnings growth
-    elif earnings_growth is not None and earnings_growth > 0 and pe_fwd is not None:
+    elif provider_peg is None and earnings_growth is not None and earnings_growth > 0 and pe_fwd is not None:
         peg = pe_fwd / (earnings_growth * 100)
         vc.peg_signal = peg
         vc.peg_signal_label = _label_peg(peg)
         vc.peg_signal_detail = f"Fwd P/E {pe_fwd:.1f}x / EPS growth {earnings_growth*100:.0f}%"
     # Last resort: trailing P/E + revenue growth only
-    elif pe_ttm is not None:
+    elif provider_peg is None and pe_ttm is not None:
         rev_growth = _safe_growth("revenueGrowth")
         if rev_growth is not None and rev_growth > 0:
             peg = pe_ttm / (rev_growth * 100)
@@ -3736,7 +3918,9 @@ def _build_valuation_context(
 
     # ── 4. P/FCF vs Growth ───────────────────────────────────────────
     mcap = _f("marketCap")
-    fcf = _f("freeCashflow")
+    fcf = _f("canonicalFreeCashFlowTTM")
+    if fcf is None:
+        fcf = _f("_canonicalFreeCashFlowTTM")
     if mcap and fcf and mcap > 0 and fcf > 0:
         pfcf = mcap / fcf
         vc.pfcf_vs_growth_signal = pfcf
@@ -3889,10 +4073,11 @@ def _compute_peer_labels(
         if not relevant:
             return (f"No {label} peer data", None)
 
-        above = sum(1 for b in relevant.values()
-                    if "Above" in str(b.get("label", "")))
-        below = sum(1 for b in relevant.values()
-                    if "Below" in str(b.get("label", "")))
+        normalized_labels = [str(b.get("label", "")).lower() for b in relevant.values()]
+        above = sum(1 for value in normalized_labels
+                    if "above" in value or "premium" in value)
+        below = sum(1 for value in normalized_labels
+                    if "below" in value or "discount" in value)
         total = len(relevant)
 
         # Build per-metric detail string (labels are self-describing)

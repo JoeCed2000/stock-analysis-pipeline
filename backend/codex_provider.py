@@ -34,9 +34,12 @@ CODEX_TIMEOUT = 600  # seconds per attempt (agents need time to finish — 10 mi
 CODEX_TIMEOUT_FIRST = 300  # first attempt: Spark is slow for large prompts (~5KB)
 CODEX_MAX_RETRIES = 2  # total attempts = 1 + MAX_RETRIES = 3
 CODEX_RETRY_BACKOFF = [2.0, 4.0]  # seconds between retries (jittered ±50%)
+CODEX_QUOTA_COOLDOWN = 300.0
 
 # Global lock to serialize Codex subprocess launches (anti-thundering-herd for EN+JP parallelism)
 _codex_launch_lock = __import__("threading").Lock()
+_codex_state_lock = __import__("threading").Lock()
+_codex_unavailable_until = 0.0
 
 
 def _codex_chat(
@@ -53,8 +56,19 @@ def _codex_chat(
     ``SA_CODEX_DEFAULT_EFFORT`` defaults to ``low``. Callers may still pass an
     explicit model/effort for higher-synthesis steps such as Company Overview.
     """
+    global _codex_unavailable_until
+
     if not os.path.exists(CODEX_BIN):
         logger.warning("Codex CLI not found at %s", CODEX_BIN)
+        return None
+
+    with _codex_state_lock:
+        unavailable_for = _codex_unavailable_until - time.monotonic()
+    if unavailable_for > 0:
+        logger.warning(
+            "llm_call circuit_open provider=codex_cli retry_after_seconds=%.1f",
+            unavailable_for,
+        )
         return None
 
     selected_model = (model or os.getenv("SA_CODEX_MODEL") or "gpt-5.3-codex-spark").strip()
@@ -65,7 +79,9 @@ def _codex_chat(
     env["HOME"] = _REAL_HOME
     last_error = None
 
+    attempts_made = 0
     for attempt in range(CODEX_MAX_RETRIES + 1):
+        attempts_made = attempt + 1
         if attempt > 0:
             backoff = CODEX_RETRY_BACKOFF[min(attempt - 1, len(CODEX_RETRY_BACKOFF) - 1)]
             jitter = backoff * 0.5 * (__import__("random").random())
@@ -151,6 +167,21 @@ def _codex_chat(
                 stderr_tail,
             )
             last_error = f"no_output(rc={proc.returncode})"
+            failure_text = f"{stdout_tail}\n{stderr_tail}".lower()
+            if any(marker in failure_text for marker in (
+                "usage limit",
+                "quota exceeded",
+                "insufficient quota",
+            )):
+                with _codex_state_lock:
+                    _codex_unavailable_until = time.monotonic() + CODEX_QUOTA_COOLDOWN
+                last_error = "quota_exhausted"
+                logger.error(
+                    "llm_call non_retryable provider=codex_cli model=%s reason=quota_exhausted cooldown_seconds=%d",
+                    selected_model,
+                    int(CODEX_QUOTA_COOLDOWN),
+                )
+                break
         except subprocess.TimeoutExpired:
             duration_ms = int((time.monotonic() - started) * 1000)
             logger.warning(
@@ -187,7 +218,7 @@ def _codex_chat(
         "llm_call failed provider=codex_cli model=%s effort=%s attempts=%d last_error=%s",
         selected_model,
         safe_effort,
-        CODEX_MAX_RETRIES + 1,
+        attempts_made,
         last_error,
     )
     return None

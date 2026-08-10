@@ -22,8 +22,18 @@ from backend.earnings_deep_dive.report_model import (
 from backend.company_overview_pdf import (
     _build_styles as _co_pdf_styles,
     _canonical_financial_metric,
+    _infer_category,
     _render_kpis as _render_company_overview_kpis,
 )
+
+
+def test_competitor_category_does_not_label_every_technology_peer_as_semiconductor():
+    overview = {"company_profile": {"sector": "Technology"}}
+
+    assert _infer_category("Microsoft", overview) == "Software / Cloud"
+    assert _infer_category("Alphabet", overview) == "Internet / Cloud"
+    assert _infer_category("Amazon", overview) == "Commerce / Cloud"
+    assert _infer_category("NVIDIA", overview) == "Semiconductors / AI"
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
@@ -371,4 +381,3 @@ class TestCompanyOverviewPdfCanonicalProvenance:
         assert "$383.3B" in rendered
         assert "$3.00T" not in rendered
         assert "$1000.0B" not in rendered
-

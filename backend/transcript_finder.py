@@ -2,6 +2,7 @@
 import os
 import json
 import logging
+import time
 from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
@@ -11,6 +12,45 @@ MIN_TRANSCRIPT_CHARS = 2000  # Anything shorter is metadata/error, not a real tr
 
 def _is_usable(text: str) -> bool:
     return bool(text) and len(text) >= MIN_TRANSCRIPT_CHARS
+
+
+def _load_recent_cached_transcript(ticker: str, max_age_seconds: int = 24 * 3600) -> Dict[str, Any] | None:
+    """Reuse a same-day transcript before launching slow web discovery.
+
+    The cache is accepted only when the exact source URL and full text were
+    already persisted by a previous verified analysis. Older transcripts are
+    ignored so a new earnings release can still be discovered normally.
+    """
+    try:
+        from backend.storage_paths import get_analyses_dir
+
+        ticker_clean = ticker.strip().upper()
+        analyses_root = get_analyses_dir(create=False)
+        candidates = sorted(
+            analyses_root.glob(
+                f"*_{ticker_clean}_*/04_transcripts_and_management/transcript_sources_{ticker_clean}.json"
+            ),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        now = time.time()
+        for path in candidates:
+            if now - path.stat().st_mtime > max_age_seconds:
+                break
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            for item in payload if isinstance(payload, list) else []:
+                text = str(item.get("text") or "")
+                url = str(item.get("url") or "").strip()
+                if not _is_usable(text) or not url.startswith(("http://", "https://")):
+                    continue
+                cached = dict(item)
+                cached["cached"] = True
+                cached["text_length"] = len(text)
+                logger.info("Recent transcript cache hit: %s (%s chars)", path, len(text))
+                return cached
+    except Exception as exc:
+        logger.warning("Recent transcript cache unavailable for %s: %s", ticker, exc)
+    return None
 
 
 def find_transcripts(ticker: str, output_dir: str = "", company: str | None = None) -> Dict[str, Any]:
@@ -138,31 +178,20 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
     except Exception as e:
         logger.warning(f"Seeking Alpha (Playwright) unavailable for {ticker}: {e}")
 
-    # 1. Seeking Alpha direct article discovery — always try alongside Playwright.
-    # Both SA paths can find different articles; _best_transcript_source picks the
-    # longest usable text regardless of source priority.
-    try:
-        from backend.transcript_web_search import search_transcript_pages
-
-        web_results = search_transcript_pages(ticker, company=company)
-        for item in web_results:
-            text = item.get("text", "")
-            url = item.get("url", "")
-            if "seekingalpha.com/article/" not in url.lower() or not _is_usable(text):
-                continue
-            results.append(item)
-            logger.info(f"Seeking Alpha direct article transcript: {len(text)} chars for {ticker}")
-            break
-    except Exception as e:
-        logger.warning(f"Seeking Alpha direct article discovery unavailable for {ticker}: {e}")
-
-
+    if not _is_usable(primary_text):
+        cached_transcript = _load_recent_cached_transcript(ticker)
+        if cached_transcript:
+            primary_text = str(cached_transcript.get("text") or "")
+            results.append(cached_transcript)
+            logger.info("Using recent cached transcript: %s chars for %s", len(primary_text), ticker)
 
     # 2. StockAnalysis.com — FREE full-text transcripts, no auth needed.
-    # Always try — _best_transcript_source will pick the longest usable text.
+    # Try this deterministic public source before broad web discovery: the old
+    # ordering spent several minutes on sequential search fallbacks even when
+    # the exact transcript page was available here.
     try:
         from backend.stockanalysis import search_transcripts as sa_search, fetch_transcript as sa_fetch
-        sa_results = sa_search(ticker, limit=3)
+        sa_results = [] if _is_usable(primary_text) else sa_search(ticker, limit=3)
         for sa_result in sa_results:
             sa_url = sa_result.get("url", "")
             if not sa_url:
@@ -204,6 +233,26 @@ def find_transcripts(ticker: str, output_dir: str = "", company: str | None = No
             break
     except Exception as e:
         logger.warning(f"StockAnalysis.com unavailable for {ticker}: {e}")
+
+    # Seeking Alpha article discovery is now a true fallback. It can involve
+    # Google, Brave and Tavily sequentially, so never run it after a usable
+    # transcript has already been obtained.
+    if not _is_usable(primary_text):
+        try:
+            from backend.transcript_web_search import search_transcript_pages
+
+            web_results = search_transcript_pages(ticker, company=company)
+            for item in web_results:
+                text = item.get("text", "")
+                url = item.get("url", "")
+                if "seekingalpha.com/article/" not in url.lower() or not _is_usable(text):
+                    continue
+                primary_text = text
+                results.append(item)
+                logger.info(f"Seeking Alpha direct article transcript: {len(text)} chars for {ticker}")
+                break
+        except Exception as e:
+            logger.warning(f"Seeking Alpha direct article discovery unavailable for {ticker}: {e}")
 
     # 2. Alpha Vantage API — fallback (structured JSON, 25 req/day free).
     if not _is_usable(primary_text):

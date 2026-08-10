@@ -2303,8 +2303,8 @@ def render_earnings_deep_dive_pdf(report: EarningsDeepDiveReport, output_path: s
         story.append(Spacer(1, 0.2 * inch))
         methodology_label = translate("Methodology", report.language)
         methodology_text = translate(
-            "This deep-dive combines quantitative metrics from SEC filings "
-            "(via yfinance/Finnhub) with qualitative analysis of the earnings call transcript. "
+            "This deep-dive combines quantitative metrics from the cited financial data and filing sources "
+            "with qualitative analysis of the earnings call transcript. "
             "All figures are sourced; no data is invented. "
             "Ratings reflect institutional buy-side analysis standards.",
             report.language,

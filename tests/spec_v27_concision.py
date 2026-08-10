@@ -538,6 +538,41 @@ Key Takeaways:
         edp009_issues = [i for i in issues if "EDP-009" in i]
         assert len(edp009_issues) == 0, f"EDP-009 should not fire for filled circle bullets: {edp009_issues}"
 
+    def test_diamond_bullets_normalized(self, tmp_path):
+        """Diamond bullets must not be counted as long prose (AAPL regression)."""
+        detail = (
+            "Gross margin expanded while revenue growth, operating leverage, cash conversion, "
+            "cost discipline, pricing power, and services mix strengthened the investment case."
+        )
+        bullets = "\n".join(f"◆ {detail}" for _ in range(6))
+        extra = f"""
+## Highlights & Lowlights
+
+| Type | Point | Severity |
+|------|-------|----------|
+| Highlight | Strong demand | High |
+
+> One-line summary: Good quarter.
+
+## Operating Metrics
+
+| Metric | Actual |
+|--------|--------|
+| Gross Margin | 65% |
+
+Key Takeaways:
+{bullets}
+
+> One-line summary: Strong margins.
+"""
+        md_path = _make_deep_dive(tmp_path, extra_content=extra)
+        passed, issues = validate_deep_dive(md_path)
+        edp009_issues = [i for i in issues if "EDP-009" in i]
+        assert len(edp009_issues) == 0, (
+            f"EDP-009 should not fire for diamond bullets: {edp009_issues}"
+        )
+
+
     def test_ascii_bullets_still_work(self, tmp_path):
         """Existing ASCII `-` bullets continue to work correctly after normalization."""
         extra = """

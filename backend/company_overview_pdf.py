@@ -14,7 +14,7 @@ Produces client-ready investor profiles with:
 import os
 import re
 import html
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 
 from reportlab.lib.pagesizes import A4
@@ -271,6 +271,9 @@ def _make_table(headers: list, rows: list, col_widths: list = None,
     for row in rows:
         row_cells = []
         for idx, cell in enumerate(row):
+            if isinstance(cell, Paragraph):
+                row_cells.append(cell)
+                continue
             text = _soft_wrap_text(_clean_text(str(cell), default='—'))
             width_hint = col_widths[idx] if col_widths and idx < len(col_widths) else None
             compact_col = width_hint is not None and width_hint < (AVAILABLE_W * 0.20)
@@ -410,7 +413,7 @@ def generate_company_overview_pdf(
     _render_takeaway(story, styles, overview, is_jp)
 
     # ── 14. Sources & Data Quality ─────────────────────────────────────
-    _render_sources(story, styles, source_registry, yf_data, is_jp)
+    _render_sources(story, styles, source_registry, yf_data, is_jp, overview=overview)
 
     # ── Build PDF ──────────────────────────────────────────────────────
     doc.build(
@@ -538,6 +541,32 @@ def _metric_display(overview: dict, field: str) -> str:
     """Shortcut for card display values."""
     return _canonical_financial_metric(overview, field)['display']
 
+def _leadership_snapshot_cards(profile: dict, *, as_of: date | None = None) -> list[tuple[str, str, str]]:
+    """Return explicit current/designated CEO cards for the report date."""
+    current = str(profile.get("ceo") or "").strip() or "Not identified"
+    designate = str(profile.get("ceo_designate") or "").strip()
+    effective_raw = str(profile.get("ceo_effective_date") or "").strip()
+    if not designate or not effective_raw:
+        return [("CEO", current, "Leadership profile")]
+
+    try:
+        effective = datetime.strptime(effective_raw, "%Y-%m-%d").date()
+    except ValueError:
+        return [("CEO", current, "Leadership profile")]
+
+    today = as_of or datetime.now(timezone.utc).date()
+    if today >= effective:
+        return [("CEO", designate, "Official company announcement")]
+
+    previous_day = effective - timedelta(days=1)
+    previous_label = f"{previous_day.strftime('%b')} {previous_day.day}, {previous_day.year}"
+    effective_label = f"{effective.strftime('%b')} {effective.day}, {effective.year}"
+    return [
+        ("CEO", f"{current} (through {previous_label})", "Leadership profile"),
+        ("CEO-designate", f"{designate} (from {effective_label})", "Official company announcement"),
+    ]
+
+
 def _render_executive_snapshot(story, styles, ticker, company_name, overview, yf_data, is_jp):
     """Render the Executive Snapshot section with key metrics grid."""
     h = "エグゼクティブ・スナップショット" if is_jp else "Executive Snapshot"
@@ -578,7 +607,7 @@ def _render_executive_snapshot(story, styles, ticker, company_name, overview, yf
         ("Exchange", exchange, "Market"),
         ("Sector", sector, "Classification"),
         ("Industry", industry, "Classification"),
-        ("CEO", ceo_name or "Not identified", "Leadership"),
+        *_leadership_snapshot_cards({**profile, "ceo": ceo_name or profile.get("ceo")}),
         ("Headquarters", hq, "Location"),
         ("Country", country, "Location"),
         ("Market Cap", _metric_display(overview, 'market_cap'), _canonical_financial_metric(overview, 'market_cap')['source']),
@@ -873,10 +902,22 @@ def _infer_category(competitor_name: str, overview: dict) -> str:
     """Infer competitor category from name and sector."""
     name_l = competitor_name.lower()
     sector = (overview.get('company_profile', {}) or {}).get('sector', '').lower()
-    if 'technology' in sector or 'semiconductor' in sector or 'gpu' in name_l or 'chip' in name_l:
+    if any(token in name_l for token in ('nvidia', 'amd', 'intel', 'qualcomm', 'broadcom', 'tsmc', 'micron', 'arm', 'gpu', 'chip')):
         return 'Semiconductors / AI'
-    if 'cloud' in name_l.lower() or 'aws' in name_l.lower() or 'azure' in name_l.lower():
+    if any(token in name_l for token in ('microsoft', 'azure')):
+        return 'Software / Cloud'
+    if any(token in name_l for token in ('alphabet', 'google')):
+        return 'Internet / Cloud'
+    if any(token in name_l for token in ('amazon', 'aws')):
+        return 'Commerce / Cloud'
+    if 'meta' in name_l:
+        return 'Social / Advertising'
+    if 'samsung' in name_l:
+        return 'Consumer Electronics'
+    if 'cloud' in name_l:
         return 'Cloud / Hyperscaler'
+    if 'technology' in sector:
+        return 'Technology peer'
     return 'Same sector'
 
 
@@ -921,7 +962,7 @@ def _render_takeaway(story, styles, overview, is_jp):
         story.append(Paragraph(t, styles['body']))
 
 
-def _render_sources(story, styles, source_registry, yf_data, is_jp):
+def _render_sources(story, styles, source_registry, yf_data, is_jp, overview=None):
     """Render Sources & Data Quality appendix."""
     h = "ソース・データ品質" if is_jp else "Sources & Data Quality"
     _section(h, story, styles)
@@ -930,13 +971,30 @@ def _render_sources(story, styles, source_registry, yf_data, is_jp):
     rows = []
 
     # Build source list from available data
-    sources = source_registry or _build_default_source_registry(yf_data)
+    sources = list(source_registry or _build_default_source_registry(yf_data))
+    profile = (overview or {}).get("company_profile", {}) or {}
+    transition_url = profile.get("ceo_transition_source_url")
+    if transition_url:
+        sources.append({
+            "human_label": "Official CEO succession announcement",
+            "source_type": "company_announcement",
+            "provider": transition_url,
+            "fields_used": ["current CEO", "CEO-designate", "effective date"],
+            "status": "used",
+        })
 
     for s in sources[:20]:
+        provider = s.get('provider', '—')
+        if isinstance(provider, str) and provider.startswith(('https://', 'http://')):
+            safe_url = html.escape(provider, quote=True)
+            provider = Paragraph(
+                f'<link href="{safe_url}" color="#0969da">Open official source</link>',
+                styles.get('table_cell_small') or styles['body_small'],
+            )
         rows.append([
             s.get('human_label', s.get('source_name', '—')),
             s.get('source_type', 'provider'),
-            s.get('provider', '—'),
+            provider,
             ', '.join(s.get('fields_used', []))[:100] or '—',
             s.get('status', 'used'),
         ])

@@ -18,11 +18,13 @@ Phases:
 
 import os
 import json
+import math
 import re
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any, List
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +33,26 @@ logger = logging.getLogger(__name__)
 
 CACHE_DIR = Path(__file__).parent / ".cache"
 OVERVIEW_CACHE_TTL = 7 * 24 * 3600  # 7 days
-OVERVIEW_CACHE_VERSION = 2  # v2 adds canonical key_financials provenance
+OVERVIEW_CACHE_VERSION = 3  # v3 adds verified leadership-transition metadata
+
+# Official, dated succession announcements used when search providers are
+# unavailable or incomplete. Entries remain safe after the transition because
+# the effective-date logic below promotes the designate only on/after that date.
+VERIFIED_LEADERSHIP_TRANSITIONS: Dict[str, Dict[str, str]] = {
+    "AAPL": {
+        "title": "Tim Cook to become Apple Executive Chairman; John Ternus to become Apple CEO",
+        "url": (
+            "https://www.apple.com/newsroom/2026/04/"
+            "tim-cook-to-become-apple-executive-chairman-john-ternus-to-become-apple-ceo/"
+        ),
+        "content": (
+            "John Ternus, senior vice president of Hardware Engineering, will become "
+            "Apple's next chief executive officer effective on September 1, 2026."
+        ),
+        "date": "2026-04-20",
+        "current_ceo": "Tim Cook",
+    },
+}
 
 
 def _overview_cache_path(ticker: str, language: str) -> Path:
@@ -511,6 +532,112 @@ def _ceo_from_officers(yahoo_snapshot: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _apply_verified_leadership_transition(
+    overview: Dict[str, Any],
+    search_results: List[Dict[str, str]],
+    *,
+    ticker: str | None = None,
+    as_of: date | None = None,
+) -> Dict[str, Any]:
+    """Overlay a CEO transition only when an official company source states it.
+
+    Structured provider profiles often lag announced successions. We keep the
+    incumbent until the effective date, surface the CEO-designate meanwhile,
+    and retain the exact official announcement URL for auditability.
+    """
+    if not isinstance(overview, dict):
+        return overview
+    profile = overview.setdefault("company_profile", {})
+    if not isinstance(profile, dict):
+        return overview
+
+    website_host = (urlparse(str(profile.get("website") or "")).hostname or "").lower()
+    website_root = ".".join(website_host.removeprefix("www.").split(".")[-2:])
+    if not website_root:
+        return overview
+
+    today = as_of or datetime.now(timezone.utc).date()
+    candidates = list(search_results or [])
+    verified = VERIFIED_LEADERSHIP_TRANSITIONS.get(str(ticker or "").upper())
+    if verified and not any(item.get("url") == verified["url"] for item in candidates):
+        candidates.append(dict(verified))
+
+    for item in candidates:
+        url = str(item.get("url") or "")
+        source_host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+        if not source_host or not (
+            source_host == website_root or source_host.endswith(f".{website_root}")
+        ):
+            continue
+
+        title = str(item.get("title") or "")
+        content = str(item.get("content") or "")
+        combined = f"{title}. {content}"
+        date_match = re.search(
+            r"\beffective(?:\s+on)?\s+([A-Z][a-z]+\s+\d{1,2},\s+\d{4})",
+            combined,
+        )
+        if not date_match:
+            continue
+        try:
+            effective = datetime.strptime(date_match.group(1), "%B %d, %Y").date()
+        except ValueError:
+            continue
+
+        name_match = re.search(
+            r"\b([A-Z][A-Za-z.'’-]+(?:\s+[A-Z][A-Za-z.'’-]+){1,2})"
+            r"(?:,\s+[^.]{1,160}?,)?\s+will become\s+[^.]{0,100}?"
+            r"(?:chief executive officer|CEO)\b",
+            content,
+        )
+        if not name_match:
+            name_match = re.search(
+                r"\b([A-Z][A-Za-z.'’-]+\s+[A-Z][A-Za-z.'’-]+)\s+"
+                r"to become\s+[^.]{0,60}?CEO\b",
+                title,
+            )
+        if not name_match:
+            continue
+
+        designate = " ".join(name_match.group(1).split())
+        official_incumbent = str(item.get("current_ceo") or "").strip()
+        incumbent = official_incumbent or str(profile.get("ceo") or "").strip()
+        if official_incumbent:
+            profile["ceo"] = official_incumbent
+        profile["ceo_effective_date"] = effective.isoformat()
+        profile["ceo_transition_source_url"] = url
+        profile["ceo_transition_verified_as_of"] = today.isoformat()
+        if today >= effective:
+            if incumbent and incumbent.casefold() != designate.casefold():
+                profile["former_ceo"] = incumbent
+            profile["ceo"] = designate
+            profile.pop("ceo_designate", None)
+            transition_note = (
+                f"{designate} became CEO on {effective.strftime('%B')} {effective.day}, "
+                f"{effective.year}, following the officially announced succession. "
+                f"Official company announcement: {url}"
+            )
+        else:
+            profile["ceo_designate"] = designate
+            previous_day = effective - timedelta(days=1)
+            transition_note = (
+                f"{incumbent} remains CEO through {previous_day.strftime('%B')} "
+                f"{previous_day.day}, {previous_day.year}; {designate} is CEO-designate "
+                f"and becomes CEO on {effective.strftime('%B')} {effective.day}, {effective.year}. "
+                f"Official company announcement: {url}"
+            )
+        existing_style = str(overview.get("ceo_leadership_style") or "").strip()
+        if "CEO information not available from current structured data sources" in existing_style:
+            existing_style = ""
+        if url not in existing_style:
+            overview["ceo_leadership_style"] = " ".join(
+                part for part in (transition_note, existing_style) if part
+            )
+        return overview
+
+    return overview
+
+
 def _needs_rich_profile_fetch(snapshot: Optional[Dict[str, Any]]) -> bool:
     """Return True when a pipeline market snapshot is too thin for Company Overview.
 
@@ -568,20 +695,159 @@ def _backfill_company_profile(overview: Dict[str, Any], yahoo_snapshot: Dict[str
     profile = overview.setdefault("company_profile", {})
     if not isinstance(profile, dict):
         return
+    raw_info_obj = yahoo_snapshot.get("_raw_info")
+    raw_info: Dict[str, Any] = raw_info_obj if isinstance(raw_info_obj, dict) else {}
+    headquarters_parts = [
+        raw_info.get("city"),
+        raw_info.get("state"),
+        raw_info.get("country"),
+    ]
+    raw_headquarters = ", ".join(str(part) for part in headquarters_parts if part)
     backfill = {
-        "name": yahoo_snapshot.get("name"),
-        "sector": yahoo_snapshot.get("sector"),
-        "industry": yahoo_snapshot.get("industry"),
-        "country": yahoo_snapshot.get("country"),
-        "website": yahoo_snapshot.get("website"),
-        "employees": yahoo_snapshot.get("employees"),
-        "headquarters": yahoo_snapshot.get("headquarters"),
-        "exchange": yahoo_snapshot.get("exchange"),
+        "name": yahoo_snapshot.get("name") or raw_info.get("longName") or raw_info.get("shortName"),
+        "sector": yahoo_snapshot.get("sector") or raw_info.get("sector"),
+        "industry": yahoo_snapshot.get("industry") or raw_info.get("industry"),
+        "country": yahoo_snapshot.get("country") or raw_info.get("country"),
+        "website": yahoo_snapshot.get("website") or raw_info.get("website"),
+        "employees": yahoo_snapshot.get("employees") or raw_info.get("fullTimeEmployees"),
+        "headquarters": yahoo_snapshot.get("headquarters") or raw_headquarters or None,
+        "exchange": yahoo_snapshot.get("exchange") or raw_info.get("fullExchangeName") or raw_info.get("exchange"),
         "ceo": _ceo_from_officers(yahoo_snapshot),
     }
     for key, value in backfill.items():
         if value is not None and profile.get(key) is None:
             profile[key] = value
+
+
+def _normalize_financial_claims(
+    overview: Dict[str, Any],
+    key_financials: Dict[str, Any],
+) -> None:
+    """Keep LLM prose numerically aligned with canonical structured metrics.
+
+    The synthesis prompt can contain several provider snapshots with different
+    periods or calculation conventions. The structured resolver already chooses
+    one authoritative value for the Company Overview; mirror those values in the
+    overview's English narrative instead of publishing contradictory figures on
+    adjacent pages. Unrelated figures such as quarterly revenue are left alone.
+    """
+
+    def _number(key: str) -> Optional[float]:
+        value = key_financials.get(key)
+        if isinstance(value, bool) or value is None:
+            return None
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return number if math.isfinite(number) else None
+
+    def _percent(key: str) -> Optional[str]:
+        number = _number(key)
+        if number is None:
+            return None
+        if abs(number) <= 1.5:
+            number *= 100
+        return f"{number:.1f}%"
+
+    def _ratio(key: str) -> Optional[str]:
+        number = _number(key)
+        if number is None:
+            return None
+        return f"{number:.2f}".rstrip("0").rstrip(".")
+
+    replacements: list[tuple[re.Pattern[str], Optional[str]]] = [
+        (
+            re.compile(
+                r"(\b(?:large\s+)?free cash flow(?:\s+generation)?"
+                r"(?:\s+(?:is|was|of|around|about|at)){0,2}\s*[:=]?\s*)"
+                r"\$?\d[\d,.]*\s*[TBM]\b",
+                re.IGNORECASE,
+            ),
+            _format_currency(_number("free_cash_flow")),
+        ),
+        (
+            re.compile(
+                r"(\brevenue growth(?:\s+(?:is|was|of|around|about|at)){0,2}\s*)"
+                r"[+-]?\d+(?:\.\d+)?%",
+                re.IGNORECASE,
+            ),
+            _percent("revenue_growth"),
+        ),
+        (
+            re.compile(
+                r"(\bgross margin(?:\s+profile)?"
+                r"(?:\s+(?:is|was|of|around|about|near|at)){0,2}\s*)"
+                r"[+-]?\d+(?:\.\d+)?%",
+                re.IGNORECASE,
+            ),
+            _percent("gross_margin"),
+        ),
+        (
+            re.compile(
+                r"(\boperating margin(?:\s+profile)?"
+                r"(?:\s+(?:is|was|of|around|about|near|at)){0,2}\s*)"
+                r"[+-]?\d+(?:\.\d+)?%",
+                re.IGNORECASE,
+            ),
+            _percent("operating_margin"),
+        ),
+        (
+            re.compile(
+                r"(\bforward P/?E(?:\s+(?:is|was|of|around|about|at)){0,2}\s*)"
+                r"\d+(?:\.\d+)?(x?)",
+                re.IGNORECASE,
+            ),
+            _ratio("pe_forward"),
+        ),
+        (
+            re.compile(
+                r"(\bPEG(?:\s+ratio)?(?:\s+(?:is|was|of|around|about|at)){0,2}\s*)"
+                r"\d+(?:\.\d+)?(x?)",
+                re.IGNORECASE,
+            ),
+            _ratio("peg_ratio"),
+        ),
+    ]
+
+    def _normalize_text(value: Any) -> Any:
+        if not isinstance(value, str) or not value:
+            return value
+        normalized = value
+        for pattern, replacement in replacements:
+            if replacement is None:
+                continue
+
+            def _replace(match: re.Match[str], canonical: str = replacement) -> str:
+                suffix = match.group(2) if match.lastindex and match.lastindex >= 2 else ""
+                return f"{match.group(1)}{canonical}{suffix or ''}"
+
+            normalized = pattern.sub(_replace, normalized)
+        normalized = re.sub(r"\bpeer\s+peers\b", "peers", normalized, flags=re.IGNORECASE)
+        return normalized
+
+    for key in (
+        "business_description",
+        "revenue_model",
+        "competitive_position",
+        "strengths_vs_competitors",
+        "weaker_areas_vs_competitors",
+        "client_types",
+        "management_weaknesses",
+        "investor_takeaway",
+        "ceo_leadership_style",
+        "long_term_vision",
+    ):
+        overview[key] = _normalize_text(overview.get(key))
+
+    for key in ("business_segments", "growth_drivers", "moats", "key_kpis", "business_risks"):
+        values = overview.get(key)
+        if isinstance(values, list):
+            overview[key] = [_normalize_text(value) for value in values]
+
+    for claim in overview.get("company_claims", []) or []:
+        if isinstance(claim, dict):
+            claim["text_en"] = _normalize_text(claim.get("text_en"))
 
 
 def _apply_key_financials_provenance(
@@ -601,6 +867,7 @@ def _apply_key_financials_provenance(
         llm_financials=overview.get("key_financials", {}) or {},
     )
     overview["key_financials"] = selected
+    _normalize_financial_claims(overview, selected)
     overview["key_financials_provenance"] = provenance
     overview["source_snapshot_metadata"] = {
         "schema_version": 1,
@@ -628,6 +895,7 @@ async def _search_tavily_overview(ticker: str, yf_info: Dict[str, Any]) -> List[
         queries = [
             f"{company_name} latest news 2026",
             f"{company_name} recent developments products",
+            f"{company_name} CEO leadership transition 2026 official",
         ]
         all_results = []
 
@@ -723,7 +991,11 @@ Return ONLY a valid JSON object (no markdown, no explanation) with EXACTLY this 
     "website": "URL",
     "employees": 12345,
     "founded": null,
-    "headquarters": "City, State, Country"
+    "headquarters": "City, State, Country",
+    "ceo": "current CEO name",
+    "ceo_designate": null,
+    "ceo_effective_date": null,
+    "ceo_transition_source_url": null
   }},
   "business_description": "A comprehensive 5-8 sentence paragraph (~10 lines) describing what the company does, its products, markets, and scale. Be specific and detailed.",
   "revenue_model": "A comprehensive 5-8 sentence paragraph (~10 lines) explaining how the company makes money — major revenue engines, monetization approach, key customer segments. Be specific and detailed.",
@@ -793,6 +1065,7 @@ RULES:
 - For list fields, always return arrays (possibly empty), never strings.
 - business_segments: list 3-5 SEGMENTS with descriptions using "Name: Description" format (e.g. "Compute & Networking: Data center GPUs, networking, and AI software."). Include business AND geographic segments if available. Each entry MUST include a colon-separated description.
 - The CEO MUST be identified by name (e.g. "CEO Sundar Pichai"). If unknown, use null for the name field but state uncertainty in ceo_leadership_style.
+- Announced CEO successions MUST preserve both the current CEO and CEO-designate until the effective date, with the exact official company announcement URL. Never promote a designate early.
 - competitors: list at least 5-6 named competitors with ticker symbols. More is better — aim for a comprehensive competitive landscape.
 - strengths_vs_competitors and weaker_areas_vs_competitors must be balanced competitive analysis, not valuation comments or volatility observations.
 - NEVER use internal pipeline language: no "LLM synthesis was unavailable", no "could not be reliably synthesized", no "transcript-level validation", no "requires transcript-level", no "fallback dataset". This is client-facing content.
@@ -1320,7 +1593,9 @@ def _fallback_overview(ticker: str, yf_info: Dict[str, Any]) -> Dict[str, Any]:
 
     # Try to extract CEO name from yfinance officers data
     ceo_name = ""
-    officers = yf_info.get("company_officers", []) or []
+    raw_info_obj = yf_info.get("_raw_info")
+    raw_info = raw_info_obj if isinstance(raw_info_obj, dict) else {}
+    officers = yf_info.get("company_officers", []) or raw_info.get("companyOfficers", []) or []
     for officer in officers:
         if isinstance(officer, dict):
             title = (officer.get("title") or "").lower()
@@ -1488,6 +1763,8 @@ async def get_company_overview(
         logger.info(f"Translating overview EN→JP for {ticker}...")
         overview = _translate_overview_to_jp(en_cached, ticker)
         _apply_key_financials_provenance(overview, ticker, yf_info, ledger)
+
+    _apply_verified_leadership_transition(overview, tavily_results, ticker=ticker)
 
     # ── Cache and return ────────────────────────────────────────────
     if use_cache:

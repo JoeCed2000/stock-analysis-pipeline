@@ -88,6 +88,7 @@ def run_analysis_parallel(
     language: str = "en",
     force_refresh: bool = False,
     progress_callback: Callable[[str], None] | None = None,
+    background_deep_dive: bool = False,
 ) -> Dict[str, Any]:
     """Run multiple ticker analyses concurrently.
 
@@ -113,7 +114,16 @@ def run_analysis_parallel(
         for ticker in tickers:
             if progress_callback:
                 progress_callback(f"Analyzing {ticker}: financial data, SEC filings, scoring…")
-            futures[executor.submit(analyze_ticker_fast, ticker, output_base, language, force_refresh)] = ticker
+            futures[
+                executor.submit(
+                    analyze_ticker_fast,
+                    ticker,
+                    output_base,
+                    language,
+                    force_refresh,
+                    background_deep_dive=background_deep_dive,
+                )
+            ] = ticker
         pending = set(futures)
         warned: set[concurrent.futures.Future] = set()
         while pending:

@@ -149,7 +149,7 @@ FORBIDDEN_BACKGROUND_HEADINGS: List[str] = [
 # with `•`") but the validator's concision checks only recognize ASCII bullets
 # (`- ` and `* `). This normalizer converts Unicode bullets to ASCII before
 # concision validation, so the validator properly recognizes bullet lines.
-UNICODE_BULLETS_RE = re.compile(r"[•●▪▸▹►▻‣⁃]")
+UNICODE_BULLETS_RE = re.compile(r"[•●◆▪▸▹►▻‣⁃]")
 
 
 def _normalize_for_concision(content: str) -> str:

@@ -478,6 +478,20 @@ class TestRule39NumericalConsistency:
         errors = [e for e in result.errors if "market_cap_inconsistent" in e.check]
         assert len(errors) == 0, f"Consistent values should pass: {errors}"
 
+    def test_39_52_week_range_is_not_parsed_as_trillion_market_cap(self):
+        co = _make_minimal_co(
+            business_description="Market cap of $4.6T as of latest close.",
+            competitive_position=(
+                "The 52-week range of $201.50 to $317.40 reflects normal share-price volatility."
+            ),
+        )
+        result = validate_pre_render(
+            ticker="TEST", quarter="Q1 2026", metrics=None,
+            section_analysis={}, company_overview=co,
+        )
+        errors = [e for e in result.errors if "market_cap_inconsistent" in e.check]
+        assert len(errors) == 0, f"The word 'to' must not turn $201.50 into $201.50T: {errors}"
+
     def test_39_inconsistent_pe_blocked(self):
         co = _make_minimal_co(
             business_description="Trading at a P/E ratio of 25x, the stock appears reasonably valued.",

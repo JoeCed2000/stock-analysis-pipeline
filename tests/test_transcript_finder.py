@@ -92,6 +92,45 @@ def test_find_transcripts_preserves_original_sa_url_as_reference_only(monkeypatc
     assert result["sources"][0]["original_sa_url"] == "https://seekingalpha.com/article/4700000-nvidia-q1-2027-earnings-call-transcript"
 
 
+def test_find_transcripts_reuses_recent_cache_before_slow_web_discovery(monkeypatch):
+    _disable_sa_cookies(monkeypatch)
+    stockanalysis_calls = []
+    monkeypatch.setattr(
+        "backend.stockanalysis.search_transcripts",
+        lambda ticker, limit=3: stockanalysis_calls.append(ticker) or [],
+    )
+    monkeypatch.setattr("backend.stockanalysis.fetch_transcript", lambda url: None)
+    cached = {
+        "source": "Seeking Alpha via StockAnalysis",
+        "type": "earnings_transcript",
+        "title": "AAPL Q2 2026 Earnings Call Transcript",
+        "url": "https://stockanalysis.com/stocks/aapl/transcripts/548666-q2-2026/",
+        "text": LONG,
+        "text_length": len(LONG),
+        "date": "2026-04-30",
+        "id": "548666",
+        "retrieval_provider": "StockAnalysis",
+    }
+    monkeypatch.setattr(
+        transcript_finder,
+        "_load_recent_cached_transcript",
+        lambda ticker: cached,
+        raising=False,
+    )
+    web_calls = []
+    monkeypatch.setattr(
+        "backend.transcript_web_search.search_transcript_pages",
+        lambda *args, **kwargs: web_calls.append((args, kwargs)) or [],
+    )
+
+    result = transcript_finder.find_transcripts("AAPL", company="Apple Inc")
+
+    assert result["found"] is True
+    assert result["sources"][0]["url"] == cached["url"]
+    assert web_calls == []
+    assert stockanalysis_calls == []
+
+
 def test_find_transcripts_falls_back_to_alpha_vantage_when_stockanalysis_empty(monkeypatch):
     _disable_sa_cookies(monkeypatch)
     _disable_stockanalysis(monkeypatch)

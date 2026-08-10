@@ -5,6 +5,7 @@ import hashlib
 import logging
 import re
 import shutil
+import threading
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
@@ -1146,6 +1147,7 @@ def _extract_quarterly_comparison(ticker: str) -> Dict[str, Optional[float]]:
         info = getattr(ticker_obj, "info", {}) or {}
         if isinstance(info, dict):
             result["pe_forward"] = info.get("forwardPE")
+            result["forward_eps"] = info.get("forwardEps")
             result["pe_trailing"] = info.get("trailingPE")
             result["investor_relations_url"] = info.get("irWebsite")
             result["company_website"] = info.get("website")
@@ -1373,11 +1375,18 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
         dividends=comparison_pick("dividends", pick("dividends")),
         dividends_prior_year=quarterly_comparison.get("dividends_prior_year"),
         dividends_yoy=quarterly_comparison.get("dividends_yoy"),
-        pe_forward=comparison_pick(
-            "pe_forward",
+        # Keep the PDF aligned with the canonical valuation shown in the UI.
+        # The quarterly snapshot can be older than the live valuation result.
+        pe_forward=(
             (getattr(valuation, "pe_forward", None) if valuation else None)
-            or pick("pe_forward"),
+            or comparison_pick("pe_forward", pick("pe_forward"))
         ),
+        peg_ratio=(
+            (getattr(valuation, "peg_ratio", None) if valuation else None)
+            or (yf_data.get("peg_ratio") if isinstance(yf_data, dict) else None)
+            or comparison_pick("peg_ratio", pick("peg_ratio"))
+        ),
+        forward_eps=comparison_pick("forward_eps", pick("forward_eps")),
         pe_trailing=(
             (getattr(valuation, "pe_current", None) if valuation else None)
             or pick("pe_trailing")
@@ -1397,6 +1406,7 @@ def _deep_dive_metrics(result: AnalysisResult, yf_data: Dict[str, Any]) -> Finan
         segments=(seg_data := _extract_segments(ticker_for_segments, guidance_value) if ticker_for_segments else {}),
         period=seg_data.get("period") if seg_data else "quarterly",
         source_form=seg_data.get("source_form") if seg_data else "yfinance",
+        financial_source_form="yfinance",
         sector=(yf_data.get("sector") if isinstance(yf_data, dict) else None),
         industry=(yf_data.get("industry") if isinstance(yf_data, dict) else None),
         earnings_release_date=override_pick("earnings_release_date"),
@@ -1709,6 +1719,7 @@ def _add_earnings_deep_dive_if_transcript(
         from backend.earnings_deep_dive.mapper import (
             build_earnings_deep_dive_report,
             effective_section_analysis,
+            render_report_markdown,
             _build_report_period_context,
             _build_metrics_ledger,
             _build_source_registry,
@@ -1928,6 +1939,7 @@ def _add_earnings_deep_dive_if_transcript(
             transcript_url=transcript_url,
             section_analysis=en_response.sections,
             company_overview=getattr(result, "company_overview", None),
+            scoring=getattr(result, "scoring", None),
             yf_info=yf_info,
         )
         if website:
@@ -1968,6 +1980,8 @@ def _add_earnings_deep_dive_if_transcript(
         else:
             logger.info(f"[{ticker}] Pre-render validation passed cleanly (normalized content)")
 
+        with open(en_response.markdown_path, "w", encoding="utf-8") as markdown_file:
+            markdown_file.write(render_report_markdown(en_report_model))
         render_earnings_deep_dive_pdf(en_report_model, en_pdf_path)
         logger.info(f"[{ticker}] Earnings deep-dive PDF built successfully")
         set_dossier_phase(ticker, DossierPhase.COMPLETE)
@@ -1984,6 +1998,7 @@ def _add_earnings_deep_dive_if_transcript(
                 transcript_url=transcript_url,
                 section_analysis=jp_response.sections,
                 company_overview=getattr(result, "company_overview", None),
+                scoring=getattr(result, "scoring", None),
                 yf_info=yf_info,
             )
             if website:
@@ -2018,6 +2033,8 @@ def _add_earnings_deep_dive_if_transcript(
                     f"[{ticker}] Pre-render validation JP (normalized content): "
                     f"{len(jp_effective_validation.warnings)} warning(s) — non-blocking"
                 )
+            with open(jp_response.markdown_path, "w", encoding="utf-8") as markdown_file:
+                markdown_file.write(render_report_markdown(jp_report_model))
             render_earnings_deep_dive_pdf(jp_report_model, jp_pdf_path)
 
         logger.info(f"[{ticker}] Earnings deep-dive added to dossier (EN{'+ JP' if generate_jp else ''})")
@@ -2051,6 +2068,20 @@ def _add_earnings_deep_dive_if_transcript(
         if not isinstance(e, ValidationError):
             set_dossier_phase(ticker, DossierPhase.FAILED, error=str(e)[:200])
         return False
+
+
+def _start_earnings_deep_dive_background(**kwargs: Any) -> threading.Thread:
+    """Start dossier/PDF generation without delaying the score response."""
+    ticker = str(kwargs.get("ticker") or "unknown")
+    worker = threading.Thread(
+        target=_add_earnings_deep_dive_if_transcript,
+        kwargs=kwargs,
+        name=f"deep-dive-{ticker}",
+        daemon=True,
+    )
+    worker.start()
+    logger.info("[%s] Deep-dive generation continues in background", ticker)
+    return worker
 
 
 def analyze_ticker(ticker: str, output_base: str = "analyses", language: str = "en") -> AnalysisResult:
@@ -2557,7 +2588,14 @@ def _decision_rationale(sc: Scoring) -> str:
     return ". ".join(parts) if parts else "Balanced profile with no extreme strengths or weaknesses."
 
 
-def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: str = "en", force_refresh: bool = False) -> AnalysisResult:
+def analyze_ticker_fast(
+    ticker: str,
+    output_base: str = "analyses",
+    language: str = "en",
+    force_refresh: bool = False,
+    *,
+    background_deep_dive: bool = False,
+) -> AnalysisResult:
     """
     Fast-path analysis: returns result in <5s.
     Skips heavy file I/O (PDF/Excel/10-K conversion) — those run in background.
@@ -3058,7 +3096,7 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
         logger.warning(f"[{ticker}] Report generation failed: {e}")
 
     # 4b. Optional earnings call deep-dive (07) — only when a full transcript is available
-    _add_earnings_deep_dive_if_transcript(
+    deep_dive_kwargs = dict(
         ticker=ticker,
         company_name=company_name,
         output_dir=output_dir,
@@ -3067,6 +3105,10 @@ def analyze_ticker_fast(ticker: str, output_base: str = "analyses", language: st
         language=language,
         company_website=_company_website(yf_data, fh_data),
     )
+    if background_deep_dive:
+        _start_earnings_deep_dive_background(**deep_dive_kwargs)
+    else:
+        _add_earnings_deep_dive_if_transcript(**deep_dive_kwargs)
     
     # 5. Excel financials (03)
     try:

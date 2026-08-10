@@ -76,25 +76,39 @@ def test_search_pages_fetches_seeking_alpha_candidates_with_cookie_headers(monke
     ]
 
 
-def test_find_transcripts_prefers_true_seeking_alpha_article_before_stockanalysis(monkeypatch):
+def test_find_transcripts_uses_stockanalysis_before_slow_web_discovery(monkeypatch):
     monkeypatch.setattr(transcript_finder, "_is_usable", lambda text: len(text) >= 20)
     monkeypatch.setattr("backend.seeking_alpha_access._read_store", lambda: {})
     monkeypatch.setattr(
+        "backend.stockanalysis.search_transcripts",
+        lambda ticker, limit=3: [{
+            "source": "Seeking Alpha via StockAnalysis",
+            "title": "NVIDIA Corporation (NVDA) Q1 2027 Earnings Call Transcript",
+            "url": "https://stockanalysis.com/stocks/nvda/earnings-call-transcripts/q1-2027/",
+            "id": "q1-2027",
+        }],
+    )
+    monkeypatch.setattr(
+        "backend.stockanalysis.fetch_transcript",
+        lambda url: {
+            "source": "Seeking Alpha via StockAnalysis",
+            "title": "NVIDIA Corporation (NVDA) Q1 2027 Earnings Call Transcript",
+            "url": url,
+            "stockanalysis_url": url,
+            "content": "NVIDIA NVDA earnings call transcript Operator revenue EPS full text",
+            "date": "2026-05-28",
+            "retrieval_provider": "StockAnalysis",
+        },
+    )
+    web_discovery_calls = []
+    monkeypatch.setattr(
         "backend.transcript_web_search.search_transcript_pages",
-        lambda ticker, company=None: [
-            {
-                "source": "Seeking Alpha",
-                "type": "earnings_transcript",
-                "title": "NVIDIA Corporation (NVDA) Q1 2027 Earnings Call Transcript",
-                "url": "https://seekingalpha.com/article/4907259-nvidia-corporation-nvda-q1-2027-earnings-call-transcript",
-                "text": "NVIDIA NVDA earnings call transcript Operator revenue EPS full text",
-                "text_length": 62,
-            }
-        ],
+        lambda *args, **kwargs: web_discovery_calls.append((args, kwargs)) or [],
     )
 
     result = transcript_finder.find_transcripts("NVDA", company="NVIDIA Corporation")
 
+    assert web_discovery_calls == []
     assert result["found"] is True
-    assert result["sources"][0]["source"] == "Seeking Alpha"
-    assert result["sources"][0]["url"] == "https://seekingalpha.com/article/4907259-nvidia-corporation-nvda-q1-2027-earnings-call-transcript"
+    assert result["sources"][0]["source"] == "Seeking Alpha via StockAnalysis"
+    assert result["sources"][0]["url"] == "https://stockanalysis.com/stocks/nvda/earnings-call-transcripts/q1-2027/"

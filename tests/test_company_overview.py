@@ -48,11 +48,11 @@ class TestCacheLayer:
 
     def test_cache_path_uppercase(self):
         path = _overview_cache_path("aapl", "en")
-        assert path.name == "company_overview_AAPL_en_v2.json"
+        assert path.name == "company_overview_AAPL_en_v3.json"
 
     def test_cache_path_lowercase_input(self):
         path = _overview_cache_path("nvdA", "jp")
-        assert path.name == "company_overview_NVDA_jp_v2.json"
+        assert path.name == "company_overview_NVDA_jp_v3.json"
 
     def test_cache_set_and_get(self, tmp_path, monkeypatch):
         import backend.company_overview as cov
@@ -362,6 +362,67 @@ class TestCanonicalKeyFinancialsResolver:
         assert result["key_financials"]["revenue"] == 383_285_000_000
         assert result["key_financials_provenance"]["fields"]["market_cap"]["selected_source"] == "yahoo_snapshot"
         assert result["source_snapshot_metadata"]["schema_version"] == 1
+
+    def test_normalizes_llm_numeric_claims_to_canonical_financials(self):
+        overview = {
+            "revenue_model": "Free cash flow around $101.09B supports reinvestment.",
+            "growth_drivers": [
+                "Large free cash flow generation of about $101.09B supports returns.",
+                "Revenue growth of 12.3% accompanies a gross margin near 44.4% and operating margin near 30.1%.",
+                "Forward P/E around 32.82 and a PEG around 2.55 imply a premium valuation.",
+                "The shares could rerate if peer peers reset multiples.",
+            ],
+            "key_kpis": ["Free cash flow: $101.09B"],
+            "key_financials": {},
+        }
+
+        result = _apply_key_financials_provenance(
+            overview,
+            "AAPL",
+            yahoo_snapshot={
+                "pe_forward": 31.14,
+                "peg_ratio": 2.65,
+            },
+            ledger={
+                "financials": {
+                    "free_cash_flow": 98_767_000_000,
+                    "revenue_yoy_growth": 0.166,
+                    "gross_margin": 0.4786,
+                    "operating_margin": 0.326,
+                },
+            },
+        )
+
+        text = "\n".join(
+            [result["revenue_model"], *result["growth_drivers"], *result["key_kpis"]]
+        )
+        assert "$98.8B" in text
+        assert "$101.09B" not in text
+        assert "Revenue growth of 16.6%" in text
+        assert "gross margin near 47.9%" in text
+        assert "operating margin near 32.6%" in text
+        assert "Forward P/E around 31.14" in text
+        assert "PEG around 2.65" in text
+        assert "peer peers" not in text
+        assert "peers reset multiples" in text
+
+    def test_financial_claim_normalization_preserves_unrelated_quarterly_revenue(self):
+        overview = {
+            "growth_drivers": [
+                "Recent quarterly revenue of $111.18B and free cash flow of $101.09B were reported."
+            ],
+            "key_financials": {},
+        }
+
+        result = _apply_key_financials_provenance(
+            overview,
+            "AAPL",
+            ledger={"financials": {"free_cash_flow": 98_767_000_000}},
+        )
+
+        claim = result["growth_drivers"][0]
+        assert "quarterly revenue of $111.18B" in claim
+        assert "free cash flow of $98.8B" in claim
 
 
 # ── JP TRANSLATION (Step 2) ──────────────────────────────────────────────

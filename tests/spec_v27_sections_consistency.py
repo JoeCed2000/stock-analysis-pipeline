@@ -211,6 +211,18 @@ class TestGuidance:
         errs = _errors_for(result, "guidance_current_as_guidance")
         assert len(errs) == 1
 
+    def test_explicit_no_guidance_for_current_quarter_passes(self):
+        sections = {
+            "Guidance": (
+                "The lack of explicit next-quarter guidance adds uncertainty. "
+                "For the investor, this quarter's no guidance posture underlines "
+                "the challenge of modeling the company."
+            )
+        }
+        result = validate_pre_render("AAPL", "FY2026 Q2", None, sections)
+        errs = _errors_for(result, "guidance_current_as_guidance")
+        assert len(errs) == 0
+
     def test_not_guided_but_narrative_has_guidance_warned(self):
         sections = {
             "Guidance": (

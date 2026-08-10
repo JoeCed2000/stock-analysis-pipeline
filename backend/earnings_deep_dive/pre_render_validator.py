@@ -1463,10 +1463,20 @@ def validate_pre_render(
             ))
 
         # 19b. Current quarter actual presented as guidance
-        current_as_guidance = bool(re.search(
+        current_guidance_spans = re.findall(
             r'(?:current|this)\s*(?:quarter|period|Q\d).{0,40}guidance',
-            gd, re.IGNORECASE
-        ))
+            gd,
+            re.IGNORECASE,
+        )
+        current_as_guidance = any(
+            not re.search(
+                r'\b(?:no|not|without|lack\s+of|absence\s+of)\s+'
+                r'(?:formal\s+|explicit\s+)?guidance\b',
+                span,
+                re.IGNORECASE,
+            )
+            for span in current_guidance_spans
+        )
         if current_as_guidance:
             warnings.append(ValidationWarning(
                 check="guidance_current_as_guidance",
@@ -2878,7 +2888,7 @@ def validate_pre_render(
 
         # Extract market cap mentions: "$X.XX trillion" or "$X.XXT" or "$XXXB"
         market_cap_values = []
-        for m in re.finditer(r'\$(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?\s*(?:trillion|T)', all_co_text, re.IGNORECASE):
+        for m in re.finditer(r'\$(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?\s*(?:trillion|T)\b', all_co_text, re.IGNORECASE):
             val = _parse_money(m.group())
             if val:
                 market_cap_values.append(val)

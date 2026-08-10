@@ -3,6 +3,8 @@ import json
 import logging
 import os
 import re
+import threading
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -30,6 +32,41 @@ logger = logging.getLogger(__name__)
 
 
 MAX_CODEX_TOKENS = 16000
+_deepseek_primary_disabled_until = 0.0
+_DEEPSEEK_PRIMARY_COOLDOWN_SECONDS = 300.0
+_deepseek_primary_lock = threading.Lock()
+
+
+def _try_deepseek_primary(
+    prompt: str,
+    system: str,
+    max_tokens: int,
+) -> tuple[str | None, bool]:
+    """Attempt DeepSeek once across concurrent section workers.
+
+    Returns ``(result, attempted)``. The lock prevents every parallel section
+    from hitting a provider that has already returned a terminal failure.
+    """
+    global _deepseek_primary_disabled_until
+    with _deepseek_primary_lock:
+        if time.monotonic() < _deepseek_primary_disabled_until:
+            return None, False
+        try:
+            from backend.kimi_provider import _deepseek_chat
+            result = _deepseek_chat(prompt, system, max_tokens)
+            if result:
+                _deepseek_primary_disabled_until = 0.0
+                return result, True
+        except Exception as exc:
+            logger.warning(
+                "llm_call primary_failed provider=deepseek error=%s",
+                exc,
+                exc_info=True,
+            )
+        _deepseek_primary_disabled_until = (
+            time.monotonic() + _DEEPSEEK_PRIMARY_COOLDOWN_SECONDS
+        )
+        return None, True
 
 def _generation_provider() -> tuple[str, str, str]:
     """Resolve (provider, model, effort) for deep-dive generation.
@@ -57,14 +94,13 @@ def _llm_chat(prompt: str, system: str = "", max_tokens: int = MAX_CODEX_TOKENS)
     """
     primary = (os.getenv("SA_DEEP_DIVE_PROVIDER") or "codex").strip().lower()
     if primary == "deepseek":
-        try:
-            from backend.kimi_provider import _deepseek_chat
-            result = _deepseek_chat(prompt, system, max_tokens)
-            if result:
-                return result
+        result, attempted = _try_deepseek_primary(prompt, system, max_tokens)
+        if result:
+            return result
+        if attempted:
             logger.warning("llm_call primary_failed provider=deepseek — falling back to codex")
-        except Exception as exc:
-            logger.warning("llm_call primary_failed provider=deepseek error=%s", exc, exc_info=True)
+        else:
+            logger.debug("llm_call primary_skipped provider=deepseek circuit=open")
 
     model = (os.getenv("SA_CODEX_MODEL") or "gpt-5.3-codex-spark").strip()
     effort = (os.getenv("SA_CODEX_DEFAULT_EFFORT") or "medium").strip().lower()

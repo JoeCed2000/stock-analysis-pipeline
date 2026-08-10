@@ -44,6 +44,8 @@ class FinancialMetrics(BaseModel):
     buybacks: Optional[float] = None
     dividends: Optional[float] = None
     pe_forward: Optional[float] = None
+    peg_ratio: Optional[float] = None
+    forward_eps: Optional[float] = None
     pe_trailing: Optional[float] = None
     analyst_consensus: Optional[str] = None
     analyst_target: Optional[float] = None
@@ -59,6 +61,9 @@ class FinancialMetrics(BaseModel):
     # ── Period awareness (P0: prevent annual/quarterly mixing) ──
     period: Optional[str] = None       # "quarterly" | "annual" | "unknown"
     source_form: Optional[str] = None  # "10-Q" | "10-K" | "8-K" | "yfinance" | "mixed"
+    # Provenance for the quantitative financial block. ``source_form`` may
+    # describe segment data and must not relabel Yahoo-derived metrics as SEC.
+    financial_source_form: Optional[str] = None
 
 
 class DeepDiveRequest(BaseModel):

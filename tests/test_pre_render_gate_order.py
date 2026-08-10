@@ -124,6 +124,37 @@ def test_verdict_fallback_does_not_claim_no_red_flags_against_risk_prose():
         [w.detail for w in eff_val.errors]
 
 
+def test_verdict_fallback_does_not_duplicate_explicit_recommendation():
+    """An explicit LLM recommendation must stay the only client-facing action.
+
+    Regression: AAPL's LLM verdict said BUY while the deterministic summary's
+    simplified metric score said HOLD. The effective pre-render content then
+    contained both labels and blocked PDF generation.
+    """
+    metrics = FinancialMetrics(
+        revenue_actual=111.18e9,
+        revenue_yoy=0.166,
+        eps_actual=2.01,
+        operating_cash_flow=28.70e9,
+        free_cash_flow=26.73e9,
+        pe_forward=32.82,
+    )
+    raw = {
+        "Verdict": (
+            "## Verdict\n\n"
+            "**Recommendation: BUY**\n\n"
+            "Strong growth and cash flow offset premium valuation risk."
+        )
+    }
+
+    _, eff_val, report = _effective_validation("AAPL", raw, metrics)
+    effective = effective_section_analysis(report)["Verdict"]
+    labels = {label for label in ("BUY", "HOLD", "SELL") if label in effective}
+
+    assert labels == {"BUY"}
+    assert not _has_error(eff_val, "verdict_multiple_recommendations")
+
+
 def test_non_regression_valid_fixture_renders_pdf(tmp_path):
     """End-to-end with the new order: a normal valid report must pass the
     effective gate and still render a PDF."""
