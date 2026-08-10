@@ -44,20 +44,20 @@ COMMANDS.md
 *.srt
 NVDA_analysis.zip
 NVDA_10K_demo.pdf
-*.bak.*
+*.bak*
 _check_render.py
 *.txt
-*.bak
 backups/
 cookie_*
 RENDER_ENV_*
 SSH_SETUP.txt
 .vercel
-.bak
 tmp/
 .state/
-*.bak
 tests_e2e/screenshots/
+
+# Kanban/agent worktrees checked out inside the repo
+.worktrees/
 
 # External reference kits
 docs/ai-engineering-standards-kit-v2/
