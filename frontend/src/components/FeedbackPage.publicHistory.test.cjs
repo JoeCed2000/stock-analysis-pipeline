@@ -16,26 +16,13 @@ assert(
   'FeedbackPage must not render a second chat widget on #feedback.'
 );
 
-assert(
-  source.includes('const note = publicNote(entry, lang);') && source.includes('{note}') && !source.includes('{entry.notes}'),
-  'Feedback history must render sanitized customer-facing status updates instead of raw operational notes.'
-);
+assert(!source.includes('loadHistory') && !source.includes('setHistory'),
+  'The public feedback page must not fetch every visitor submission.');
+assert(!source.includes('<SeekingAlphaAccessPanel'),
+  'The public feedback page must not expose Seeking Alpha cookie administration.');
+assert(!source.includes('Submitted feedback') && !source.includes('history.map('),
+  'The public feedback page must not render global submission history.');
+assert(source.includes('Reference:') && source.includes('data.id'),
+  'A successful public submission must show its own reference without exposing other feedback.');
 
-assert(
-  source.includes("Google PDF feedback is linked to the attached documents below") &&
-    source.includes('annotated PDFs for pages 1, 5, 7 and 9') &&
-    source.includes('Google のPDFに関するコメント'),
-  'Google PDF feedback notes must explicitly link remarks to the main Google PDF and annotated page PDFs in EN/JP.'
-);
-
-assert(
-  source.includes('friendlyFileLabel(fileName, entry, lang)'),
-  'Feedback attachment links must show customer-friendly labels instead of raw hashed filenames.'
-);
-
-assert(
-  source.includes('<SeekingAlphaAccessPanel mode="feedback" lang={lang} />'),
-  'Seeking Alpha cookie access panel must remain visible on the feedback page.'
-);
-
-console.log('✅ FeedbackPage public history/chat continuity guards passed');
+console.log('✅ FeedbackPage privacy/chat continuity guards passed');

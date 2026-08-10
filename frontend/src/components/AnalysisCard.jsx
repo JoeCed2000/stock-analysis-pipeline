@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchQuarters } from '../api.js';
 import { SCORE_COLORS, CONVICTION_COLORS, getConvictionLevel, getInsight, canDownloadDossier, scorePercent, scoreBarColor } from './AnalysisUtils.js';
 import useDossierPolling from './useDossierPolling.js';
 import { getTickerDownloadUrl, getCompanyOverviewDownloadUrl } from '../api.js';
@@ -102,21 +101,6 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
   const [showChart, setShowChart] = useState(false);
   const downloadTimerRef = useRef(null);
 
-  const [quarters, setQuarters] = useState([]);
-  const [selectedQuarter, setSelectedQuarter] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchQuarters(ticker).then(data => {
-      if (!cancelled) {
-        const qs = data.quarters || [];
-        setQuarters(qs);
-        if (qs.length > 0) setSelectedQuarter(qs[0]);
-      }
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [ticker]);
-
   useEffect(() => {
     return () => { if (downloadTimerRef.current) clearTimeout(downloadTimerRef.current); };
   }, []);
@@ -138,7 +122,9 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
   const handleDownload = async () => {
     if (downloadState === 'downloading') return;
     setDownloadState('downloading');
-    const url = getTickerDownloadUrl(ticker, lang, selectedQuarter);
+    // The dossier endpoint serves the latest verified artifact only. The quarter
+    // selector belongs to the earnings PDF flow and must not scope ZIP downloads.
+    const url = getTickerDownloadUrl(ticker, lang);
     try {
       const resp = await fetch(url);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -190,12 +176,6 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <ExportMenu getSnapshotData={getSnapshotData} t={t} lang={lang} disabled={!result?.ticker} />
-          {quarters.length > 1 && (
-            <select value={selectedQuarter || quarters[0]} onChange={e => setSelectedQuarter(e.target.value)}
-              style={quarterSelectStyle}>
-              {quarters.map(q => <option key={q} value={q}>{q}</option>)}
-            </select>
-          )}
           <div style={{
             padding: '3px 10px', borderRadius: 999, fontSize: 10, fontWeight: 800,
             background: `${color}22`, color, border: `1px solid ${color}77`,
@@ -230,7 +210,7 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
       <div style={{ padding: '4px 14px', borderBottom: '1px solid rgba(125,155,195,0.12)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <CacheIndicator ticker={ticker} />
         <a
-          href={getCompanyOverviewDownloadUrl(ticker)}
+          href={getCompanyOverviewDownloadUrl(ticker, 'auto', retrieved_at)}
           target="_blank"
           rel="noreferrer"
           style={{
@@ -274,7 +254,7 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
       {/* ── ACTIONS ── */}
       <div style={{ padding: '8px 14px 6px', display: 'flex', gap: 6 }}>
         {dossierStatus?.verified ? (
-          <button onClick={() => onViewReport(result, selectedQuarter)}
+          <button onClick={() => onViewReport(result)}
             style={actionBtnStyle}
             onMouseEnter={e => e.target.style.background = 'rgba(125,155,195,0.22)'}
             onMouseLeave={e => e.target.style.background = 'rgba(125,155,195,0.12)'}>
@@ -301,7 +281,7 @@ export default function AnalysisCard({ result, onViewReport, t, lang }) {
           <div style={errorPlaceholderStyle}>
             ⚠️ {lang === 'jp' ? '検証失敗' : 'Verification failed'} · {dossierStatus?.sectionsReady ?? '?'}/7</div>
         ) : dossierStatus?.phase === 'failed' ? (
-          <button onClick={() => onViewReport(result, selectedQuarter)}
+          <button onClick={() => onViewReport(result)}
             style={retryBtnStyle}
             onMouseEnter={e => e.target.style.background = '#6b3030'}
             onMouseLeave={e => e.target.style.background = '#3d1f1f'}>

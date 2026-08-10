@@ -6,6 +6,7 @@ import SeekingAlphaAccessPanel from './SeekingAlphaAccessPanel.jsx';
 const POLL_MS = 5000;
 const API = '/api';
 const PAGE_SIZE = 50;
+const ADMIN_KEY_STORAGE = 'sa_admin_key';
 
 const FEEDBACK_LIFECYCLE = {
   pending: { bg: '#d2992220', color: '#d29922', border: '#d2992240' },
@@ -40,6 +41,11 @@ export default function AdminPage({ t, onClose }) {
   const [feedbackError, setFeedbackError] = useState('');
   const [userAgentFilter, setUserAgentFilter] = useState('');
   const [errorFilter, setErrorFilter] = useState('');
+  // The static production bundle must never embed CED_CONTROL_KEY, so the admin
+  // types it once per tab. sessionStorage (not localStorage) so it dies with the tab.
+  const [adminKey, setAdminKey] = useState(() => {
+    try { return sessionStorage.getItem(ADMIN_KEY_STORAGE) || ''; } catch { return ''; }
+  });
 
   const fetchData = useCallback(async () => {
     try {
@@ -53,7 +59,9 @@ export default function AdminPage({ t, onClose }) {
       const [statsRes, searchRes, fbRes] = await Promise.all([
         fetch(`${API}/search-stats`).then(r => r.ok ? r.json() : null),
         fetch(`${API}/recent-searches?${searchParams.toString()}`).then(r => r.ok ? r.json() : null),
-        fetch(`${API}/feedback`).then(r => r.ok ? r.json() : { error: `HTTP ${r.status}` }),
+        fetch(`${API}/admin/feedback`, {
+          headers: adminKey ? { 'X-API-Key': adminKey } : {},
+        }).then(r => r.ok ? r.json() : { error: `HTTP ${r.status}` }),
       ]);
       if (statsRes) setStats(statsRes);
       if (searchRes) {
@@ -64,12 +72,12 @@ export default function AdminPage({ t, onClose }) {
         setFeedbackError(fbRes.error);
       } else {
         setFeedbackError('');
-        setFeedbacks((fbRes?.entries || []));
+        setFeedbacks(Array.isArray(fbRes) ? fbRes : []);
       }
     } catch (e) {
       console.error('[AdminPage] fetch failed:', e);
     }
-  }, [page, userAgentFilter, errorFilter]);
+  }, [page, userAgentFilter, errorFilter, adminKey]);
 
   useEffect(() => {
     fetchData();
@@ -253,9 +261,34 @@ export default function AdminPage({ t, onClose }) {
             {feedbacks.filter(f => !f.processed).length} unprocessed / {feedbacks.length} total
           </span>
         </div>
+        <div style={{ padding: '8px 16px', borderBottom: '1px solid #30363d', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input
+            type="password"
+            value={adminKey}
+            onChange={e => {
+              const next = e.target.value;
+              setAdminKey(next);
+              try {
+                if (next) sessionStorage.setItem(ADMIN_KEY_STORAGE, next);
+                else sessionStorage.removeItem(ADMIN_KEY_STORAGE);
+              } catch { /* private mode: key stays in memory for this tab */ }
+            }}
+            placeholder="Admin key (CED_CONTROL_KEY)"
+            autoComplete="off"
+            style={{
+              flex: 1, background: '#0d1117', border: '1px solid #30363d', borderRadius: 6,
+              color: '#e1e4e8', fontSize: 12, padding: '6px 10px', outline: 'none',
+            }}
+          />
+          <span style={{ fontSize: 11, color: adminKey ? '#3fb950' : '#d29922' }}>
+            {adminKey ? '🔑 key set' : '🔒 key required'}
+          </span>
+        </div>
         {feedbackError ? (
           <div style={{ padding: 24, textAlign: 'center', color: '#f85149', fontSize: 13 }}>
-            Feedback history failed to load: {feedbackError}
+            {feedbackError === 'HTTP 403'
+              ? 'Feedback history is protected — enter the admin key above to load it.'
+              : `Feedback history failed to load: ${feedbackError}`}
           </div>
         ) : feedbacks.length === 0 ? (
           <div style={{ padding: 24, textAlign: 'center', color: '#484f58', fontSize: 13 }}>
@@ -307,7 +340,7 @@ export default function AdminPage({ t, onClose }) {
                     {fb.files.map((f, j) => (
                       <a
                         key={j}
-                        href={getFeedbackAttachmentUrl(fb._ticker || fb.ticker, f)}
+                        href={getFeedbackAttachmentUrl(fb._ticker || fb.ticker, f, adminKey)}
                         target="_blank"
                         rel="noreferrer"
                         style={{

@@ -111,13 +111,19 @@ export function getTickerDownloadUrl(ticker, lang = 'en', quarter = null) {
   return base;
 }
 
-export function getFeedbackAttachmentUrl(ticker, fileName) {
+// /api/feedback-file is behind _require_auth. An <a href> cannot carry a header,
+// so the key rides the api_key query param that _require_auth accepts as a
+// download fallback (backend/main.py). Callers pass the admin-entered key.
+export function getFeedbackAttachmentUrl(ticker, fileName, apiKey = '') {
   const bucket = (ticker || 'GENERAL').trim().toUpperCase();
-  return `${API_BASE}/feedback-file/${encodeURIComponent(bucket)}/${encodeURIComponent(fileName)}`;
+  const url = `${API_BASE}/feedback-file/${encodeURIComponent(bucket)}/${encodeURIComponent(fileName)}`;
+  return apiKey ? `${url}?api_key=${encodeURIComponent(apiKey)}` : url;
 }
 
-export function getCompanyOverviewDownloadUrl(ticker, format = 'auto') {
-  return `${API_BASE}/company-overview/${encodeURIComponent(ticker)}/download?format=${encodeURIComponent(format)}`;
+export function getCompanyOverviewDownloadUrl(ticker, format = 'auto', version = null) {
+  const params = new URLSearchParams({ format });
+  if (version) params.set('v', version);
+  return `${API_BASE}/company-overview/${encodeURIComponent(ticker)}/download?${params.toString()}`;
 }
 
 export async function getSeekingAlphaAccessStatus() {

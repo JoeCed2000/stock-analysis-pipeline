@@ -55,7 +55,7 @@ function mergeChatMessages(existingMessages, incomingMessages) {
 }
 
 // ── Quick action suggestions ─────────────────────────────────────────────
-const QUICK_ACTIONS_JA = [
+const STOCK_ACTIONS_JA = [
   'この銘柄の要点を教えて',
   '主なリスクは？',
   '強気シナリオと弱気シナリオを比較して',
@@ -64,11 +64,25 @@ const QUICK_ACTIONS_JA = [
   'バグを報告する',
 ];
 
-const QUICK_ACTIONS_EN = [
+const STOCK_ACTIONS_EN = [
   'Give me the key takeaways for this stock',
   'What are the main risks?',
   'Compare the bull and bear cases',
   'Summarize this PDF briefly',
+  'Report something confusing',
+  'Report a bug',
+];
+
+const GENERAL_ACTIONS_JA = [
+  '分析を始めるには？',
+  'スコアの見方を教えて',
+  '分かりにくい部分を報告する',
+  'バグを報告する',
+];
+
+const GENERAL_ACTIONS_EN = [
+  'How do I start an analysis?',
+  'What does the score mean?',
   'Report something confusing',
   'Report a bug',
 ];
@@ -117,10 +131,12 @@ const CHAT_COPY = {
 };
 
 // ── ChatWidget ──────────────────────────────────────────────────────────
-export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, currentUrl }) {
+export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, currentUrl, mode = 'single' }) {
   const chatLang = normalizeChatLanguage(lang);
   const copy = CHAT_COPY[chatLang];
-  const quickActions = chatLang === 'en' ? QUICK_ACTIONS_EN : QUICK_ACTIONS_JA;
+  const quickActions = chatLang === 'en'
+    ? (ticker ? STOCK_ACTIONS_EN : GENERAL_ACTIONS_EN)
+    : (ticker ? STOCK_ACTIONS_JA : GENERAL_ACTIONS_JA);
   const [open, setOpen] = useState(false);
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -423,7 +439,7 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
 
   // ── Panel ───────────────────────────────────────────────────────────
   return (
-    <div style={panelContainerStyle}>
+    <div className="chat-widget-panel" style={panelContainerStyle} data-mode={mode}>
       {/* Header */}
       <div style={headerStyle}>
         <div>
@@ -553,6 +569,17 @@ export default function ChatWidget({ lang = 'ja', ticker, pdfId, pdfTitle, curre
         @keyframes chat-blink {
           0%, 80%, 100% { opacity: 0.2; }
           40% { opacity: 1; }
+        }
+        @media (max-width: 520px) {
+          .chat-widget-panel {
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            max-width: 100vw !important;
+            height: min(72vh, 600px) !important;
+            max-height: calc(100vh - 24px) !important;
+            border-radius: 14px 14px 0 0 !important;
+          }
         }
       `}</style>
     </div>

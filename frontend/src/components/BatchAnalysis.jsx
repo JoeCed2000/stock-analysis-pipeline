@@ -23,9 +23,9 @@ export default function BatchAnalysis({ onResultsReady, t }) {
       // Auto-select all items
       setSelected(new Set((data.items || []).map(it => it.normalized)));
     } catch (e) {
-      setError(`Upload failed: ${e.message}`);
+      setError(`${t('batchUploadFailed')}: ${e.message}`);
     }
-  }, []);
+  }, [t]);
 
   const handleTextareaParse = useCallback(() => {
     setError(null);
@@ -42,9 +42,9 @@ export default function BatchAnalysis({ onResultsReady, t }) {
     if (file && (file.name.endsWith('.txt') || file.name.endsWith('.csv') || file.type === 'text/plain')) {
       handleFile(file);
     } else {
-      setError('Accepted formats: .txt, .csv');
+      setError(t('batchAcceptedError'));
     }
-  }, [handleFile]);
+  }, [handleFile, t]);
 
   const toggleTicker = (normalized) => {
     setSelected(prev => {
@@ -82,13 +82,13 @@ export default function BatchAnalysis({ onResultsReady, t }) {
         if (attempts < maxAttempts) {
           setTimeout(poll, 3000);
         } else {
-          setError('Timeout: analysis took too long');
+          setError(t('batchTimeout'));
           setLoading(false);
         }
       };
       poll();
     } catch (e) {
-      setError(`Batch error: ${e.message}`);
+      setError(`${t('batchError')}: ${e.message}`);
       setLoading(false);
     }
   };
@@ -96,7 +96,7 @@ export default function BatchAnalysis({ onResultsReady, t }) {
   return (
     <div style={{ marginBottom: 24 }}>
       <h2 style={{ fontSize: 18, fontWeight: 600, color: '#e1e4e8', marginBottom: 16 }}>
-        📦 Batch Analysis — Upload & Multi-Ticker
+        {t('batchPageTitle')}
       </h2>
 
       {/* Usage instructions */}
@@ -109,7 +109,7 @@ export default function BatchAnalysis({ onResultsReady, t }) {
             borderRadius: 4, color: '#58a6ff', cursor: 'pointer',
           }}
         >
-          {showHelp ? '▾ Hide help' : '▸ How to use'}
+          {showHelp ? t('batchHelpHide') : t('batchHelpShow')}
         </button>
         {showHelp && (
           <div style={{
@@ -117,15 +117,15 @@ export default function BatchAnalysis({ onResultsReady, t }) {
             background: '#161b22', border: '1px solid #30363d',
             borderRadius: 6, fontSize: 13, color: '#8b949e', lineHeight: 1.7,
           }}>
-            <strong style={{ color: '#e1e4e8' }}>Accepted formats:</strong><br />
-            • <strong>Tickers:</strong> AAPL, NVDA, MSFT, GOOGL, MC.PA (one per line or comma-separated)<br />
-            • <strong>ISINs:</strong> US0378331005, FR0000121014 (auto-converted to tickers when known)<br />
+            <strong style={{ color: '#e1e4e8' }}>{t('batchAcceptedFormats')}</strong><br />
+            • {t('batchTickerHelp')}<br />
+            • {t('batchIsinHelp')}<br />
             <br />
-            <strong style={{ color: '#e1e4e8' }}>Steps:</strong><br />
-            1. Upload a .txt file or paste tickers in the textarea below<br />
-            2. Select/deselect tickers from the parsed list<br />
-            3. Click "Run Analysis" — each ticker takes ~20-30s<br />
-            4. Review results and download the ZIP with all documents (10-K, transcripts, reports)
+            <strong style={{ color: '#e1e4e8' }}>{t('batchSteps')}</strong><br />
+            1. {t('batchStepUpload')}<br />
+            2. {t('batchStepSelect')}<br />
+            3. {t('batchStepRun')}<br />
+            4. {t('batchStepDownload')}
           </div>
         )}
       </div>
@@ -153,10 +153,10 @@ export default function BatchAnalysis({ onResultsReady, t }) {
         />
         <div style={{ fontSize: 32, marginBottom: 8 }}>📁</div>
         <div style={{ color: '#e1e4e8', fontSize: 14 }}>
-          Drag & drop a .txt file here or click to upload
+          {t('batchDropPrompt')}
         </div>
         <div style={{ color: '#8b949e', fontSize: 12, marginTop: 4 }}>
-          One ticker per line (e.g. NVDA, MSFT, AAPL) or ISINs (e.g. US0378331005)
+          {t('batchDropHint')}
         </div>
       </div>
 
@@ -184,7 +184,7 @@ export default function BatchAnalysis({ onResultsReady, t }) {
             borderRadius: 4, color: '#8b949e', cursor: loading ? 'not-allowed' : 'pointer',
           }}
         >
-          📋 Parse Tickers
+          {t('batchParse')}
         </button>
       </div>
 
@@ -193,16 +193,18 @@ export default function BatchAnalysis({ onResultsReady, t }) {
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <span style={{ fontSize: 13, color: '#8b949e' }}>
-              {parsedItems.length} ticker{parsedItems.length !== 1 ? 's' : ''} — {selected.size} selected
+              {t('batchSelectedSummary')
+                .replace('{total}', parsedItems.length)
+                .replace('{selected}', selected.size)}
             </span>
             <div style={{ display: 'flex', gap: 6 }}>
               <button onClick={selectAll} disabled={loading}
                 style={{ fontSize: 11, padding: '3px 8px', background: '#21262d', border: '1px solid #30363d', borderRadius: 3, color: '#8b949e', cursor: 'pointer' }}>
-                Select all
+                {t('batchSelectAll')}
               </button>
               <button onClick={deselectAll} disabled={loading}
                 style={{ fontSize: 11, padding: '3px 8px', background: '#21262d', border: '1px solid #30363d', borderRadius: 3, color: '#8b949e', cursor: 'pointer' }}>
-                Deselect all
+                {t('batchDeselectAll')}
               </button>
             </div>
           </div>
@@ -241,7 +243,7 @@ export default function BatchAnalysis({ onResultsReady, t }) {
               );
             })}
             {parsedItems.length === 0 && (
-              <span style={{ fontSize: 12, color: '#484f58', padding: 4 }}>No tickers found</span>
+              <span style={{ fontSize: 12, color: '#484f58', padding: 4 }}>{t('batchNoTickers')}</span>
             )}
           </div>
 
@@ -257,7 +259,9 @@ export default function BatchAnalysis({ onResultsReady, t }) {
               display: 'block', margin: '0 auto',
             }}
           >
-            {loading ? '⏳ Running analysis...' : `🔍 Run analysis on ${selected.size} ticker(s)`}
+            {loading
+              ? t('batchRunning')
+              : t('batchRun').replace('{count}', selected.size)}
           </button>
         </>
       )}
@@ -273,7 +277,9 @@ export default function BatchAnalysis({ onResultsReady, t }) {
           </div>
           <style>{`@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
           <div style={{ color: '#e1e4e8', fontSize: 14, marginBottom: 8 }}>
-            Running analysis... ({jobStatus.completed || 0}/{jobStatus.total || 0})
+            {t('batchProgress')
+              .replace('{completed}', jobStatus.completed || 0)
+              .replace('{total}', jobStatus.total || 0)}
           </div>
           <div style={{
             background: '#30363d', borderRadius: 4, height: 8, overflow: 'hidden',
@@ -296,7 +302,9 @@ export default function BatchAnalysis({ onResultsReady, t }) {
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <span style={{ color: '#e1e4e8', fontSize: 16, fontWeight: 600 }}>
-              ✅ {jobStatus.completed}/{jobStatus.total} tickers analyzed
+              {t('batchAnalyzed')
+                .replace('{completed}', jobStatus.completed)
+                .replace('{total}', jobStatus.total)}
             </span>
             <a
               href={getBatchDownloadUrl(jobId)}
@@ -307,7 +315,7 @@ export default function BatchAnalysis({ onResultsReady, t }) {
                 borderRadius: 6, cursor: 'pointer', textDecoration: 'none',
               }}
             >
-              📦 Download ZIP
+              {t('batchDownloadZip')}
             </a>
           </div>
 
@@ -325,7 +333,7 @@ export default function BatchAnalysis({ onResultsReady, t }) {
                     <span style={{ color: '#8b949e', marginLeft: 8 }}>{r.company_name?.substring(0, 30)}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ color: '#8b949e' }}>Score: {r.scoring?.total}/40</span>
+                    <span style={{ color: '#8b949e' }}>{t('batchScore')}: {r.scoring?.total}/40</span>
                     <span style={{
                       padding: '2px 8px', borderRadius: 3, fontSize: 11, fontWeight: 700,
                       background: r.decision?.includes('BUY') ? '#238636' : r.decision?.includes('HOLD') ? '#d29922' : '#da3633',
@@ -341,7 +349,7 @@ export default function BatchAnalysis({ onResultsReady, t }) {
 
           {jobStatus.errors?.length > 0 && (
             <div style={{ marginTop: 12, fontSize: 12, color: '#f85149' }}>
-              ⚠️ Errors: {jobStatus.errors.join(', ')}
+              {t('batchErrors')}: {jobStatus.errors.join(', ')}
             </div>
           )}
         </div>

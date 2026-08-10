@@ -14,23 +14,33 @@ function assert(condition, message) {
 }
 
 assert(
-  !source.includes('fetch(`${API}/admin/feedback`)'),
-  'Admin feedback viewer must not call protected /api/admin/feedback from the static frontend'
+  source.includes('fetch(`${API}/admin/feedback`'),
+  'Admin feedback viewer must use the protected admin endpoint'
 );
 
 assert(
-  source.includes('fetch(`${API}/feedback`)'),
-  'Admin feedback viewer should use public read-only /api/feedback so visible feedback history does not require embedding an admin secret'
+  !source.includes('fetch(`${API}/feedback`)'),
+  'Admin feedback viewer must not depend on public global feedback history'
 );
 
 assert(
-  /setFeedbacks\(\(fbRes\?\.entries\s*\|\|\s*\[\]\)\)/.test(source),
-  'Admin feedback viewer must read the public feedback response shape { entries: [...] }'
+  source.includes('setFeedbacks(Array.isArray(fbRes) ? fbRes : [])'),
+  'Admin feedback viewer must read the protected endpoint array response safely'
 );
 
 assert(
-  source.includes('getFeedbackAttachmentUrl(fb._ticker || fb.ticker, f)'),
-  'Admin feedback attachments must use the decorated bucket (_ticker) so historical/general feedback files resolve correctly'
+  source.includes('getFeedbackAttachmentUrl(fb._ticker || fb.ticker, f, adminKey)'),
+  'Admin feedback attachments must use the decorated bucket (_ticker) so historical/general feedback files resolve correctly, and carry the admin key because /api/feedback-file is protected'
+);
+
+assert(
+  source.includes("headers: adminKey ? { 'X-API-Key': adminKey } : {}"),
+  'Admin feedback fetch must send the operator-supplied key; the static bundle cannot embed CED_CONTROL_KEY'
+);
+
+assert(
+  source.includes('sessionStorage.setItem(ADMIN_KEY_STORAGE, next)') && !/\blocalStorage\s*\./.test(source),
+  'Admin key must never be written to localStorage — it would outlive the tab on a shared machine'
 );
 
 assert(
@@ -83,4 +93,4 @@ assert(
   'Shared fetchRecentSearches helper must call public read-only /api/recent-searches'
 );
 
-console.log('✅ AdminPage feedback public history guard passed');
+console.log('✅ AdminPage protected feedback history guard passed');

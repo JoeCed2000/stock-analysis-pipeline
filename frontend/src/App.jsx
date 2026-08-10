@@ -135,73 +135,110 @@ export default function App() {
     return str;
   };
 
-  const handleViewReport = async (result, quarter) => {
-    // Open the deep-dive PDF in a new tab with current language, quarter, and audience mode
+  const showToast = (text, ttlMs = 5000) => {
+    const toast = document.createElement('div');
+    toast.style.cssText = 'position:fixed;top:20px;right:20px;background:rgba(11,18,33,0.9);backdrop-filter:blur(12px);border:1px solid rgba(125,155,195,0.3);color:#e7edf6;padding:12px 18px;border-radius:12px;z-index:9999;font-size:13px;box-shadow:0 12px 40px rgba(2,6,14,0.6)';
+    toast.textContent = text;
+    document.body.appendChild(toast);
+    if (ttlMs) setTimeout(() => toast.remove(), ttlMs);
+    return toast;
+  };
+
+  const handleViewReport = async (result) => {
     const params = new URLSearchParams();
-    if (quarter) params.set('quarter', quarter);
     if (lang === 'jp') params.set('lang', 'jp');
     params.set('audience_mode', audienceMode);
     const qs = params.toString();
     const pdfUrl = `${API_BASE}/report/${result.ticker}/pdf${qs ? '?' + qs : ''}`;
-    
-    // GET the URL and check status. If 200 → open; if 202 → poll
+
+    // Claim the tab synchronously, inside the user gesture: a window.open that
+    // runs after an await is swallowed by popup blockers. 'noopener' is NOT
+    // passed here because it forces window.open to return null, which would
+    // both lose the handle and fire a false "allow pop-ups" warning — the
+    // opener is severed manually instead.
+    const reportWindow = window.open('', '_blank');
+    if (!reportWindow) {
+      showToast(`⚠️ Allow pop-ups to open the ${result.ticker} report`, 7000);
+      return;
+    }
+    reportWindow.opener = null;
+
+    const showInTab = (message) => {
+      try {
+        reportWindow.document.title = `${result.ticker} — deep dive`;
+        reportWindow.document.body.style.cssText = 'margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#0b1221;color:#e7edf6;font:14px system-ui,sans-serif';
+        reportWindow.document.body.textContent = message;
+      } catch { /* tab navigated away or closed by the user */ }
+    };
+    const closeTab = () => { try { reportWindow.close(); } catch { /* already closed */ } };
+    const openBlob = async (res) => {
+      const blob = await res.blob();
+      reportWindow.location.replace(URL.createObjectURL(blob));
+    };
+
+    showInTab(`Generating deep-dive for ${result.ticker}…`);
+
     try {
       const checkRes = await fetch(pdfUrl);
       if (checkRes.status === 200) {
-        // PDF ready — open blob URL for inline viewing
-        const blob = await checkRes.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        window.open(blobUrl, '_blank', 'noopener');
-      } else if (checkRes.status === 202) {
-        // Generation in progress — poll until ready
-        const toast = document.createElement('div');
-        toast.style.cssText = 'position:fixed;top:20px;right:20px;background:rgba(11,18,33,0.9);backdrop-filter:blur(12px);border:1px solid rgba(125,155,195,0.3);color:#e7edf6;padding:12px 18px;border-radius:12px;z-index:9999;font-size:13px;box-shadow:0 12px 40px rgba(2,6,14,0.6)';
-        toast.textContent = `📊 Generating deep-dive for ${result.ticker}...`;
-        document.body.appendChild(toast);
-        
-        const MAX_PDF_POLL_ATTEMPTS = 36; // 36 * 5s = 3 min cap for transient generation
-        let pollAttempts = 0;
-        const poll = async () => {
-          pollAttempts += 1;
-          const res = await fetch(pdfUrl);
-          if (res.status === 200) {
-            toast.textContent = `✅ Deep-dive ready for ${result.ticker}`;
-            setTimeout(() => toast.remove(), 2000);
-            const blob = await res.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            window.open(blobUrl, '_blank', 'noopener');
-          } else if (res.status === 422) {
-            let detail = null;
-            try { detail = await res.json(); } catch { detail = null; }
-            toast.textContent = `⛔ PDF blocked for ${result.ticker}: ${detail?.detail?.message || 'validation failed'}`;
-            setTimeout(() => toast.remove(), 9000);
-          } else if (res.status === 202 && pollAttempts < MAX_PDF_POLL_ATTEMPTS) {
-            toast.textContent = `📊 Generating deep-dive for ${result.ticker}...`;
-            setTimeout(poll, 5000);
-          } else if (res.status === 202) {
-            toast.textContent = `⏱️ PDF generation timed out for ${result.ticker}`;
-            setTimeout(() => toast.remove(), 9000);
-          } else {
-            toast.textContent = `❌ Failed to generate deep-dive for ${result.ticker}`;
-            setTimeout(() => toast.remove(), 5000);
-          }
-        };
-        setTimeout(poll, 3000);
-      } else {
-        // Unexpected status — show error
-        const toast = document.createElement('div');
-        toast.style.cssText = 'position:fixed;top:20px;right:20px;background:rgba(11,18,33,0.9);backdrop-filter:blur(12px);border:1px solid rgba(125,155,195,0.3);color:#e7edf6;padding:12px 18px;border-radius:12px;z-index:9999;font-size:13px;box-shadow:0 12px 40px rgba(2,6,14,0.6)';
-        toast.textContent = `⚠️ Report not available for ${result.ticker} (${checkRes.status})`;
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 5000);
+        await openBlob(checkRes);
+        return;
       }
-    } catch (e) {
-      // Network error — show error toast
-      const toast = document.createElement('div');
-      toast.style.cssText = 'position:fixed;top:20px;right:20px;background:rgba(11,18,33,0.9);backdrop-filter:blur(12px);border:1px solid rgba(125,155,195,0.3);color:#e7edf6;padding:12px 18px;border-radius:12px;z-index:9999;font-size:13px;box-shadow:0 12px 40px rgba(2,6,14,0.6)';
-      toast.textContent = `⚠️ Cannot reach report for ${result.ticker}`;
-      document.body.appendChild(toast);
-      setTimeout(() => toast.remove(), 5000);
+      if (checkRes.status === 422) {
+        let detail = null;
+        try { detail = await checkRes.json(); } catch { detail = null; }
+        closeTab();
+        showToast(`⛔ PDF blocked for ${result.ticker}: ${detail?.detail?.message || 'validation failed'}`, 9000);
+        return;
+      }
+      if (checkRes.status !== 202) {
+        closeTab();
+        showToast(`⚠️ Report not available for ${result.ticker} (${checkRes.status})`);
+        return;
+      }
+
+      // 202 — generation in progress. Poll with a hard cap so a stuck backend
+      // cannot spin the tab forever (WIKI 2026-05-31 PDF_BLOCKED contract).
+      const toast = showToast(`📊 Generating deep-dive for ${result.ticker}...`, 0);
+      const MAX_PDF_POLL_ATTEMPTS = 36; // 36 * 5s = 3 min cap for transient generation
+      let pollAttempts = 0;
+      const poll = async () => {
+        pollAttempts += 1;
+        let res;
+        try {
+          res = await fetch(pdfUrl);
+        } catch {
+          closeTab();
+          toast.textContent = `⚠️ Cannot reach report for ${result.ticker}`;
+          setTimeout(() => toast.remove(), 5000);
+          return;
+        }
+        if (res.status === 200) {
+          toast.textContent = `✅ Deep-dive ready for ${result.ticker}`;
+          setTimeout(() => toast.remove(), 2000);
+          await openBlob(res);
+        } else if (res.status === 422) {
+          let detail = null;
+          try { detail = await res.json(); } catch { detail = null; }
+          closeTab();
+          toast.textContent = `⛔ PDF blocked for ${result.ticker}: ${detail?.detail?.message || 'validation failed'}`;
+          setTimeout(() => toast.remove(), 9000);
+        } else if (res.status === 202 && pollAttempts < MAX_PDF_POLL_ATTEMPTS) {
+          setTimeout(poll, 5000);
+        } else if (res.status === 202) {
+          closeTab();
+          toast.textContent = `⏱️ PDF generation timed out for ${result.ticker}`;
+          setTimeout(() => toast.remove(), 9000);
+        } else {
+          closeTab();
+          toast.textContent = `❌ Failed to generate deep-dive for ${result.ticker}`;
+          setTimeout(() => toast.remove(), 5000);
+        }
+      };
+      setTimeout(poll, 3000);
+    } catch {
+      closeTab();
+      showToast(`⚠️ Cannot reach report for ${result.ticker}`);
     }
   };
 
@@ -449,9 +486,6 @@ export default function App() {
                     : 'SA: unknown'}
           </span>
           <LanguageSelector lang={lang} onLanguageChange={handleLanguageChange} />
-          <span className="chip" style={{ padding: '6px 12px', fontSize: 11, color: '#8fa1b8' }}>
-            📋 Client
-          </span>
         </div>
 
         <div className="reveal" style={{ marginBottom: 14, '--d': '0.15s' }}>
@@ -601,6 +635,7 @@ export default function App() {
       {/* Live Chat Widget — global, always visible */}
       <ChatWidget
         lang={lang}
+        mode={mode}
         ticker={results.length > 0 ? results[0].ticker : null}
         pdfTitle={results.length > 0 ? `${results[0].ticker} Deep Dive Report` : null}
       />
