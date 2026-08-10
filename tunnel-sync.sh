@@ -1,7 +1,23 @@
 #!/bin/bash
-# tunnel-sync.sh — Lance le tunnel Cloudflare, détecte l'URL, rebuild + déploie Vercel
-# Usage: ./tunnel-sync.sh [--watch]
-#   --watch : surveille et redéploie si l'URL change (pour cron)
+# tunnel-sync.sh — OBSOLETE, DISABLED 2026-08-10. Do not run.
+#
+# This script belongs to a deployment that no longer exists:
+#   - it opens an EPHEMERAL quick tunnel (*.trycloudflare.com); production uses
+#     a NAMED tunnel run by the cloudflared-tunnel.service systemd --user unit
+#   - it deploys the frontend to Vercel; production serves frontend/dist/
+#     straight from the FastAPI backend, so `npm run build` IS the deploy
+#   - PROJECT_DIR still points at /mnt/c/Users/cedon/... (repo moved to
+#     ~/codex-projects long ago)
+#
+# Running it would overwrite frontend/.env.production with a throwaway
+# trycloudflare URL and rebuild — which breaks the production bundle, since
+# prod needs VITE_API_URL=/stock-analysis/api.
+#
+# Current procedure: see DEPLOY.md. Delete this file once you are sure nothing
+# external calls it.
+
+echo "tunnel-sync.sh is obsolete and disabled — see DEPLOY.md for the real deploy." >&2
+exit 1
 
 set -e
 PROJECT_DIR="/mnt/c/Users/cedon/Documents/Codex/stock-analysis-pipeline"

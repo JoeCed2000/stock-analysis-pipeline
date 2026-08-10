@@ -1,12 +1,23 @@
 #!/bin/bash
 # SA Operational Commands — stock-analysis-pipeline
-# Project: /mnt/c/Users/cedon/Documents/Codex/stock-analysis-pipeline/
+# Project: /home/ced/codex-projects/stock-analysis-pipeline/
+#
+# The old /mnt/c/Users/cedon/Documents/Codex/... paths are dead (repo moved to
+# ~/codex-projects). Updated 2026-08-10.
+
+SA_DIR=/home/ced/codex-projects/stock-analysis-pipeline
 
 # ── RESTART (after any backend change) ──
-alias sa-restart='fuser -k 8780/tcp 2>/dev/null; sleep 2; cd /mnt/c/Users/cedon/Documents/Codex/stock-analysis-pipeline && nohup .venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8780 --workers 4 > /tmp/sa_uvicorn.log 2>&1 &'
+# The backend is a systemd --user unit with Restart=always. The old alias did
+# `fuser -k 8780/tcp` + `nohup uvicorn`: systemd instantly respawned the killed
+# process, then the nohup one raced it for the port — the same crash-loop that
+# got sa-backend.service disabled on 2026-06-12. Always go through systemd.
+alias sa-restart='systemctl --user restart stock-pipeline.service && sleep 4 && systemctl --user is-active stock-pipeline.service'
 
 # ── REBUILD FRONTEND ──
-alias sa-rebuild='cd /mnt/c/Users/cedon/Documents/Codex/stock-analysis-pipeline/frontend && npm run build && echo "✅ Rebuild done — RESTART SERVER NEXT (sa-restart)"'
+# The backend serves frontend/dist/ off disk, so a build IS the frontend deploy;
+# no restart needed unless .py files changed.
+alias sa-rebuild='cd "$SA_DIR/frontend" && npm run build && echo "✅ Rebuild done — frontend is live. sa-restart only if .py changed."'
 
 # ── FULL REDEPLOY (rebuild + restart) ──
 alias sa-redeploy='sa-rebuild && sleep 1 && sa-restart && sleep 4 && sa-verify'
@@ -28,14 +39,17 @@ sa-verify() {
   echo "Bundle: $BUNDLE"
   
   # 4. API_BASE in bundle
-  API_BASE=$(curl -s "http://localhost:8780/stock-analysis/assets/$BUNDLE" | grep -oP '"/[a-z-]+/api[^"]*"')
+  # Match either quoting style: the minifier rewrites "..." to `...`, which made
+  # the old double-quote-only pattern report a false FAIL on a healthy deploy.
+  API_BASE=$(curl -s "http://localhost:8780/stock-analysis/assets/$BUNDLE" \
+    | grep -oP '["`\x27]/stock-analysis/api["`\x27]' | head -1)
   echo "API_BASE: $API_BASE"
-  
+
   # 5. Cache-Control
   CACHE=$(curl -sI http://localhost:8780/stock-analysis/ | grep -i 'cache-control')
   echo "Cache: $CACHE"
-  
-  [[ "$HTTP" == "200" && "$HTTP2" == "200" && "$API_BASE" == '"/stock-analysis/api"' ]] && echo "✅ ALL OK" || echo "❌ FAIL"
+
+  [[ "$HTTP" == "200" && "$HTTP2" == "200" && -n "$API_BASE" ]] && echo "✅ ALL OK" || echo "❌ FAIL"
 }
 
 # ── QUICK TEST (single ticker via API) ──

@@ -3,7 +3,7 @@
 ## Lancer la recette
 
 ```bash
-cd /mnt/c/Users/cedon/Documents/Codex/stock-analysis-pipeline
+cd /home/ced/codex-projects/stock-analysis-pipeline
 
 # Recette rapide (~1-2 min, sans analyse longue)
 .venv/bin/pytest tests_e2e/ -v -k "not analysis_completes and not download_dossier"
